@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /portal/
-Disallow: /404
+Disallow: /404/
 Sitemap: https://pathxpress.net/sitemap.xml

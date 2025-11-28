@@ -45,9 +45,12 @@ export default function Header() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled ? 'glass-strong shadow-lg' : 'bg-transparent'
-      }`}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isMenuOpen
+          ? 'bg-background/90 backdrop-blur-xl shadow-lg'
+          : isScrolled
+            ? 'glass-strong shadow-lg'
+            : 'bg-transparent'
+        }`}
     >
       <div className="container">
         <div className="flex items-center justify-between h-20">
@@ -61,9 +64,8 @@ export default function Header() {
             {navItems.map((item) => (
               <Link key={item.path} href={item.path}>
                 <span
-                  className={`text-sm font-medium transition-smooth hover:text-primary cursor-pointer ${
-                    location === item.path ? 'text-primary' : 'text-foreground/80'
-                  }`}
+                  className={`text-sm font-medium transition-smooth hover:text-primary cursor-pointer ${location === item.path ? 'text-primary' : 'text-foreground/80'
+                    }`}
                 >
                   {item.label}
                 </span>
@@ -123,9 +125,8 @@ export default function Header() {
               {navItems.map((item) => (
                 <Link key={item.path} href={item.path}>
                   <span
-                    className={`block py-2 text-sm font-medium transition-smooth hover:text-primary cursor-pointer ${
-                      location === item.path ? 'text-primary' : 'text-foreground/80'
-                    }`}
+                    className={`block py-2 text-sm font-medium transition-smooth hover:text-primary cursor-pointer ${location === item.path ? 'text-primary' : 'text-foreground/80'
+                      }`}
                     onClick={() => setIsMenuOpen(false)}
                   >
                     {item.label}

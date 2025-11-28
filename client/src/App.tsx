@@ -1,47 +1,57 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
-import Tracking from "./pages/Tracking";
-import TrackShipment from "./pages/TrackShipment";
-import RequestQuote from "./pages/RequestQuote";
-import RequestPickup from "./pages/RequestPickup";
-import Pricing from "./pages/Pricing";
-import CustomerPortal from "./pages/CustomerPortal";
-import Contact from "./pages/Contact";
-import Services from "./pages/Services";
-import About from "./pages/About";
-import { Privacy, Terms, Refund, Accessibility } from "./pages/Legal";
-import PortalLogin from "./pages/portal/PortalLogin";
-import AdminDashboard from "./pages/portal/AdminDashboard";
-import CustomerDashboard from "./pages/portal/CustomerDashboard";
+import { lazy, Suspense } from "react";
+import { Spinner } from "@/components/ui/spinner";
+
+const NotFound = lazy(() => import("@/pages/NotFound"));
+const Home = lazy(() => import("./pages/Home"));
+const Tracking = lazy(() => import("./pages/Tracking"));
+const TrackShipment = lazy(() => import("./pages/TrackShipment"));
+const RequestQuote = lazy(() => import("./pages/RequestQuote"));
+const RequestPickup = lazy(() => import("./pages/RequestPickup"));
+const Pricing = lazy(() => import("./pages/Pricing"));
+const CustomerPortal = lazy(() => import("./pages/CustomerPortal"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Services = lazy(() => import("./pages/Services"));
+const About = lazy(() => import("./pages/About"));
+const PortalLogin = lazy(() => import("./pages/portal/PortalLogin"));
+const AdminDashboard = lazy(() => import("./pages/portal/AdminDashboard"));
+const CustomerDashboard = lazy(() => import("./pages/portal/CustomerDashboard"));
+
+// Lazy load named exports from Legal
+const Privacy = lazy(() => import("./pages/Legal").then(module => ({ default: module.Privacy })));
+const Terms = lazy(() => import("./pages/Legal").then(module => ({ default: module.Terms })));
+const Refund = lazy(() => import("./pages/Legal").then(module => ({ default: module.Refund })));
+const Accessibility = lazy(() => import("./pages/Legal").then(module => ({ default: module.Accessibility })));
 
 function Router() {
   return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/tracking"} component={Tracking} />
-      <Route path={"/track"} component={TrackShipment} />
-      <Route path="/request-quote" component={RequestQuote} />
-      <Route path="/request-pickup" component={RequestPickup} />
-      <Route path="/pricing" component={Pricing} />
-      <Route path="/customer-portal" component={CustomerPortal} />
-      <Route path="/portal/login" component={PortalLogin} />
-      <Route path="/portal/admin" component={AdminDashboard} />
-      <Route path="/portal/customer" component={CustomerDashboard} />
-      <Route path="/contact" component={Contact} />
-      <Route path="/services" component={Services} />
-      <Route path="/about" component={About} />
-      <Route path="/privacy" component={Privacy} />
-      <Route path="/terms" component={Terms} />
-      <Route path="/refund" component={Refund} />
-      <Route path="/accessibility" component={Accessibility} />
-      <Route path={"/404"} component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Spinner className="size-10" /></div>}>
+      <Switch>
+        <Route path={"/"} component={Home} />
+        <Route path={"/tracking"} component={Tracking} />
+        <Route path={"/track"} component={TrackShipment} />
+        <Route path="/request-quote" component={RequestQuote} />
+        <Route path="/request-pickup" component={RequestPickup} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/customer-portal" component={CustomerPortal} />
+        <Route path="/portal/login" component={PortalLogin} />
+        <Route path="/portal/admin" component={AdminDashboard} />
+        <Route path="/portal/customer" component={CustomerDashboard} />
+        <Route path="/contact" component={Contact} />
+        <Route path="/services" component={Services} />
+        <Route path="/about" component={About} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/refund" component={Refund} />
+        <Route path="/accessibility" component={Accessibility} />
+        <Route path={"/404"} component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -55,7 +65,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider
         defaultTheme="dark"
-        // switchable
+      // switchable
       >
         <TooltipProvider>
           <Toaster />
