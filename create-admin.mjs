@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcrypt';
 import 'dotenv/config';
+import readline from 'readline';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -15,8 +16,22 @@ async function createAdmin() {
 
         const connection = await mysql.createConnection(DATABASE_URL);
 
-        const email = 'admin@pathxpress.ae';
-        const plainPassword = 'admin123';
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+
+        const ask = (query) => new Promise((resolve) => rl.question(query, resolve));
+
+        const email = await ask('Enter admin email: ');
+        const plainPassword = await ask('Enter admin password: ');
+
+        rl.close();
+
+        if (!email || !plainPassword) {
+            console.error('❌ Email and password are required.');
+            process.exit(1);
+        }
 
         const hashedPassword = await bcrypt.hash(plainPassword, 10);
 

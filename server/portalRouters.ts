@@ -162,7 +162,7 @@ export const adminPortalRouter = router({
         city: z.string().min(1),
         creditTerms: z.string().optional(),
         defaultCurrency: z.string().default('AED'),
-        codAllowed: z.number().default(0),
+        codAllowed: z.boolean().default(false).transform((v) => (v ? 1 : 0)),
         notes: z.string().optional(),
       }),
     }))
