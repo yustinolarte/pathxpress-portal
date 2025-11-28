@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -30,6 +32,40 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+
+  // Security middleware
+  app.use(
+    helmet({
+      contentSecurityPolicy: false, // Disabled to avoid conflicts with Vite in dev mode
+      frameguard: { action: "deny" }, // Clickjacking protection
+      hsts: true, // HTTP Strict Transport Security
+      noSniff: true, // Prevent MIME type sniffing
+      hidePoweredBy: true, // Hide X-Powered-By header
+    })
+  );
+
+  // Rate limiting
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 300, // Limit each IP to 300 requests per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many requests from this IP, please try again after 15 minutes",
+  });
+
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20, // Limit each IP to 20 login attempts per window
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many login attempts from this IP, please try again after 15 minutes",
+  });
+
+  // Apply rate limiting
+  // Note: tRPC batching might bypass the specific route match, but this catches direct calls
+  app.use("/api/trpc/portal.auth.login", authLimiter);
+  app.use("/api", apiLimiter);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
