@@ -46,17 +46,17 @@ export default function Header() {
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isMenuOpen
-          ? 'bg-background/90 backdrop-blur-xl shadow-lg'
-          : isScrolled
-            ? 'glass-strong shadow-lg'
-            : 'bg-transparent'
+        ? 'bg-background/90 backdrop-blur-xl shadow-lg'
+        : isScrolled
+          ? 'glass-strong shadow-lg'
+          : 'bg-transparent'
         }`}
     >
       <div className="container">
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link href="/">
-            <img src={APP_LOGO} alt="PATHXPRESS" className="h-8 cursor-pointer" />
+            <img src={APP_LOGO} alt="PATHXPRESS" className="h-8 w-auto cursor-pointer" width="128" height="32" />
           </Link>
 
           {/* Desktop Navigation */}

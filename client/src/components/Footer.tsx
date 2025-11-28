@@ -31,7 +31,7 @@ export default function Footer() {
           {/* Company Info */}
           <div>
             <Link href="/">
-              <img src={APP_LOGO} alt="PATHXPRESS" className="h-8 mb-4 cursor-pointer" />
+              <img src={APP_LOGO} alt="PATHXPRESS" className="h-8 mb-4 w-auto cursor-pointer" width="128" height="32" />
             </Link>
             <p className="text-sm text-muted-foreground mb-4">
               {t('footer.description')}
