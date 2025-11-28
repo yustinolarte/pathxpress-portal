@@ -1,0 +1,262 @@
+{
+  "nav": {
+    "home": "Home",
+    "services": "Services",
+    "about": "About Us",
+    "tracking": "Tracking",
+    "requestPickup": "Request Pickup",
+    "pricing": "Pricing / Rates",
+    "rates": "Rates",
+    "customerPortal": "Customer Portal",
+    "comingSoon": "Coming Soon",
+    "contact": "Contact",
+    "requestQuote": "Request Quote"
+  },
+  "hero": {
+    "title": "Reliable Delivery Services in the UAE",
+    "subtitle": "Same-day, domestic, and international logistics with full transparency and real-time tracking.",
+    "trackingPlaceholder": "Enter tracking ID (e.g. PX00001)",
+    "trackButton": "Track",
+    "requestQuoteBtn": "Request Quote",
+    "requestPickupBtn": "Request Pickup"
+  },
+  "services": {
+    "title": "Our Services",
+    "subtitle": "Comprehensive logistics solutions tailored to your needs",
+    "sameDay": {
+      "title": "Same Day Delivery",
+      "label": "Dubai / UAE",
+      "point1": "Dubai / Sharjah / Abu Dhabi (city limits)",
+      "point2": "Cut-off: 14:00",
+      "point3": "Max 10 kg",
+      "point4": "Min 4 shipments per pickup"
+    },
+    "domestic": {
+      "title": "Domestic Next Day / Economy",
+      "label": "All Emirates",
+      "point1": "Coverage: All Emirates",
+      "point2": "Designed for SMEs and startups",
+      "point3": "Reliable and cost-effective"
+    },
+    "freight": {
+      "title": "Freight Brokerage",
+      "label": "Import/Export",
+      "point1": "International freight solutions",
+      "point2": "Customs clearance support",
+      "point3": "Door-to-door service"
+    },
+    "latam": {
+      "title": "UAE ⇄ LATAM Freight",
+      "label": "Colombia, Mexico, etc.",
+      "point1": "Specialized corridor",
+      "point2": "Customs support",
+      "point3": "Expert handling"
+    },
+    "lastMile": {
+      "title": "Last Mile for E-commerce",
+      "label": "Multi-vendor",
+      "point1": "E-commerce integration",
+      "point2": "Multi-vendor support",
+      "point3": "Real-time tracking"
+    }
+  },
+  "whyChooseUs": {
+    "title": "Why Choose PATHXPRESS",
+    "subtitle": "Your trusted logistics partner in the UAE",
+    "onTime": {
+      "title": "99% On-time Performance",
+      "description": "We deliver on our promises with exceptional reliability"
+    },
+    "tracking": {
+      "title": "Real-time Tracking",
+      "description": "Track your shipments anytime via our web platform"
+    },
+    "support": {
+      "title": "WhatsApp Support",
+      "description": "Instant customer support via WhatsApp"
+    },
+    "flexible": {
+      "title": "Flexible Rates for Startups",
+      "description": "Competitive pricing designed for growing businesses"
+    },
+    "specialist": {
+      "title": "UAE ⇄ LATAM Specialists",
+      "description": "Expert in connecting Dubai to Latin America"
+    }
+  },
+  "about": {
+    "title": "About PATHXPRESS",
+    "subtitle": "Your logistics partner since 2025",
+    "description": "PATHXPRESS FZCO was created in 2025 in Dubai under IFZA. Our focus is on transparency, efficiency, and accessibility in UAE logistics. With a team of extensive logistics expertise, we operate in all Emirates and connect Dubai to LATAM.",
+    "vision": {
+      "title": "Vision",
+      "content": "To be the most trusted and innovative logistics provider in the UAE and beyond"
+    },
+    "mission": {
+      "title": "Mission",
+      "content": "To deliver exceptional logistics services with transparency, efficiency, and customer-first approach"
+    },
+    "values": {
+      "title": "Values",
+      "innovation": "Innovation",
+      "empathy": "Empathy",
+      "efficiency": "Efficiency",
+      "sustainability": "Sustainability"
+    }
+  },
+  "faq": {
+    "title": "Frequently Asked Questions",
+    "subtitle": "Find answers to common questions",
+    "q1": {
+      "question": "How long does same-day delivery take?",
+      "answer": "Same-day delivery is completed within the same business day if the order is placed before our 14:00 cut-off time. Delivery typically occurs within 4-8 hours depending on the destination within Dubai, Sharjah, or Abu Dhabi city limits."
+    },
+    "q2": {
+      "question": "Do you offer integrations for online stores?",
+      "answer": "Yes, we offer comprehensive e-commerce integrations for multi-vendor platforms. Our Last Mile service is designed specifically for online stores and can integrate with most major e-commerce platforms."
+    },
+    "q3": {
+      "question": "What zones do you cover?",
+      "answer": "We cover all seven Emirates in the UAE. For same-day delivery, we focus on Dubai, Sharjah, and Abu Dhabi city limits. Our domestic service covers all Emirates, and we also specialize in international freight between UAE and Latin America."
+    },
+    "q4": {
+      "question": "How can I track my shipment?",
+      "answer": "You can track your shipment in real-time using your tracking ID (format: PX00000) on our website. Simply enter your tracking number in the tracking section, and you'll see the current status and location of your shipment."
+    }
+  },
+  "tracking": {
+    "title": "Track Your Shipment",
+    "subtitle": "Enter your tracking ID to see real-time updates",
+    "placeholder": "Enter tracking ID (e.g. PX00001)",
+    "trackButton": "Track Shipment",
+    "status": "Status",
+    "notFound": "Shipment not found. Please check your tracking ID and try again.",
+    "error": "An error occurred while tracking your shipment. Please try again later."
+  },
+  "quoteForm": {
+    "title": "Request a Quote",
+    "subtitle": "Fill out the form below and we'll get back to you shortly",
+    "name": "Full Name",
+    "phone": "Phone Number",
+    "email": "Email Address",
+    "pickupAddress": "Pickup Address",
+    "deliveryAddress": "Delivery Address (Optional)",
+    "serviceType": "Service Type",
+    "weight": "Weight/Volume",
+    "comments": "Additional Comments (Optional)",
+    "submit": "Submit Request",
+    "success": "Your request has been submitted successfully! We'll contact you shortly.",
+    "error": "An error occurred while submitting your request. Please try again.",
+    "serviceTypes": {
+      "sameDay": "Same Day Delivery",
+      "domestic": "Domestic Next Day / Economy",
+      "freight": "Freight Brokerage",
+      "latam": "UAE ⇄ LATAM Freight",
+      "lastMile": "Last Mile E-commerce"
+    }
+  },
+  "pricing": {
+    "title": "Pricing & Rates",
+    "subtitle": "Transparent pricing for all your logistics needs",
+    "description": "At PATHXPRESS, we believe in transparent and competitive pricing. Our rates are tailored to your specific needs, shipment volume, and service requirements. We offer flexible pricing options designed especially for SMEs and startups.",
+    "cta": "To get a detailed quote for your specific requirements, please use our Request Quote form. Our team will provide you with a customized pricing proposal within 24 hours.",
+    "requestQuoteBtn": "Request Custom Quote",
+    "calculator": {
+      "title": "Estimate Your Delivery Rate",
+      "subtitle": "Get an instant estimate for domestic UAE deliveries with PATHXPRESS.",
+      "originEmirate": "Origin Emirate",
+      "destinationEmirate": "Destination Emirate",
+      "deliveryDate": "Delivery Date",
+      "serviceType": "Service Type",
+      "standard": "Standard (Next Day)",
+      "sameDay": "Same-Day",
+      "actualWeight": "Actual Weight (kg)",
+      "dimensions": "Dimensions (cm)",
+      "length": "Length",
+      "width": "Width",
+      "height": "Height",
+      "calculateBtn": "Calculate Rate",
+      "result": {
+        "title": "Estimated Price",
+        "actualWeight": "Actual weight",
+        "volumetricWeight": "Volumetric weight",
+        "chargeableWeight": "Chargeable weight used",
+        "service": "Service",
+        "route": "Route",
+        "disclaimer": "*This is an estimated rate. Final price may vary based on operational conditions and PATHXPRESS confirmation.*"
+      },
+      "errors": {
+        "requiredField": "This field is required",
+        "minWeight": "Weight must be at least 0.1 kg",
+        "minDimension": "Dimension must be at least 1 cm"
+      },
+      "emirates": {
+        "dubai": "Dubai",
+        "abuDhabi": "Abu Dhabi",
+        "sharjah": "Sharjah"
+      }
+    },
+    "international": {
+      "title": "International Shipping Rates",
+      "subtitle": "Request a quote for international shipments",
+      "originCountry": "Origin Country",
+      "destinationCountry": "Destination Country",
+      "deliveryDate": "Expected Delivery Date",
+      "weight": "Weight (kg)",
+      "dimensions": "Dimensions (cm)",
+      "length": "Length",
+      "width": "Width",
+      "height": "Height",
+      "phone": "Phone Number",
+      "email": "Email Address",
+      "calculateBtn": "Request Quote",
+      "success": "Thank you! Someone from our team will contact you soon.",
+      "error": "An error occurred. Please try again.",
+      "errors": {
+        "requiredField": "This field is required",
+        "invalidEmail": "Please enter a valid email address",
+        "minWeight": "Weight must be at least 0.1 kg",
+        "minDimension": "Dimension must be at least 1 cm"
+      }
+    }
+  },
+  "customerPortal": {
+    "title": "Customer Portal",
+    "subtitle": "Coming Soon",
+    "description": "We're building a powerful customer portal where you can manage all your shipments, view analytics, generate reports, and access your complete shipping history. Stay tuned!",
+    "notify": "Notify Me When Available"
+  },
+  "contact": {
+    "title": "Contact Us",
+    "subtitle": "Get in touch with our team",
+    "company": "PATHXPRESS FZCO",
+    "email": "info@pathxpress.net",
+    "phone": "+971 52 280 3433",
+    "whatsapp": "WhatsApp Us",
+    "form": {
+      "title": "Send us a message",
+      "name": "Your Name",
+      "email": "Your Email",
+      "message": "Your Message",
+      "submit": "Send Message",
+      "success": "Message sent successfully! We'll get back to you soon.",
+      "error": "Failed to send message. Please try again or contact us via email."
+    }
+  },
+  "footer": {
+    "description": "Reliable delivery services in the UAE with full transparency and real-time tracking.",
+    "newsletter": {
+      "title": "Subscribe to our Newsletter",
+      "phone": "Phone Number",
+      "email": "Email Address",
+      "subscribe": "Subscribe"
+    },
+    "legal": {
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service",
+      "refund": "Refund Policy",
+      "accessibility": "Accessibility"
+    },
+    "copyright": "© 2025 PATHXPRESS FZCO. All rights reserved."
+  }
+}

@@ -1,0 +1,262 @@
+{
+  "nav": {
+    "home": "Inicio",
+    "services": "Servicios",
+    "about": "Nosotros",
+    "tracking": "Rastreo",
+    "requestPickup": "Solicitar Recogida",
+    "pricing": "Precios / Tarifas",
+    "rates": "Tarifas",
+    "customerPortal": "Portal del Cliente",
+    "comingSoon": "Próximamente",
+    "contact": "Contacto",
+    "requestQuote": "Solicitar Cotización"
+  },
+  "hero": {
+    "title": "Servicios de Entrega Confiables en los EAU",
+    "subtitle": "Logística el mismo día, nacional e internacional con total transparencia y rastreo en tiempo real.",
+    "trackingPlaceholder": "Ingrese ID de rastreo (ej. PX00001)",
+    "trackButton": "Rastrear",
+    "requestQuoteBtn": "Solicitar Cotización",
+    "requestPickupBtn": "Solicitar Recogida"
+  },
+  "services": {
+    "title": "Nuestros Servicios",
+    "subtitle": "Soluciones logísticas integrales adaptadas a sus necesidades",
+    "sameDay": {
+      "title": "Entrega el Mismo Día",
+      "label": "Dubái / EAU",
+      "point1": "Dubái / Sharjah / Abu Dhabi (límites de la ciudad)",
+      "point2": "Hora límite: 14:00",
+      "point3": "Máximo 10 kg",
+      "point4": "Mínimo 4 envíos por recogida"
+    },
+    "domestic": {
+      "title": "Nacional Día Siguiente / Económico",
+      "label": "Todos los Emiratos",
+      "point1": "Cobertura: Todos los Emiratos",
+      "point2": "Diseñado para PYMEs y startups",
+      "point3": "Confiable y rentable"
+    },
+    "freight": {
+      "title": "Corretaje de Carga",
+      "label": "Importación/Exportación",
+      "point1": "Soluciones de carga internacional",
+      "point2": "Soporte de despacho aduanero",
+      "point3": "Servicio puerta a puerta"
+    },
+    "latam": {
+      "title": "Carga EAU ⇄ LATAM",
+      "label": "Colombia, México, etc.",
+      "point1": "Corredor especializado",
+      "point2": "Soporte aduanero",
+      "point3": "Manejo experto"
+    },
+    "lastMile": {
+      "title": "Última Milla para E-commerce",
+      "label": "Multi-vendedor",
+      "point1": "Integración e-commerce",
+      "point2": "Soporte multi-vendedor",
+      "point3": "Rastreo en tiempo real"
+    }
+  },
+  "whyChooseUs": {
+    "title": "Por Qué Elegir PATHXPRESS",
+    "subtitle": "Su socio logístico de confianza en los EAU",
+    "onTime": {
+      "title": "99% de Puntualidad",
+      "description": "Cumplimos nuestras promesas con fiabilidad excepcional"
+    },
+    "tracking": {
+      "title": "Rastreo en Tiempo Real",
+      "description": "Rastree sus envíos en cualquier momento a través de nuestra plataforma web"
+    },
+    "support": {
+      "title": "Soporte por WhatsApp",
+      "description": "Atención al cliente instantánea vía WhatsApp"
+    },
+    "flexible": {
+      "title": "Tarifas Flexibles para Startups",
+      "description": "Precios competitivos diseñados para empresas en crecimiento"
+    },
+    "specialist": {
+      "title": "Especialistas EAU ⇄ LATAM",
+      "description": "Expertos en conectar Dubái con América Latina"
+    }
+  },
+  "about": {
+    "title": "Acerca de PATHXPRESS",
+    "subtitle": "Su socio logístico desde 2025",
+    "description": "PATHXPRESS FZCO fue creada en 2025 en Dubái bajo IFZA. Nuestro enfoque está en la transparencia, eficiencia y accesibilidad en la logística de los EAU. Con un equipo de amplia experiencia logística, operamos en todos los Emiratos y conectamos Dubái con LATAM.",
+    "vision": {
+      "title": "Visión",
+      "content": "Ser el proveedor de logística más confiable e innovador en los EAU y más allá"
+    },
+    "mission": {
+      "title": "Misión",
+      "content": "Ofrecer servicios logísticos excepcionales con transparencia, eficiencia y enfoque en el cliente"
+    },
+    "values": {
+      "title": "Valores",
+      "innovation": "Innovación",
+      "empathy": "Empatía",
+      "efficiency": "Eficiencia",
+      "sustainability": "Sostenibilidad"
+    }
+  },
+  "faq": {
+    "title": "Preguntas Frecuentes",
+    "subtitle": "Encuentre respuestas a preguntas comunes",
+    "q1": {
+      "question": "¿Cuánto tiempo tarda la entrega el mismo día?",
+      "answer": "La entrega el mismo día se completa dentro del mismo día hábil si el pedido se realiza antes de nuestro horario límite de 14:00. La entrega generalmente ocurre dentro de 4-8 horas dependiendo del destino dentro de los límites de la ciudad de Dubái, Sharjah o Abu Dhabi."
+    },
+    "q2": {
+      "question": "¿Ofrecen integraciones para tiendas en línea?",
+      "answer": "Sí, ofrecemos integraciones completas de comercio electrónico para plataformas multi-vendedor. Nuestro servicio de Última Milla está diseñado específicamente para tiendas en línea y puede integrarse con la mayoría de las principales plataformas de comercio electrónico."
+    },
+    "q3": {
+      "question": "¿Qué zonas cubren?",
+      "answer": "Cubrimos los siete Emiratos en los EAU. Para entrega el mismo día, nos enfocamos en los límites de la ciudad de Dubái, Sharjah y Abu Dhabi. Nuestro servicio nacional cubre todos los Emiratos, y también nos especializamos en carga internacional entre EAU y América Latina."
+    },
+    "q4": {
+      "question": "¿Cómo puedo rastrear mi envío?",
+      "answer": "Puede rastrear su envío en tiempo real usando su ID de rastreo (formato: PX00000) en nuestro sitio web. Simplemente ingrese su número de rastreo en la sección de rastreo y verá el estado y ubicación actual de su envío."
+    }
+  },
+  "tracking": {
+    "title": "Rastree Su Envío",
+    "subtitle": "Ingrese su ID de rastreo para ver actualizaciones en tiempo real",
+    "placeholder": "Ingrese ID de rastreo (ej. PX00001)",
+    "trackButton": "Rastrear Envío",
+    "status": "Estado",
+    "notFound": "Envío no encontrado. Por favor verifique su ID de rastreo e intente nuevamente.",
+    "error": "Ocurrió un error al rastrear su envío. Por favor intente más tarde."
+  },
+  "quoteForm": {
+    "title": "Solicitar una Cotización",
+    "subtitle": "Complete el formulario a continuación y nos pondremos en contacto pronto",
+    "name": "Nombre Completo",
+    "phone": "Número de Teléfono",
+    "email": "Correo Electrónico",
+    "pickupAddress": "Dirección de Recogida",
+    "deliveryAddress": "Dirección de Entrega (Opcional)",
+    "serviceType": "Tipo de Servicio",
+    "weight": "Peso/Volumen",
+    "comments": "Comentarios Adicionales (Opcional)",
+    "submit": "Enviar Solicitud",
+    "success": "¡Su solicitud ha sido enviada exitosamente! Nos pondremos en contacto pronto.",
+    "error": "Ocurrió un error al enviar su solicitud. Por favor intente nuevamente.",
+    "serviceTypes": {
+      "sameDay": "Entrega el Mismo Día",
+      "domestic": "Nacional Día Siguiente / Económico",
+      "freight": "Corretaje de Carga",
+      "latam": "Carga EAU ⇄ LATAM",
+      "lastMile": "Última Milla E-commerce"
+    }
+  },
+  "pricing": {
+    "title": "Precios y Tarifas",
+    "subtitle": "Precios transparentes para todas sus necesidades logísticas",
+    "description": "En PATHXPRESS, creemos en precios transparentes y competitivos. Nuestras tarifas se adaptan a sus necesidades específicas, volumen de envío y requisitos de servicio. Ofrecemos opciones de precios flexibles diseñadas especialmente para PYMEs y startups.",
+    "cta": "Para obtener una cotización detallada para sus requisitos específicos, por favor use nuestro formulario de Solicitud de Cotización. Nuestro equipo le proporcionará una propuesta de precios personalizada dentro de 24 horas.",
+    "requestQuoteBtn": "Solicitar Cotización Personalizada",
+    "calculator": {
+      "title": "Estime su Tarifa de Entrega",
+      "subtitle": "Obtenga una estimación instantánea para entregas domésticas en los EAU con PATHXPRESS.",
+      "originEmirate": "Emirato de Origen",
+      "destinationEmirate": "Emirato de Destino",
+      "deliveryDate": "Fecha de Entrega",
+      "serviceType": "Tipo de Servicio",
+      "standard": "Estándar (Día Siguiente)",
+      "sameDay": "Mismo Día",
+      "actualWeight": "Peso Real (kg)",
+      "dimensions": "Dimensiones (cm)",
+      "length": "Largo",
+      "width": "Ancho",
+      "height": "Alto",
+      "calculateBtn": "Calcular Tarifa",
+      "result": {
+        "title": "Precio Estimado",
+        "actualWeight": "Peso real",
+        "volumetricWeight": "Peso volumétrico",
+        "chargeableWeight": "Peso cobrable utilizado",
+        "service": "Servicio",
+        "route": "Ruta",
+        "disclaimer": "*Esta es una tarifa estimada. El precio final puede variar según las condiciones operativas y la confirmación de PATHXPRESS.*"
+      },
+      "errors": {
+        "requiredField": "Este campo es obligatorio",
+        "minWeight": "El peso debe ser al menos 0.1 kg",
+        "minDimension": "La dimensión debe ser al menos 1 cm"
+      },
+      "emirates": {
+        "dubai": "Dubái",
+        "abuDhabi": "Abu Dabi",
+        "sharjah": "Sharjah"
+      }
+    },
+    "international": {
+      "title": "Tarifas de Envío Internacional",
+      "subtitle": "Solicite una cotización para envíos internacionales",
+      "originCountry": "País de Origen",
+      "destinationCountry": "País de Destino",
+      "deliveryDate": "Fecha de Entrega Esperada",
+      "weight": "Peso (kg)",
+      "dimensions": "Dimensiones (cm)",
+      "length": "Largo",
+      "width": "Ancho",
+      "height": "Alto",
+      "phone": "Número de Teléfono",
+      "email": "Correo Electrónico",
+      "calculateBtn": "Solicitar Cotización",
+      "success": "¡Gracias! Alguien de nuestro equipo se comunicará contigo pronto.",
+      "error": "Ocurrió un error. Por favor inténtalo de nuevo.",
+      "errors": {
+        "requiredField": "Este campo es obligatorio",
+        "invalidEmail": "Por favor ingrese un correo electrónico válido",
+        "minWeight": "El peso debe ser al menos 0.1 kg",
+        "minDimension": "La dimensión debe ser al menos 1 cm"
+      }
+    }
+  },
+  "customerPortal": {
+    "title": "Portal del Cliente",
+    "subtitle": "Próximamente",
+    "description": "Estamos construyendo un poderoso portal de clientes donde podrá administrar todos sus envíos, ver análisis, generar informes y acceder a su historial completo de envíos. ¡Manténgase atento!",
+    "notify": "Notificarme Cuando Esté Disponible"
+  },
+  "contact": {
+    "title": "Contáctenos",
+    "subtitle": "Póngase en contacto con nuestro equipo",
+    "company": "PATHXPRESS FZCO",
+    "email": "info@pathxpress.net",
+    "phone": "+971 52 280 3433",
+    "whatsapp": "WhatsApp",
+    "form": {
+      "title": "Envíenos un mensaje",
+      "name": "Su Nombre",
+      "email": "Su Correo Electrónico",
+      "message": "Su Mensaje",
+      "submit": "Enviar Mensaje",
+      "success": "¡Mensaje enviado exitosamente! Nos pondremos en contacto pronto.",
+      "error": "Error al enviar el mensaje. Por favor intente nuevamente o contáctenos por correo electrónico."
+    }
+  },
+  "footer": {
+    "description": "Servicios de entrega confiables en los EAU con total transparencia y rastreo en tiempo real.",
+    "newsletter": {
+      "title": "Suscríbase a Nuestro Boletín",
+      "phone": "Número de Teléfono",
+      "email": "Correo Electrónico",
+      "subscribe": "Suscribirse"
+    },
+    "legal": {
+      "privacy": "Política de Privacidad",
+      "terms": "Términos de Servicio",
+      "refund": "Política de Reembolso",
+      "accessibility": "Accesibilidad"
+    },
+    "copyright": "© 2025 PATHXPRESS FZCO. Todos los derechos reservados."
+  }
+}

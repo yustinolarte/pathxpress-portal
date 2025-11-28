@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1763817214191,
+      "tag": "0000_left_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1763817429321,
+      "tag": "0001_closed_scream",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1763829689508,
+      "tag": "0002_nice_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1764052002563,
+      "tag": "0003_nervous_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1764056911108,
+      "tag": "0004_parched_excalibur",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1764059190290,
+      "tag": "0005_same_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1764070547559,
+      "tag": "0006_outgoing_phil_sheldon",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1764072689706,
+      "tag": "0007_uneven_risque",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1764074372390,
+      "tag": "0008_glossy_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1764075191817,
+      "tag": "0009_right_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1764077824583,
+      "tag": "0010_organic_shaman",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1764228950361,
+      "tag": "0011_mute_mister_sinister",
+      "breakpoints": true
+    }
+  ]
+}
