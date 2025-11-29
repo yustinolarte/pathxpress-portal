@@ -69,15 +69,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { createInternationalRateRequest } = await import('./db');
-        const { notifyOwner } = await import('./_core/notification');
-
         await createInternationalRateRequest(input);
-
-        // Send notification to owner
-        await notifyOwner({
-          title: 'New International Rate Request',
-          content: `New international rate request from ${input.email} for ${input.originCountry} → ${input.destinationCountry}`,
-        });
 
         return { success: true };
       }),
@@ -100,15 +92,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { createQuoteRequest } = await import('./db');
-        const { notifyOwner } = await import('./_core/notification');
-
         await createQuoteRequest(input);
-
-        // Send notification to owner
-        await notifyOwner({
-          title: 'New Quote Request',
-          content: `New quote request from ${input.name} (${input.email}) for ${input.serviceType}`,
-        });
 
         // TODO: Send email to pathxpress@outlook.com
         // This would require email service integration

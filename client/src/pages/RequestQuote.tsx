@@ -29,7 +29,7 @@ export default function RequestQuote() {
   const createQuoteMutation = trpc.quoteRequest.create.useMutation({
     onSuccess: () => {
       setSubmitted(true);
-      toast.success(t('quoteForm.success'));
+      toast.success('Pickup request sent successfully! We will contact you shortly.');
       setFormData({
         name: '',
         phone: '',
@@ -64,9 +64,9 @@ export default function RequestQuote() {
             <Card className="glass-strong border-primary text-center animate-fade-in">
               <CardContent className="py-12">
                 <CheckCircle className="w-16 h-16 mx-auto mb-6 text-primary" />
-                <h2 className="text-3xl font-bold mb-4">{t('quoteForm.success')}</h2>
+                <h2 className="text-3xl font-bold mb-4">Pickup Request Sent!</h2>
                 <p className="text-muted-foreground mb-8">
-                  We'll contact you shortly at {formData.email}
+                  We have received your request and will contact you shortly at {formData.email} to confirm the details.
                 </p>
                 <Button
                   onClick={() => setSubmitted(false)}

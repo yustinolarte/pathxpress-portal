@@ -14,7 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save } from 'lucide-react';
+import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet } from 'lucide-react';
+import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
 import CustomerInvoices from '@/components/CustomerInvoices';
@@ -25,7 +26,7 @@ import CustomerReports from '@/components/CustomerReports';
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
   const { token, user, logout } = usePortalAuth();
-  const [activeTab, setActiveTab] = useState('orders');
+  const [activeTab, setActiveTab] = useState('overview');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [trackingWaybill, setTrackingWaybill] = useState('');
   const [searchedWaybill, setSearchedWaybill] = useState('');
@@ -89,174 +90,166 @@ export default function CustomerDashboard() {
     activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled').length || 0,
   };
 
+  const menuItems: MenuItem[] = [
+    { icon: LayoutDashboard, label: 'Overview', value: 'overview' },
+    { icon: Package, label: 'My Orders', value: 'orders' },
+    { icon: Search, label: 'Track Shipment', value: 'tracking' },
+    { icon: Calculator, label: 'Rate Calculator', value: 'calculator' },
+    { icon: FileText, label: 'Invoices', value: 'invoices' },
+    { icon: Wallet, label: 'COD', value: 'cod' },
+    { icon: FileText, label: 'Reports', value: 'reports' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-      {/* Header */}
-      <header className="glass-strong border-b border-blue-500/20 sticky top-0 z-50">
-        <div className="container mx-auto flex items-center justify-between py-4">
-          <div className="flex items-center gap-4">
-            <img src={APP_LOGO} alt="PATHXPRESS" className="h-8" />
-            <div>
-              <h1 className="text-xl font-bold">Customer Portal</h1>
-              <p className="text-sm text-muted-foreground">{account?.companyName || user.email}</p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto py-8 space-y-8">
-        {/* Overview Section - Dashboard Metrics */}
-        <div className="space-y-4">
-          <h2 className="text-2xl font-bold">Overview</h2>
-
-          {metricsLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {[...Array(5)].map((_, i) => (
-                <Card key={i} className="glass-strong border-blue-500/20 animate-pulse">
-                  <CardHeader className="pb-2">
-                    <div className="h-4 bg-slate-700 rounded w-3/4"></div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-8 bg-slate-700 rounded w-1/2"></div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {/* Total Shipments This Month */}
-                <Card className="glass-strong border-blue-500/20 hover:border-blue-400/40 transition-all">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Envíos del Mes</CardTitle>
-                    <Package className="h-4 w-4 text-blue-400" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-blue-400">{metrics?.totalShipmentsThisMonth || 0}</div>
-                    <p className="text-xs text-muted-foreground mt-1">Mes actual</p>
-                  </CardContent>
-                </Card>
-
-                {/* On-Time Delivery % */}
-                <Card className="glass-strong border-green-500/20 hover:border-green-400/40 transition-all">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Entrega a Tiempo</CardTitle>
-                    <Package className="h-4 w-4 text-green-400" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-green-400">{metrics?.onTimePercentage || 0}%</div>
-                    <p className="text-xs text-muted-foreground mt-1">Este mes</p>
-                  </CardContent>
-                </Card>
-
-                {/* Pending COD */}
-                <Card className="glass-strong border-yellow-500/20 hover:border-yellow-400/40 transition-all">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">COD Pendiente</CardTitle>
-                    <DollarSign className="h-4 w-4 text-yellow-400" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-yellow-400">{metrics?.totalPendingCOD || '0.00'} AED</div>
-                    <p className="text-xs text-muted-foreground mt-1">Por cobrar</p>
-                  </CardContent>
-                </Card>
-
-                {/* Average Delivery Time */}
-                <Card className="glass-strong border-purple-500/20 hover:border-purple-400/40 transition-all">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Tiempo Promedio</CardTitle>
-                    <Package className="h-4 w-4 text-purple-400" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-purple-400">{metrics?.averageDeliveryHours || 0}h</div>
-                    <p className="text-xs text-muted-foreground mt-1">Tiempo de entrega</p>
-                  </CardContent>
-                </Card>
-
-                {/* Active Shipments */}
-                <Card className="glass-strong border-cyan-500/20 hover:border-cyan-400/40 transition-all">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Envíos Activos</CardTitle>
-                    <Package className="h-4 w-4 text-cyan-400" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-cyan-400">{stats.activeOrders}</div>
-                    <p className="text-xs text-muted-foreground mt-1">En tránsito</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Frequent Routes */}
-              {metrics?.frequentRoutes && metrics.frequentRoutes.length > 0 && (
-                <Card className="glass-strong border-blue-500/20">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Rutas Más Frecuentes</CardTitle>
-                    <CardDescription>Tus rutas de envío más utilizadas</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {metrics.frequentRoutes.map((route, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-semibold text-sm">
-                              {index + 1}
-                            </div>
-                            <span className="font-medium">{route.route}</span>
-                          </div>
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                            {route.count} envíos
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="glass-strong border-blue-500/20">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Shipments</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.totalOrders}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="glass-strong border-blue-500/20">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Active Shipments</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.activeOrders}</div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs */}
+    <DashboardLayout
+      menuItems={menuItems}
+      activeItem={activeTab}
+      onItemClick={setActiveTab}
+      user={user}
+      logout={handleLogout}
+      title="Customer Portal"
+    >
+      <div className="min-h-full p-4 space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="glass-strong">
-            <TabsTrigger value="orders">My Orders</TabsTrigger>
-            <TabsTrigger value="tracking">Track Shipment</TabsTrigger>
-            <TabsTrigger value="calculator">Rate Calculator</TabsTrigger>
-            <TabsTrigger value="invoices">Invoices</TabsTrigger>
-            <TabsTrigger value="cod">COD</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-          </TabsList>
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-4 mt-0">
+            <h2 className="text-2xl font-bold">Overview</h2>
+
+            {metricsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {[...Array(5)].map((_, i) => (
+                  <Card key={i} className="glass-strong border-blue-500/20 animate-pulse">
+                    <CardHeader className="pb-2">
+                      <div className="h-4 bg-slate-700 rounded w-3/4"></div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-8 bg-slate-700 rounded w-1/2"></div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  {/* Total Shipments This Month */}
+                  <Card className="glass-strong border-blue-500/20 hover:border-blue-400/40 transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Envíos del Mes</CardTitle>
+                      <Package className="h-4 w-4 text-blue-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-blue-400">{metrics?.totalShipmentsThisMonth || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Mes actual</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* On-Time Delivery % */}
+                  <Card className="glass-strong border-green-500/20 hover:border-green-400/40 transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Entrega a Tiempo</CardTitle>
+                      <Package className="h-4 w-4 text-green-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-400">{metrics?.onTimePercentage || 0}%</div>
+                      <p className="text-xs text-muted-foreground mt-1">Este mes</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Pending COD */}
+                  <Card className="glass-strong border-yellow-500/20 hover:border-yellow-400/40 transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">COD Pendiente</CardTitle>
+                      <DollarSign className="h-4 w-4 text-yellow-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-yellow-400">{metrics?.totalPendingCOD || '0.00'} AED</div>
+                      <p className="text-xs text-muted-foreground mt-1">Por cobrar</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Average Delivery Time */}
+                  <Card className="glass-strong border-purple-500/20 hover:border-purple-400/40 transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Tiempo Promedio</CardTitle>
+                      <Package className="h-4 w-4 text-purple-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-400">{metrics?.averageDeliveryHours || 0}h</div>
+                      <p className="text-xs text-muted-foreground mt-1">Tiempo de entrega</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Active Shipments */}
+                  <Card className="glass-strong border-cyan-500/20 hover:border-cyan-400/40 transition-all">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Envíos Activos</CardTitle>
+                      <Package className="h-4 w-4 text-cyan-400" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-cyan-400">{stats.activeOrders}</div>
+                      <p className="text-xs text-muted-foreground mt-1">En tránsito</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Frequent Routes */}
+                {metrics?.frequentRoutes && metrics.frequentRoutes.length > 0 && (
+                  <Card className="glass-strong border-blue-500/20">
+                    <CardHeader>
+                      <CardTitle className="text-lg">Rutas Más Frecuentes</CardTitle>
+                      <CardDescription>Tus rutas de envío más utilizadas</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {metrics.frequentRoutes.map((route, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-semibold text-sm">
+                                {index + 1}
+                              </div>
+                              <span className="font-medium">{route.route}</span>
+                            </div>
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+                              {route.count} envíos
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="glass-strong border-blue-500/20">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Shipments</CardTitle>
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{stats.totalOrders}</div>
+                </CardContent>
+              </Card>
+
+              <Card className="glass-strong border-blue-500/20">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Active Shipments</CardTitle>
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{stats.activeOrders}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tabs */}
+          </TabsContent>
 
           {/* Orders Tab */}
-          <TabsContent value="orders" className="space-y-4">
+          {/* Orders Tab */}
+          <TabsContent value="orders" className="space-y-4 mt-0">
             {/* Actions */}
             <div className="flex justify-end">
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -442,8 +435,8 @@ export default function CustomerDashboard() {
             <CustomerReports token={token} companyName={account?.companyName || 'Your Company'} />
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout >
   );
 }
 

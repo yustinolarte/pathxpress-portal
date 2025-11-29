@@ -136,6 +136,38 @@ export async function createQuoteRequest(data: {
   return result;
 }
 
+export async function getAllQuoteRequests() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { quoteRequests } = await import("../drizzle/schema");
+  const { desc } = await import("drizzle-orm");
+
+  try {
+    return await db.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt));
+  } catch (error) {
+    console.error("[Database] Failed to get quote requests:", error);
+    return [];
+  }
+}
+
+
+export async function deleteQuoteRequest(id: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const { quoteRequests } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+
+  try {
+    await db.delete(quoteRequests).where(eq(quoteRequests.id, id));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to delete quote request:", error);
+    return false;
+  }
+}
+
 // International rate request queries
 export async function createInternationalRateRequest(data: {
   originCountry: string;

@@ -380,6 +380,43 @@ export const adminPortalRouter = router({
 
       return await getAllClientAccounts();
     }),
+
+  // Get all quote requests
+  getQuoteRequests: publicProcedure
+    .input(z.object({
+      token: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getAllQuoteRequests } = await import('./db');
+      return await getAllQuoteRequests();
+    }),
+
+  // Delete quote request
+  deleteQuoteRequest: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      requestId: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { deleteQuoteRequest } = await import('./db');
+      const success = await deleteQuoteRequest(input.requestId);
+
+      if (!success) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete request' });
+      }
+
+      return { success: true };
+    }),
 });
 
 /**

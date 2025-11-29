@@ -8,7 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { APP_LOGO } from '@/const';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2 } from 'lucide-react';
+
+
+import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
 import BillingPanel from '@/components/BillingPanel';
@@ -104,6 +107,22 @@ export default function AdminDashboard() {
     { enabled: !!token }
   );
 
+  // Fetch quote requests
+  const { data: quoteRequests, isLoading: requestsLoading, refetch: refetchRequests } = trpc.portal.admin.getQuoteRequests.useQuery(
+    { token: token || '' },
+    { enabled: !!token }
+  );
+
+  const deleteRequestMutation = trpc.portal.admin.deleteQuoteRequest.useMutation({
+    onSuccess: () => {
+      toast.success('Request deleted successfully');
+      refetchRequests();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete request: ${error.message}`);
+    },
+  });
+
   // Filter orders
   const orders = useMemo(() => {
     if (!allOrders) return [];
@@ -151,74 +170,31 @@ export default function AdminDashboard() {
     activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled').length || 0,
   };
 
+  const menuItems: MenuItem[] = [
+    { icon: LayoutDashboard, label: 'Overview', value: 'overview' },
+    { icon: Users, label: 'Clients', value: 'clients' },
+    { icon: Package, label: 'All Orders', value: 'orders' },
+    { icon: FileText, label: 'Billing', value: 'billing' },
+    { icon: Wallet, label: 'COD Management', value: 'cod' },
+    { icon: TrendingUp, label: 'Rates & Pricing', value: 'rates' },
+    { icon: FileText, label: 'Reports', value: 'reports' },
+    { icon: MessageSquare, label: 'Requests', value: 'requests' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-      {/* Header */}
-      <header className="glass-strong border-b border-blue-500/20 sticky top-0 z-50">
-        <div className="container mx-auto flex items-center justify-between py-4">
-          <div className="flex items-center gap-4">
-            <img src={APP_LOGO} alt="PATHXPRESS" className="h-8" />
-            <div>
-              <h1 className="text-xl font-bold">Admin Portal</h1>
-              <p className="text-sm text-muted-foreground">{user.email}</p>
-            </div>
-          </div>
-          <Button variant="outline" onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Logout
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto py-8 space-y-8">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="glass-strong border-blue-500/20">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.totalClients}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="glass-strong border-blue-500/20">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
-              <Package className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.totalOrders}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="glass-strong border-blue-500/20">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Active Orders</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{stats.activeOrders}</div>
-            </CardContent>
-          </Card>
-        </div>
-
+    <DashboardLayout
+      menuItems={menuItems}
+      activeItem={activeTab}
+      onItemClick={setActiveTab}
+      user={user}
+      logout={handleLogout}
+      title="Admin Portal"
+    >
+      <div className="min-h-full p-4 space-y-6">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="glass-strong">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="clients">Clients</TabsTrigger>
-            <TabsTrigger value="orders">All Orders</TabsTrigger>
-            <TabsTrigger value="billing">Billing</TabsTrigger>
-            <TabsTrigger value="cod">COD Management</TabsTrigger>
-            <TabsTrigger value="rates">Rates & Pricing</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
-          </TabsList>
-
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent value="overview" className="space-y-4 mt-0">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Card className="glass-strong border-blue-500/20">
                 <CardHeader className="pb-2">
@@ -485,6 +461,69 @@ export default function AdminDashboard() {
           <TabsContent value="reports" className="space-y-4">
             <AdminReports token={token} />
           </TabsContent>
+
+          {/* Requests Tab */}
+          <TabsContent value="requests" className="space-y-4">
+            <Card className="glass-strong border-blue-500/20">
+              <CardHeader>
+                <CardTitle>Pickup Requests</CardTitle>
+                <CardDescription>View all pickup requests from the website</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {requestsLoading ? (
+                  <p className="text-center py-8 text-muted-foreground">Loading requests...</p>
+                ) : quoteRequests && quoteRequests.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Service</TableHead>
+                          <TableHead>Pickup Address</TableHead>
+                          <TableHead>Weight</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {quoteRequests.map((req: any) => (
+                          <TableRow key={req.id}>
+                            <TableCell>{new Date(req.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>{req.name}</TableCell>
+                            <TableCell>{req.phone}</TableCell>
+                            <TableCell>{req.email}</TableCell>
+                            <TableCell>{req.serviceType}</TableCell>
+                            <TableCell className="max-w-[200px] truncate" title={req.pickupAddress}>{req.pickupAddress}</TableCell>
+                            <TableCell>{req.weight}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this request?')) {
+                                    deleteRequestMutation.mutate({
+                                      token: token || '',
+                                      requestId: req.id,
+                                    });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-center py-8 text-muted-foreground">No requests found</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
         {/* Edit Tier Dialog */}
@@ -660,7 +699,7 @@ export default function AdminDashboard() {
             }}
           />
         )}
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }
