@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Mail, Phone, MessageCircle, Building2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { trpc } from '@/lib/trpc';
 
 export default function Contact() {
   const { t } = useTranslation();
@@ -18,11 +19,19 @@ export default function Contact() {
     message: '',
   });
 
+  const contactMutation = trpc.contact.submit.useMutation({
+    onSuccess: () => {
+      toast.success(t('contact.form.success'));
+      setFormData({ name: '', email: '', message: '' });
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to send message');
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement contact form submission
-    toast.success(t('contact.form.success'));
-    setFormData({ name: '', email: '', message: '' });
+    contactMutation.mutate(formData);
   };
 
   const handleChange = (field: string, value: string) => {

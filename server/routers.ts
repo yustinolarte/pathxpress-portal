@@ -100,6 +100,20 @@ export const appRouter = router({
         return { success: true };
       }),
   }),
+
+  contact: router({
+    submit: publicProcedure
+      .input(z.object({
+        name: z.string().min(1, 'Name is required'),
+        email: z.string().email('Invalid email'),
+        message: z.string().min(1, 'Message is required'),
+      }))
+      .mutation(async ({ input }) => {
+        const { createContactMessage } = await import('./db');
+        await createContactMessage(input);
+        return { success: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

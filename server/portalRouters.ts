@@ -417,6 +417,43 @@ export const adminPortalRouter = router({
 
       return { success: true };
     }),
+
+  // Get all contact messages
+  getContactMessages: publicProcedure
+    .input(z.object({
+      token: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getAllContactMessages } = await import('./db');
+      return await getAllContactMessages();
+    }),
+
+  // Delete contact message
+  deleteContactMessage: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      messageId: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { deleteContactMessage } = await import('./db');
+      const success = await deleteContactMessage(input.messageId);
+
+      if (!success) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete message' });
+      }
+
+      return { success: true };
+    }),
 });
 
 /**

@@ -7,8 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail } from 'lucide-react';
+
 import { APP_LOGO } from '@/const';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2 } from 'lucide-react';
 
 
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
@@ -123,6 +124,22 @@ export default function AdminDashboard() {
     },
   });
 
+  // Fetch contact messages
+  const { data: contactMessages, isLoading: messagesLoading, refetch: refetchMessages } = trpc.portal.admin.getContactMessages.useQuery(
+    { token: token || '' },
+    { enabled: !!token }
+  );
+
+  const deleteMessageMutation = trpc.portal.admin.deleteContactMessage.useMutation({
+    onSuccess: () => {
+      toast.success('Message deleted successfully');
+      refetchMessages();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete message: ${error.message}`);
+    },
+  });
+
   // Filter orders
   const orders = useMemo(() => {
     if (!allOrders) return [];
@@ -179,6 +196,7 @@ export default function AdminDashboard() {
     { icon: TrendingUp, label: 'Rates & Pricing', value: 'rates' },
     { icon: FileText, label: 'Reports', value: 'reports' },
     { icon: MessageSquare, label: 'Requests', value: 'requests' },
+    { icon: Mail, label: 'Messages', value: 'messages' },
   ];
 
   return (
@@ -484,6 +502,7 @@ export default function AdminDashboard() {
                           <TableHead>Service</TableHead>
                           <TableHead>Pickup Address</TableHead>
                           <TableHead>Weight</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -520,6 +539,64 @@ export default function AdminDashboard() {
                   </div>
                 ) : (
                   <p className="text-center py-8 text-muted-foreground">No requests found</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Messages Tab */}
+          <TabsContent value="messages" className="space-y-4">
+            <Card className="glass-strong border-blue-500/20">
+              <CardHeader>
+                <CardTitle>Contact Messages</CardTitle>
+                <CardDescription>View inquiries from the Contact Us form</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {messagesLoading ? (
+                  <p className="text-center py-8 text-muted-foreground">Loading messages...</p>
+                ) : contactMessages && contactMessages.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Message</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {contactMessages.map((msg: any) => (
+                          <TableRow key={msg.id}>
+                            <TableCell>{new Date(msg.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell>{msg.name}</TableCell>
+                            <TableCell>{msg.email}</TableCell>
+                            <TableCell className="max-w-[300px] truncate" title={msg.message}>{msg.message}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                onClick={() => {
+                                  if (confirm('Are you sure you want to delete this message?')) {
+                                    deleteMessageMutation.mutate({
+                                      token: token || '',
+                                      messageId: msg.id,
+                                    });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <p className="text-center py-8 text-muted-foreground">No messages found</p>
                 )}
               </CardContent>
             </Card>

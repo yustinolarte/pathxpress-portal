@@ -415,3 +415,18 @@ export const savedShippers = mysqlTable("savedShippers", {
 
 export type SavedShipper = typeof savedShippers.$inferSelect;
 export type InsertSavedShipper = typeof savedShippers.$inferInsert;
+
+/**
+ * Contact messages table for storing "Contact Us" form submissions
+ */
+export const contactMessages = mysqlTable("contactMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  message: text("message").notNull(),
+  status: mysqlEnum("status", ["new", "read", "archived"]).default("new").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ContactMessage = typeof contactMessages.$inferSelect;
+export type InsertContactMessage = typeof contactMessages.$inferInsert;

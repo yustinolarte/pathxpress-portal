@@ -168,6 +168,57 @@ export async function deleteQuoteRequest(id: number) {
   }
 }
 
+// Contact Message queries
+export async function createContactMessage(data: {
+  name: string;
+  email: string;
+  message: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const { contactMessages } = await import("../drizzle/schema");
+
+  try {
+    const [result] = await db.insert(contactMessages).values(data);
+    return result;
+  } catch (error) {
+    console.error("[Database] Failed to create contact message:", error);
+    throw error;
+  }
+}
+
+export async function getAllContactMessages() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { contactMessages } = await import("../drizzle/schema");
+  const { desc } = await import("drizzle-orm");
+
+  try {
+    return await db.select().from(contactMessages).orderBy(desc(contactMessages.createdAt));
+  } catch (error) {
+    console.error("[Database] Failed to get contact messages:", error);
+    return [];
+  }
+}
+
+export async function deleteContactMessage(id: number) {
+  const db = await getDb();
+  if (!db) return false;
+
+  const { contactMessages } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+
+  try {
+    await db.delete(contactMessages).where(eq(contactMessages.id, id));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to delete contact message:", error);
+    return false;
+  }
+}
+
 // International rate request queries
 export async function createInternationalRateRequest(data: {
   originCountry: string;

@@ -23,6 +23,63 @@
   "services": {
     "title": "Our Services",
     "subtitle": "Comprehensive logistics solutions tailored to your needs",
+    "hero": {
+      "badge": "Delivery Solutions",
+      "extendedSubtitle": "From same-day express to international freight, we provide comprehensive logistics solutions tailored to your needs.",
+      "getStarted": "Get Started",
+      "contactSales": "Contact Sales"
+    },
+    "whatWeOffer": {
+      "title": "What We Offer",
+      "subtitle": "Choose from our range of delivery services designed to meet every shipping need"
+    },
+    "howItWorks": {
+      "badge": "Simple Process",
+      "title": "How It Works",
+      "subtitle": "Getting your package delivered is easy. Just follow these simple steps.",
+      "step1": {
+        "title": "Request a Quote",
+        "description": "Fill out our simple form with your shipment details and get an instant quote."
+      },
+      "step2": {
+        "title": "Schedule Pickup",
+        "description": "Choose a convenient pickup time. Our driver will collect your package."
+      },
+      "step3": {
+        "title": "Track in Real-Time",
+        "description": "Monitor your shipment with live tracking updates every step of the way."
+      },
+      "step4": {
+        "title": "Delivered!",
+        "description": "Your package arrives safely with proof of delivery confirmation."
+      }
+    },
+    "whyChoose": {
+      "title": "Why Choose PATHXPRESS?",
+      "description": "We're not just another delivery company. We're your logistics partner, committed to making shipping simple, reliable, and affordable.",
+      "fastDelivery": {
+        "title": "Fast Delivery",
+        "description": "Same-day and next-day delivery options across the UAE."
+      },
+      "secureHandling": {
+        "title": "Secure Handling",
+        "description": "Your packages are handled with care and fully insured."
+      },
+      "support247": {
+        "title": "24/7 Support",
+        "description": "Our team is always available via WhatsApp and phone."
+      },
+      "realTimeTracking": {
+        "title": "Real-Time Tracking",
+        "description": "Track every movement of your shipment in real-time."
+      }
+    },
+    "cta": {
+      "title": "Ready to Ship?",
+      "description": "Get started today and experience the fastest, most reliable delivery service in the UAE.",
+      "requestQuote": "Request a Quote",
+      "schedulePickup": "Schedule Pickup"
+    },
     "sameDay": {
       "title": "Same Day Delivery",
       "label": "Dubai / UAE",
@@ -88,6 +145,10 @@
     "title": "About PATHXPRESS",
     "subtitle": "Your logistics partner since 2025",
     "description": "PATHXPRESS FZCO was created in 2025 in Dubai under IFZA. Our focus is on transparency, efficiency, and accessibility in UAE logistics. With a team of extensive logistics expertise, we operate in all Emirates and connect Dubai to LATAM.",
+    "hero": {
+      "badge": "Our Story",
+      "extendedDescription": "We believe that logistics should be simple, reliable, and accessible to everyone."
+    },
     "vision": {
       "title": "Vision",
       "content": "To be the most trusted and innovative logistics provider in the UAE and beyond"
@@ -96,12 +157,74 @@
       "title": "Mission",
       "content": "To deliver exceptional logistics services with transparency, efficiency, and customer-first approach"
     },
+    "timeline": {
+      "badge": "Journey",
+      "title": "How We Got Here",
+      "subtitle": "From humble beginnings to becoming a trusted logistics partner",
+      "foundation": {
+        "year": "Foundation",
+        "title": "The Beginning",
+        "description": "Started with a vision to revolutionize logistics in the UAE, focusing on speed and reliability."
+      },
+      "growth": {
+        "year": "Growth",
+        "title": "Expanding Services",
+        "description": "Added international shipping and freight forwarding to our portfolio."
+      },
+      "innovation": {
+        "year": "Innovation",
+        "title": "Technology First",
+        "description": "Launched real-time tracking and automated booking systems for better customer experience."
+      },
+      "today": {
+        "year": "Today",
+        "title": "Your Trusted Partner",
+        "description": "Serving businesses and individuals across the UAE with comprehensive delivery solutions."
+      }
+    },
     "values": {
-      "title": "Values",
+      "title": "Core Values",
+      "subtitle": "The principles that guide everything we do",
       "innovation": "Innovation",
+      "innovationDesc": "We continuously invest in technology and processes to deliver cutting-edge logistics solutions.",
       "empathy": "Empathy",
+      "empathyDesc": "Understanding our customers' needs and building long-lasting relationships is at our core.",
       "efficiency": "Efficiency",
-      "sustainability": "Sustainability"
+      "efficiencyDesc": "Time is precious. We optimize every step to ensure your shipments arrive on time, every time.",
+      "sustainability": "Sustainability",
+      "sustainabilityDesc": "We're committed to reducing our environmental impact through eco-friendly practices."
+    },
+    "differentiators": {
+      "title": "What Sets Us Apart",
+      "description": "We're not just about moving packages from A to B. We're about building trust, ensuring reliability, and delivering peace of mind with every shipment.",
+      "reliability": {
+        "title": "Reliability",
+        "description": "Industry-leading on-time delivery rates with full insurance coverage."
+      },
+      "speed": {
+        "title": "Speed",
+        "description": "Same-day delivery across the UAE with real-time tracking updates."
+      },
+      "care": {
+        "title": "Care",
+        "description": "Every package is handled with the utmost care and professionalism."
+      },
+      "excellence": {
+        "title": "Excellence",
+        "description": "Committed to exceeding expectations with world-class service standards."
+      }
+    },
+    "culture": {
+      "badge": "Culture",
+      "title": "More Than Just Logistics",
+      "description1": "At PATHXPRESS, we believe in creating a workplace where innovation thrives, ideas are valued, and every team member is empowered to make a difference. Our culture is built on collaboration, continuous learning, and a shared commitment to excellence.",
+      "description2": "We're a diverse team of logistics professionals, tech enthusiasts, and customer service experts who share one common goal: making shipping seamless for everyone."
+    },
+    "cta": {
+      "title": "Join Our Journey",
+      "description": "Whether you're a business looking for a reliable logistics partner or an individual shipping a precious package, we're here for you.",
+      "getStarted": "Get Started",
+      "contactUs": "Contact Us"
     }
   },
   "faq": {
@@ -131,7 +254,36 @@
     "trackButton": "Track Shipment",
     "status": "Status",
     "notFound": "Shipment not found. Please check your tracking ID and try again.",
-    "error": "An error occurred while tracking your shipment. Please try again later."
+    "error": "An error occurred while tracking your shipment. Please try again later.",
+    "faq": {
+      "badge": "FAQ",
+      "title": "Frequently Asked Questions",
+      "subtitle": "Find answers to common tracking questions",
+      "q1": {
+        "question": "What is my tracking number format?",
+        "answer": "Your tracking number starts with \"PX\" followed by numbers. For example: PX00001 or PX202500001. You can find your tracking number in the confirmation email or SMS we sent when your shipment was created."
+      },
+      "q2": {
+        "question": "How often is tracking information updated?",
+        "answer": "Tracking information is updated in real-time as your package moves through our network. Major status updates include: Pickup Completed, In Transit, Out for Delivery, and Delivered."
+      },
+      "q3": {
+        "question": "What do the different status messages mean?",
+        "answer": "Pending: Shipment created, awaiting pickup\nPicked Up: Package collected from sender\nIn Transit: Package is on its way to destination\nOut for Delivery: Package is with the delivery driver\nDelivered: Package successfully delivered\nOn Hold: Delivery attempt unsuccessful, package at facility"
+      },
+      "q4": {
+        "question": "My tracking number is not working. What should I do?",
+        "answer": "Make sure you entered the correct tracking number (starts with PX). Tracking may take up to 2 hours to activate after shipment creation. Check for typos or extra spaces. Contact our support team via WhatsApp if the issue persists."
+      },
+      "q5": {
+        "question": "Can I track multiple packages at once?",
+        "answer": "Currently, you can track one package at a time using this page. If you're a business customer with multiple shipments, you can access our Customer Portal for bulk tracking and shipment management features."
+      },
+      "q6": {
+        "question": "What is Proof of Delivery (POD)?",
+        "answer": "Proof of Delivery is a confirmation that your package was successfully delivered. It may include a photo of the delivered package, recipient signature, or delivery confirmation. When available, you can view the POD by clicking the link in the tracking timeline."
+      }
+    }
   },
   "quoteForm": {
     "title": "Request a Quote",
@@ -161,6 +313,50 @@
     "description": "At PATHXPRESS, we believe in transparent and competitive pricing. Our rates are tailored to your specific needs, shipment volume, and service requirements. We offer flexible pricing options designed especially for SMEs and startups.",
     "cta": "To get a detailed quote for your specific requirements, please use our Request Quote form. Our team will provide you with a customized pricing proposal within 24 hours.",
     "requestQuoteBtn": "Request Custom Quote",
+    "hero": {
+      "badge": "Simple & Transparent"
+    },
+    "features": {
+      "noHiddenFees": {
+        "title": "No Hidden Fees",
+        "description": "What you see is what you pay. Transparent pricing with no surprises."
+      },
+      "flexibleOptions": {
+        "title": "Flexible Options",
+        "description": "Choose between standard and same-day delivery based on your needs."
+      },
+      "allSizes": {
+        "title": "All Sizes Welcome",
+        "description": "From small envelopes to large packages, we handle it all."
+      }
+    },
+    "tabs": {
+      "domesticUAE": "Domestic UAE",
+      "international": "International"
+    },
+    "domesticTab": {
+      "calculateTitle": "Calculate Your Exact Rate",
+      "customQuote": {
+        "title": "Need a Custom Quote?",
+        "description": "For bulk shipments, special handling, or recurring deliveries, we offer custom pricing tailored to your business needs."
+      }
+    },
+    "internationalTab": {
+      "infoBanner": {
+        "title": "International Shipping Quotes",
+        "description": "For international shipments, we provide custom quotes based on destination, package dimensions, and delivery requirements. Fill out the form below and our team will respond within 2 hours during business hours."
+      },
+      "whatsIncluded": {
+        "title": "What's Included",
+        "item1": "Door-to-door delivery",
+        "item2": "Full tracking & visibility",
+        "item3": "Customs clearance assistance",
+        "item4": "Insurance options available",
+        "item5": "Express & economy options"
+      },
+      "needHelp": "Need help with your international shipment?",
+      "contactTeam": "Contact Our Team"
+    },
     "calculator": {
       "title": "Estimate Your Delivery Rate",
       "subtitle": "Get an instant estimate for domestic UAE deliveries with PATHXPRESS.",
