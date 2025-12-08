@@ -15,11 +15,11 @@ export default function Footer() {
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!phone || !email) {
-      toast.error('Please fill in both phone and email');
+      toast.error(t('footer.newsletter.error'));
       return;
     }
     // TODO: Implement newsletter subscription
-    toast.success('Thank you for subscribing!');
+    toast.success(t('footer.newsletter.success'));
     setPhone('');
     setEmail('');
   };

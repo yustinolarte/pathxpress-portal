@@ -29,68 +29,68 @@ export default function About() {
     {
       icon: TrendingUp,
       title: t('about.values.innovation'),
-      description: 'We continuously invest in technology and processes to deliver cutting-edge logistics solutions.',
+      description: t('about.values.innovationDesc'),
     },
     {
       icon: MessageCircle,
       title: t('about.values.empathy'),
-      description: 'Understanding our customers\' needs and building long-lasting relationships is at our core.',
+      description: t('about.values.empathyDesc'),
     },
     {
       icon: Clock,
       title: t('about.values.efficiency'),
-      description: 'Time is precious. We optimize every step to ensure your shipments arrive on time, every time.',
+      description: t('about.values.efficiencyDesc'),
     },
     {
       icon: Leaf,
       title: t('about.values.sustainability'),
-      description: 'We\'re committed to reducing our environmental impact through eco-friendly practices.',
+      description: t('about.values.sustainabilityDesc'),
     },
   ];
 
   const differentiators = [
     {
       icon: Shield,
-      title: 'Reliability',
-      description: 'Industry-leading on-time delivery rates with full insurance coverage.',
+      title: t('about.differentiators.reliability.title'),
+      description: t('about.differentiators.reliability.description'),
     },
     {
       icon: Zap,
-      title: 'Speed',
-      description: 'Same-day delivery across the UAE with real-time tracking updates.',
+      title: t('about.differentiators.speed.title'),
+      description: t('about.differentiators.speed.description'),
     },
     {
       icon: Heart,
-      title: 'Care',
-      description: 'Every package is handled with the utmost care and professionalism.',
+      title: t('about.differentiators.care.title'),
+      description: t('about.differentiators.care.description'),
     },
     {
       icon: Award,
-      title: 'Excellence',
-      description: 'Committed to exceeding expectations with world-class service standards.',
+      title: t('about.differentiators.excellence.title'),
+      description: t('about.differentiators.excellence.description'),
     },
   ];
 
   const timeline = [
     {
-      year: 'Foundation',
-      title: 'The Beginning',
-      description: 'Started with a vision to revolutionize logistics in the UAE, focusing on speed and reliability.',
+      year: t('about.timeline.foundation.year'),
+      title: t('about.timeline.foundation.title'),
+      description: t('about.timeline.foundation.description'),
     },
     {
-      year: 'Growth',
-      title: 'Expanding Services',
-      description: 'Added international shipping and freight forwarding to our portfolio.',
+      year: t('about.timeline.growth.year'),
+      title: t('about.timeline.growth.title'),
+      description: t('about.timeline.growth.description'),
     },
     {
-      year: 'Innovation',
-      title: 'Technology First',
-      description: 'Launched real-time tracking and automated booking systems for better customer experience.',
+      year: t('about.timeline.innovation.year'),
+      title: t('about.timeline.innovation.title'),
+      description: t('about.timeline.innovation.description'),
     },
     {
-      year: 'Today',
-      title: 'Your Trusted Partner',
-      description: 'Serving businesses and individuals across the UAE with comprehensive delivery solutions.',
+      year: t('about.timeline.today.year'),
+      title: t('about.timeline.today.title'),
+      description: t('about.timeline.today.description'),
     },
   ];
 
@@ -104,12 +104,12 @@ export default function About() {
           <AnimatedSection animation="fade-in" className="text-center mb-20 max-w-4xl mx-auto">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
               <Users className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary">Our Story</span>
+              <span className="text-sm font-medium text-primary">{t('about.hero.badge')}</span>
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6">{t('about.title')}</h1>
             <p className="text-xl text-muted-foreground mb-4">{t('about.subtitle')}</p>
             <p className="text-lg text-foreground/80 leading-relaxed">
-              {t('about.description')} We believe that logistics should be simple, reliable, and accessible to everyone.
+              {t('about.description')} {t('about.hero.extendedDescription')}
             </p>
           </AnimatedSection>
 
@@ -153,11 +153,11 @@ export default function About() {
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
                 <Sparkles className="w-4 h-4 text-accent" />
-                <span className="text-sm font-medium text-accent">Journey</span>
+                <span className="text-sm font-medium text-accent">{t('about.timeline.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">How We Got Here</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.timeline.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                From humble beginnings to becoming a trusted logistics partner
+                {t('about.timeline.subtitle')}
               </p>
             </div>
 
@@ -188,7 +188,7 @@ export default function About() {
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.values.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                The principles that guide everything we do
+                {t('about.values.subtitle')}
               </p>
             </div>
 
@@ -226,10 +226,9 @@ export default function About() {
                 </div>
 
                 <CardContent className="p-8 lg:p-12 flex flex-col justify-center">
-                  <h2 className="text-3xl md:text-4xl font-bold mb-6">What Sets Us Apart</h2>
+                  <h2 className="text-3xl md:text-4xl font-bold mb-6">{t('about.differentiators.title')}</h2>
                   <p className="text-muted-foreground mb-8">
-                    We're not just about moving packages from A to B. We're about building trust,
-                    ensuring reliability, and delivering peace of mind with every shipment.
+                    {t('about.differentiators.description')}
                   </p>
 
                   <div className="space-y-6">
@@ -258,18 +257,14 @@ export default function About() {
             <div className="max-w-3xl mx-auto text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
                 <Heart className="w-4 h-4 text-accent" />
-                <span className="text-sm font-medium text-accent">Culture</span>
+                <span className="text-sm font-medium text-accent">{t('about.culture.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">More Than Just Logistics</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-6">{t('about.culture.title')}</h2>
               <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
-                At PATHXPRESS, we believe in creating a workplace where innovation thrives,
-                ideas are valued, and every team member is empowered to make a difference.
-                Our culture is built on collaboration, continuous learning, and a shared commitment
-                to excellence.
+                {t('about.culture.description1')}
               </p>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                We're a diverse team of logistics professionals, tech enthusiasts, and customer
-                service experts who share one common goal: making shipping seamless for everyone.
+                {t('about.culture.description2')}
               </p>
             </div>
           </AnimatedSection>
@@ -277,20 +272,19 @@ export default function About() {
           {/* CTA Section */}
           <AnimatedSection animation="scale-in">
             <div className="text-center py-16 px-6 rounded-2xl glass-strong max-w-4xl mx-auto">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Join Our Journey</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.cta.title')}</h2>
               <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-                Whether you're a business looking for a reliable logistics partner or an individual
-                shipping a precious package, we're here for you.
+                {t('about.cta.description')}
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/request-quote">
                   <Button size="lg" className="bg-primary hover:bg-primary/90 glow-blue-hover transition-smooth px-8 btn-hover-expand">
-                    Get Started <ArrowRight className="w-4 h-4 ml-2" />
+                    {t('about.cta.getStarted')} <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
                 <Link href="/contact">
                   <Button size="lg" variant="outline" className="border-primary text-primary hover:bg-primary/10 px-8">
-                    Contact Us
+                    {t('about.cta.contactUs')}
                   </Button>
                 </Link>
               </div>

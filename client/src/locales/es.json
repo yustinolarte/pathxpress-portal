@@ -18,11 +18,69 @@
     "trackingPlaceholder": "Ingrese ID de rastreo (ej. PX00001)",
     "trackButton": "Rastrear",
     "requestQuoteBtn": "Solicitar Cotización",
-    "requestPickupBtn": "Solicitar Recogida"
+    "requestPickupBtn": "Programar Recogida",
+    "scroll": "Desplazarse"
   },
   "services": {
     "title": "Nuestros Servicios",
     "subtitle": "Soluciones logísticas integrales adaptadas a sus necesidades",
+    "hero": {
+      "badge": "Soluciones de Entrega",
+      "extendedSubtitle": "Desde exprés el mismo día hasta carga internacional, ofrecemos soluciones logísticas integrales adaptadas a sus necesidades.",
+      "getStarted": "Comenzar",
+      "contactSales": "Contactar Ventas"
+    },
+    "whatWeOffer": {
+      "title": "Lo Que Ofrecemos",
+      "subtitle": "Elija entre nuestra gama de servicios de entrega diseñados para satisfacer cada necesidad de envío"
+    },
+    "howItWorks": {
+      "badge": "Proceso Simple",
+      "title": "Cómo Funciona",
+      "subtitle": "Enviar su paquete es fácil. Solo siga estos simples pasos.",
+      "step1": {
+        "title": "Solicite una Cotización",
+        "description": "Complete nuestro formulario simple con los detalles de su envío y obtenga una cotización instantánea."
+      },
+      "step2": {
+        "title": "Programe Recogida",
+        "description": "Elija una hora de recogida conveniente. Nuestro conductor recogerá su paquete."
+      },
+      "step3": {
+        "title": "Rastreo en Tiempo Real",
+        "description": "Monitoree su envío con actualizaciones de rastreo en vivo en cada paso del camino."
+      },
+      "step4": {
+        "title": "¡Entregado!",
+        "description": "Su paquete llega seguro con confirmación de prueba de entrega."
+      }
+    },
+    "whyChoose": {
+      "title": "¿Por Qué Elegir PATHXPRESS?",
+      "description": "No somos solo otra compañía de entrega. Somos su socio logístico, comprometidos a hacer el envío simple, confiable y asequible.",
+      "fastDelivery": {
+        "title": "Entrega Rápida",
+        "description": "Opciones de entrega el mismo día y al día siguiente en todos los EAU."
+      },
+      "secureHandling": {
+        "title": "Manejo Seguro",
+        "description": "Sus paquetes son manejados con cuidado y totalmente asegurados."
+      },
+      "support247": {
+        "title": "Soporte 24/7",
+        "description": "Nuestro equipo está siempre disponible vía WhatsApp y teléfono."
+      },
+      "realTimeTracking": {
+        "title": "Rastreo en Tiempo Real",
+        "description": "Rastree cada movimiento de su envío en tiempo real."
+      }
+    },
+    "cta": {
+      "title": "¿Listo para Enviar?",
+      "description": "Comience hoy y experimente el servicio de entrega más rápido y confiable en los EAU.",
+      "requestQuote": "Solicitar una Cotización",
+      "schedulePickup": "Programar Recogida"
+    },
     "sameDay": {
       "title": "Entrega el Mismo Día",
       "label": "Dubái / EAU",
@@ -88,6 +146,10 @@
     "title": "Acerca de PATHXPRESS",
     "subtitle": "Su socio logístico desde 2025",
     "description": "PATHXPRESS FZCO fue creada en 2025 en Dubái bajo IFZA. Nuestro enfoque está en la transparencia, eficiencia y accesibilidad en la logística de los EAU. Con un equipo de amplia experiencia logística, operamos en todos los Emiratos y conectamos Dubái con LATAM.",
+    "hero": {
+      "badge": "Nuestra Historia",
+      "extendedDescription": "Creemos que la logística debe ser simple, confiable y accesible para todos."
+    },
     "vision": {
       "title": "Visión",
       "content": "Ser el proveedor de logística más confiable e innovador en los EAU y más allá"
@@ -96,12 +158,70 @@
       "title": "Misión",
       "content": "Ofrecer servicios logísticos excepcionales con transparencia, eficiencia y enfoque en el cliente"
     },
+    "timeline": {
+      "badge": "Trayectoria",
+      "title": "Cómo Llegamos Aquí",
+      "subtitle": "Desde comienzos humildes hasta convertirnos en un socio logístico de confianza",
+      "foundation": {
+        "year": "Fundación",
+        "title": "El Comienzo",
+        "description": "Comenzó con la visión de revolucionar la logística en los EAU, enfocándose en la velocidad y la confiabilidad."
+      },
+      "growth": {
+        "year": "Crecimiento",
+        "title": "Expandiendo Servicios",
+        "description": "Añadimos envío internacional y transporte de carga a nuestro portafolio."
+      },
+      "innovation": {
+        "year": "Innovación",
+        "title": "Tecnología Primero",
+        "description": "Lanzamiento de sistemas de rastreo en tiempo real y reserva automatizada para una mejor experiencia del cliente."
+      },
+      "today": {
+        "year": "Hoy",
+        "title": "Su Socio de Confianza",
+        "description": "Sirviendo a empresas e individuos en todos los EAU con soluciones de entrega integrales."
+      }
+    },
     "values": {
       "title": "Valores",
+      "subtitle": "Los principios que guían todo lo que hacemos",
       "innovation": "Innovación",
       "empathy": "Empatía",
       "efficiency": "Eficiencia",
       "sustainability": "Sostenibilidad"
+    },
+    "differentiators": {
+      "title": "Lo Que Nos Diferencia",
+      "description": "No se trata solo de mover paquetes de A a B. Se trata de construir confianza, garantizar la fiabilidad y entregar tranquilidad con cada envío.",
+      "reliability": {
+        "title": "Confiabilidad",
+        "description": "Tasas de entrega a tiempo líderes en la industria con cobertura de seguro completa."
+      },
+      "speed": {
+        "title": "Velocidad",
+        "description": "Entrega el mismo día en todos los EAU con actualizaciones de rastreo en tiempo real."
+      },
+      "care": {
+        "title": "Cuidado",
+        "description": "Cada paquete se maneja con el máximo cuidado y profesionalismo."
+      },
+      "excellence": {
+        "title": "Excelencia",
+        "description": "Comprometidos a superar las expectativas con estándares de servicio de clase mundial."
+      }
+    },
+    "culture": {
+      "badge": "Cultura",
+      "title": "Más Que Solo Logística",
+      "description1": "En PATHXPRESS, creemos en crear un lugar de trabajo donde la innovación prospere, las ideas sean valoradas y cada miembro del equipo esté empoderado para marcar la diferencia. Nuestra cultura se basa en la colaboración, el aprendizaje continuo y un compromiso compartido con la excelencia.",
+      "description2": "Somos un equipo diverso de profesionales de la logística, entusiastas de la tecnología y expertos en servicio al cliente que compartimos un objetivo común: hacer que el envío sea perfecto para todos."
+    },
+    "cta": {
+      "title": "Únase a Nuestro Viaje",
+      "description": "Ya sea que sea una empresa que busca un socio logístico confiable o un individuo que envía un paquete preciado, estamos aquí para usted.",
+      "getStarted": "Comenzar",
+      "contactUs": "Contáctenos"
     }
   },
   "faq": {
@@ -153,7 +273,8 @@
       "freight": "Corretaje de Carga",
       "latam": "Carga EAU ⇄ LATAM",
       "lastMile": "Última Milla E-commerce"
-    }
+    },
+    "submitSuccess": "¡Solicitud de recogida enviada con éxito! Nos pondremos en contacto pronto."
   },
   "pricing": {
     "title": "Precios y Tarifas",
@@ -161,6 +282,50 @@
     "description": "En PATHXPRESS, creemos en precios transparentes y competitivos. Nuestras tarifas se adaptan a sus necesidades específicas, volumen de envío y requisitos de servicio. Ofrecemos opciones de precios flexibles diseñadas especialmente para PYMEs y startups.",
     "cta": "Para obtener una cotización detallada para sus requisitos específicos, por favor use nuestro formulario de Solicitud de Cotización. Nuestro equipo le proporcionará una propuesta de precios personalizada dentro de 24 horas.",
     "requestQuoteBtn": "Solicitar Cotización Personalizada",
+    "hero": {
+      "badge": "Simple y Transparente"
+    },
+    "features": {
+      "noHiddenFees": {
+        "title": "Sin Tarifas Ocultas",
+        "description": "Lo que ves es lo que pagas. Precios transparentes sin sorpresas."
+      },
+      "flexibleOptions": {
+        "title": "Opciones Flexibles",
+        "description": "Elija entre entrega estándar y el mismo día según sus necesidades."
+      },
+      "allSizes": {
+        "title": "Todos los Tamaños Bienvenidos",
+        "description": "Desde sobres pequeños hasta paquetes grandes, manejamos todo."
+      }
+    },
+    "tabs": {
+      "domesticUAE": "Nacional EAU",
+      "international": "Internacional"
+    },
+    "domesticTab": {
+      "calculateTitle": "Calcule Su Tarifa Exacta",
+      "customQuote": {
+        "title": "¿Necesita una Cotización Personalizada?",
+        "description": "Para envíos masivos, manejo especial o entregas recurrentes, ofrecemos precios personalizados adaptados a las necesidades de su negocio."
+      }
+    },
+    "internationalTab": {
+      "infoBanner": {
+        "title": "Cotizaciones de Envío Internacional",
+        "description": "Para envíos internacionales, proporcionamos cotizaciones personalizadas basadas en el destino, dimensiones del paquete y requisitos de entrega. Complete el formulario a continuación y nuestro equipo responderá dentro de 2 horas durante el horario comercial."
+      },
+      "whatsIncluded": {
+        "title": "¿Qué está incluido?",
+        "item1": "Entrega puerta a puerta",
+        "item2": "Rastreo y visibilidad total",
+        "item3": "Asistencia en despacho de aduanas",
+        "item4": "Opciones de seguro disponibles",
+        "item5": "Opciones express y económicas"
+      },
+      "needHelp": "¿Necesita ayuda con su envío internacional?",
+      "contactTeam": "Contacte a Nuestro Equipo"
+    },
     "calculator": {
       "title": "Estime su Tarifa de Entrega",
       "subtitle": "Obtenga una estimación instantánea para entregas domésticas en los EAU con PATHXPRESS.",
@@ -188,7 +353,8 @@
       "errors": {
         "requiredField": "Este campo es obligatorio",
         "minWeight": "El peso debe ser al menos 0.1 kg",
-        "minDimension": "La dimensión debe ser al menos 1 cm"
+        "minDimension": "La dimensión debe ser al menos 1 cm",
+        "futureDate": "Por favor seleccione una fecha futura (mínimo mañana)"
       },
       "emirates": {
         "dubai": "Dubái",
@@ -240,7 +406,54 @@
       "message": "Su Mensaje",
       "submit": "Enviar Mensaje",
       "success": "¡Mensaje enviado exitosamente! Nos pondremos en contacto pronto.",
-      "error": "Error al enviar el mensaje. Por favor intente nuevamente o contáctenos por correo electrónico."
+      "error": "Error al enviar el mensaje. Por favor intente nuevamente o contáctenos por correo electrónico.",
+      "submitError": "Error al enviar el mensaje"
+    }
+  },
+  "aiPowered": {
+    "badge": "Tecnología Impulsada por IA",
+    "title": "Tecnología Inteligente Que Le Ahorra Dinero",
+    "subtitle": "Nuestra plataforma logística impulsada por IA optimiza cada paso del proceso de entrega, reduciendo costos y mejorando la calidad del servicio.",
+    "smartRoutes": {
+      "title": "Optimización Inteligente de Rutas",
+      "description": "Menor consumo de combustible y tiempos de entrega más rápidos",
+      "detail": "Nuestra IA analiza patrones de tráfico, clima y ventanas de entrega para encontrar las rutas más eficientes en tiempo real."
+    },
+    "automation": {
+      "title": "Procesamiento Automatizado de Guías",
+      "description": "Menos errores humanos + procesamiento de entrada más rápido",
+      "detail": "El procesamiento inteligente de documentos elimina la entrada manual de datos y reduce el tiempo de procesamiento en un 70%."
+    },
+    "pricing": {
+      "title": "Precios Inteligentes",
+      "description": "Mejores márgenes vs competidores = precios más bajos para usted",
+      "detail": "Los algoritmos de precios dinámicos aseguran que siempre obtenga tarifas competitivas basadas en las condiciones del mercado en tiempo real."
+    },
+    "demandPrediction": {
+      "title": "Predicción de Demanda",
+      "description": "Planificación precisa de flota y personal",
+      "detail": "El aprendizaje automático pronostica patrones de demanda para optimizar la asignación de recursos y prevenir retrasos."
+    },
+    "incidentDetection": {
+      "title": "Detección Automática de Incidentes",
+      "description": "Menos devoluciones y reclamos",
+      "detail": "El monitoreo proactivo identifica problemas potenciales antes de que se conviertan en problemas, reduciendo entregas fallidas."
+    },
+    "whyLowerPrices": {
+      "title": "¿Por Qué Podemos Ofrecer Precios Más Bajos?",
+      "description": "Nuestra tecnología de IA reduce los costos operativos hasta en un 40%. Estos ahorros van directamente a usted.",
+      "point1": "Rutas optimizadas = Menos costos de combustible",
+      "point2": "Automatización = Menores costos laborales",
+      "point3": "Planificación predictiva = Sin recursos desperdiciados",
+      "point4": "Menos incidentes = Menos dinero perdido en devoluciones"
+    },
+    "costSavingsBadge": "Ahorros de Costos",
+    "operationalCosts": "Costos Operativos",
+    "savingsPassedToYou": "Ahorros transferidos a usted",
+    "cta": {
+      "title": "Experimente la Logística Impulsada por IA",
+      "description": "Obtenga una cotización y vea cuánto puede ahorrar con nuestra plataforma de entrega inteligente.",
+      "button": "Obtener Cotización Optimizada por IA"
     }
   },
   "footer": {
@@ -249,7 +462,9 @@
       "title": "Suscríbase a Nuestro Boletín",
       "phone": "Número de Teléfono",
       "email": "Correo Electrónico",
-      "subscribe": "Suscribirse"
+      "subscribe": "Suscribirse",
+      "success": "¡Gracias por suscribirse!",
+      "error": "Por favor complete tanto el teléfono como el correo electrónico"
     },
     "legal": {
       "privacy": "Política de Privacidad",

@@ -19,7 +19,14 @@ import {
   MapPin,
   Zap,
   FileText,
-  PackageCheck
+  PackageCheck,
+  Brain,
+  Route,
+  FileCheck,
+  DollarSign,
+  BarChart3,
+  ShieldAlert,
+  Sparkles
 } from 'lucide-react';
 
 export default function Services() {
@@ -88,49 +95,49 @@ export default function Services() {
     {
       step: 1,
       icon: FileText,
-      title: 'Request a Quote',
-      description: 'Fill out our simple form with your shipment details and get an instant quote.',
+      title: t('services.howItWorks.step1.title'),
+      description: t('services.howItWorks.step1.description'),
     },
     {
       step: 2,
       icon: PackageCheck,
-      title: 'Schedule Pickup',
-      description: 'Choose a convenient pickup time. Our driver will collect your package.',
+      title: t('services.howItWorks.step2.title'),
+      description: t('services.howItWorks.step2.description'),
     },
     {
       step: 3,
       icon: Truck,
-      title: 'Track in Real-Time',
-      description: 'Monitor your shipment with live tracking updates every step of the way.',
+      title: t('services.howItWorks.step3.title'),
+      description: t('services.howItWorks.step3.description'),
     },
     {
       step: 4,
       icon: MapPin,
-      title: 'Delivered!',
-      description: 'Your package arrives safely with proof of delivery confirmation.',
+      title: t('services.howItWorks.step4.title'),
+      description: t('services.howItWorks.step4.description'),
     },
   ];
 
   const benefits = [
     {
       icon: Clock,
-      title: 'Fast Delivery',
-      description: 'Same-day and next-day delivery options across the UAE.',
+      title: t('services.whyChoose.fastDelivery.title'),
+      description: t('services.whyChoose.fastDelivery.description'),
     },
     {
       icon: Shield,
-      title: 'Secure Handling',
-      description: 'Your packages are handled with care and fully insured.',
+      title: t('services.whyChoose.secureHandling.title'),
+      description: t('services.whyChoose.secureHandling.description'),
     },
     {
       icon: Headphones,
-      title: '24/7 Support',
-      description: 'Our team is always available via WhatsApp and phone.',
+      title: t('services.whyChoose.support247.title'),
+      description: t('services.whyChoose.support247.description'),
     },
     {
       icon: Zap,
-      title: 'Real-Time Tracking',
-      description: 'Track every movement of your shipment in real-time.',
+      title: t('services.whyChoose.realTimeTracking.title'),
+      description: t('services.whyChoose.realTimeTracking.description'),
     },
   ];
 
@@ -144,22 +151,21 @@ export default function Services() {
           <AnimatedSection animation="fade-in" className="text-center mb-20">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
               <Package className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary">Delivery Solutions</span>
+              <span className="text-sm font-medium text-primary">{t('services.hero.badge')}</span>
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6">{t('services.title')}</h1>
             <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-8">
-              {t('services.subtitle')}. From same-day express to international freight,
-              we provide comprehensive logistics solutions tailored to your needs.
+              {t('services.hero.extendedSubtitle')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/request-quote">
                 <Button size="lg" className="bg-primary hover:bg-primary/90 glow-blue-hover transition-smooth btn-hover-expand">
-                  Get Started <ArrowRight className="w-4 h-4 ml-2" />
+                  {t('services.hero.getStarted')} <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
               <Link href="/contact">
                 <Button size="lg" variant="outline" className="border-primary text-primary hover:bg-primary/10">
-                  Contact Sales
+                  {t('services.hero.contactSales')}
                 </Button>
               </Link>
             </div>
@@ -168,9 +174,9 @@ export default function Services() {
           {/* Services Grid */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">What We Offer</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('services.whatWeOffer.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Choose from our range of delivery services designed to meet every shipping need
+                {t('services.whatWeOffer.subtitle')}
               </p>
             </div>
 
@@ -219,11 +225,11 @@ export default function Services() {
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
                 <Zap className="w-4 h-4 text-accent" />
-                <span className="text-sm font-medium text-accent">Simple Process</span>
+                <span className="text-sm font-medium text-accent">{t('services.howItWorks.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">How It Works</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('services.howItWorks.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Getting your package delivered is easy. Just follow these simple steps.
+                {t('services.howItWorks.subtitle')}
               </p>
             </div>
 
@@ -257,15 +263,75 @@ export default function Services() {
             </div>
           </AnimatedSection>
 
+          {/* AI-Powered Technology Section */}
+          <AnimatedSection animation="fade-in" className="mb-20">
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
+                <Brain className="w-4 h-4 text-purple-400" />
+                <span className="text-sm font-medium text-purple-400">{t('aiPowered.badge')}</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-white via-purple-200 to-primary bg-clip-text text-transparent">
+                {t('aiPowered.title')}
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                {t('aiPowered.subtitle')}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {[
+                { icon: Route, title: t('aiPowered.smartRoutes.title'), desc: t('aiPowered.smartRoutes.description'), color: 'text-blue-400', bg: 'bg-blue-500/20' },
+                { icon: FileCheck, title: t('aiPowered.automation.title'), desc: t('aiPowered.automation.description'), color: 'text-green-400', bg: 'bg-green-500/20' },
+                { icon: DollarSign, title: t('aiPowered.pricing.title'), desc: t('aiPowered.pricing.description'), color: 'text-yellow-400', bg: 'bg-yellow-500/20' },
+                { icon: BarChart3, title: t('aiPowered.demandPrediction.title'), desc: t('aiPowered.demandPrediction.description'), color: 'text-purple-400', bg: 'bg-purple-500/20' },
+                { icon: ShieldAlert, title: t('aiPowered.incidentDetection.title'), desc: t('aiPowered.incidentDetection.description'), color: 'text-red-400', bg: 'bg-red-500/20' },
+              ].map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <AnimatedSection key={index} animation="scale-in" delay={index * 0.1}>
+                    <div className="text-center p-4 rounded-xl glass hover:glass-strong transition-smooth group card-hover-lift h-full">
+                      <div className={`w-12 h-12 rounded-full ${item.bg} flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-smooth`}>
+                        <Icon className={`w-6 h-6 ${item.color}`} />
+                      </div>
+                      <h4 className="font-semibold text-sm mb-1 flex items-center justify-center gap-1">
+                        {item.title}
+                        <Sparkles className="w-3 h-3 text-purple-400" />
+                      </h4>
+                      <p className="text-xs text-primary">{item.desc}</p>
+                    </div>
+                  </AnimatedSection>
+                );
+              })}
+            </div>
+
+            {/* Why Lower Prices - Compact */}
+            <div className="mt-8 p-6 rounded-xl glass-strong border border-green-500/20">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <DollarSign className="w-8 h-8 text-green-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold">{t('aiPowered.whyLowerPrices.title')}</h4>
+                    <p className="text-muted-foreground">{t('aiPowered.whyLowerPrices.description')}</p>
+                  </div>
+                </div>
+                <div className="glass rounded-xl p-4 text-center">
+                  <div className="text-3xl font-bold bg-gradient-to-r from-green-400 to-primary bg-clip-text text-transparent">-40%</div>
+                  <p className="text-xs text-muted-foreground">{t('aiPowered.operationalCosts')}</p>
+                </div>
+              </div>
+            </div>
+          </AnimatedSection>
+
           {/* Benefits Section */}
           <AnimatedSection animation="slide-up" className="mb-20">
             <Card className="glass-strong border-border overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-2">
                 <CardContent className="p-8 lg:p-12 flex flex-col justify-center">
-                  <h2 className="text-3xl md:text-4xl font-bold mb-6">Why Choose PATHXPRESS?</h2>
+                  <h2 className="text-3xl md:text-4xl font-bold mb-6">{t('services.whyChoose.title')}</h2>
                   <p className="text-muted-foreground mb-8">
-                    We're not just another delivery company. We're your logistics partner,
-                    committed to making shipping simple, reliable, and affordable.
+                    {t('services.whyChoose.description')}
                   </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -301,19 +367,19 @@ export default function Services() {
           {/* CTA Section */}
           <AnimatedSection animation="fade-in">
             <div className="text-center py-12 px-6 rounded-2xl glass-strong">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to Ship?</h2>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('services.cta.title')}</h2>
               <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-                Get started today and experience the fastest, most reliable delivery service in the UAE.
+                {t('services.cta.description')}
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/request-quote">
                   <Button size="lg" className="bg-secondary hover:bg-secondary/90 glow-red-hover transition-smooth px-8 btn-hover-expand">
-                    Request a Quote
+                    {t('services.cta.requestQuote')}
                   </Button>
                 </Link>
                 <Link href="/request-pickup">
                   <Button size="lg" variant="outline" className="border-primary text-primary hover:bg-primary/10 px-8">
-                    Schedule Pickup
+                    {t('services.cta.schedulePickup')}
                   </Button>
                 </Link>
               </div>

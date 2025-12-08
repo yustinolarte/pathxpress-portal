@@ -25,7 +25,7 @@ export default function Contact() {
       setFormData({ name: '', email: '', message: '' });
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to send message');
+      toast.error(error.message || t('contact.form.submitError'));
     },
   });
 
@@ -54,9 +54,9 @@ export default function Contact() {
             <div className="space-y-6 animate-slide-up">
               <Card className="glass-strong border-border">
                 <CardHeader>
-                  <CardTitle className="text-2xl">Get in Touch</CardTitle>
+                  <CardTitle className="text-2xl">{t('contact.getInTouch.title')}</CardTitle>
                   <CardDescription>
-                    We're here to help with all your logistics needs
+                    {t('contact.getInTouch.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -65,7 +65,7 @@ export default function Contact() {
                       <Building2 className="w-6 h-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Company</h3>
+                      <h3 className="font-semibold mb-1">{t('contact.companyLabel')}</h3>
                       <p className="text-muted-foreground">{t('contact.company')}</p>
                     </div>
                   </div>
@@ -75,7 +75,7 @@ export default function Contact() {
                       <Mail className="w-6 h-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Email</h3>
+                      <h3 className="font-semibold mb-1">{t('contact.emailLabel')}</h3>
                       <a
                         href={`mailto:${t('contact.email')}`}
                         className="text-primary hover:underline"
@@ -90,7 +90,7 @@ export default function Contact() {
                       <Phone className="w-6 h-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Phone</h3>
+                      <h3 className="font-semibold mb-1">{t('contact.phoneLabel')}</h3>
                       <a
                         href={`tel:${t('contact.phone')}`}
                         className="text-primary hover:underline"
@@ -105,7 +105,7 @@ export default function Contact() {
                       <MessageCircle className="w-6 h-6 text-accent" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">WhatsApp</h3>
+                      <h3 className="font-semibold mb-1">{t('contact.whatsappLabel')}</h3>
                       <a
                         href="https://wa.me/971522803433"
                         target="_blank"
@@ -132,7 +132,7 @@ export default function Contact() {
                 <CardHeader>
                   <CardTitle className="text-2xl">{t('contact.form.title')}</CardTitle>
                   <CardDescription>
-                    Fill out the form and we'll get back to you within 24 hours
+                    {t('contact.form.description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

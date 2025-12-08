@@ -18,7 +18,9 @@
     "trackingPlaceholder": "Enter tracking ID (e.g. PX00001)",
     "trackButton": "Track",
     "requestQuoteBtn": "Request Quote",
-    "requestPickupBtn": "Request Pickup"
+    "requestPickupBtn": "Request Pickup",
+    "scroll": "Scroll",
+    "aiBadge": "AI-Powered Smart Logistics"
   },
   "services": {
     "title": "Our Services",
@@ -283,7 +285,19 @@
         "question": "What is Proof of Delivery (POD)?",
         "answer": "Proof of Delivery is a confirmation that your package was successfully delivered. It may include a photo of the delivered package, recipient signature, or delivery confirmation. When available, you can view the POD by clicking the link in the tracking timeline."
       }
-    }
+    },
+    "loading": "Loading...",
+    "searching": "Searching for shipment...",
+    "pickupAddress": "Pickup Address",
+    "deliveryAddress": "Delivery Address",
+    "serviceType": "Service Type",
+    "weight": "Weight",
+    "lastUpdated": "Last updated",
+    "history": {
+      "title": "Tracking History",
+      "subtitle": "Complete tracking timeline for your shipment"
+    },
+    "viewPod": "View Proof of Delivery"
   },
   "quoteForm": {
     "title": "Request a Quote",
@@ -305,7 +319,15 @@
       "freight": "Freight Brokerage",
       "latam": "UAE ⇄ LATAM Freight",
       "lastMile": "Last Mile E-commerce"
-    }
+    },
+    "cardTitle": "Request Information",
+    "cardDescription": "All fields are required except Delivery Address and Comments",
+    "selectPlaceholder": "Select service type",
+    "submitting": "Submitting...",
+    "successTitle": "Pickup Request Sent!",
+    "successMessage": "We have received your request and will contact you shortly to confirm the details.",
+    "submitAnother": "Submit Another Request",
+    "submitSuccess": "Pickup request sent successfully! We will contact you shortly."
   },
   "pricing": {
     "title": "Pricing & Rates",
@@ -384,7 +406,8 @@
       "errors": {
         "requiredField": "This field is required",
         "minWeight": "Weight must be at least 0.1 kg",
-        "minDimension": "Dimension must be at least 1 cm"
+        "minDimension": "Dimension must be at least 1 cm",
+        "futureDate": "Please select a future date (minimum tomorrow)"
       },
       "emirates": {
         "dubai": "Dubai",
@@ -429,14 +452,70 @@
     "email": "info@pathxpress.net",
     "phone": "+971 52 280 3433",
     "whatsapp": "WhatsApp Us",
+    "getInTouch": {
+      "title": "Get in Touch",
+      "description": "We're here to help with all your logistics needs"
+    },
+    "companyLabel": "Company",
+    "emailLabel": "Email",
+    "phoneLabel": "Phone",
+    "whatsappLabel": "WhatsApp",
     "form": {
       "title": "Send us a message",
+      "description": "Fill out the form and we'll get back to you within 24 hours",
       "name": "Your Name",
       "email": "Your Email",
       "message": "Your Message",
       "submit": "Send Message",
       "success": "Message sent successfully! We'll get back to you soon.",
-      "error": "Failed to send message. Please try again or contact us via email."
+      "error": "Failed to send message. Please try again or contact us via email.",
+      "submitError": "Failed to send message"
+    }
+  },
+  "aiPowered": {
+    "badge": "AI-Powered Technology",
+    "title": "Smart Technology That Saves You Money",
+    "subtitle": "Our AI-driven logistics platform optimizes every step of the delivery process, reducing costs and improving service quality.",
+    "smartRoutes": {
+      "title": "Smart Route Optimization",
+      "description": "Less fuel consumption and faster delivery times",
+      "detail": "Our AI analyzes traffic patterns, weather, and delivery windows to find the most efficient routes in real-time."
+    },
+    "automation": {
+      "title": "Automated Guide Processing",
+      "description": "Fewer human errors + faster inbound processing",
+      "detail": "Intelligent document processing eliminates manual data entry and reduces processing time by 70%."
+    },
+    "pricing": {
+      "title": "Intelligent Pricing",
+      "description": "Better margins vs competitors = lower prices for you",
+      "detail": "Dynamic pricing algorithms ensure you always get competitive rates based on real-time market conditions."
+    },
+    "demandPrediction": {
+      "title": "Demand Prediction",
+      "description": "Precise fleet & staff planning",
+      "detail": "Machine learning forecasts demand patterns to optimize resource allocation and prevent delays."
+    },
+    "incidentDetection": {
+      "title": "Automatic Incident Detection",
+      "description": "Fewer returns and claims",
+      "detail": "Proactive monitoring identifies potential issues before they become problems, reducing failed deliveries."
+    },
+    "whyLowerPrices": {
+      "title": "Why Can We Offer Lower Prices?",
+      "description": "Our AI technology reduces operational costs by up to 40%. These savings go directly to you.",
+      "point1": "Optimized routes = Less fuel costs",
+      "point2": "Automation = Lower labor costs",
+      "point3": "Predictive planning = No wasted resources",
+      "point4": "Fewer incidents = Less money lost on returns"
+    },
+    "costSavingsBadge": "Cost Savings",
+    "operationalCosts": "Operational Costs",
+    "savingsPassedToYou": "Savings passed to you",
+    "cta": {
+      "title": "Experience AI-Powered Logistics",
+      "description": "Get a quote and see how much you can save with our intelligent delivery platform.",
+      "button": "Get AI-Optimized Quote"
     }
   },
   "footer": {
@@ -445,7 +524,9 @@
       "title": "Subscribe to our Newsletter",
       "phone": "Phone Number",
       "email": "Email Address",
-      "subscribe": "Subscribe"
+      "subscribe": "Subscribe",
+      "success": "Thank you for subscribing!",
+      "error": "Please fill in both phone and email"
     },
     "legal": {
       "privacy": "Privacy Policy",

@@ -28,18 +28,18 @@ export default function Pricing() {
   const pricingFeatures = [
     {
       icon: Shield,
-      title: 'No Hidden Fees',
-      description: 'What you see is what you pay. Transparent pricing with no surprises.',
+      title: t('pricing.features.noHiddenFees.title'),
+      description: t('pricing.features.noHiddenFees.description'),
     },
     {
       icon: Clock,
-      title: 'Flexible Options',
-      description: 'Choose between standard and same-day delivery based on your needs.',
+      title: t('pricing.features.flexibleOptions.title'),
+      description: t('pricing.features.flexibleOptions.description'),
     },
     {
       icon: Package,
-      title: 'All Sizes Welcome',
-      description: 'From small envelopes to large packages, we handle it all.',
+      title: t('pricing.features.allSizes.title'),
+      description: t('pricing.features.allSizes.description'),
     },
   ];
 
@@ -60,7 +60,7 @@ export default function Pricing() {
           {/* Hero Section */}
           <AnimatedSection animation="fade-in" className="text-center mb-16">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
-              <span className="text-sm font-medium text-primary">Simple & Transparent</span>
+              <span className="text-sm font-medium text-primary">{t('pricing.hero.badge')}</span>
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-4">{t('pricing.title')}</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t('pricing.subtitle')}</p>
@@ -98,14 +98,14 @@ export default function Pricing() {
                   className="data-[state=active]:bg-primary data-[state=active]:text-white h-12 text-base font-medium flex items-center gap-2"
                 >
                   <Truck className="w-4 h-4" />
-                  Domestic UAE
+                  {t('pricing.tabs.domesticUAE')}
                 </TabsTrigger>
                 <TabsTrigger
                   value="international"
                   className="data-[state=active]:bg-secondary data-[state=active]:text-white h-12 text-base font-medium flex items-center gap-2"
                 >
                   <Globe2 className="w-4 h-4" />
-                  International
+                  {t('pricing.tabs.international')}
                 </TabsTrigger>
               </TabsList>
 
@@ -117,7 +117,7 @@ export default function Pricing() {
                     <span className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                       <Package className="w-4 h-4 text-primary" />
                     </span>
-                    Calculate Your Exact Rate
+                    {t('pricing.domesticTab.calculateTitle')}
                   </h2>
                   <RateCalculator />
                 </div>
@@ -134,11 +134,9 @@ export default function Pricing() {
                           <Globe2 className="w-6 h-6 text-secondary" />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-lg mb-1">International Shipping Quotes</h3>
+                          <h3 className="font-semibold text-lg mb-1">{t('pricing.internationalTab.infoBanner.title')}</h3>
                           <p className="text-muted-foreground">
-                            For international shipments, we provide custom quotes based on destination,
-                            package dimensions, and delivery requirements. Fill out the form below and
-                            our team will respond within 2 hours during business hours.
+                            {t('pricing.internationalTab.infoBanner.description')}
                           </p>
                         </div>
                       </div>
@@ -154,15 +152,15 @@ export default function Pricing() {
                       {/* Why International */}
                       <Card className="glass-strong border-border">
                         <CardHeader>
-                          <CardTitle className="text-lg">What's Included</CardTitle>
+                          <CardTitle className="text-lg">{t('pricing.internationalTab.whatsIncluded.title')}</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
                           {[
-                            'Door-to-door delivery',
-                            'Full tracking & visibility',
-                            'Customs clearance assistance',
-                            'Insurance options available',
-                            'Express & economy options',
+                            t('pricing.internationalTab.whatsIncluded.item1'),
+                            t('pricing.internationalTab.whatsIncluded.item2'),
+                            t('pricing.internationalTab.whatsIncluded.item3'),
+                            t('pricing.internationalTab.whatsIncluded.item4'),
+                            t('pricing.internationalTab.whatsIncluded.item5'),
                           ].map((item, index) => (
                             <div key={index} className="flex items-center gap-3">
                               <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0" />
@@ -172,15 +170,14 @@ export default function Pricing() {
                         </CardContent>
                       </Card>
 
-                      {/* Contact Card */}
                       <Card className="glass-strong border-border">
                         <CardContent className="p-6 text-center">
                           <p className="text-sm text-muted-foreground mb-4">
-                            Need help with your international shipment?
+                            {t('pricing.internationalTab.needHelp')}
                           </p>
                           <Link href="/contact">
                             <Button variant="outline" className="w-full border-primary text-primary hover:bg-primary/10">
-                              Contact Our Team
+                              {t('pricing.internationalTab.contactTeam')}
                             </Button>
                           </Link>
                         </CardContent>
@@ -197,10 +194,9 @@ export default function Pricing() {
             <Card className="glass-strong border-primary/30 max-w-3xl mx-auto overflow-hidden">
               <div className="grid grid-cols-1 md:grid-cols-2">
                 <CardContent className="p-8 flex flex-col justify-center">
-                  <h3 className="text-2xl font-bold mb-2">Need a Custom Quote?</h3>
+                  <h3 className="text-2xl font-bold mb-2">{t('pricing.domesticTab.customQuote.title')}</h3>
                   <p className="text-muted-foreground mb-6">
-                    For bulk shipments, special handling, or recurring deliveries,
-                    we offer custom pricing tailored to your business needs.
+                    {t('pricing.domesticTab.customQuote.description')}
                   </p>
                   <Link href="/request-quote">
                     <Button

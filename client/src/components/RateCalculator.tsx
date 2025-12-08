@@ -25,7 +25,7 @@ interface CalculationResult {
 
 export default function RateCalculator() {
   const { t } = useTranslation();
-  
+
   const [originEmirate, setOriginEmirate] = useState<Emirate | ''>('');
   const [destinationEmirate, setDestinationEmirate] = useState<Emirate | ''>('');
   const [deliveryDate, setDeliveryDate] = useState('');
@@ -34,7 +34,7 @@ export default function RateCalculator() {
   const [length, setLength] = useState('');
   const [width, setWidth] = useState('');
   const [height, setHeight] = useState('');
-  
+
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -55,7 +55,7 @@ export default function RateCalculator() {
 
     if (!originEmirate) newErrors.originEmirate = t('pricing.calculator.errors.requiredField');
     if (!destinationEmirate) newErrors.destinationEmirate = t('pricing.calculator.errors.requiredField');
-    
+
     // Validate delivery date is in the future
     if (!deliveryDate) {
       newErrors.deliveryDate = t('pricing.calculator.errors.requiredField');
@@ -64,12 +64,12 @@ export default function RateCalculator() {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(0, 0, 0, 0);
-      
+
       if (selectedDate < tomorrow) {
-        newErrors.deliveryDate = 'Please select a future date (minimum tomorrow)';
+        newErrors.deliveryDate = t('pricing.calculator.errors.futureDate');
       }
     }
-    
+
     const weight = parseFloat(actualWeight);
     if (!actualWeight || isNaN(weight) || weight < 0.1) {
       newErrors.actualWeight = t('pricing.calculator.errors.minWeight');
@@ -78,7 +78,7 @@ export default function RateCalculator() {
     const l = parseFloat(length);
     const w = parseFloat(width);
     const h = parseFloat(height);
-    
+
     if (!length || isNaN(l) || l < 1) {
       newErrors.length = t('pricing.calculator.errors.minDimension');
     }

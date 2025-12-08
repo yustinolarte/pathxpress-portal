@@ -29,7 +29,7 @@ export default function RequestQuote() {
   const createQuoteMutation = trpc.quoteRequest.create.useMutation({
     onSuccess: () => {
       setSubmitted(true);
-      toast.success('Pickup request sent successfully! We will contact you shortly.');
+      toast.success(t('quoteForm.submitSuccess'));
       setFormData({
         name: '',
         phone: '',
@@ -64,15 +64,15 @@ export default function RequestQuote() {
             <Card className="glass-strong border-primary text-center animate-fade-in">
               <CardContent className="py-12">
                 <CheckCircle className="w-16 h-16 mx-auto mb-6 text-primary" />
-                <h2 className="text-3xl font-bold mb-4">Pickup Request Sent!</h2>
+                <h2 className="text-3xl font-bold mb-4">{t('quoteForm.successTitle')}</h2>
                 <p className="text-muted-foreground mb-8">
-                  We have received your request and will contact you shortly at {formData.email} to confirm the details.
+                  {t('quoteForm.successMessage')}
                 </p>
                 <Button
                   onClick={() => setSubmitted(false)}
                   className="bg-primary hover:bg-primary/90"
                 >
-                  Submit Another Request
+                  {t('quoteForm.submitAnother')}
                 </Button>
               </CardContent>
             </Card>
@@ -96,9 +96,9 @@ export default function RequestQuote() {
 
           <Card className="glass-strong border-border animate-slide-up">
             <CardHeader>
-              <CardTitle className="text-2xl">Request Information</CardTitle>
+              <CardTitle className="text-2xl">{t('quoteForm.cardTitle')}</CardTitle>
               <CardDescription>
-                All fields are required except Delivery Address and Comments
+                {t('quoteForm.cardDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -173,7 +173,7 @@ export default function RequestQuote() {
                       required
                     >
                       <SelectTrigger className="bg-input border-border">
-                        <SelectValue placeholder="Select service type" />
+                        <SelectValue placeholder={t('quoteForm.selectPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent className="glass-strong">
                         <SelectItem value="same-day">{t('quoteForm.serviceTypes.sameDay')}</SelectItem>
@@ -219,7 +219,7 @@ export default function RequestQuote() {
                   {createQuoteMutation.isPending ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Submitting...
+                      {t('quoteForm.submitting')}
                     </>
                   ) : (
                     t('quoteForm.submit')

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Package, Truck, Globe2, Plane, ShoppingCart, Clock, MapPin, MessageCircle, TrendingUp, Leaf, ChevronDown } from 'lucide-react';
+import { Package, Truck, Globe2, Plane, ShoppingCart, Clock, MapPin, MessageCircle, TrendingUp, Leaf, ChevronDown, Brain, Route, FileCheck, DollarSign, BarChart3, ShieldAlert, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Home() {
@@ -159,6 +159,15 @@ export default function Home() {
 
         <div className="container relative z-[10]">
           <div className="max-w-4xl mx-auto text-center">
+            {/* AI Badge */}
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6 animate-blur-in">
+              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+              <span className="text-sm font-medium bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                {t('hero.aiBadge')}
+              </span>
+              <Sparkles className="w-4 h-4 text-accent animate-pulse" />
+            </div>
+
             <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight animate-blur-in text-white">
               {t('hero.title')}
             </h1>
@@ -212,7 +221,7 @@ export default function Home() {
         {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[10] animate-scroll-indicator">
           <div className="flex flex-col items-center gap-2 text-foreground/50">
-            <span className="text-sm font-medium">Scroll</span>
+            <span className="text-sm font-medium">{t('hero.scroll')}</span>
             <ChevronDown className="w-6 h-6" />
           </div>
         </div>
@@ -288,6 +297,160 @@ export default function Home() {
               );
             })}
           </div>
+        </div>
+      </section>
+
+      {/* AI-Powered Technology Section */}
+      <section className="py-20 relative overflow-hidden">
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-purple-500/5 to-accent/5" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+
+        <div className="container relative z-10">
+          <AnimatedSection animation="fade-in" className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
+              <Brain className="w-4 h-4 text-purple-400" />
+              <span className="text-sm font-medium text-purple-400">{t('aiPowered.badge')}</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-white via-purple-200 to-primary bg-clip-text text-transparent">
+              {t('aiPowered.title')}
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+              {t('aiPowered.subtitle')}
+            </p>
+          </AnimatedSection>
+
+          {/* AI Features Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+            {[
+              {
+                icon: Route,
+                title: t('aiPowered.smartRoutes.title'),
+                description: t('aiPowered.smartRoutes.description'),
+                detail: t('aiPowered.smartRoutes.detail'),
+                color: 'from-blue-500 to-cyan-500',
+                bgColor: 'bg-blue-500/20',
+              },
+              {
+                icon: FileCheck,
+                title: t('aiPowered.automation.title'),
+                description: t('aiPowered.automation.description'),
+                detail: t('aiPowered.automation.detail'),
+                color: 'from-green-500 to-emerald-500',
+                bgColor: 'bg-green-500/20',
+              },
+              {
+                icon: DollarSign,
+                title: t('aiPowered.pricing.title'),
+                description: t('aiPowered.pricing.description'),
+                detail: t('aiPowered.pricing.detail'),
+                color: 'from-yellow-500 to-orange-500',
+                bgColor: 'bg-yellow-500/20',
+              },
+              {
+                icon: BarChart3,
+                title: t('aiPowered.demandPrediction.title'),
+                description: t('aiPowered.demandPrediction.description'),
+                detail: t('aiPowered.demandPrediction.detail'),
+                color: 'from-purple-500 to-pink-500',
+                bgColor: 'bg-purple-500/20',
+              },
+              {
+                icon: ShieldAlert,
+                title: t('aiPowered.incidentDetection.title'),
+                description: t('aiPowered.incidentDetection.description'),
+                detail: t('aiPowered.incidentDetection.detail'),
+                color: 'from-red-500 to-rose-500',
+                bgColor: 'bg-red-500/20',
+              },
+            ].map((feature, index) => {
+              const Icon = feature.icon;
+              return (
+                <AnimatedSection key={index} animation="slide-up" delay={index * 0.1}>
+                  <Card className="glass-strong border-border hover:border-purple-500/50 transition-smooth group card-hover-lift h-full">
+                    <CardHeader>
+                      <div className={`w-14 h-14 rounded-xl ${feature.bgColor} flex items-center justify-center mb-4 group-hover:scale-110 transition-smooth`}>
+                        <Icon className={`w-7 h-7 bg-gradient-to-r ${feature.color} bg-clip-text`} style={{ color: 'transparent', background: `linear-gradient(to right, var(--tw-gradient-stops))`, WebkitBackgroundClip: 'text', backgroundClip: 'text' }} />
+                        <Icon className={`w-7 h-7 text-white absolute`} />
+                      </div>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        {feature.title}
+                        <Sparkles className="w-4 h-4 text-purple-400" />
+                      </CardTitle>
+                      <CardDescription className="text-primary font-semibold">
+                        {feature.description}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        {feature.detail}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </AnimatedSection>
+              );
+            })}
+          </div>
+
+          {/* Why Lower Prices Section */}
+          <AnimatedSection animation="scale-in">
+            <Card className="glass-strong border-purple-500/30 overflow-hidden">
+              <div className="grid grid-cols-1 lg:grid-cols-2">
+                <CardContent className="p-8 lg:p-12">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 mb-4">
+                    <DollarSign className="w-4 h-4 text-green-400" />
+                    <span className="text-sm font-medium text-green-400">{t('aiPowered.costSavingsBadge')}</span>
+                  </div>
+                  <h3 className="text-2xl md:text-3xl font-bold mb-4">
+                    {t('aiPowered.whyLowerPrices.title')}
+                  </h3>
+                  <p className="text-lg text-muted-foreground mb-6">
+                    {t('aiPowered.whyLowerPrices.description')}
+                  </p>
+                  <ul className="space-y-3">
+                    {[
+                      t('aiPowered.whyLowerPrices.point1'),
+                      t('aiPowered.whyLowerPrices.point2'),
+                      t('aiPowered.whyLowerPrices.point3'),
+                      t('aiPowered.whyLowerPrices.point4'),
+                    ].map((point, index) => (
+                      <li key={index} className="flex items-center gap-3 text-foreground">
+                        <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+                <div className="hidden lg:flex items-center justify-center p-12 bg-gradient-to-br from-purple-500/10 via-primary/10 to-green-500/10 relative">
+                  <div className="absolute inset-0 bg-grid-pattern opacity-5" />
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-purple-500/20 rounded-full blur-3xl scale-150" />
+                    <div className="relative glass-strong rounded-2xl p-8 text-center">
+                      <div className="text-6xl font-bold bg-gradient-to-r from-green-400 to-primary bg-clip-text text-transparent mb-2">
+                        -40%
+                      </div>
+                      <p className="text-muted-foreground">{t('aiPowered.operationalCosts')}</p>
+                      <div className="mt-4 flex items-center justify-center gap-2 text-sm text-green-400">
+                        <TrendingUp className="w-4 h-4" />
+                        <span>{t('aiPowered.savingsPassedToYou')}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </AnimatedSection>
+
+          {/* AI CTA */}
+          <AnimatedSection animation="fade-in" className="mt-12 text-center">
+            <Link href="/request-quote">
+              <Button size="lg" className="bg-gradient-to-r from-purple-500 to-primary hover:from-purple-600 hover:to-primary/90 glow-blue-hover transition-smooth px-8 btn-hover-expand">
+                {t('aiPowered.cta.button')}
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+          </AnimatedSection>
         </div>
       </section>
 
