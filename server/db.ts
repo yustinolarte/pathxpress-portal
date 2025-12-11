@@ -925,12 +925,16 @@ export async function calculateShipmentRate(params: {
   clientId: number;
   serviceType: "DOM" | "SDD";
   weight: number; // in kg
+  length?: number; // cm
+  width?: number; // cm
+  height?: number; // cm
 }): Promise<{
   baseRate: number;
   additionalKgCharge: number;
   totalRate: number;
   appliedTier: RateTier | null;
   usingManualTier: boolean;
+  chargeableWeight?: number;
 }> {
   const db = await getDb();
   if (!db) {
@@ -1004,9 +1008,17 @@ export async function calculateShipmentRate(params: {
   let totalRate = baseRate;
   let additionalKgCharge = 0;
 
-  // Calculate additional weight charges
-  if (params.weight > maxWeight) {
-    const extraKg = Math.ceil(params.weight - maxWeight);
+  // Calculate volumetric weight
+  let chargeableWeight = params.weight;
+
+  if (params.length && params.width && params.height) {
+    const volumetricWeight = (params.length * params.width * params.height) / 5000;
+    chargeableWeight = Math.max(params.weight, volumetricWeight);
+  }
+
+  // Calculate additional weight charges using chargeable weight
+  if (chargeableWeight > maxWeight) {
+    const extraKg = Math.ceil(chargeableWeight - maxWeight);
     additionalKgCharge = extraKg * additionalKgRate;
     totalRate += additionalKgCharge;
   }
@@ -1017,30 +1029,53 @@ export async function calculateShipmentRate(params: {
     totalRate,
     appliedTier: applicableTier,
     usingManualTier,
+    chargeableWeight, // Return this so UI can show it
   };
 }
 
 /**
  * Calculate COD fee
  */
-export async function calculateCODFee(codAmount: number): Promise<number> {
+/**
+ * Calculate COD fee
+ */
+export async function calculateCODFee(codAmount: number, clientId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
 
-  const percentageConfig = await db
-    .select()
-    .from(serviceConfig)
-    .where(eq(serviceConfig.configKey, "COD_FEE_PERCENTAGE"))
-    .limit(1);
+  // 1. Check for client-specific COD settings
+  const client = await getClientAccountById(clientId);
+  let percentage = 3.3; // Default
+  let minFee = 2.0;    // Default
 
-  const minFeeConfig = await db
-    .select()
-    .from(serviceConfig)
-    .where(eq(serviceConfig.configKey, "COD_MIN_FEE"))
-    .limit(1);
+  // Overrides from client
+  if (client?.codFeePercent) {
+    percentage = parseFloat(client.codFeePercent);
+  } else {
+    // Fallback to global config
+    const percentageConfig = await db
+      .select()
+      .from(serviceConfig)
+      .where(eq(serviceConfig.configKey, "COD_FEE_PERCENTAGE"))
+      .limit(1);
+    if (percentageConfig[0]) {
+      percentage = parseFloat(percentageConfig[0].configValue);
+    }
+  }
 
-  const percentage = percentageConfig[0] ? parseFloat(percentageConfig[0].configValue) : 3.3;
-  const minFee = minFeeConfig[0] ? parseFloat(minFeeConfig[0].configValue) : 2.0;
+  if (client?.codMinFee) {
+    minFee = parseFloat(client.codMinFee);
+  } else {
+    // Fallback to global config
+    const minFeeConfig = await db
+      .select()
+      .from(serviceConfig)
+      .where(eq(serviceConfig.configKey, "COD_MIN_FEE"))
+      .limit(1);
+    if (minFeeConfig[0]) {
+      minFee = parseFloat(minFeeConfig[0].configValue);
+    }
+  }
 
   const calculatedFee = (codAmount * percentage) / 100;
   return Math.max(calculatedFee, minFee);

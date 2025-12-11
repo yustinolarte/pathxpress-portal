@@ -1,3 +1,4 @@
+
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
 
@@ -27,220 +28,246 @@ interface ShipmentData {
   codRequired?: number;
   codAmount?: string | null;
   codCurrency?: string | null;
+  specialInstructions?: string | null;
 }
 
 export function generateWaybillPDF(shipment: ShipmentData) {
+  // Set dimensions for standard shipping label (100mm x 150mm)
+  // This ensures it prints correctly on thermal printers and looks right on screen.
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: 'a4',
+    format: [100, 150], // Custom size: 100mm width, 150mm height
   });
 
-  // Colors
-  const primaryColor = '#1e40af'; // Blue
-  const accentColor = '#dc2626'; // Red
-  const textColor = '#1f2937';
-  const lightGray = '#f3f4f6';
+  // Label Constants (Fits within 100x150 with 2mm margins)
+  const startX = 2;
+  const startY = 2;
+  const labelWidth = 96;
+  const labelHeight = 146;
 
-  // Header with logo area
-  pdf.setFillColor(primaryColor);
-  pdf.rect(0, 0, 210, 40, 'F');
+  // Helper to draw borders
+  const drawBorder = (y: number, h: number) => {
+    pdf.rect(startX, y, labelWidth, h);
+  };
 
-  // Company name (since we can't embed PNG easily)
-  pdf.setTextColor(255, 255, 255);
-  pdf.setFontSize(24);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('PATHXPRESS', 15, 20);
-  
-  pdf.setFontSize(10);
+  // --- 1. Top Bar (Ref & Date) ---
+  let currentY = startY;
+  const row1Height = 5;
+
+  pdf.setLineWidth(0.1);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('Reliable Delivery Services in the UAE', 15, 28);
+  pdf.setFontSize(7);
 
-  // Waybill number (large, prominent)
-  pdf.setFontSize(16);
+  const dateStr = new Date(shipment.createdAt).toISOString().split('T')[0];
+
+  pdf.text(`RefNo: ${shipment.waybillNumber}`, startX + 1, currentY + 3.5);
+  pdf.text(`ShipDate:${dateStr}`, startX + labelWidth - 25, currentY + 3.5);
+
+  drawBorder(currentY, row1Height);
+  currentY += row1Height;
+
+  // --- 2. Header (Logo & Main Barcode) ---
+  const row2Height = 20; // Reduced from 22
+
+  // Left: Logo (Moving further left)
+  const logoStartX = startX + 1;
+
+  // "PATH"
+  pdf.setFontSize(20);
   pdf.setFont('helvetica', 'bold');
-  pdf.text(`Waybill: ${shipment.waybillNumber}`, 15, 36);
+  pdf.setTextColor(30, 30, 30);
+  pdf.text('PATH', logoStartX, currentY + 12);
 
-  // Generate barcode
+  // "X" (Adjusted spacing to look connected)
+  pdf.setTextColor(220, 38, 38);
+  pdf.setFontSize(26);
+  pdf.text('X', logoStartX + 17, currentY + 12); // moved closer
+
+  // "PRESS"
+  pdf.setTextColor(30, 30, 30);
+  pdf.setFontSize(20);
+  pdf.text('PRESS', logoStartX + 24, currentY + 12); // moved closer
+
+  // Reset Color
+  pdf.setTextColor(0, 0, 0);
+
+  // Right: Barcode
   const canvas = document.createElement('canvas');
   try {
     JsBarcode(canvas, shipment.waybillNumber, {
       format: 'CODE128',
       width: 2,
-      height: 60,
+      height: 40,
       displayValue: false,
+      margin: 0
     });
     const barcodeDataUrl = canvas.toDataURL('image/png');
-    pdf.addImage(barcodeDataUrl, 'PNG', 140, 10, 60, 25);
+
+    // Position at X=60
+    pdf.addImage(barcodeDataUrl, 'PNG', startX + 58, currentY + 4, 38, 12);
+
+    // Draw text manually for crispness
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(shipment.waybillNumber, startX + 77, currentY + 19, { align: 'center' }); // moved up slightly
   } catch (error) {
-    console.error('Failed to generate barcode:', error);
+    console.error('Barcode error', error);
   }
 
-  // Service type badge
-  pdf.setFillColor(accentColor);
-  pdf.roundedRect(140, 36, 60, 8, 2, 2, 'F');
+  drawBorder(currentY, row2Height);
+  currentY += row2Height;
+
+  // --- 3. Shipper Info ---
+  const row3Height = 16;
+
+  pdf.setFontSize(7);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Shipper', startX + 2, currentY + 3);
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`${shipment.shipperName}  ${shipment.shipperPhone}`, startX + 2, currentY + 7);
+
+  const shipperFullAddr = `${shipment.shipperAddress}, ${shipment.shipperCity}, ${shipment.shipperCountry}`;
+  const splitShipperAddr = pdf.splitTextToSize(shipperFullAddr, labelWidth - 4);
+  pdf.text(splitShipperAddr, startX + 2, currentY + 11);
+
+  drawBorder(currentY, row3Height);
+  currentY += row3Height;
+
+  // --- 4. Consignee Info (To) ---
+  const row4Height = 30; // Reduced from 32
+  pdf.rect(startX, currentY, labelWidth, row4Height); // Main box
+  pdf.line(startX + 70, currentY, startX + 70, currentY + row4Height); // Vertical divider
+
+  // "To" Circle Icon
+  pdf.setFillColor(0, 0, 0);
+  pdf.circle(startX + 8, currentY + 12, 4, 'F');
   pdf.setTextColor(255, 255, 255);
+  pdf.setFontSize(9);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('To', startX + 5.5, currentY + 13.5);
+  pdf.setTextColor(0, 0, 0);
+
   pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
-  const serviceText = shipment.serviceType === 'express' ? 'EXPRESS' : 'STANDARD';
-  pdf.text(serviceText, 170, 41, { align: 'center' });
+  pdf.text(shipment.customerName, startX + 16, currentY + 6);
+  pdf.setFontSize(9);
+  pdf.text(shipment.customerPhone, startX + 16, currentY + 11);
 
-  // Reset text color
-  pdf.setTextColor(textColor);
-
-  let yPos = 55;
-
-  // Shipper Information
-  pdf.setFillColor(lightGray);
-  pdf.rect(10, yPos, 90, 8, 'F');
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('SHIPPER INFORMATION', 15, yPos + 5.5);
-
-  yPos += 12;
-  pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(shipment.shipperName, 15, yPos);
-  
-  yPos += 5;
+  pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(shipment.shipperAddress, 15, yPos);
-  
-  yPos += 5;
-  pdf.text(`${shipment.shipperCity}, ${shipment.shipperCountry}`, 15, yPos);
-  
-  yPos += 5;
-  pdf.text(`Phone: ${shipment.shipperPhone}`, 15, yPos);
+  const consAddr = `${shipment.address}, ${shipment.city}, ${shipment.destinationCountry}`;
+  const splitConsAddr = pdf.splitTextToSize(consAddr, 60);
+  pdf.text(splitConsAddr, startX + 16, currentY + 16);
 
-  // Consignee Information
-  yPos = 55;
-  pdf.setFillColor(lightGray);
-  pdf.rect(110, yPos, 90, 8, 'F');
-  pdf.setFontSize(12);
+  pdf.setFontSize(9);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('CONSIGNEE INFORMATION', 115, yPos + 5.5);
+  pdf.text(`${shipment.city}`, startX + 10, currentY + row4Height - 3);
 
-  yPos += 12;
-  pdf.setFontSize(10);
+  // Routing QR Placeholder
+  pdf.rect(startX + 75, currentY + 5, 20, 20);
+  pdf.setFontSize(6);
+  pdf.text('Routing QR', startX + 77, currentY + 15);
+  pdf.setFontSize(8);
+  pdf.text('Standard', startX + 75, currentY + 30);
+
+  currentY += row4Height;
+
+  // --- 5. Routing Code ---
+  const row5Height = 14;
+  pdf.setFontSize(22);
   pdf.setFont('helvetica', 'bold');
-  pdf.text(shipment.customerName, 115, yPos);
-  
-  yPos += 5;
+  const serviceCode = shipment.serviceType === 'SDD' ? 'SDD' : 'DOM';
+  const cityCode = shipment.city.substring(0, 3).toUpperCase();
+  const routeText = `UAE   ${serviceCode}   ${cityCode}`;
+  pdf.text(routeText, startX + labelWidth / 2, currentY + 10, { align: 'center' });
+  drawBorder(currentY, row5Height);
+  currentY += row5Height;
+
+  // --- 6. Content & COD ---
+  const row6Height = 20; // Reduced from 22
+  pdf.rect(startX, currentY, labelWidth, row6Height);
+  pdf.line(startX + 70, currentY, startX + 70, currentY + row6Height);
+
+  pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(shipment.address, 115, yPos);
-  
-  yPos += 5;
-  const destination = shipment.emirate 
-    ? `${shipment.city}, ${shipment.emirate}, ${shipment.destinationCountry}`
-    : `${shipment.city}, ${shipment.destinationCountry}`;
-  pdf.text(destination, 115, yPos);
-  
-  yPos += 5;
-  pdf.text(`Phone: ${shipment.customerPhone}`, 115, yPos);
+  const contentText = shipment.specialInstructions || `Package containing ${shipment.pieces} item(s)`;
+  const splitContent = pdf.splitTextToSize(contentText, 68);
+  pdf.text(splitContent, startX + 2, currentY + 5);
 
-  // COD Warning (if applicable)
-  if (shipment.codRequired && shipment.codAmount) {
-    yPos = 100;
-    pdf.setFillColor(255, 165, 0); // Orange background
-    pdf.rect(10, yPos, 190, 15, 'F');
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(14);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('⚠ CASH ON DELIVERY (COD)', 15, yPos + 6);
-    pdf.setFontSize(12);
-    pdf.text(`COLLECT: ${shipment.codAmount} ${shipment.codCurrency || 'AED'} FROM CUSTOMER`, 15, yPos + 12);
-    pdf.setTextColor(textColor);
-    yPos += 20;
-  } else {
-    yPos = 100;
-  }
+  const isCOD = shipment.codRequired === 1;
+  const payType = isCOD ? 'COD' : 'PPD';
+  const payAmount = isCOD && shipment.codAmount ? parseFloat(shipment.codAmount).toFixed(2) : '0.00';
 
-  // Shipment Details
-  pdf.setFillColor(lightGray);
-  pdf.rect(10, yPos, 190, 8, 'F');
-  pdf.setFontSize(12);
+  pdf.setFontSize(9);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('SHIPMENT DETAILS', 15, yPos + 5.5);
+  pdf.text(payType, startX + 72, currentY + 5);
+  pdf.setFontSize(14);
+  pdf.text(payAmount, startX + 85, currentY + 15, { align: 'center' });
+  pdf.setFontSize(8);
+  pdf.text('(AED)', startX + 85, currentY + 19, { align: 'center' });
+  currentY += row6Height;
 
-  yPos += 15;
-  pdf.setFontSize(10);
+  // --- 7. Invoice & Grid ---
+  // Condensed grid
+  const row7Height = 5;
+  drawBorder(currentY, row7Height);
+  pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
+  pdf.text(`Invoice Number: -`, startX + 2, currentY + 3.5);
+  currentY += row7Height;
 
-  // Details in a grid
-  const col1X = 15;
-  const col2X = 75;
-  const col3X = 135;
+  const row8Height = 6;
+  const colWidth = labelWidth / 4;
+  pdf.rect(startX, currentY, labelWidth, row8Height);
+  pdf.line(startX + colWidth, currentY, startX + colWidth, currentY + row8Height * 2);
+  pdf.line(startX + colWidth * 2, currentY, startX + colWidth * 2, currentY + row8Height * 2);
+  pdf.line(startX + colWidth * 3, currentY, startX + colWidth * 3, currentY + row8Height * 2);
 
+  pdf.setFontSize(7);
   pdf.setFont('helvetica', 'bold');
-  pdf.text('Pieces:', col1X, yPos);
+  pdf.text('QTY', startX + 5, currentY + 4);
+  pdf.text('Weight', startX + colWidth + 2, currentY + 4);
+  pdf.text('Value', startX + colWidth * 2 + 2, currentY + 4);
+  pdf.text('Pieces', startX + colWidth * 3 + 2, currentY + 4);
+  currentY += row8Height;
+
+  const row9Height = 7;
+  pdf.rect(startX, currentY, labelWidth, row9Height);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(shipment.pieces.toString(), col1X + 20, yPos);
+  pdf.setFontSize(9);
+  pdf.text('1', startX + 5, currentY + 5);
+  pdf.text(shipment.weight.toString(), startX + colWidth + 2, currentY + 5);
+  pdf.text('-', startX + colWidth * 2 + 2, currentY + 5);
+  pdf.text(shipment.pieces.toString(), startX + colWidth * 3 + 5, currentY + 5);
+  currentY += row9Height;
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Weight:', col2X, yPos);
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(`${shipment.weight} kg`, col2X + 20, yPos);
+  // --- 8. Bottom Footer (Barcode & Contact) ---
+  // Calculate remaining space and use it efficiently
+  const remainingSpace = labelHeight + startY - currentY;
+  drawBorder(currentY, remainingSpace);
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Status:', col3X, yPos);
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(shipment.status.replace(/_/g, ' ').toUpperCase(), col3X + 20, yPos);
-
-  if (shipment.length && shipment.width && shipment.height) {
-    yPos += 7;
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Dimensions:', col1X, yPos);
-    pdf.setFont('helvetica', 'normal');
-    pdf.text(`${shipment.length} x ${shipment.width} x ${shipment.height} cm`, col1X + 25, yPos);
-  }
-
-  yPos += 7;
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Created:', col1X, yPos);
-  pdf.setFont('helvetica', 'normal');
-  const createdDate = new Date(shipment.createdAt).toLocaleDateString('en-GB');
-  pdf.text(createdDate, col1X + 20, yPos);
-
-  if (shipment.pickupDate) {
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Pickup:', col2X, yPos);
-    pdf.setFont('helvetica', 'normal');
-    const pickupDate = new Date(shipment.pickupDate).toLocaleDateString('en-GB');
-    pdf.text(pickupDate, col2X + 20, yPos);
-  }
-
-  if (shipment.deliveryDate) {
-    pdf.setFont('helvetica', 'bold');
-    pdf.text('Delivery:', col3X, yPos);
-    pdf.setFont('helvetica', 'normal');
-    const deliveryDate = new Date(shipment.deliveryDate).toLocaleDateString('en-GB');
-    pdf.text(deliveryDate, col3X + 20, yPos);
-  }
-
-  // Barcode at bottom for scanning
-  yPos = 150;
   try {
     const canvas2 = document.createElement('canvas');
     JsBarcode(canvas2, shipment.waybillNumber, {
       format: 'CODE128',
-      width: 3,
-      height: 80,
+      width: 2,
+      height: 30, // Reduced height significantly to avoid overlap
       displayValue: true,
-      fontSize: 14,
+      fontSize: 10, // Smaller font for barcode text
+      margin: 0,
+      textMargin: 0
     });
-    const barcodeDataUrl2 = canvas2.toDataURL('image/png');
-    pdf.addImage(barcodeDataUrl2, 'PNG', 40, yPos, 130, 40);
-  } catch (error) {
-    console.error('Failed to generate bottom barcode:', error);
-  }
+    const b2Url = canvas2.toDataURL('image/png');
+    // Position barcode in upper part of footer
+    // Image height roughly 12mm
+    pdf.addImage(b2Url, 'PNG', startX + 15, currentY + 2, 66, 12);
+  } catch (e) { /* ignore */ }
 
-  // Footer
-  yPos = 270;
-  pdf.setFontSize(8);
-  pdf.setTextColor(128, 128, 128);
-  pdf.text('PATHXPRESS FZCO | Dubai, UAE | +971-XX-XXX-XXXX | info@pathxpress.ae', 105, yPos, { align: 'center' });
-  pdf.text('For customer support, visit www.pathxpress.ae or contact us via WhatsApp', 105, yPos + 4, { align: 'center' });
+  pdf.setFontSize(6);
+  // Place text at very bottom
+  pdf.text('Support: support@pathxpress.net | +971 522803433', startX + labelWidth / 2, currentY + remainingSpace - 2, { align: 'center' });
 
-  // Save the PDF
+  // Save
   pdf.save(`waybill-${shipment.waybillNumber}.pdf`);
 }

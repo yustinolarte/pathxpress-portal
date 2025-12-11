@@ -163,6 +163,8 @@ export const adminPortalRouter = router({
         creditTerms: z.string().optional(),
         defaultCurrency: z.string().default('AED'),
         codAllowed: z.boolean().default(false).transform((v) => (v ? 1 : 0)),
+        codFeePercent: z.string().optional(),
+        codMinFee: z.string().optional(),
         notes: z.string().optional(),
       }),
     }))
@@ -179,6 +181,8 @@ export const adminPortalRouter = router({
 
       return client;
     }),
+
+
 
   // Create customer user for a client
   createCustomerUser: publicProcedure
@@ -1263,6 +1267,9 @@ export const rateRouter = router({
       clientId: z.number(),
       serviceType: z.enum(["DOM", "SDD"]),
       weight: z.number(),
+      length: z.number().optional(),
+      width: z.number().optional(),
+      height: z.number().optional(),
     }))
     .mutation(async ({ input }) => {
       const user = await verifyPortalToken(input.token);
@@ -1272,6 +1279,9 @@ export const rateRouter = router({
         clientId: input.clientId,
         serviceType: input.serviceType,
         weight: input.weight,
+        length: input.length,
+        width: input.width,
+        height: input.height,
       });
 
       return result;
@@ -1281,12 +1291,20 @@ export const rateRouter = router({
     .input(z.object({
       token: z.string(),
       codAmount: z.number(),
+      clientId: z.number().optional(),
     }))
     .mutation(async ({ input }) => {
       const user = await verifyPortalToken(input.token);
       if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
-      const fee = await calculateCODFee(input.codAmount);
+      let targetClientId = 0;
+      if (user.role === 'customer') {
+        targetClientId = user.clientId || 0;
+      } else if (input.clientId) {
+        targetClientId = input.clientId;
+      }
+
+      const fee = await calculateCODFee(input.codAmount, targetClientId);
       return { fee };
     }),
 
@@ -1335,6 +1353,38 @@ export const clientsRouter = router({
 
       await db.update(clientAccounts)
         .set({ manualRateTierId: input.tierId })
+        .where(eq(clientAccounts.id, input.clientId));
+
+      return { success: true };
+    }),
+
+  updateSettings: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+      codAllowed: z.boolean(),
+      codFeePercent: z.string().optional(),
+      codMinFee: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { clientAccounts } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      await db.update(clientAccounts)
+        .set({
+          codAllowed: input.codAllowed ? 1 : 0,
+          codFeePercent: input.codFeePercent || null,
+          codMinFee: input.codMinFee || null,
+        })
         .where(eq(clientAccounts.id, input.clientId));
 
       return { success: true };

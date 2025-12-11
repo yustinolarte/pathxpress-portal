@@ -7,11 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail } from 'lucide-react';
-
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen } from 'lucide-react';
 import { APP_LOGO } from '@/const';
-
-
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -30,11 +27,19 @@ export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { token, user, logout } = usePortalAuth();
   const [activeTab, setActiveTab] = useState('overview');
-  const [editTierDialogOpen, setEditTierDialogOpen] = useState(false);
-  const [editingTierClient, setEditingTierClient] = useState<any>(null);
+
+  // Client editing state
+  const [editClientDialogOpen, setEditClientDialogOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    tierId: 'auto',
+    codAllowed: false,
+    codFeePercent: '',
+    codMinFee: '',
+  });
+
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
   const [selectedShipmentId, setSelectedShipmentId] = useState<number | null>(null);
-  const [selectedTierId, setSelectedTierId] = useState<string>('');
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
@@ -70,16 +75,52 @@ export default function AdminDashboard() {
     { enabled: !!token }
   );
 
-  const updateClientTierMutation = trpc.portal.clients.updateTier.useMutation({
+  const updateTierMutation = trpc.portal.clients.updateTier.useMutation();
+  const updateSettingsMutation = trpc.portal.clients.updateSettings.useMutation({
     onSuccess: () => {
-      toast.success('Client rate tier updated successfully');
-      setEditTierDialogOpen(false);
+      toast.success('Client settings updated successfully');
+      setEditClientDialogOpen(false);
       refetchClients();
     },
     onError: (error) => {
-      toast.error(`Failed to update tier: ${error.message}`);
+      toast.error(`Failed to update settings: ${error.message}`);
     },
   });
+
+  const handleSaveClientSettings = async () => {
+    if (!editingClient) return;
+
+    try {
+      // Update Tier
+      await updateTierMutation.mutateAsync({
+        token: token || '',
+        clientId: editingClient.id,
+        tierId: editForm.tierId === 'auto' ? null : parseInt(editForm.tierId),
+      });
+
+      // Update Settings
+      await updateSettingsMutation.mutateAsync({
+        token: token || '',
+        clientId: editingClient.id,
+        codAllowed: editForm.codAllowed,
+        codFeePercent: editForm.codFeePercent,
+        codMinFee: editForm.codMinFee,
+      });
+    } catch (error) {
+      // handled by onError
+    }
+  };
+
+  useEffect(() => {
+    if (editingClient) {
+      setEditForm({
+        tierId: editingClient.manualRateTierId ? editingClient.manualRateTierId.toString() : 'auto',
+        codAllowed: !!editingClient.codAllowed,
+        codFeePercent: editingClient.codFeePercent || '',
+        codMinFee: editingClient.codMinFee || '',
+      });
+    }
+  }, [editingClient]);
 
   const createClientMutation = trpc.portal.admin.createClient.useMutation({
     onSuccess: () => {
@@ -197,6 +238,7 @@ export default function AdminDashboard() {
     { icon: FileText, label: 'Reports', value: 'reports' },
     { icon: MessageSquare, label: 'Requests', value: 'requests' },
     { icon: Mail, label: 'Messages', value: 'messages' },
+    { icon: BookOpen, label: 'Guide', value: 'guide' },
   ];
 
   return (
@@ -308,11 +350,11 @@ export default function AdminDashboard() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                  setEditingTierClient(client);
-                                  setEditTierDialogOpen(true);
+                                  setEditingClient(client);
+                                  setEditClientDialogOpen(true);
                                 }}
                               >
-                                Set Tier
+                                Edit Settings
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -601,23 +643,83 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Guide Tab */}
+          <TabsContent value="guide" className="space-y-4">
+            <Card className="glass-strong border-blue-500/20">
+              <CardHeader>
+                <CardTitle>Waybill Guide</CardTitle>
+                <CardDescription>Instructions for printing and attaching waybills</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-muted/30 p-4 rounded-lg border border-border/50">
+                  <h3 className="text-lg font-medium mb-2">Printing Specifications</h3>
+                  <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
+                    <li>Standard Size: 100mm x 150mm (4x6 inches) thermal label.</li>
+                    <li>Ensure specific settings: No Scaling/100% Scale.</li>
+                    <li>Resolution: 203 DPI or higher recommended.</li>
+                  </ul>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h3 className="text-lg font-medium mb-3">Shipment Label Layout</h3>
+                    <div className="border border-border rounded-lg overflow-hidden relative aspect-[100/150] bg-white shadow-sm flex items-center justify-center">
+                      <div className="text-center text-gray-400">
+                        <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p className="text-xs">Preview of generated PDF</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium">Key Elements</h3>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center text-xs font-bold shrink-0">1</div>
+                        <div>
+                          <p className="font-medium text-sm">Waybill Number (Barcode)</p>
+                          <p className="text-xs text-muted-foreground">Used for scanning and tracking via App and Sortation.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center text-xs font-bold shrink-0">2</div>
+                        <div>
+                          <p className="font-medium text-sm">COD Amount</p>
+                          <p className="text-xs text-muted-foreground">Clearly visible for drivers to collect payment.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center text-xs font-bold shrink-0">3</div>
+                        <div>
+                          <p className="font-medium text-sm">Routing Code</p>
+                          <p className="text-xs text-muted-foreground">Destination city/area code for efficient sorting.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
 
-        {/* Edit Tier Dialog */}
-        <Dialog open={editTierDialogOpen} onOpenChange={setEditTierDialogOpen}>
+        {/* Edit Client Settings Dialog */}
+        <Dialog open={editClientDialogOpen} onOpenChange={setEditClientDialogOpen}>
           <DialogContent className="glass-strong">
             <DialogHeader>
-              <DialogTitle>Set Rate Tier for {editingTierClient?.companyName}</DialogTitle>
+              <DialogTitle>Client Settings: {editingClient?.companyName}</DialogTitle>
               <DialogDescription>
-                Assign a manual rate tier to override automatic volume-based pricing.
+                Configure rate tiers and COD preferences.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-6 py-4">
+
+              {/* Rate Tier Section */}
               <div className="space-y-2">
                 <Label>Rate Tier</Label>
                 <Select
-                  value={selectedTierId}
-                  onValueChange={setSelectedTierId}
+                  value={editForm.tierId}
+                  onValueChange={(val) => setEditForm({ ...editForm, tierId: val })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select tier or use automatic" />
@@ -631,24 +733,58 @@ export default function AdminDashboard() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Overrides the automatic volume-based tier assignment.
+                </p>
               </div>
+
+              <div className="h-px bg-border/50" />
+
+              {/* COD Settings Section */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="editCodAllowed"
+                    checked={editForm.codAllowed}
+                    onCheckedChange={(checked) => setEditForm({ ...editForm, codAllowed: checked as boolean })}
+                  />
+                  <Label htmlFor="editCodAllowed">Allow COD (Cash on Delivery)</Label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="editCodPercent">COD Fee Percentage (%)</Label>
+                    <Input
+                      id="editCodPercent"
+                      value={editForm.codFeePercent}
+                      onChange={(e) => setEditForm({ ...editForm, codFeePercent: e.target.value })}
+                      placeholder="Default: 3.3"
+                      disabled={!editForm.codAllowed}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="editCodMin">Min COD Fee (AED)</Label>
+                    <Input
+                      id="editCodMin"
+                      value={editForm.codMinFee}
+                      onChange={(e) => setEditForm({ ...editForm, codMinFee: e.target.value })}
+                      placeholder="Default: 2.0"
+                      disabled={!editForm.codAllowed}
+                    />
+                  </div>
+                </div>
+              </div>
+
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditTierDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setEditClientDialogOpen(false)}>
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  if (editingTierClient) {
-                    updateClientTierMutation.mutate({
-                      token: token || '',
-                      clientId: editingTierClient.id,
-                      tierId: selectedTierId === 'auto' ? null : parseInt(selectedTierId),
-                    });
-                  }
-                }}
+                onClick={handleSaveClientSettings}
+                disabled={updateSettingsMutation.isPending || updateTierMutation.isPending}
               >
-                Save
+                {(updateSettingsMutation.isPending || updateTierMutation.isPending) ? 'Saving...' : 'Save Settings'}
               </Button>
             </DialogFooter>
           </DialogContent>

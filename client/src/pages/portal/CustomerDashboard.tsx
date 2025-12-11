@@ -22,6 +22,7 @@ import CustomerInvoices from '@/components/CustomerInvoices';
 import CustomerCODPanel from '@/components/CustomerCODPanel';
 import CustomerRateCalculator from '@/components/CustomerRateCalculator';
 import CustomerReports from '@/components/CustomerReports';
+import BulkShipmentDialog from '@/components/BulkShipmentDialog';
 
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
@@ -251,7 +252,8 @@ export default function CustomerDashboard() {
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-4 mt-0">
             {/* Actions */}
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <BulkShipmentDialog token={token} onSuccess={refetch} />
               <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
@@ -443,7 +445,29 @@ export default function CustomerDashboard() {
 // Create Shipment Form Component
 function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: () => void }) {
   const { user } = usePortalAuth();
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    shipperName: string;
+    shipperAddress: string;
+    shipperCity: string;
+    shipperCountry: string;
+    shipperPhone: string;
+    customerName: string;
+    customerPhone: string;
+    address: string;
+    city: string;
+    emirate: string;
+    destinationCountry: string;
+    pieces: number;
+    weight: string; // Changed to string for better UX (no sticky 0)
+    length: string; // Changed to string
+    width: string;  // Changed to string
+    height: string; // Changed to string
+    serviceType: string;
+    specialInstructions: string;
+    codRequired: number;
+    codAmount: string;
+    codCurrency: string;
+  }>({
     shipperName: '',
     shipperAddress: '',
     shipperCity: '',
@@ -456,10 +480,10 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     emirate: '',
     destinationCountry: 'UAE',
     pieces: 1,
-    weight: 0,
-    length: 0,
-    width: 0,
-    height: 0,
+    weight: '', // Default to empty string
+    length: '',
+    width: '',
+    height: '',
     serviceType: 'DOM',
     specialInstructions: '',
     codRequired: 0,
@@ -557,17 +581,25 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     },
   });
 
-  // Auto-calculate rate when weight or service type changes
+  // Auto-calculate rate when weight, dimensions or service type changes
   useEffect(() => {
-    if (formData.weight > 0 && user?.clientId) {
+    const weightVal = parseFloat(formData.weight);
+    const lengthVal = parseFloat(formData.length);
+    const widthVal = parseFloat(formData.width);
+    const heightVal = parseFloat(formData.height);
+
+    if (!isNaN(weightVal) && weightVal > 0 && user?.clientId) {
       calculateRateMutation.mutate({
         token,
         clientId: user.clientId,
         serviceType: formData.serviceType as 'DOM' | 'SDD',
-        weight: formData.weight,
+        weight: weightVal,
+        length: !isNaN(lengthVal) ? lengthVal : undefined,
+        width: !isNaN(widthVal) ? widthVal : undefined,
+        height: !isNaN(heightVal) ? heightVal : undefined,
       });
     }
-  }, [formData.weight, formData.serviceType]);
+  }, [formData.weight, formData.length, formData.width, formData.height, formData.serviceType]);
 
   // Auto-calculate COD fee when COD amount changes
   useEffect(() => {
@@ -596,21 +628,52 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    createMutation.mutate({ token, shipment: formData });
+
+    // Validate weight
+    const weightVal = parseFloat(formData.weight);
+    if (isNaN(weightVal) || weightVal <= 0) {
+      toast.error('Please enter a valid weight greater than 0');
+      return;
+    }
+
+    createMutation.mutate({
+      token,
+      shipment: {
+        ...formData,
+        weight: weightVal,
+        length: parseFloat(formData.length) || 0,
+        width: parseFloat(formData.width) || 0,
+        height: parseFloat(formData.height) || 0,
+      }
+    });
+  };
+
+  const applyPreset = (preset: 'small' | 'medium' | 'large') => {
+    if (preset === 'small') {
+      setFormData({ ...formData, weight: '0.5', length: '10', width: '10', height: '10' });
+    } else if (preset === 'medium') {
+      setFormData({ ...formData, weight: '2.0', length: '30', width: '20', height: '10' });
+    } else if (preset === 'large') {
+      setFormData({ ...formData, weight: '5.0', length: '40', width: '30', height: '20' });
+    }
+    toast.info(`Applied ${preset} package preset`);
   };
 
   const canSaveShipper = formData.shipperName && formData.shipperAddress && formData.shipperCity && formData.shipperPhone;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        {/* Shipper Information */}
-        <div className="col-span-2 flex items-center justify-between">
-          <h3 className="font-semibold">Shipper Information</h3>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* SECTION 1: SHIPPER */}
+      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
+        <div className="flex items-center justify-between border-b pb-2">
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <LayoutDashboard className="h-5 w-5 text-primary" />
+            Shipper Details
+          </h3>
           <div className="flex gap-2">
             {savedShippers.length > 0 && (
               <Select onValueChange={handleLoadShipper}>
-                <SelectTrigger className="w-[200px]">
+                <SelectTrigger className="w-[180px] h-8 text-xs">
                   <SelectValue placeholder="Load saved shipper" />
                 </SelectTrigger>
                 <SelectContent>
@@ -628,10 +691,11 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="h-8 text-xs"
                   disabled={!canSaveShipper}
                   title={!canSaveShipper ? "Fill in shipper information first" : "Save this shipper for future use"}
                 >
-                  <Save className="mr-2 h-4 w-4" />
+                  <Save className="mr-2 h-3 w-3" />
                   Save Shipper
                 </Button>
               </DialogTrigger>
@@ -651,11 +715,12 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                       placeholder="e.g., Main Warehouse, Dubai Office"
                     />
                   </div>
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p><strong>Name:</strong> {formData.shipperName}</p>
-                    <p><strong>Address:</strong> {formData.shipperAddress}</p>
-                    <p><strong>City:</strong> {formData.shipperCity}</p>
-                    <p><strong>Phone:</strong> {formData.shipperPhone}</p>
+                  <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-3 rounded">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><span className="font-medium">Name:</span> {formData.shipperName}</div>
+                      <div><span className="font-medium">Phone:</span> {formData.shipperPhone}</div>
+                      <div className="col-span-2"><span className="font-medium">Address:</span> {formData.shipperAddress}, {formData.shipperCity}</div>
+                    </div>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
@@ -673,259 +738,294 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
 
         {/* Saved Shippers Management */}
         {savedShippers.length > 0 && (
-          <div className="col-span-2">
-            <details className="text-sm">
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                Manage saved shippers ({savedShippers.length})
-              </summary>
-              <div className="mt-2 space-y-2">
-                {savedShippers.map((shipper) => (
-                  <div key={shipper.id} className="flex items-center justify-between p-2 bg-muted/30 rounded">
-                    <div>
-                      <p className="font-medium">{shipper.nickname}</p>
-                      <p className="text-xs text-muted-foreground">{shipper.shipperName} - {shipper.shipperCity}</p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteShipper(shipper.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      Delete
-                    </Button>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-muted-foreground hover:text-primary transition-colors">
+              Manage saved shippers ({savedShippers.length})
+            </summary>
+            <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-2">
+              {savedShippers.map((shipper) => (
+                <div key={shipper.id} className="flex items-center justify-between p-2 bg-muted/30 rounded border border-transparent hover:border-border transition-colors">
+                  <div>
+                    <p className="font-medium">{shipper.nickname}</p>
+                    <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">{shipper.shipperName} - {shipper.shipperCity}</p>
                   </div>
-                ))}
-              </div>
-            </details>
-          </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive hover:text-destructive/80"
+                    onClick={() => handleDeleteShipper(shipper.id)}
+                  >
+                    <LogOut className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </details>
         )}
 
-        <div>
-          <Label>Shipper Name *</Label>
-          <Input
-            value={formData.shipperName}
-            onChange={(e) => setFormData({ ...formData, shipperName: e.target.value })}
-            required
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Shipper Name *</Label>
+            <Input
+              value={formData.shipperName}
+              onChange={(e) => setFormData({ ...formData, shipperName: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Shipper Phone *</Label>
+            <Input
+              value={formData.shipperPhone}
+              onChange={(e) => setFormData({ ...formData, shipperPhone: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
+          <div className="col-span-2 space-y-2">
+            <Label>Shipper Address *</Label>
+            <Input
+              value={formData.shipperAddress}
+              onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+              placeholder="Building, Street, Area"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>City *</Label>
+            <Input
+              value={formData.shipperCity}
+              onChange={(e) => setFormData({ ...formData, shipperCity: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Country *</Label>
+            <Input
+              value={formData.shipperCountry}
+              onChange={(e) => setFormData({ ...formData, shipperCountry: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
         </div>
-        <div>
-          <Label>Shipper Phone *</Label>
-          <Input
-            value={formData.shipperPhone}
-            onChange={(e) => setFormData({ ...formData, shipperPhone: e.target.value })}
-            required
-          />
+      </div>
+
+      {/* SECTION 2: CONSIGNEE */}
+      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
+        <div className="border-b pb-2">
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <Package className="h-5 w-5 text-primary" />
+            Consignee (Receiver)
+          </h3>
         </div>
-        <div className="col-span-2">
-          <Label>Shipper Address *</Label>
-          <Input
-            value={formData.shipperAddress}
-            onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
-            required
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Customer Name *</Label>
+            <Input
+              value={formData.customerName}
+              onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Customer Phone *</Label>
+            <Input
+              value={formData.customerPhone}
+              onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
+          <div className="col-span-2 space-y-2">
+            <Label>Delivery Address *</Label>
+            <Input
+              value={formData.address}
+              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+              placeholder="Building, Street, Area"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>City *</Label>
+            <Input
+              value={formData.city}
+              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Emirate (if UAE)</Label>
+            <Select value={formData.emirate} onValueChange={(value) => setFormData({ ...formData, emirate: value })}>
+              <SelectTrigger className="bg-background/50 focus:bg-background transition-colors">
+                <SelectValue placeholder="Select emirate" />
+              </SelectTrigger>
+              <SelectContent>
+                {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain'].map(e => (
+                  <SelectItem key={e} value={e}>{e}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div>
-          <Label>Shipper City *</Label>
-          <Input
-            value={formData.shipperCity}
-            onChange={(e) => setFormData({ ...formData, shipperCity: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Shipper Country *</Label>
-          <Input
-            value={formData.shipperCountry}
-            onChange={(e) => setFormData({ ...formData, shipperCountry: e.target.value })}
-            required
-          />
+      </div>
+
+      {/* SECTION 3: PACKAGE & SERVICE */}
+      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
+        <div className="border-b pb-2 flex justify-between items-center">
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <Calculator className="h-5 w-5 text-primary" />
+            Shipment Details
+          </h3>
+          <div className="flex gap-2 text-xs items-center">
+            <span className="text-muted-foreground mr-1">Presets:</span>
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => applyPreset('small')}>Small</Button>
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => applyPreset('medium')}>Medium</Button>
+            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => applyPreset('large')}>Large</Button>
+          </div>
         </div>
 
-        {/* Consignee Information */}
-        <div className="col-span-2 mt-4">
-          <h3 className="font-semibold mb-2">Consignee Information</h3>
-        </div>
-        <div>
-          <Label>Customer Name *</Label>
-          <Input
-            value={formData.customerName}
-            onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Customer Phone *</Label>
-          <Input
-            value={formData.customerPhone}
-            onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-            required
-          />
-        </div>
-        <div className="col-span-2">
-          <Label>Delivery Address *</Label>
-          <Input
-            value={formData.address}
-            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>City *</Label>
-          <Input
-            value={formData.city}
-            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-            required
-          />
-        </div>
-        <div>
-          <Label>Emirate (if UAE)</Label>
-          <Select value={formData.emirate} onValueChange={(value) => setFormData({ ...formData, emirate: value })}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select emirate" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Dubai">Dubai</SelectItem>
-              <SelectItem value="Abu Dhabi">Abu Dhabi</SelectItem>
-              <SelectItem value="Sharjah">Sharjah</SelectItem>
-              <SelectItem value="Ajman">Ajman</SelectItem>
-              <SelectItem value="Ras Al Khaimah">Ras Al Khaimah</SelectItem>
-              <SelectItem value="Fujairah">Fujairah</SelectItem>
-              <SelectItem value="Umm Al Quwain">Umm Al Quwain</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2 space-y-2">
+            <Label>Service Type *</Label>
+            <Select value={formData.serviceType} onValueChange={(value) => setFormData({ ...formData, serviceType: value })}>
+              <SelectTrigger className="bg-background/50 focus:bg-background transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DOM">Domestic Express (DOM) - Next Business Day</SelectItem>
+                <SelectItem value="SDD">Same-Day Delivery (SDD) - City Limits</SelectItem>
+              </SelectContent>
+            </Select>
+            {formData.serviceType === 'SDD' && (
+              <p className="text-xs text-yellow-500 flex items-center gap-1 font-medium bg-yellow-500/10 p-2 rounded">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 block"></span>
+                Cut-off: 14:00 | Min 4 shipments/collection
+              </p>
+            )}
+          </div>
 
-        {/* Shipment Details */}
-        <div className="col-span-2 mt-4">
-          <h3 className="font-semibold mb-2">Shipment Details</h3>
-        </div>
-        <div>
-          <Label>Service Type *</Label>
-          <Select value={formData.serviceType} onValueChange={(value) => setFormData({ ...formData, serviceType: value })}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DOM">Domestic Express (DOM) - Next Business Day</SelectItem>
-              <SelectItem value="SDD">Same-Day Delivery (SDD) - City Limits</SelectItem>
-            </SelectContent>
-          </Select>
-          {formData.serviceType === 'SDD' && (
-            <p className="text-xs text-yellow-400 mt-1">Cut-off: 14:00 | Min 4 shipments/collection</p>
-          )}
-        </div>
-        <div className="col-span-2">
-          <Label>Weight (kg) *</Label>
-          <Input
-            type="number"
-            step="0.1"
-            value={formData.weight}
-            onChange={(e) => setFormData({ ...formData, weight: parseFloat(e.target.value) || 0 })}
-            required
-          />
+          <div className="space-y-2">
+            <Label>Weight (kg) *</Label>
+            <div className="relative">
+              <Input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={formData.weight}
+                onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                placeholder="0.0"
+                required
+                className="bg-background/50 focus:bg-background transition-colors pr-8 font-mono"
+              />
+              <span className="absolute right-3 top-2.5 text-xs text-muted-foreground">kg</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dimensions (L × W × H) cm</Label>
+            <div className="flex gap-2">
+              <Input className="bg-background/50 focus:bg-background transition-colors text-center px-1 font-mono" type="number" value={formData.length} onChange={(e) => setFormData({ ...formData, length: e.target.value })} placeholder="L" title="Length" />
+              <Input className="bg-background/50 focus:bg-background transition-colors text-center px-1 font-mono" type="number" value={formData.width} onChange={(e) => setFormData({ ...formData, width: e.target.value })} placeholder="W" title="Width" />
+              <Input className="bg-background/50 focus:bg-background transition-colors text-center px-1 font-mono" type="number" value={formData.height} onChange={(e) => setFormData({ ...formData, height: e.target.value })} placeholder="H" title="Height" />
+            </div>
+          </div>
+
           {calculatedRate && (
-            <div className="mt-2 p-3 bg-green-500/10 rounded-lg border border-green-500/30">
-              <p className="text-sm font-semibold text-green-400">Estimated Shipping Cost</p>
-              <div className="flex justify-between items-center mt-1">
-                <span className="text-xs text-muted-foreground">Base Rate (0-{calculatedRate.appliedTier?.maxWeight || 5}kg):</span>
-                <span className="text-sm font-medium">{calculatedRate.baseRate.toFixed(2)} AED</span>
+            <div className="col-span-2 mt-1 p-3 bg-primary/10 rounded-lg border border-primary/20 flex justify-between items-center shadow-inner">
+              <div>
+                <p className="text-sm font-semibold text-primary">Estimated Cost</p>
+                {calculatedRate.chargeableWeight && calculatedRate.chargeableWeight > parseFloat(formData.weight || '0') && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Volumetric Weight: <span className="font-medium text-foreground">{calculatedRate.chargeableWeight.toFixed(2)} kg</span> applied
+                  </p>
+                )}
               </div>
-              {calculatedRate.additionalKgCharge > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Additional Weight:</span>
-                  <span className="text-sm font-medium">+{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center mt-2 pt-2 border-t border-green-500/30">
-                <span className="text-sm font-semibold">Total Shipping:</span>
-                <span className="text-lg font-bold text-green-400">{calculatedRate.totalRate.toFixed(2)} AED</span>
-              </div>
-              {calculatedCODFee > 0 && (
-                <div className="flex justify-between items-center mt-1">
-                  <span className="text-xs text-muted-foreground">COD Fee:</span>
-                  <span className="text-sm font-medium text-orange-400">+{calculatedCODFee.toFixed(2)} AED</span>
-                </div>
-              )}
+              <div className="text-xl font-bold text-primary">{calculatedRate.totalRate.toFixed(2)} AED</div>
             </div>
           )}
-        </div>
-        <div>
-          <Label>Length (cm)</Label>
-          <Input
-            type="number"
-            value={formData.length}
-            onChange={(e) => setFormData({ ...formData, length: parseFloat(e.target.value) || 0 })}
-            placeholder="Optional"
-          />
-        </div>
-        <div>
-          <Label>Width (cm)</Label>
-          <Input
-            type="number"
-            value={formData.width}
-            onChange={(e) => setFormData({ ...formData, width: parseFloat(e.target.value) || 0 })}
-            placeholder="Optional"
-          />
-        </div>
-        <div>
-          <Label>Height (cm)</Label>
-          <Input
-            type="number"
-            value={formData.height}
-            onChange={(e) => setFormData({ ...formData, height: parseFloat(e.target.value) || 0 })}
-            placeholder="Optional"
-          />
-        </div>
-        <div className="col-span-2">
-          <Label>Special Instructions</Label>
-          <Textarea
-            value={formData.specialInstructions}
-            onChange={(e) => setFormData({ ...formData, specialInstructions: e.target.value })}
-            placeholder="Any special handling instructions..."
-            rows={3}
-          />
-        </div>
 
-        {/* COD Section */}
-        <div className="col-span-2 mt-4">
-          <h3 className="font-semibold mb-2">Cash on Delivery (COD)</h3>
+          <div className="col-span-2 space-y-2">
+            <Label>Special Instructions</Label>
+            <Textarea
+              value={formData.specialInstructions}
+              onChange={(e) => setFormData({ ...formData, specialInstructions: e.target.value })}
+              placeholder="Any special handling instructions..."
+              rows={2}
+              className="bg-background/50 focus:bg-background transition-colors resize-none"
+            />
+          </div>
         </div>
-        <div className="col-span-2">
-          <div className="flex items-center space-x-2">
+      </div>
+
+      {/* SECTION 4: PAYMENT */}
+      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
+        <div className="border-b pb-2">
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <DollarSign className="h-5 w-5 text-green-600" />
+            Payment (COD)
+          </h3>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 border p-3 rounded bg-background/50 hover:bg-background transition-colors cursor-pointer" onClick={() => {
+            const checked = formData.codRequired !== 1;
+            setFormData({ ...formData, codRequired: checked ? 1 : 0, codAmount: checked ? formData.codAmount : '' });
+          }}>
             <Checkbox
               id="codRequired"
               checked={formData.codRequired === 1}
               onCheckedChange={(checked) => setFormData({ ...formData, codRequired: checked ? 1 : 0, codAmount: checked ? formData.codAmount : '' })}
             />
-            <Label htmlFor="codRequired" className="cursor-pointer">
-              This shipment requires Cash on Delivery (COD)
+            <Label htmlFor="codRequired" className="cursor-pointer flex-1 user-select-none">
+              Collect Cash on Delivery (COD)
             </Label>
           </div>
+
+          {formData.codRequired === 1 && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+              <Label>COD Amount (AED) *</Label>
+              <div className="flex gap-4 items-center mt-1.5">
+                <div className="relative flex-1">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.codAmount}
+                    onChange={(e) => setFormData({ ...formData, codAmount: e.target.value })}
+                    placeholder="0.00"
+                    required
+                    className="text-lg font-medium pl-8 font-mono bg-background/50 focus:bg-background transition-colors"
+                  />
+                  <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                </div>
+                {calculatedCODFee > 0 && (
+                  <div className="text-sm border-l pl-4">
+                    <span className="text-muted-foreground block text-xs">COD Fee</span>
+                    <span className="font-semibold text-orange-500">{calculatedCODFee.toFixed(2)} AED</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-        {formData.codRequired === 1 && (
-          <div className="col-span-2">
-            <Label>COD Amount to Collect *</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={formData.codAmount}
-              onChange={(e) => setFormData({ ...formData, codAmount: e.target.value })}
-              placeholder="Enter amount to collect from customer"
-              required
-            />
-            {calculatedCODFee > 0 && (
-              <p className="text-xs text-orange-400 mt-1">
-                COD Fee (3.3%, min 2 AED): {calculatedCODFee.toFixed(2)} AED
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
-      <div className="flex justify-end gap-2 pt-4">
-        <Button type="submit" disabled={createMutation.isPending}>
-          {createMutation.isPending ? 'Creating...' : 'Create Shipment'}
+      <div className="sticky bottom-0 bg-background/95 backdrop-blur py-4 border-t flex justify-end gap-3 mt-4 -mx-6 px-6 z-10">
+        <Button type="submit" disabled={createMutation.isPending} size="lg" className="w-full sm:w-auto shadow-lg hover:shadow-primary/25 transition-all">
+          {createMutation.isPending ? (
+            <>
+              <span className="animate-spin mr-2">⏳</span> Creating Shipment...
+            </>
+          ) : (
+            <>
+              <Plus className="mr-2 h-4 w-4" /> Create Shipment
+            </>
+          )}
         </Button>
       </div>
     </form>
