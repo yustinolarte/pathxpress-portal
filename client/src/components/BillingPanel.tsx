@@ -23,7 +23,7 @@ export default function BillingPanel() {
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
-  
+
   // Filter states
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
@@ -34,31 +34,31 @@ export default function BillingPanel() {
     { token: token || '' },
     { enabled: !!token }
   );
-  
+
   // Filter invoices based on selected filters
   const invoices = useMemo(() => {
     if (!allInvoices) return [];
-    
+
     return allInvoices.filter(invoice => {
       // Filter by client
       if (filterClientId !== 'all' && invoice.clientId.toString() !== filterClientId) {
         return false;
       }
-      
+
       // Filter by date range
       if (filterDateFrom) {
         const invoiceDate = new Date(invoice.issueDate);
         const fromDate = new Date(filterDateFrom);
         if (invoiceDate < fromDate) return false;
       }
-      
+
       if (filterDateTo) {
         const invoiceDate = new Date(invoice.issueDate);
         const toDate = new Date(filterDateTo);
         toDate.setHours(23, 59, 59, 999); // Include the entire day
         if (invoiceDate > toDate) return false;
       }
-      
+
       return true;
     });
   }, [allInvoices, filterClientId, filterDateFrom, filterDateTo]);
@@ -99,21 +99,21 @@ export default function BillingPanel() {
   const handleDownloadPDF = async (invoice: any) => {
     try {
       if (!token) return;
-      
+
       // Fetch invoice details
       const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
       const result = await response.json();
-      
+
       if (!result.result?.data?.json) {
         toast.error('Failed to load invoice details');
         return;
       }
-      
+
       const details = result.result.data.json;
-      
+
       // Get client info
       const client = clients?.find((c: any) => c.id === invoice.clientId);
-      
+
       // Prepare invoice data for PDF
       const invoiceData = {
         id: details.invoice.id,
@@ -143,7 +143,7 @@ export default function BillingPanel() {
           amount: item.total,
         })),
       };
-      
+
       generateInvoicePDF(invoiceData);
       toast.success('Invoice PDF downloaded');
     } catch (error) {
@@ -192,6 +192,61 @@ export default function BillingPanel() {
     return `${currency} ${parseFloat(amount).toFixed(2)}`;
   };
 
+  const handleExportToExcel = () => {
+    if (!invoices || invoices.length === 0) {
+      toast.error('No invoices to export');
+      return;
+    }
+
+    // CSV Header
+    const headers = [
+      'Invoice Number',
+      'Client',
+      'Period From',
+      'Period To',
+      'Issue Date',
+      'Due Date',
+      'Total Amount',
+      'Currency',
+      'Status',
+      'Adjustment Notes'
+    ];
+
+    // CSV Rows
+    const rows = invoices.map(inv => {
+      const clientName = clients?.find(c => c.id === inv.clientId)?.companyName || `Client #${inv.clientId}`;
+
+      // Escape fields that might contain commas
+      const escape = (str: string | null | undefined) => {
+        if (!str) return '';
+        return `"${str.toString().replace(/"/g, '""')}"`;
+      };
+
+      return [
+        escape(inv.invoiceNumber),
+        escape(clientName),
+        escape(formatDate(inv.periodFrom)),
+        escape(formatDate(inv.periodTo)),
+        escape(formatDate(inv.issueDate)),
+        escape(formatDate(inv.dueDate)),
+        inv.total,
+        inv.currency,
+        inv.status,
+        escape(inv.adjustmentNotes)
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `invoices_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (isLoading) {
     return <div className="text-center py-8">Loading invoices...</div>;
   }
@@ -204,7 +259,7 @@ export default function BillingPanel() {
           <h2 className="text-2xl font-bold">Billing & Invoices</h2>
           <p className="text-muted-foreground">Manage client invoices and payments</p>
         </div>
-        
+
         <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-blue-600 hover:bg-blue-700">
@@ -219,7 +274,7 @@ export default function BillingPanel() {
                 Create an invoice for a client based on shipments in a date range
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label>Client</Label>
@@ -256,8 +311,8 @@ export default function BillingPanel() {
                 </div>
               </div>
 
-              <Button 
-                onClick={handleGenerateInvoice} 
+              <Button
+                onClick={handleGenerateInvoice}
                 className="w-full"
                 disabled={generateInvoice.isPending}
               >
@@ -304,9 +359,15 @@ export default function BillingPanel() {
 
       {/* Invoices Table */}
       <Card className="glass-strong border-blue-500/20">
-        <CardHeader>
-          <CardTitle>All Invoices</CardTitle>
-          <CardDescription>View and manage all client invoices</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>All Invoices</CardTitle>
+            <CardDescription>View and manage all client invoices</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleExportToExcel}>
+            <Download className="w-4 h-4 mr-2" />
+            Export to Excel
+          </Button>
         </CardHeader>
         <CardContent>
           {/* Filters */}
@@ -329,7 +390,7 @@ export default function BillingPanel() {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="flex-1 min-w-[180px]">
               <Label htmlFor="filterDateFrom" className="text-sm font-medium mb-2 block">
                 From Date
@@ -341,7 +402,7 @@ export default function BillingPanel() {
                 onChange={(e) => setFilterDateFrom(e.target.value)}
               />
             </div>
-            
+
             <div className="flex-1 min-w-[180px]">
               <Label htmlFor="filterDateTo" className="text-sm font-medium mb-2 block">
                 To Date
@@ -353,7 +414,7 @@ export default function BillingPanel() {
                 onChange={(e) => setFilterDateTo(e.target.value)}
               />
             </div>
-            
+
             {(filterClientId !== 'all' || filterDateFrom || filterDateTo) && (
               <div className="flex items-end">
                 <Button
@@ -369,7 +430,7 @@ export default function BillingPanel() {
               </div>
             )}
           </div>
-          
+
           {!invoices || invoices.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -416,8 +477,8 @@ export default function BillingPanel() {
                             <SelectItem value="overdue">Overdue</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => {
                             setSelectedInvoice(invoice);
@@ -427,8 +488,8 @@ export default function BillingPanel() {
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => handleDownloadPDF(invoice)}
                           title="Download PDF"
@@ -444,7 +505,7 @@ export default function BillingPanel() {
           )}
         </CardContent>
       </Card>
-      
+
       {/* Edit Invoice Dialog */}
       {selectedInvoice && (
         <EditInvoiceDialog

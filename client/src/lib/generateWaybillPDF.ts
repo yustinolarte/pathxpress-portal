@@ -16,10 +16,10 @@ interface ShipmentData {
   emirate?: string | null;
   destinationCountry: string;
   pieces: number;
-  weight: number;
-  length?: number | null;
-  width?: number | null;
-  height?: number | null;
+  weight: number | string;
+  length?: number | string | null;
+  width?: number | string | null;
+  height?: number | string | null;
   serviceType: string;
   status: string;
   createdAt: Date | string;

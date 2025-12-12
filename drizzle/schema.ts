@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -159,11 +159,11 @@ export const orders = mysqlTable("orders", {
 
   // Shipment details
   pieces: int("pieces").notNull(),
-  weight: int("weight").notNull(), // Actual weight in kg
-  volumetricWeight: int("volumetricWeight"), // Calculated volumetric weight
-  length: int("length"),
-  width: int("width"),
-  height: int("height"),
+  weight: decimal("weight", { precision: 10, scale: 2 }).notNull(), // Actual weight in kg
+  volumetricWeight: decimal("volumetricWeight", { precision: 10, scale: 2 }), // Calculated volumetric weight
+  length: decimal("length", { precision: 10, scale: 2 }),
+  width: decimal("width", { precision: 10, scale: 2 }),
+  height: decimal("height", { precision: 10, scale: 2 }),
   serviceType: varchar("serviceType", { length: 100 }).notNull(), // standard, express, same-day
   specialInstructions: text("specialInstructions"),
 
