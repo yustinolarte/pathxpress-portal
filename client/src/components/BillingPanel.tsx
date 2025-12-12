@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useEffect } from 'react';
 
 export default function BillingPanel() {
   const { token } = usePortalAuth();
@@ -23,6 +25,8 @@ export default function BillingPanel() {
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [selectedShipmentIds, setSelectedShipmentIds] = useState<number[]>([]);
+  const [selectAll, setSelectAll] = useState(true);
 
   // Filter states
   const [filterClientId, setFilterClientId] = useState<string>('all');
@@ -83,6 +87,41 @@ export default function BillingPanel() {
       toast.error(error.message || 'Failed to generate invoice');
     },
   });
+
+  // Get billable shipments
+  const { data: billableShipments, isLoading: isLoadingBillable } = trpc.portal.billing.getBillableShipments.useQuery(
+    {
+      token: token || '',
+      clientId: selectedClient || 0,
+      periodStart,
+      periodEnd
+    },
+    { enabled: !!token && !!selectedClient && !!periodStart && !!periodEnd && generateDialogOpen }
+  );
+
+  useEffect(() => {
+    if (billableShipments) {
+      setSelectedShipmentIds(billableShipments.map((s: any) => s.id));
+      setSelectAll(true);
+    } else {
+      setSelectedShipmentIds([]);
+    }
+  }, [billableShipments]);
+
+  const toggleShipmentSelection = (id: number) => {
+    setSelectedShipmentIds(prev =>
+      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    setSelectAll(checked);
+    if (checked && billableShipments) {
+      setSelectedShipmentIds(billableShipments.map((s: any) => s.id));
+    } else {
+      setSelectedShipmentIds([]);
+    }
+  };
 
   // Update invoice status mutation
   const updateStatus = trpc.portal.billing.updateInvoiceStatus.useMutation({
@@ -158,11 +197,14 @@ export default function BillingPanel() {
       return;
     }
 
+
+
     generateInvoice.mutate({
       token,
       clientId: selectedClient,
       periodStart,
       periodEnd,
+      shipmentIds: selectedShipmentIds
     });
   };
 
@@ -311,6 +353,61 @@ export default function BillingPanel() {
                 </div>
               </div>
 
+
+              {/* Billable Shipments List */}
+              {selectedClient && periodStart && periodEnd && (
+                <div className="space-y-2 border rounded-md p-3 mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label>Billable Shipments ({selectedShipmentIds.length})</Label>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="select-all"
+                        checked={selectAll}
+                        onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                      />
+                      <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">
+                        Select All
+                      </label>
+                    </div>
+                  </div>
+
+                  {isLoadingBillable ? (
+                    <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
+                  ) : !billableShipments || billableShipments.length === 0 ? (
+                    <div className="text-center py-4 text-sm text-red-400">
+                      No delivered shipments found for this period.
+                    </div>
+                  ) : (
+                    <div className="max-h-[200px] overflow-y-auto space-y-2">
+                      {billableShipments.map((shipment: any) => (
+                        <div key={shipment.id} className="flex items-start space-x-2 p-2 rounded hover:bg-muted/50">
+                          <Checkbox
+                            id={`shipment-${shipment.id}`}
+                            checked={selectedShipmentIds.includes(shipment.id)}
+                            onCheckedChange={() => toggleShipmentSelection(shipment.id)}
+                          />
+                          <div className="grid gap-1.5 leading-none">
+                            <label
+                              htmlFor={`shipment-${shipment.id}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {shipment.waybillNumber}
+                            </label>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(shipment.createdAt).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
+                            </p>
+                          </div>
+                          <div className="ml-auto text-xs font-mono">
+                            {/* Simple estimation for display */}
+                            AED {(parseFloat(shipment.weight || '0') * 10).toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <Button
                 onClick={handleGenerateInvoice}
                 className="w-full"
@@ -441,7 +538,7 @@ export default function BillingPanel() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Invoice #</TableHead>
-                  <TableHead>Client ID</TableHead>
+                  <TableHead>Client</TableHead>
                   <TableHead>Period</TableHead>
                   <TableHead>Issue Date</TableHead>
                   <TableHead>Due Date</TableHead>
@@ -454,7 +551,9 @@ export default function BillingPanel() {
                 {invoices.map((invoice) => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
-                    <TableCell>{invoice.clientId}</TableCell>
+                    <TableCell>
+                      {clients?.find(c => c.id === invoice.clientId)?.companyName || invoice.clientId}
+                    </TableCell>
                     <TableCell className="text-sm">
                       {formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}
                     </TableCell>
@@ -507,18 +606,20 @@ export default function BillingPanel() {
       </Card>
 
       {/* Edit Invoice Dialog */}
-      {selectedInvoice && (
-        <EditInvoiceDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          invoice={selectedInvoice}
-          token={token || ''}
-          onSuccess={() => {
-            refetch();
-            setSelectedInvoice(null);
-          }}
-        />
-      )}
-    </div>
+      {
+        selectedInvoice && (
+          <EditInvoiceDialog
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            invoice={selectedInvoice}
+            token={token || ''}
+            onSuccess={() => {
+              refetch();
+              setSelectedInvoice(null);
+            }}
+          />
+        )
+      }
+    </div >
   );
 }

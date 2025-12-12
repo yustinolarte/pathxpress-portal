@@ -901,6 +901,28 @@ export const customerPortalRouter = router({
  * Billing router for invoicing
  */
 export const billingRouter = router({
+  // Admin: Get billable shipments for a client in a period
+  getBillableShipments: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+      periodStart: z.string(),
+      periodEnd: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getBillableShipments } = await import('./db');
+      return await getBillableShipments(
+        input.clientId,
+        new Date(input.periodStart),
+        new Date(input.periodEnd)
+      );
+    }),
+
   // Admin: Generate invoice for a client
   generateInvoice: publicProcedure
     .input(z.object({
@@ -908,6 +930,7 @@ export const billingRouter = router({
       clientId: z.number(),
       periodStart: z.string(), // ISO date
       periodEnd: z.string(), // ISO date
+      shipmentIds: z.array(z.number()).optional(), // Optional list of specific shipments to invoice
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
@@ -915,10 +938,12 @@ export const billingRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
       }
 
+      const { generateInvoiceForClient } = await import('./db');
       const invoiceId = await generateInvoiceForClient(
         input.clientId,
         new Date(input.periodStart),
-        new Date(input.periodEnd)
+        new Date(input.periodEnd),
+        input.shipmentIds
       );
 
       if (!invoiceId) {
@@ -1192,13 +1217,20 @@ const codRouter = router({
     }))
     .query(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      if (!payload) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
       }
 
       const remittance = await getRemittanceById(input.remittanceId);
       if (!remittance) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Remittance not found' });
+      }
+
+      // Authorization check
+      if (payload.role !== 'admin') {
+        if (payload.role !== 'customer' || !payload.clientId || remittance.clientId !== payload.clientId) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
+        }
       }
 
       const items = await getRemittanceItems(input.remittanceId);

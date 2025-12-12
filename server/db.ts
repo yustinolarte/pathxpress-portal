@@ -539,28 +539,69 @@ export async function generateWaybillNumber(): Promise<string> {
 // INVOICE FUNCTIONS
 // ============================================
 
-export async function generateInvoiceForClient(clientId: number, periodStart: Date, periodEnd: Date) {
+// Helper to get billable shipments
+export async function getBillableShipments(clientId: number, periodStart: Date, periodEnd: Date) {
   const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  if (!db) return [];
 
-  // Get all shipments for the period
-  const shipments = await db
-    .select()
+  const { invoiceItems } = await import("../drizzle/schema");
+  const { isNull } = await import("drizzle-orm");
+
+  const shipmentsData = await db
+    .select({
+      order: orders,
+    })
     .from(orders)
+    .leftJoin(invoiceItems, eq(orders.id, invoiceItems.shipmentId))
     .where(
       and(
         eq(orders.clientId, clientId),
         gte(orders.createdAt, periodStart),
-        lte(orders.createdAt, periodEnd)
+        lte(orders.createdAt, periodEnd),
+        eq(orders.status, 'delivered'),
+        isNull(invoiceItems.id)
       )
     );
 
+  return shipmentsData.map(d => d.order);
+}
+
+export async function generateInvoiceForClient(
+  clientId: number,
+  periodStart: Date,
+  periodEnd: Date,
+  shipmentIds?: number[]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let shipments: typeof orders.$inferSelect[] = [];
+
+  const { invoiceItems } = await import("../drizzle/schema");
+
+  if (shipmentIds && shipmentIds.length > 0) {
+    const { inArray } = await import("drizzle-orm");
+    shipments = await db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.clientId, clientId),
+          inArray(orders.id, shipmentIds),
+          eq(orders.status, 'delivered')
+        )
+      );
+  } else {
+    shipments = await getBillableShipments(clientId, periodStart, periodEnd);
+  }
+
   if (shipments.length === 0) {
-    return null; // No shipments, no invoice
+    return null; // No billingable shipments found
   }
 
   // Calculate total
-  const subtotal = shipments.reduce((sum, s) => sum + (s.weight || 0) * 10, 0); // $10 per kg example
+  // Mock rate calculation: 10 AED per kg basic
+  const subtotal = shipments.reduce((sum, s) => sum + (parseFloat(s.weight || '0') * 10), 0);
   const tax = subtotal * 0.05; // 5% tax
   const total = subtotal + tax;
 
@@ -587,7 +628,7 @@ export async function generateInvoiceForClient(clientId: number, periodStart: Da
 
   // Create invoice items
   for (const shipment of shipments) {
-    const amount = (shipment.weight || 0) * 10;
+    const amount = (parseFloat(shipment.weight || '0') * 10);
     await db.insert(invoiceItems).values({
       invoiceId: invoice.insertId,
       shipmentId: shipment.id,
