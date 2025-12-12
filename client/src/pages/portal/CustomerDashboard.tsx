@@ -594,9 +594,9 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         clientId: user.clientId,
         serviceType: formData.serviceType as 'DOM' | 'SDD',
         weight: weightVal,
-        length: !isNaN(lengthVal) ? lengthVal : undefined,
-        width: !isNaN(widthVal) ? widthVal : undefined,
-        height: !isNaN(heightVal) ? heightVal : undefined,
+        length: !isNaN(lengthVal) && lengthVal > 0 ? lengthVal : undefined,
+        width: !isNaN(widthVal) && widthVal > 0 ? widthVal : undefined,
+        height: !isNaN(heightVal) && heightVal > 0 ? heightVal : undefined,
       });
     }
   }, [formData.weight, formData.length, formData.width, formData.height, formData.serviceType]);
@@ -656,7 +656,6 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     } else if (preset === 'large') {
       setFormData({ ...formData, weight: '5.0', length: '40', width: '30', height: '20' });
     }
-    toast.info(`Applied ${preset} package preset`);
   };
 
   const canSaveShipper = formData.shipperName && formData.shipperAddress && formData.shipperCity && formData.shipperPhone;
@@ -883,12 +882,20 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             <Calculator className="h-5 w-5 text-primary" />
             Shipment Details
           </h3>
-          <div className="flex gap-2 text-xs items-center">
-            <span className="text-muted-foreground mr-1">Presets:</span>
-            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => applyPreset('small')}>Small</Button>
-            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => applyPreset('medium')}>Medium</Button>
-            <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px]" onClick={() => applyPreset('large')}>Large</Button>
-          </div>
+        </div>
+
+        {/* Quick Presets */}
+        <div className="flex flex-wrap gap-2 mb-2 p-2 bg-muted/40 rounded-lg">
+          <span className="text-xs font-medium text-muted-foreground self-center mr-1">Quick Presets:</span>
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500" onClick={() => applyPreset('small')}>
+            Small (0.5kg)
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500" onClick={() => applyPreset('medium')}>
+            Medium (2.0kg)
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500" onClick={() => applyPreset('large')}>
+            Large (5.0kg)
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

@@ -1095,7 +1095,17 @@ export async function calculateCODFee(codAmount: number, clientId: number): Prom
   }
 
   const calculatedFee = (codAmount * percentage) / 100;
-  return Math.max(calculatedFee, minFee);
+  let finalFee = Math.max(calculatedFee, minFee);
+
+  // Apply Max Fee CAP if defined
+  if (client?.codMaxFee) {
+    const maxFee = parseFloat(client.codMaxFee);
+    if (!isNaN(maxFee) && maxFee > 0) {
+      finalFee = Math.min(finalFee, maxFee);
+    }
+  }
+
+  return finalFee;
 }
 
 /**

@@ -17,6 +17,7 @@ import CODPanel from '@/components/CODPanel';
 import AddTrackingEventDialog from '@/components/AddTrackingEventDialog';
 import RatesPanel from '@/components/RatesPanel';
 import AdminReports from '@/components/AdminReports';
+import ShipmentHistoryDialog from '@/components/ShipmentHistoryDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -35,10 +36,11 @@ export default function AdminDashboard() {
     tierId: 'auto',
     codAllowed: false,
     codFeePercent: '',
-    codMinFee: '',
+    codMaxFee: '',
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [selectedShipmentId, setSelectedShipmentId] = useState<number | null>(null);
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
@@ -53,8 +55,6 @@ export default function AdminDashboard() {
     phone: '',
     billingAddress: '',
     city: '',
-    country: 'UAE',
-    codAllowed: false,
     country: 'UAE',
     codAllowed: false,
   });
@@ -165,7 +165,7 @@ export default function AdminDashboard() {
         clientId: editingClient.id,
         codAllowed: editForm.codAllowed,
         codFeePercent: editForm.codFeePercent,
-        codMinFee: editForm.codMinFee,
+        codMaxFee: editForm.codMaxFee,
       });
     } catch (error) {
       // handled by onError
@@ -178,7 +178,7 @@ export default function AdminDashboard() {
         tierId: editingClient.manualRateTierId ? editingClient.manualRateTierId.toString() : 'auto',
         codAllowed: !!editingClient.codAllowed,
         codFeePercent: editingClient.codFeePercent || '',
-        codMinFee: editingClient.codMinFee || '',
+        codMaxFee: editingClient.codMaxFee || '',
       });
     }
   }, [editingClient]);
@@ -459,7 +459,50 @@ export default function AdminDashboard() {
             <Card className="glass-strong border-blue-500/20">
               <CardHeader>
                 <CardTitle>All Orders</CardTitle>
-                <CardDescription>View and manage all shipments</CardDescription>
+                <div className="flex justify-between items-center">
+                  <CardDescription>View and manage all shipments</CardDescription>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    if (!orders || orders.length === 0) {
+                      toast.error("No orders to export");
+                      return;
+                    }
+
+                    // CSV Header
+                    let csvContent = "data:text/csv;charset=utf-8,";
+                    csvContent += "Waybill,Client,Consignee,Phone,City,Service,Weight(kg),Pieces,COD Amount,Status,Created At\n";
+
+                    // Rows
+                    orders.forEach(order => {
+                      const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
+                      const row = [
+                        order.waybillNumber,
+                        `"${clientName.replace(/"/g, '""')}"`, // Handle commas in name
+                        `"${order.customerName.replace(/"/g, '""')}"`,
+                        order.customerPhone,
+                        order.city,
+                        order.serviceType,
+                        order.weight,
+                        order.pieces,
+                        order.codRequired ? order.codAmount : "0",
+                        order.status,
+                        new Date(order.createdAt).toLocaleDateString()
+                      ].join(",");
+                      csvContent += row + "\n";
+                    });
+
+                    // Download
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", `orders_export_${new Date().toISOString().slice(0, 10)}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export to Excel
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 {/* Filters */}
@@ -521,7 +564,8 @@ export default function AdminDashboard() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Waybill</TableHead>
-                          <TableHead>Customer</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead>Consignee</TableHead>
                           <TableHead>Destination</TableHead>
                           <TableHead>Service</TableHead>
                           <TableHead>COD</TableHead>
@@ -531,52 +575,81 @@ export default function AdminDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {orders.map((order) => (
-                          <TableRow key={order.id}>
-                            <TableCell className="font-mono font-medium">{order.waybillNumber}</TableCell>
-                            <TableCell>{order.customerName}</TableCell>
-                            <TableCell>{order.city}, {order.destinationCountry}</TableCell>
-                            <TableCell>{order.serviceType}</TableCell>
-                            <TableCell>
-                              {order.codRequired ? (
-                                <Badge variant="default" className="bg-orange-500">
-                                  {order.codAmount} {order.codCurrency}
+                        {orders.map((order) => {
+                          const statusColors: Record<string, string> = {
+                            pending_pickup: 'bg-yellow-500/80 hover:bg-yellow-500',
+                            picked_up: 'bg-blue-500/80 hover:bg-blue-500',
+                            in_transit: 'bg-indigo-500/80 hover:bg-indigo-500',
+                            out_for_delivery: 'bg-purple-500/80 hover:bg-purple-500',
+                            delivered: 'bg-green-500/80 hover:bg-green-500',
+                            failed_delivery: 'bg-red-500/80 hover:bg-red-500',
+                            returned: 'bg-gray-500/80 hover:bg-gray-500',
+                            canceled: 'bg-slate-500/80 hover:bg-slate-500',
+                          };
+
+                          return (
+                            <TableRow key={order.id}>
+                              <TableCell
+                                className="font-mono font-medium cursor-pointer text-blue-500 hover:underline hover:text-blue-600"
+                                onClick={() => {
+                                  setSelectedShipmentId(order.id);
+                                  setHistoryDialogOpen(true);
+                                }}
+                              >
+                                {order.waybillNumber}
+                              </TableCell>
+                              <TableCell className="font-medium text-primary">
+                                {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col">
+                                  <span>{order.customerName}</span>
+                                  <span className="text-xs text-muted-foreground">{order.customerPhone}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>{order.city}, {order.destinationCountry}</TableCell>
+                              <TableCell>{order.serviceType}</TableCell>
+                              <TableCell>
+                                {order.codRequired ? (
+                                  <Badge variant="default" className="bg-orange-500 hover:bg-orange-600">
+                                    {order.codAmount} {order.codCurrency}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground text-sm">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize shadow-sm`}>
+                                  {order.status.replace(/_/g, ' ')}
                                 </Badge>
-                              ) : (
-                                <span className="text-muted-foreground text-sm">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">
-                                {order.status.replace(/_/g, ' ')}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => generateWaybillPDF(order)}
-                                  title="Download Waybill"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedShipmentId(order.id);
-                                    setTrackingDialogOpen(true);
-                                  }}
-                                  title="Add Tracking Event"
-                                >
-                                  <Package className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                              </TableCell>
+                              <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => generateWaybillPDF(order)}
+                                    title="Download Waybill"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setSelectedShipmentId(order.id);
+                                      setTrackingDialogOpen(true);
+                                    }}
+                                    title="Add Tracking Event"
+                                  >
+                                    <Package className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
@@ -848,12 +921,12 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editCodMin">Min COD Fee (AED)</Label>
+                    <Label htmlFor="editCodMax">Max COD Fee (AED)</Label>
                     <Input
-                      id="editCodMin"
-                      value={editForm.codMinFee}
-                      onChange={(e) => setEditForm({ ...editForm, codMinFee: e.target.value })}
-                      placeholder="Default: 2.0"
+                      id="editCodMax"
+                      value={editForm.codMaxFee}
+                      onChange={(e) => setEditForm({ ...editForm, codMaxFee: e.target.value })}
+                      placeholder="Optional limit"
                       disabled={!editForm.codAllowed}
                     />
                   </div>
@@ -1042,6 +1115,14 @@ export default function AdminDashboard() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {selectedShipmentId && (
+          <ShipmentHistoryDialog
+            open={historyDialogOpen}
+            onOpenChange={setHistoryDialogOpen}
+            shipmentId={selectedShipmentId}
+          />
+        )}
       </div>
     </DashboardLayout >
   );

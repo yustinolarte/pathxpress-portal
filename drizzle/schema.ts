@@ -117,7 +117,9 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   defaultCurrency: varchar("defaultCurrency", { length: 10 }).default("AED").notNull(),
   codAllowed: int("codAllowed").default(0).notNull(), // 0 = no, 1 = yes
   codFeePercent: varchar("codFeePercent", { length: 50 }), // Custom COD percentage (null = use default)
+
   codMinFee: varchar("codMinFee", { length: 50 }), // Custom min COD fee (null = use default)
+  codMaxFee: varchar("codMaxFee", { length: 50 }), // Custom max COD fee (null = use default)
   defaultRateTableId: int("defaultRateTableId"),
   manualRateTierId: int("manualRateTierId"), // Admin-assigned rate tier (overrides automatic volume calculation)
   notes: text("notes"),

@@ -164,7 +164,7 @@ export const adminPortalRouter = router({
         defaultCurrency: z.string().default('AED'),
         codAllowed: z.boolean().default(false).transform((v) => (v ? 1 : 0)),
         codFeePercent: z.string().optional(),
-        codMinFee: z.string().optional(),
+        codMaxFee: z.string().optional(),
         notes: z.string().optional(),
       }),
     }))
@@ -1382,7 +1382,7 @@ export const clientsRouter = router({
       clientId: z.number(),
       codAllowed: z.boolean(),
       codFeePercent: z.string().optional(),
-      codMinFee: z.string().optional(),
+      codMaxFee: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
@@ -1401,7 +1401,7 @@ export const clientsRouter = router({
         .set({
           codAllowed: input.codAllowed ? 1 : 0,
           codFeePercent: input.codFeePercent || null,
-          codMinFee: input.codMinFee || null,
+          codMaxFee: input.codMaxFee || null,
         })
         .where(eq(clientAccounts.id, input.clientId));
 
