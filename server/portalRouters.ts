@@ -554,6 +554,10 @@ export const customerPortalRouter = router({
         clientId: payload.clientId,
         waybillNumber,
         ...input.shipment,
+        weight: input.shipment.weight.toString(),
+        length: input.shipment.length?.toString() || null,
+        width: input.shipment.width?.toString() || null,
+        height: input.shipment.height?.toString() || null,
         status: 'pending_pickup',
         lastStatusUpdate: new Date(),
       });

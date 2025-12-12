@@ -980,10 +980,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           </h3>
         </div>
         <div className="space-y-4">
-          <div className="flex items-center space-x-2 border p-3 rounded bg-background/50 hover:bg-background transition-colors cursor-pointer" onClick={() => {
-            const checked = formData.codRequired !== 1;
-            setFormData({ ...formData, codRequired: checked ? 1 : 0, codAmount: checked ? formData.codAmount : '' });
-          }}>
+          <div className="flex items-center space-x-2 border p-3 rounded bg-background/50 hover:bg-background transition-colors">
             <Checkbox
               id="codRequired"
               checked={formData.codRequired === 1}
