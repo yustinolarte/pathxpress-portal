@@ -26,10 +26,14 @@ import {
   Filter
 } from 'lucide-react';
 
+import RemittanceDetailsDialog from './RemittanceDetailsDialog';
+
 export default function CODPanel() {
   const { token } = usePortalAuth();
   const utils = trpc.useUtils();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedRemittanceId, setSelectedRemittanceId] = useState<number | null>(null);
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
   const [selectedCODRecords, setSelectedCODRecords] = useState<number[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -571,7 +575,15 @@ export default function CODPanel() {
               <TableBody>
                 {remittances.map((remittance) => (
                   <TableRow key={remittance.id}>
-                    <TableCell className="font-medium">{remittance.remittanceNumber}</TableCell>
+                    <TableCell
+                      className="font-medium text-primary cursor-pointer hover:underline"
+                      onClick={() => {
+                        setSelectedRemittanceId(remittance.id);
+                        setDetailsDialogOpen(true);
+                      }}
+                    >
+                      {remittance.remittanceNumber}
+                    </TableCell>
                     <TableCell>{remittance.client?.companyName || 'N/A'}</TableCell>
                     <TableCell>{remittance.shipmentCount}</TableCell>
                     <TableCell className="font-semibold">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
@@ -602,6 +614,13 @@ export default function CODPanel() {
           )}
         </CardContent>
       </Card>
+
+      <RemittanceDetailsDialog
+        isOpen={detailsDialogOpen}
+        onClose={() => setDetailsDialogOpen(false)}
+        remittanceId={selectedRemittanceId}
+        isAdmin={true}
+      />
 
       {/* All COD Records */}
       <Card>

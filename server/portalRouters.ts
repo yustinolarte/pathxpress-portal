@@ -1411,6 +1411,38 @@ export const clientsRouter = router({
 
       return { success: true };
     }),
+
+  getWithTiers: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const user = await verifyPortalToken(input.token);
+      if (!user || user.role !== 'admin') {
+        throw new TRPCError({ code: 'UNAUTHORIZED' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) return [];
+
+      const { clientAccounts, rateTiers } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+
+      // Since we don't have explicit relations set up in drizzle schema for joining easily in one query
+      // or we want to be safe, we'll fetch all clients and map manually or use a left join if possible.
+      // Let's do a simple join assuming clientId on clientAccounts relates to rateTier via manualRateTierId
+
+      // actually, manualRateTierId is on clientAccounts. 
+      // We want to return clients grouped by their rate tier? Or just clients with their tier info.
+      // The user wants to see clients UNDER the rate they are assigned to.
+      // So we need clients, and we need to know their tier.
+
+      /* 
+         We need to join clientAccounts with rateTiers.
+         However, clients might be on 'automatic' tier assignment (manualRateTierId is null).
+         For now, let's just return all clients, and on the frontend we can map them to the tiers.
+      */
+
+      return await getAllClientAccounts();
+    }),
 });
 
 /**

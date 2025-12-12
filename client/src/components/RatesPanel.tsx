@@ -15,6 +15,12 @@ export default function RatesPanel() {
     { enabled: !!token }
   );
 
+  // Fetch clients to show assignments
+  const { data: clients } = trpc.portal.clients.getWithTiers.useQuery(
+    { token: token || '' },
+    { enabled: !!token }
+  );
+
   const domTiers = rateTiers?.filter(t => t.serviceType === 'DOM') || [];
   const sddTiers = rateTiers?.filter(t => t.serviceType === 'SDD') || [];
 
@@ -113,6 +119,26 @@ export default function RatesPanel() {
                     <TableRow key={tier.id}>
                       <TableCell className="font-medium">
                         {tier.minVolume} - {tier.maxVolume || '∞'} shipments/month
+                        {/* Show clients assigned to this tier */}
+                        {clients && (
+                          <div className="mt-2 pl-2 border-l-2 border-primary/20">
+                            <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
+                              Assigned Clients ({clients.filter((c: any) => c.manualRateTierId === tier.id).length})
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {clients
+                                .filter((c: any) => c.manualRateTierId === tier.id)
+                                .map((client: any) => (
+                                  <Badge key={client.id} variant="outline" className="text-[10px] h-5 bg-background border-primary/20">
+                                    {client.companyName}
+                                  </Badge>
+                                ))}
+                              {clients.filter((c: any) => c.manualRateTierId === tier.id).length === 0 && (
+                                <span className="text-[10px] text-muted-foreground italic">No clients manually assigned</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span className="text-green-400 font-semibold">
@@ -226,7 +252,7 @@ export default function RatesPanel() {
             </div>
             <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
               <p className="text-sm text-blue-200">
-                <strong>Note:</strong> COD fees are calculated as 3.3% of the collected value, with a minimum fee of 2 AED. 
+                <strong>Note:</strong> COD fees are calculated as 3.3% of the collected value, with a minimum fee of 2 AED.
                 Settlement is processed on a weekly or bi-weekly basis as per client agreement.
               </p>
             </div>
