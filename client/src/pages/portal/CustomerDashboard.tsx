@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet } from 'lucide-react';
+import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3 } from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -23,6 +23,7 @@ import CustomerCODPanel from '@/components/CustomerCODPanel';
 import CustomerRateCalculator from '@/components/CustomerRateCalculator';
 import CustomerReports from '@/components/CustomerReports';
 import BulkShipmentDialog from '@/components/BulkShipmentDialog';
+import CustomerAnalytics from '@/components/CustomerAnalytics';
 import * as XLSX from 'xlsx';
 
 export default function CustomerDashboard() {
@@ -132,6 +133,7 @@ export default function CustomerDashboard() {
 
   const menuItems: MenuItem[] = [
     { icon: LayoutDashboard, label: 'Overview', value: 'overview' },
+    { icon: BarChart3, label: 'Analytics', value: 'analytics' },
     { icon: Package, label: 'My Orders', value: 'orders' },
     { icon: Search, label: 'Track Shipment', value: 'tracking' },
     { icon: Calculator, label: 'Rate Calculator', value: 'calculator' },
@@ -285,6 +287,12 @@ export default function CustomerDashboard() {
             </div>
 
             {/* Tabs */}
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-4 mt-0">
+            <h2 className="text-2xl font-bold">Analytics</h2>
+            <CustomerAnalytics />
           </TabsContent>
 
           {/* Orders Tab */}

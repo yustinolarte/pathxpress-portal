@@ -775,6 +775,201 @@ export const customerPortalRouter = router({
       };
     }),
 
+  // Get customer analytics
+  getMyAnalytics: publicProcedure
+    .input(z.object({
+      token: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'customer' || !payload.clientId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+      }
+
+      const { orders, codRecords } = await import('../drizzle/schema');
+      const { sql, gte, and, eq } = await import('drizzle-orm');
+
+      const clientId = payload.clientId;
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+      // 1. Shipments per day (last 30 days)
+      const last30Days = new Date(now);
+      last30Days.setDate(now.getDate() - 30);
+
+      const shipmentsPerDay = await db
+        .select({
+          date: sql<string>`DATE(${orders.createdAt})`,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, last30Days)
+        ))
+        .groupBy(sql`DATE(${orders.createdAt})`)
+        .orderBy(sql`DATE(${orders.createdAt})`);
+
+      // 2. Shipments today
+      const shipmentsToday = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, startOfToday)
+        ));
+
+      // 3. Shipments this week
+      const shipmentsThisWeek = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, startOfWeek)
+        ));
+
+      // 4. Shipments this month
+      const shipmentsThisMonth = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, startOfMonth)
+        ));
+
+      // 5. Shipments last month
+      const shipmentsLastMonth = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, startOfLastMonth),
+          sql`${orders.createdAt} <= ${endOfLastMonth}`
+        ));
+
+      // 6. Monthly comparison (last 6 months)
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const monthlyComparison = await db
+        .select({
+          month: sql<string>`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, sixMonthsAgo)
+        ))
+        .groupBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`)
+        .orderBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`);
+
+      // 7. Distribution by city
+      const distributionByCity = await db
+        .select({
+          city: orders.city,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(eq(orders.clientId, clientId))
+        .groupBy(orders.city)
+        .orderBy(sql`count(*) desc`)
+        .limit(10);
+
+      // 8. Status distribution
+      const statusDistribution = await db
+        .select({
+          status: orders.status,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(eq(orders.clientId, clientId))
+        .groupBy(orders.status);
+
+      // 9. Average delivery time by route
+      const deliveryTimeByRoute = await db
+        .select({
+          route: sql<string>`concat(${orders.shipperCity}, ' → ', ${orders.city})`,
+          avgHours: sql<number>`AVG(TIMESTAMPDIFF(HOUR, ${orders.createdAt}, ${orders.deliveryDateReal}))`,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, clientId),
+          eq(orders.status, 'delivered'),
+          sql`${orders.deliveryDateReal} IS NOT NULL`
+        ))
+        .groupBy(sql`concat(${orders.shipperCity}, ' → ', ${orders.city})`)
+        .orderBy(sql`count(*) desc`)
+        .limit(10);
+
+      // 10. Total COD collected
+      const totalCOD = await db
+        .select({
+          pending: sql<number>`cast(sum(case when ${codRecords.status} = 'pending_collection' then cast(${codRecords.codAmount} as decimal(10,2)) else 0 end) as decimal(10,2))`,
+          collected: sql<number>`cast(sum(case when ${codRecords.status} = 'collected' then cast(${codRecords.codAmount} as decimal(10,2)) else 0 end) as decimal(10,2))`,
+          remitted: sql<number>`cast(sum(case when ${codRecords.status} = 'remitted' then cast(${codRecords.codAmount} as decimal(10,2)) else 0 end) as decimal(10,2))`,
+        })
+        .from(codRecords)
+        .innerJoin(orders, eq(orders.id, codRecords.shipmentId))
+        .where(eq(orders.clientId, clientId));
+
+      // Calculate growth
+      const currentMonthCount = Number(shipmentsThisMonth[0]?.count || 0);
+      const lastMonthCount = Number(shipmentsLastMonth[0]?.count || 0);
+      const growthPercentage = lastMonthCount > 0
+        ? Math.round(((currentMonthCount - lastMonthCount) / lastMonthCount) * 100)
+        : 0;
+
+      // Delivery success rate
+      const deliveredCount = statusDistribution.find(s => s.status === 'delivered')?.count || 0;
+      const totalCount = statusDistribution.reduce((sum, s) => sum + Number(s.count), 0);
+      const deliverySuccessRate = totalCount > 0 ? Math.round((Number(deliveredCount) / totalCount) * 100) : 0;
+
+      return {
+        shipmentsToday: Number(shipmentsToday[0]?.count || 0),
+        shipmentsThisWeek: Number(shipmentsThisWeek[0]?.count || 0),
+        shipmentsThisMonth: currentMonthCount,
+        shipmentsLastMonth: lastMonthCount,
+        growthPercentage,
+        deliverySuccessRate,
+        shipmentsPerDay: shipmentsPerDay.map(d => ({
+          date: d.date,
+          count: Number(d.count),
+        })),
+        monthlyComparison: monthlyComparison.map(m => ({
+          month: m.month,
+          count: Number(m.count),
+        })),
+        distributionByCity: distributionByCity.map(c => ({
+          city: c.city,
+          count: Number(c.count),
+        })),
+        statusDistribution: statusDistribution.map(s => ({
+          status: s.status,
+          count: Number(s.count),
+        })),
+        deliveryTimeByRoute: deliveryTimeByRoute.map(r => ({
+          route: r.route,
+          avgHours: Math.round(Number(r.avgHours) || 0),
+          count: Number(r.count),
+        })),
+        codSummary: {
+          pending: Number(totalCOD[0]?.pending || 0).toFixed(2),
+          collected: Number(totalCOD[0]?.collected || 0).toFixed(2),
+          remitted: Number(totalCOD[0]?.remitted || 0).toFixed(2),
+        },
+      };
+    }),
+
   // Get dashboard metrics for customer
   getDashboardMetrics: publicProcedure
     .input(z.object({

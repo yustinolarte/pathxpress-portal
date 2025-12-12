@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
@@ -124,14 +124,31 @@ export default function CODPanel() {
     });
   };
 
-  // Generate month options (last 12 months)
-  const monthOptions = Array.from({ length: 12 }, (_, i) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() - i);
-    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const label = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-    return { value, label };
-  });
+  // Generate month options only for months that have data
+  const monthOptions = useMemo(() => {
+    if (!allCODRecords || allCODRecords.length === 0) return [];
+
+    const monthsWithData = new Set<string>();
+
+    allCODRecords.forEach(record => {
+      const dateToUse = record.collectedDate || record.createdAt;
+      if (dateToUse) {
+        const date = new Date(dateToUse);
+        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        monthsWithData.add(value);
+      }
+    });
+
+    // Convert to array and sort in descending order (newest first)
+    return Array.from(monthsWithData)
+      .sort((a, b) => b.localeCompare(a))
+      .map(value => {
+        const [year, month] = value.split('-').map(Number);
+        const date = new Date(year, month - 1);
+        const label = date.toLocaleDateString('en-US', { month: 'long' }); // Only month, no year
+        return { value, label };
+      });
+  }, [allCODRecords]);
 
   // Download Pending Settlement PDF (only collected, not yet remitted)
   const handleDownloadSettlementPDF = async () => {
@@ -156,7 +173,7 @@ export default function CODPanel() {
         city: record.order?.city || ''
       }));
 
-      const monthLabel = reportMonth === 'all' ? 'All Time' : monthOptions.find(m => m.value === reportMonth)?.label || reportMonth;
+      const monthLabel = reportMonth === 'all' ? 'All Time' : monthOptions.find((m: { value: string; label: string }) => m.value === reportMonth)?.label || reportMonth;
       const doc = generateCODReportPDF(reportData, `Pending Settlement - ${monthLabel}`);
       downloadPDF(doc, `Pending_Settlement_${reportMonth === 'all' ? 'All' : reportMonth}.pdf`);
       toast.success('Pending Settlement PDF downloaded successfully');
@@ -191,7 +208,7 @@ export default function CODPanel() {
         city: record.order?.city || ''
       }));
 
-      const monthLabel = reportMonth === 'all' ? 'All Time' : monthOptions.find(m => m.value === reportMonth)?.label || reportMonth;
+      const monthLabel = reportMonth === 'all' ? 'All Time' : monthOptions.find((m: { value: string; label: string }) => m.value === reportMonth)?.label || reportMonth;
       const doc = generateCODReportPDF(reportData, `All COD Records - ${monthLabel}`);
       downloadPDF(doc, `All_COD_Report_${reportMonth === 'all' ? 'All' : reportMonth}.pdf`);
       toast.success('All COD PDF downloaded successfully');
@@ -457,7 +474,7 @@ export default function CODPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Time</SelectItem>
-                    {monthOptions.map(option => (
+                    {monthOptions.map((option: { value: string; label: string }) => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
