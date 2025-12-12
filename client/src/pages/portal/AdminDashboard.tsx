@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3 } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -17,6 +17,7 @@ import CODPanel from '@/components/CODPanel';
 import AddTrackingEventDialog from '@/components/AddTrackingEventDialog';
 import RatesPanel from '@/components/RatesPanel';
 import AdminReports from '@/components/AdminReports';
+import AdminAnalytics from '@/components/AdminAnalytics';
 import ShipmentHistoryDialog from '@/components/ShipmentHistoryDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -299,6 +300,7 @@ export default function AdminDashboard() {
 
   const menuItems: MenuItem[] = [
     { icon: LayoutDashboard, label: 'Overview', value: 'overview' },
+    { icon: BarChart3, label: 'Analytics', value: 'analytics' },
     { icon: Users, label: 'Clients', value: 'clients' },
     { icon: Package, label: 'All Orders', value: 'orders' },
     { icon: FileText, label: 'Billing', value: 'billing' },
@@ -359,6 +361,11 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-4 mt-0">
+            <AdminAnalytics />
           </TabsContent>
 
           {/* Clients Tab */}

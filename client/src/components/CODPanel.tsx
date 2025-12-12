@@ -40,6 +40,7 @@ export default function CODPanel() {
   const [paymentReference, setPaymentReference] = useState('');
   const [notes, setNotes] = useState('');
   const [filterClientId, setFilterClientId] = useState<string>('all');
+  const [reportMonth, setReportMonth] = useState<string>('all'); // 'all' or 'YYYY-MM' format
 
   // Get COD summary
   const { data: codSummary } = trpc.portal.cod.getCODSummary.useQuery(
@@ -108,15 +109,42 @@ export default function CODPanel() {
     return nextFriday.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
   };
 
+  // Helper function to filter records by month
+  const filterByMonth = (records: any[], dateField: 'collectedDate' | 'createdAt') => {
+    if (reportMonth === 'all') return records;
+
+    const [year, month] = reportMonth.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    return records.filter(record => {
+      const date = record[dateField] ? new Date(record[dateField]) : null;
+      if (!date) return false;
+      return date >= startDate && date <= endDate;
+    });
+  };
+
+  // Generate month options (last 12 months)
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - i);
+    const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const label = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    return { value, label };
+  });
+
   // Download Pending Settlement PDF (only collected, not yet remitted)
   const handleDownloadSettlementPDF = async () => {
     try {
       const { generateCODReportPDF, downloadPDF } = await import('@/lib/reportUtils');
 
-      const settlementRecords = allCODRecords?.filter(record => record.status === 'collected') || [];
+      let settlementRecords = allCODRecords?.filter(record => record.status === 'collected') || [];
+
+      // Apply month filter
+      settlementRecords = filterByMonth(settlementRecords, 'collectedDate');
 
       if (settlementRecords.length === 0) {
-        toast.error('No pending settlements to export');
+        toast.error('No pending settlements found for the selected period');
         return;
       }
 
@@ -128,8 +156,9 @@ export default function CODPanel() {
         city: record.order?.city || ''
       }));
 
-      const doc = generateCODReportPDF(reportData, 'Pending Settlement');
-      downloadPDF(doc, `Pending_Settlement_${new Date().toISOString().split('T')[0]}.pdf`);
+      const monthLabel = reportMonth === 'all' ? 'All Time' : monthOptions.find(m => m.value === reportMonth)?.label || reportMonth;
+      const doc = generateCODReportPDF(reportData, `Pending Settlement - ${monthLabel}`);
+      downloadPDF(doc, `Pending_Settlement_${reportMonth === 'all' ? 'All' : reportMonth}.pdf`);
       toast.success('Pending Settlement PDF downloaded successfully');
     } catch (error: any) {
       toast.error(error.message || 'Failed to generate PDF');
@@ -142,12 +171,15 @@ export default function CODPanel() {
       const { generateCODReportPDF, downloadPDF } = await import('@/lib/reportUtils');
 
       // Include both collected and remitted records
-      const allRecords = allCODRecords?.filter(record =>
+      let allRecords = allCODRecords?.filter(record =>
         record.status === 'collected' || record.status === 'remitted'
       ) || [];
 
+      // Apply month filter
+      allRecords = filterByMonth(allRecords, 'collectedDate');
+
       if (allRecords.length === 0) {
-        toast.error('No COD records to export');
+        toast.error('No COD records found for the selected period');
         return;
       }
 
@@ -159,8 +191,9 @@ export default function CODPanel() {
         city: record.order?.city || ''
       }));
 
-      const doc = generateCODReportPDF(reportData, 'All COD Records (Collected + Remitted)');
-      downloadPDF(doc, `All_COD_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      const monthLabel = reportMonth === 'all' ? 'All Time' : monthOptions.find(m => m.value === reportMonth)?.label || reportMonth;
+      const doc = generateCODReportPDF(reportData, `All COD Records - ${monthLabel}`);
+      downloadPDF(doc, `All_COD_Report_${reportMonth === 'all' ? 'All' : reportMonth}.pdf`);
       toast.success('All COD PDF downloaded successfully');
     } catch (error: any) {
       toast.error(error.message || 'Failed to generate PDF');
@@ -411,16 +444,34 @@ export default function CODPanel() {
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Export pending settlements
+                  Filter and export COD records
                 </div>
               </div>
+
+              {/* Month Filter */}
+              <div className="mt-3">
+                <Label className="text-xs text-muted-foreground mb-1 block">Filter by Month</Label>
+                <Select value={reportMonth} onValueChange={setReportMonth}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    {monthOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="flex flex-col gap-2 mt-3">
                 <Button
                   onClick={handleDownloadSettlementPDF}
                   variant="outline"
                   size="sm"
                   className="w-full border-purple-500/30 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all"
-                  disabled={totalPendingSettlement === 0}
                 >
                   <Download className="mr-2 h-4 w-4 opacity-70" />
                   Pending Settlements

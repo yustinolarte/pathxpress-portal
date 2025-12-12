@@ -331,7 +331,7 @@ export default function CustomerDashboard() {
                       <SelectValue placeholder="Filter Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="all">All Status</SelectItem>
                       <SelectItem value="pending_pickup">Pending Pickup</SelectItem>
                       <SelectItem value="picked_up">Picked Up</SelectItem>
                       <SelectItem value="in_transit">In Transit</SelectItem>

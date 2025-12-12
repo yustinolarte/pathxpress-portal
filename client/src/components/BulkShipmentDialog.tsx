@@ -86,28 +86,29 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                 const weight = parseFloat(row['Weight']) || 1;
                 const codAmount = row['COD Amount'];
 
+
                 await createMutation.mutateAsync({
                     token,
                     shipment: {
-                        shipperName: shipperDetails.shipperName,
-                        shipperPhone: shipperDetails.shipperPhone,
-                        shipperAddress: shipperDetails.shipperAddress,
-                        shipperCity: shipperDetails.shipperCity,
-                        shipperCountry: shipperDetails.shipperCountry || 'UAE',
+                        shipperName: String(shipperDetails.shipperName || ''),
+                        shipperPhone: String(shipperDetails.shipperPhone || ''),
+                        shipperAddress: String(shipperDetails.shipperAddress || ''),
+                        shipperCity: String(shipperDetails.shipperCity || ''),
+                        shipperCountry: String(shipperDetails.shipperCountry || 'UAE'),
 
-                        customerName: row['Customer Name'],
-                        customerPhone: row['Customer Phone'] || '',
-                        address: row['Address'],
-                        city: row['City'],
+                        customerName: String(row['Customer Name'] || ''),
+                        customerPhone: String(row['Customer Phone'] || ''),
+                        address: String(row['Address'] || ''),
+                        city: String(row['City'] || ''),
                         destinationCountry: 'UAE', // Default to UAE for now
 
                         weight: weight,
                         pieces: 1, // Default to 1 piece
                         serviceType: serviceType,
-                        specialInstructions: row['Instructions'] || '',
+                        specialInstructions: String(row['Instructions'] || ''),
 
                         codRequired: codAmount ? 1 : 0,
-                        codAmount: codAmount ? codAmount.toString() : undefined,
+                        codAmount: codAmount ? String(codAmount) : undefined,
                         codCurrency: 'AED'
                     }
 
