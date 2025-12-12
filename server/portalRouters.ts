@@ -1386,6 +1386,7 @@ export const clientsRouter = router({
       clientId: z.number(),
       codAllowed: z.boolean(),
       codFeePercent: z.string().optional(),
+      codMinFee: z.string().optional(),
       codMaxFee: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -1405,6 +1406,7 @@ export const clientsRouter = router({
         .set({
           codAllowed: input.codAllowed ? 1 : 0,
           codFeePercent: input.codFeePercent || null,
+          codMinFee: input.codMinFee || null,
           codMaxFee: input.codMaxFee || null,
         })
         .where(eq(clientAccounts.id, input.clientId));

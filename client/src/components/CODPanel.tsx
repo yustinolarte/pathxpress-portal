@@ -76,6 +76,11 @@ export default function CODPanel() {
     { enabled: !!token && !!selectedClient }
   );
 
+  // Filter to ensure only collected COD are shown
+  const filteredPendingCOD = pendingCOD?.filter(record => record.status === 'collected');
+
+
+
   // Calculate today's collected amount
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -115,7 +120,15 @@ export default function CODPanel() {
         return;
       }
 
-      const doc = generateCODReportPDF(settlementRecords, 'Pending Settlement');
+      // Map nested properties for the report generator
+      const reportData = settlementRecords.map(record => ({
+        ...record,
+        waybillNumber: record.order?.waybillNumber || '',
+        customerName: record.order?.customerName || '',
+        city: record.order?.city || ''
+      }));
+
+      const doc = generateCODReportPDF(reportData, 'Pending Settlement');
       downloadPDF(doc, `Settlement_Report_${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success('Settlement PDF downloaded successfully');
     } catch (error: any) {
@@ -452,7 +465,7 @@ export default function CODPanel() {
                   </Select>
                 </div>
 
-                {selectedClient && pendingCOD && pendingCOD.length > 0 && (
+                {selectedClient && filteredPendingCOD && filteredPendingCOD.length > 0 && (
                   <>
                     <div className="space-y-2">
                       <Label>Select Shipments ({selectedCODRecords.length} selected)</Label>
@@ -467,7 +480,7 @@ export default function CODPanel() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {pendingCOD.map((record) => (
+                            {filteredPendingCOD.map((record) => (
                               <TableRow key={record.id}>
                                 <TableCell>
                                   <Checkbox
@@ -542,7 +555,7 @@ export default function CODPanel() {
                   </>
                 )}
 
-                {selectedClient && pendingCOD && pendingCOD.length === 0 && (
+                {selectedClient && filteredPendingCOD && filteredPendingCOD.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     No pending COD collections for this client
                   </div>

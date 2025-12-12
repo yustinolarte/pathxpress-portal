@@ -36,6 +36,7 @@ export default function AdminDashboard() {
     tierId: 'auto',
     codAllowed: false,
     codFeePercent: '',
+    codMinFee: '',
     codMaxFee: '',
   });
 
@@ -45,6 +46,7 @@ export default function AdminDashboard() {
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
+  const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
 
   // Create client dialog state
   const [createClientDialogOpen, setCreateClientDialogOpen] = useState(false);
@@ -165,6 +167,7 @@ export default function AdminDashboard() {
         clientId: editingClient.id,
         codAllowed: editForm.codAllowed,
         codFeePercent: editForm.codFeePercent,
+        codMinFee: editForm.codMinFee,
         codMaxFee: editForm.codMaxFee,
       });
     } catch (error) {
@@ -178,6 +181,7 @@ export default function AdminDashboard() {
         tierId: editingClient.manualRateTierId ? editingClient.manualRateTierId.toString() : 'auto',
         codAllowed: !!editingClient.codAllowed,
         codFeePercent: editingClient.codFeePercent || '',
+        codMinFee: editingClient.codMinFee || '',
         codMaxFee: editingClient.codMaxFee || '',
       });
     }
@@ -258,8 +262,12 @@ export default function AdminDashboard() {
         if (orderDate > toDate) return false;
       }
       return true;
+    }).sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return orderSortDirection === 'newest' ? dateB - dateA : dateA - dateB;
     });
-  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo]);
+  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderSortDirection]);
 
   const handleCreateClient = () => {
     if (!newClient.companyName || !newClient.contactName || !newClient.billingEmail) {
@@ -539,6 +547,17 @@ export default function AdminDashboard() {
                       onChange={(e) => setOrderFilterDateTo(e.target.value)}
                       className="w-full h-10 px-3 rounded-md border border-input bg-background"
                     />
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <label className="text-sm font-medium mb-2 block">Sort By</label>
+                    <select
+                      value={orderSortDirection}
+                      onChange={(e) => setOrderSortDirection(e.target.value as 'newest' | 'oldest')}
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                    >
+                      <option value="newest">Newest First</option>
+                      <option value="oldest">Oldest First</option>
+                    </select>
                   </div>
                   {(orderFilterClientId !== 'all' || orderFilterDateFrom || orderFilterDateTo) && (
                     <div className="flex items-end">
@@ -921,18 +940,28 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="editCodMax">Max COD Fee (AED)</Label>
+                    <Label htmlFor="editCodMin">Min COD Fee (AED)</Label>
+                    <Input
+                      id="editCodMin"
+                      value={editForm.codMinFee}
+                      onChange={(e) => setEditForm({ ...editForm, codMinFee: e.target.value })}
+                      placeholder="Default: 8.00"
+                      disabled={!editForm.codAllowed}
+                    />
+                  </div>
+                  <div className="space-y-2 col-span-2">
+                    <Label htmlFor="editCodMax">Max COD Fee Cap (Optional)</Label>
                     <Input
                       id="editCodMax"
                       value={editForm.codMaxFee}
                       onChange={(e) => setEditForm({ ...editForm, codMaxFee: e.target.value })}
-                      placeholder="Optional limit"
+                      placeholder="e.g. 50.00"
                       disabled={!editForm.codAllowed}
                     />
                   </div>
                 </div>
-              </div>
 
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditClientDialogOpen(false)}>

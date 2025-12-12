@@ -138,13 +138,13 @@ export default function RemittanceDetailsDialog({ remittanceId, isOpen, onClose,
                                         {details.items.map((item: any) => (
                                             <TableRow key={item.id}>
                                                 <TableCell className="font-medium text-primary">
-                                                    {item.codRecord.order.waybillNumber}
+                                                    {item.order?.waybillNumber || 'N/A'}
                                                 </TableCell>
-                                                <TableCell>{item.codRecord.order.customerName}</TableCell>
+                                                <TableCell>{item.order?.customerName || 'N/A'}</TableCell>
                                                 <TableCell className="font-bold">
-                                                    {formatCurrency(item.codRecord.codAmount, item.codRecord.codCurrency)}
+                                                    {formatCurrency(item.amount, item.currency)}
                                                 </TableCell>
-                                                <TableCell>{formatDate(item.codRecord.collectedDate)}</TableCell>
+                                                <TableCell>{formatDate(item.codRecord?.collectedDate)}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>

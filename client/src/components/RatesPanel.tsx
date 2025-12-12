@@ -4,7 +4,9 @@ import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { DollarSign, Package, Truck } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import { DollarSign, Package, Truck, Users, ChevronDown } from 'lucide-react';
 
 export default function RatesPanel() {
   const { token } = usePortalAuth();
@@ -120,23 +122,32 @@ export default function RatesPanel() {
                       <TableCell className="font-medium">
                         {tier.minVolume} - {tier.maxVolume || '∞'} shipments/month
                         {/* Show clients assigned to this tier */}
+                        {/* Show clients assigned to this tier */}
                         {clients && (
-                          <div className="mt-2 pl-2 border-l-2 border-primary/20">
-                            <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
-                              Assigned Clients ({clients.filter((c: any) => c.manualRateTierId === tier.id).length})
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {clients
-                                .filter((c: any) => c.manualRateTierId === tier.id)
-                                .map((client: any) => (
-                                  <Badge key={client.id} variant="outline" className="text-[10px] h-5 bg-background border-primary/20">
-                                    {client.companyName}
-                                  </Badge>
-                                ))}
-                              {clients.filter((c: any) => c.manualRateTierId === tier.id).length === 0 && (
-                                <span className="text-[10px] text-muted-foreground italic">No clients manually assigned</span>
-                              )}
-                            </div>
+                          <div className="mt-2">
+                            <Collapsible>
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-primary">
+                                  <Users className="h-3 w-3 mr-1" />
+                                  View Assigned Clients ({clients.filter((c: any) => c.manualRateTierId === tier.id).length})
+                                  <ChevronDown className="h-3 w-3 ml-1" />
+                                </Button>
+                              </CollapsibleTrigger>
+                              <CollapsibleContent className="mt-2 pl-2 border-l-2 border-primary/20 animate-in slide-in-from-top-2 fade-in duration-200">
+                                <div className="flex flex-wrap gap-1">
+                                  {clients
+                                    .filter((c: any) => c.manualRateTierId === tier.id)
+                                    .map((client: any) => (
+                                      <Badge key={client.id} variant="outline" className="text-[10px] h-5 bg-background border-primary/20">
+                                        {client.companyName}
+                                      </Badge>
+                                    ))}
+                                  {clients.filter((c: any) => c.manualRateTierId === tier.id).length === 0 && (
+                                    <span className="text-[10px] text-muted-foreground italic">No clients manually assigned</span>
+                                  )}
+                                </div>
+                              </CollapsibleContent>
+                            </Collapsible>
                           </div>
                         )}
                       </TableCell>
