@@ -182,6 +182,24 @@ export const adminPortalRouter = router({
       return client;
     }),
 
+  // Delete client account
+  deleteClient: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { deleteClientAccount } = await import('./db');
+      await deleteClientAccount(input.clientId);
+
+      return { success: true };
+    }),
+
 
 
   // Create customer user for a client

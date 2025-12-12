@@ -55,7 +55,68 @@ export default function AdminDashboard() {
     city: '',
     country: 'UAE',
     codAllowed: false,
+    country: 'UAE',
+    codAllowed: false,
   });
+
+  // Client User Creation State
+  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
+  const [selectedClientForUser, setSelectedClientForUser] = useState<any>(null);
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+  });
+
+  const deleteClientMutation = trpc.portal.admin.deleteClient.useMutation({
+    onSuccess: () => {
+      toast.success('Client deleted successfully');
+      refetchClients();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete client: ${error.message}`);
+    },
+  });
+
+  const createClientUserMutation = trpc.portal.admin.createCustomerUser.useMutation({
+    onSuccess: () => {
+      toast.success('User login created successfully');
+      setCreateUserDialogOpen(false);
+      setNewUser({ email: '', password: '' });
+      setSelectedClientForUser(null);
+    },
+    onError: (error) => {
+      toast.error(`Failed to create user: ${error.message}`);
+    },
+  });
+
+  const handleDeleteClient = (clientId: number) => {
+    if (confirm('Are you sure you want to delete this client? This action cannot be undone.')) {
+      deleteClientMutation.mutate({
+        token: token || '',
+        clientId,
+      });
+    }
+  };
+
+  const handleCreateUser = () => {
+    if (!newUser.email || !newUser.password) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    if (newUser.password.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+
+    if (!selectedClientForUser) return;
+
+    createClientUserMutation.mutate({
+      token: token || '',
+      clientId: selectedClientForUser.id,
+      email: newUser.email,
+      password: newUser.password,
+    });
+  };
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -346,16 +407,40 @@ export default function AdminDashboard() {
                             </TableCell>
                             <TableCell>{client.codAllowed ? 'Yes' : 'No'}</TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setEditingClient(client);
-                                  setEditClientDialogOpen(true);
-                                }}
-                              >
-                                Edit Settings
-                              </Button>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingClient(client);
+                                    setEditClientDialogOpen(true);
+                                  }}
+                                  title="Edit Settings"
+                                >
+                                  <LayoutDashboard className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedClientForUser(client);
+                                    setNewUser({ ...newUser, email: client.billingEmail }); // Pre-fill email
+                                    setCreateUserDialogOpen(true);
+                                  }}
+                                  title="Create Login User"
+                                >
+                                  <Users className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                  onClick={() => handleDeleteClient(client.id)}
+                                  title="Delete Client"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -912,7 +997,52 @@ export default function AdminDashboard() {
             }}
           />
         )}
+
+        {/* Create User Dialog */}
+        <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
+          <DialogContent className="glass-strong">
+            <DialogHeader>
+              <DialogTitle>Create User Login</DialogTitle>
+              <DialogDescription>
+                Create a login for {selectedClientForUser?.companyName}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="userEmail">Email Address</Label>
+                <Input
+                  id="userEmail"
+                  type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                  placeholder="user@example.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="userPassword">Password</Label>
+                <Input
+                  id="userPassword"
+                  type="password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  placeholder="Minimum 8 characters"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateUser}
+                disabled={createClientUserMutation.isPending}
+              >
+                {createClientUserMutation.isPending ? 'Creating...' : 'Create Login'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-    </DashboardLayout>
+    </DashboardLayout >
   );
 }

@@ -373,6 +373,23 @@ export async function updateClientAccount(id: number, data: Partial<InsertClient
   }
 }
 
+
+export async function deleteClientAccount(id: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const { clientAccounts } = await import("../drizzle/schema");
+  const { eq } = await import("drizzle-orm");
+
+  try {
+    await db.delete(clientAccounts).where(eq(clientAccounts.id, id));
+    return true;
+  } catch (error) {
+    console.error("[Database] Failed to delete client account:", error);
+    return false;
+  }
+}
+
 /**
  * Orders/Shipments
  */
