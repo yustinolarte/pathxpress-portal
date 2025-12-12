@@ -310,8 +310,8 @@ export default function CustomerDashboard() {
                             <TableCell>{order.city}, {order.destinationCountry}</TableCell>
                             <TableCell>{order.serviceType}</TableCell>
                             <TableCell>
-                              <Badge variant="outline">
-                                {order.status.replace(/_/g, ' ')}
+                              <Badge className={`${getStatusColor(order.status)} border-none text-white shadow-sm`}>
+                                {getStatusLabel(order.status)}
                               </Badge>
                             </TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>

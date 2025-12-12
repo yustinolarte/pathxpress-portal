@@ -295,6 +295,133 @@ export function generateCODExcel(codRecords: CODRecord[]) {
 /**
  * Download helper functions for browser
  */
+
+/**
+ * Generate Remittance PDF
+ */
+export function generateRemittancePDF(remittance: any, items: any[]) {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+
+    // Header
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(41, 128, 185); // Blue color
+    doc.text('PATHXPRESS', pageWidth / 2, 20, { align: 'center' });
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    doc.text('REMITTANCE ADVICE', pageWidth / 2, 30, { align: 'center' });
+
+    // Remittance Details Box
+    doc.setDrawColor(200, 200, 200);
+    doc.setFillColor(245, 247, 250);
+    doc.rect(15, 40, pageWidth - 30, 35, 'FD');
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Remittance No:`, 20, 50);
+    doc.text(`Date:`, 20, 56);
+    doc.text(`Status:`, 20, 62);
+
+    doc.text(`Total Amount:`, 110, 50);
+    doc.text(`Payment Method:`, 110, 56);
+    doc.text(`Reference:`, 110, 62);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(remittance.remittanceNumber, 50, 50);
+    doc.text(format(new Date(remittance.createdAt), 'dd/MM/yyyy'), 50, 56);
+    doc.text(remittance.status.toUpperCase(), 50, 62);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${parseFloat(remittance.totalAmount).toFixed(2)} ${remittance.currency}`, 145, 50);
+    doc.setFont('helvetica', 'normal');
+    doc.text(remittance.paymentMethod || 'N/A', 145, 56);
+    doc.text(remittance.paymentReference || '-', 145, 62);
+
+    // Notes if any
+    if (remittance.notes) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(9);
+        doc.text(`Notes: ${remittance.notes}`, 20, 70);
+    }
+
+    // Shipments Table Header
+    let yPos = 85;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setFillColor(41, 128, 185);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(15, yPos - 5, pageWidth - 30, 8, 'F');
+
+    doc.text('Waybill Number', 20, yPos);
+    doc.text('Customer', 60, yPos);
+    doc.text('Collected Date', 120, yPos);
+    doc.text('Amount', 160, yPos);
+
+    doc.setTextColor(0, 0, 0);
+
+    // Table Content
+    yPos += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+
+    items.forEach((item, index) => {
+        if (yPos > 270) {
+            doc.addPage();
+            yPos = 20;
+            // Repeat header
+            doc.setFillColor(41, 128, 185);
+            doc.setTextColor(255, 255, 255);
+            doc.rect(15, yPos - 5, pageWidth - 30, 8, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.text('Waybill Number', 20, yPos);
+            doc.text('Customer', 60, yPos);
+            doc.text('Collected Date', 120, yPos);
+            doc.text('Amount', 160, yPos);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'normal');
+            yPos += 8;
+        }
+
+        const zebraColor = index % 2 === 0 ? 255 : 250;
+        doc.setFillColor(zebraColor, zebraColor, zebraColor);
+        doc.rect(15, yPos - 5, pageWidth - 30, 7, 'F');
+
+        doc.text(item.codRecord.order.waybillNumber, 20, yPos);
+        doc.text(item.codRecord.order.customerName.substring(0, 25), 60, yPos);
+
+        const dateStr = item.codRecord.collectedDate
+            ? format(new Date(item.codRecord.collectedDate), 'dd/MM/yyyy')
+            : '-';
+        doc.text(dateStr, 120, yPos);
+
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${parseFloat(item.codRecord.codAmount).toFixed(2)}`, 160, yPos);
+        doc.setFont('helvetica', 'normal');
+
+        yPos += 7;
+    });
+
+    // Total Footer
+    yPos += 5;
+    doc.line(15, yPos, pageWidth - 15, yPos);
+    yPos += 7;
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Remitted:', 120, yPos);
+    doc.text(`${parseFloat(remittance.totalAmount).toFixed(2)} ${remittance.currency}`, 160, yPos);
+
+    // Footer Info
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const footerY = doc.internal.pageSize.height - 15;
+    doc.text('Thank you for choosing PATHXPRESS.', pageWidth / 2, footerY, { align: 'center' });
+    doc.text('For any queries, please contact support@pathxpress.net', pageWidth / 2, footerY + 5, { align: 'center' });
+
+    return doc;
+}
+
 export function downloadPDF(doc: jsPDF, filename: string) {
     doc.save(filename);
 }
@@ -302,3 +429,4 @@ export function downloadPDF(doc: jsPDF, filename: string) {
 export function downloadExcel(workbook: XLSX.WorkBook, filename: string) {
     XLSX.writeFile(workbook, filename);
 }
+

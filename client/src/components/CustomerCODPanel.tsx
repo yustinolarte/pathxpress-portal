@@ -1,12 +1,16 @@
+import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import RemittanceDetailsDialog from './RemittanceDetailsDialog';
 
 export default function CustomerCODPanel() {
   const { token } = usePortalAuth();
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedRemittanceId, setSelectedRemittanceId] = useState<number | null>(null);
 
   // Get COD summary
   const { data: codSummary } = trpc.portal.cod.getMyCODSummary.useQuery(
@@ -155,8 +159,15 @@ export default function CustomerCODPanel() {
               </TableHeader>
               <TableBody>
                 {remittances.map((remittance) => (
-                  <TableRow key={remittance.id}>
-                    <TableCell className="font-medium">{remittance.remittanceNumber}</TableCell>
+                  <TableRow
+                    key={remittance.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => {
+                      setSelectedRemittanceId(remittance.id);
+                      setDetailsDialogOpen(true);
+                    }}
+                  >
+                    <TableCell className="font-medium text-primary hover:underline">{remittance.remittanceNumber}</TableCell>
                     <TableCell>{remittance.shipmentCount}</TableCell>
                     <TableCell className="font-semibold">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
                     <TableCell>{remittance.paymentMethod || 'N/A'}</TableCell>
@@ -212,6 +223,11 @@ export default function CustomerCODPanel() {
           )}
         </CardContent>
       </Card>
+      <RemittanceDetailsDialog
+        isOpen={detailsDialogOpen}
+        onClose={() => setDetailsDialogOpen(false)}
+        remittanceId={selectedRemittanceId}
+      />
     </div>
   );
 }
