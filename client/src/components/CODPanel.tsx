@@ -108,7 +108,7 @@ export default function CODPanel() {
     return nextFriday.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
   };
 
-  // Download Settlement PDF
+  // Download Pending Settlement PDF (only collected, not yet remitted)
   const handleDownloadSettlementPDF = async () => {
     try {
       const { generateCODReportPDF, downloadPDF } = await import('@/lib/reportUtils');
@@ -129,8 +129,39 @@ export default function CODPanel() {
       }));
 
       const doc = generateCODReportPDF(reportData, 'Pending Settlement');
-      downloadPDF(doc, `Settlement_Report_${new Date().toISOString().split('T')[0]}.pdf`);
-      toast.success('Settlement PDF downloaded successfully');
+      downloadPDF(doc, `Pending_Settlement_${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success('Pending Settlement PDF downloaded successfully');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to generate PDF');
+    }
+  };
+
+  // Download All COD Records PDF (including remitted)
+  const handleDownloadAllCODPDF = async () => {
+    try {
+      const { generateCODReportPDF, downloadPDF } = await import('@/lib/reportUtils');
+
+      // Include both collected and remitted records
+      const allRecords = allCODRecords?.filter(record =>
+        record.status === 'collected' || record.status === 'remitted'
+      ) || [];
+
+      if (allRecords.length === 0) {
+        toast.error('No COD records to export');
+        return;
+      }
+
+      // Map nested properties for the report generator
+      const reportData = allRecords.map(record => ({
+        ...record,
+        waybillNumber: record.order?.waybillNumber || '',
+        customerName: record.order?.customerName || '',
+        city: record.order?.city || ''
+      }));
+
+      const doc = generateCODReportPDF(reportData, 'All COD Records (Collected + Remitted)');
+      downloadPDF(doc, `All_COD_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success('All COD PDF downloaded successfully');
     } catch (error: any) {
       toast.error(error.message || 'Failed to generate PDF');
     }
@@ -383,16 +414,27 @@ export default function CODPanel() {
                   Export pending settlements
                 </div>
               </div>
-              <Button
-                onClick={handleDownloadSettlementPDF}
-                variant="outline"
-                size="sm"
-                className="w-full mt-4 border-purple-500/30 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all group-hover:scale-105"
-                disabled={totalPendingSettlement === 0}
-              >
-                <Download className="mr-2 h-4 w-4 opacity-70" />
-                Download PDF
-              </Button>
+              <div className="flex flex-col gap-2 mt-3">
+                <Button
+                  onClick={handleDownloadSettlementPDF}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-purple-500/30 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all"
+                  disabled={totalPendingSettlement === 0}
+                >
+                  <Download className="mr-2 h-4 w-4 opacity-70" />
+                  Pending Settlements
+                </Button>
+                <Button
+                  onClick={handleDownloadAllCODPDF}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/50 transition-all"
+                >
+                  <Download className="mr-2 h-4 w-4 opacity-70" />
+                  All COD Records
+                </Button>
+              </div>
             </div>
           </div>
 

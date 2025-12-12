@@ -1173,8 +1173,23 @@ const codRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'No valid COD records selected' });
       }
 
-      const totalAmount = selectedRecords.reduce((sum, r) => sum + parseFloat(r.codAmount), 0);
+      const grossAmount = selectedRecords.reduce((sum, r) => sum + parseFloat(r.codAmount), 0);
       const currency = selectedRecords[0]?.codCurrency || 'AED';
+
+      // Calculate COD fee for each record and sum up
+      let totalFee = 0;
+      for (const record of selectedRecords) {
+        const recordAmount = parseFloat(record.codAmount);
+        const fee = await calculateCODFee(recordAmount, input.clientId);
+        totalFee += fee;
+      }
+
+      // Get fee percentage from client settings
+      const client = await getClientAccountById(input.clientId);
+      const feePercentage = client?.codFeePercent || '3.3';
+
+      // Net amount after fee deduction
+      const netAmount = grossAmount - totalFee;
 
       // Generate remittance number
       const remittanceNumber = await generateRemittanceNumber();
@@ -1182,7 +1197,10 @@ const codRouter = router({
       const remittanceId = await createCODRemittance({
         clientId: input.clientId,
         remittanceNumber,
-        totalAmount: totalAmount.toFixed(2),
+        grossAmount: grossAmount.toFixed(2),
+        feeAmount: totalFee.toFixed(2),
+        feePercentage: feePercentage,
+        totalAmount: netAmount.toFixed(2),
         currency,
         shipmentCount: selectedRecords.length,
         codRecordIds: input.codRecordIds,
@@ -1192,7 +1210,7 @@ const codRouter = router({
         createdBy: payload.userId,
       });
 
-      return { remittanceId, remittanceNumber };
+      return { remittanceId, remittanceNumber, grossAmount: grossAmount.toFixed(2), feeAmount: totalFee.toFixed(2), netAmount: netAmount.toFixed(2) };
     }),
 
   // Admin: Get all remittances

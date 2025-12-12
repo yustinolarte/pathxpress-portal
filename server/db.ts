@@ -760,6 +760,9 @@ export async function getPendingCODByClient(clientId: number) {
 export async function createCODRemittance(data: {
   clientId: number;
   remittanceNumber: string;
+  grossAmount: string;
+  feeAmount: string;
+  feePercentage: string;
   totalAmount: string;
   currency: string;
   shipmentCount: number;
@@ -776,6 +779,9 @@ export async function createCODRemittance(data: {
   const [remittance] = await db.insert(codRemittances).values({
     clientId: data.clientId,
     remittanceNumber: data.remittanceNumber,
+    grossAmount: data.grossAmount,
+    feeAmount: data.feeAmount,
+    feePercentage: data.feePercentage,
     totalAmount: data.totalAmount,
     currency: data.currency,
     shipmentCount: data.shipmentCount,

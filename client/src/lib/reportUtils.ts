@@ -388,29 +388,55 @@ export function generateRemittancePDF(remittance: any, items: any[]) {
         doc.setFillColor(zebraColor, zebraColor, zebraColor);
         doc.rect(15, yPos - 5, pageWidth - 30, 7, 'F');
 
-        doc.text(item.codRecord.order.waybillNumber, 20, yPos);
-        doc.text(item.codRecord.order.customerName.substring(0, 25), 60, yPos);
+        doc.text(item.order?.waybillNumber || 'N/A', 20, yPos);
+        doc.text((item.order?.customerName || 'N/A').substring(0, 25), 60, yPos);
 
-        const dateStr = item.codRecord.collectedDate
+        const dateStr = item.codRecord?.collectedDate
             ? format(new Date(item.codRecord.collectedDate), 'dd/MM/yyyy')
             : '-';
         doc.text(dateStr, 120, yPos);
 
         doc.setFont('helvetica', 'bold');
-        doc.text(`${parseFloat(item.codRecord.codAmount).toFixed(2)}`, 160, yPos);
+        doc.text(`${parseFloat(item.amount).toFixed(2)}`, 160, yPos);
         doc.setFont('helvetica', 'normal');
 
         yPos += 7;
     });
 
-    // Total Footer
+    // Total Footer with Fee Breakdown
     yPos += 5;
     doc.line(15, yPos, pageWidth - 15, yPos);
-    yPos += 7;
+    yPos += 10;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+
+    // Gross Amount (before fees)
+    const grossAmount = remittance.grossAmount ? parseFloat(remittance.grossAmount) : parseFloat(remittance.totalAmount);
+    doc.text('Gross Amount (Total COD Collected):', 80, yPos);
+    doc.text(`${grossAmount.toFixed(2)} ${remittance.currency}`, 165, yPos);
+
+    // Fee Deduction (if available)
+    if (remittance.feeAmount && parseFloat(remittance.feeAmount) > 0) {
+        yPos += 7;
+        const feeAmount = parseFloat(remittance.feeAmount);
+        const feePercentage = remittance.feePercentage || '0';
+        doc.setTextColor(220, 53, 69); // Red color for fee
+        doc.text(`COD Service Fee (${feePercentage}%):`, 80, yPos);
+        doc.text(`-${feeAmount.toFixed(2)} ${remittance.currency}`, 165, yPos);
+        doc.setTextColor(0, 0, 0);
+    }
+
+    // Net Amount (to client)
+    yPos += 10;
+    doc.setFillColor(41, 128, 185);
+    doc.setTextColor(255, 255, 255);
+    doc.rect(75, yPos - 5, pageWidth - 90, 10, 'F');
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Total Remitted:', 120, yPos);
-    doc.text(`${parseFloat(remittance.totalAmount).toFixed(2)} ${remittance.currency}`, 160, yPos);
+    doc.text('Net Amount to Client:', 80, yPos + 2);
+    doc.text(`${parseFloat(remittance.totalAmount).toFixed(2)} ${remittance.currency}`, 165, yPos + 2);
+    doc.setTextColor(0, 0, 0);
 
     // Footer Info
     doc.setFontSize(8);

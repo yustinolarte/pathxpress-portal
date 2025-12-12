@@ -23,6 +23,7 @@ import CustomerCODPanel from '@/components/CustomerCODPanel';
 import CustomerRateCalculator from '@/components/CustomerRateCalculator';
 import CustomerReports from '@/components/CustomerReports';
 import BulkShipmentDialog from '@/components/BulkShipmentDialog';
+import * as XLSX from 'xlsx';
 
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
@@ -31,6 +32,8 @@ export default function CustomerDashboard() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [trackingWaybill, setTrackingWaybill] = useState('');
   const [searchedWaybill, setSearchedWaybill] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
 
   const { data: trackingData, error: trackingError } = trpc.portal.publicTracking.track.useQuery(
     { waybillNumber: searchedWaybill },
@@ -59,10 +62,46 @@ export default function CustomerDashboard() {
   }, [token, user, setLocation]);
 
   // Fetch customer's orders
-  const { data: orders, isLoading, refetch } = trpc.portal.customer.getMyOrders.useQuery(
+  const { data: orders, isLoading: isLoadingOrders, refetch } = trpc.portal.customer.getMyOrders.useQuery(
     { token: token || '' },
     { enabled: !!token }
   );
+
+  // Filtered orders based on status
+  const filteredOrders = orders?.filter((order: any) => {
+    if (filterStatus === 'all') return true;
+    return order.status === filterStatus;
+  });
+
+  const handleExportOrders = () => {
+    if (!filteredOrders || filteredOrders.length === 0) {
+      toast.error('No orders to export');
+      return;
+    }
+
+    const data = filteredOrders.map((order: any) => ({
+      'Waybill': order.waybillNumber,
+      'Customer': order.customerName,
+      'Phone': order.customerPhone,
+      'City': order.city,
+      'Status': getStatusLabel(order.status),
+      'Service': order.serviceType,
+      'Weight': order.weight,
+      'COD Amount': order.codAmount || '0',
+      'Created At': new Date(order.createdAt).toLocaleDateString()
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders');
+    XLSX.writeFile(workbook, `Orders_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Orders exported successfully');
+  };
+
+  const handleViewTracking = (waybill: string) => {
+    setSearchedWaybill(waybill);
+    setTrackingDialogOpen(true);
+  };
 
   // Fetch customer account
   const { data: account } = trpc.portal.customer.getMyAccount.useQuery(
@@ -281,14 +320,36 @@ export default function CustomerDashboard() {
 
             {/* Orders Table */}
             <Card className="glass-strong border-blue-500/20">
-              <CardHeader>
-                <CardTitle>My Shipments</CardTitle>
-                <CardDescription>View and track all your shipments</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>My Shipments</CardTitle>
+                  <CardDescription>View and track all your shipments</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending_pickup">Pending Pickup</SelectItem>
+                      <SelectItem value="picked_up">Picked Up</SelectItem>
+                      <SelectItem value="in_transit">In Transit</SelectItem>
+                      <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
+                      <SelectItem value="delivered">Delivered</SelectItem>
+                      <SelectItem value="failed_delivery">Failed / Returned</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={handleExportOrders}>
+                    <Download className="w-4 h-4 mr-2" /> Export
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
+                {isLoadingOrders ? (
                   <p className="text-center py-8 text-muted-foreground">Loading shipments...</p>
-                ) : orders && orders.length > 0 ? (
+                ) : filteredOrders && filteredOrders.length > 0 ? (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -303,9 +364,17 @@ export default function CustomerDashboard() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {orders.map((order) => (
+                        {filteredOrders.map((order) => (
                           <TableRow key={order.id}>
-                            <TableCell className="font-mono font-medium">{order.waybillNumber}</TableCell>
+                            <TableCell className="font-mono font-medium">
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-primary underline"
+                                onClick={() => handleViewTracking(order.waybillNumber)}
+                              >
+                                {order.waybillNumber}
+                              </Button>
+                            </TableCell>
                             <TableCell>{order.customerName}</TableCell>
                             <TableCell>{order.city}, {order.destinationCountry}</TableCell>
                             <TableCell>{order.serviceType}</TableCell>
@@ -332,7 +401,7 @@ export default function CustomerDashboard() {
                 ) : (
                   <div className="text-center py-12">
                     <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground mb-4">No shipments yet</p>
+                    <p className="text-muted-foreground mb-4">No shipments found</p>
                     <Button onClick={() => setCreateDialogOpen(true)}>
                       <Plus className="mr-2 h-4 w-4" />
                       Create Your First Shipment
@@ -341,6 +410,76 @@ export default function CustomerDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Tracking Dialog */}
+            <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Shipment Tracking</DialogTitle>
+                  <DialogDescription>
+                    Tracking details for {searchedWaybill}
+                  </DialogDescription>
+                </DialogHeader>
+
+                {trackingData ? (
+                  <div className="space-y-4 mt-2">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-semibold">Shipment Details</h3>
+                      <Badge className={getStatusColor(trackingData.order.status)}>
+                        {getStatusLabel(trackingData.order.status)}
+                      </Badge>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-4 text-sm bg-muted/30 p-3 rounded-lg">
+                      <div><span className="text-muted-foreground">Waybill:</span> <span className="ml-2 font-medium">{trackingData.order.waybillNumber}</span></div>
+                      <div><span className="text-muted-foreground">Service:</span> <span className="ml-2 font-medium">{trackingData.order.serviceType}</span></div>
+                      <div><span className="text-muted-foreground">Destination:</span> <span className="ml-2 font-medium">{trackingData.order.city}, {trackingData.order.destinationCountry}</span></div>
+                      <div><span className="text-muted-foreground">Weight:</span> <span className="ml-2 font-medium">{trackingData.order.weight} kg</span></div>
+                    </div>
+                    <div className="mt-6">
+                      <h4 className="font-semibold mb-4">Tracking History</h4>
+                      <div className="relative space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                        <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-border" />
+                        {trackingData.trackingEvents.sort((a, b) => new Date(b.eventDatetime).getTime() - new Date(a.eventDatetime).getTime()).map((event, i) => (
+                          <div key={event.id} className="relative flex gap-4">
+                            <div className={`relative z-10 w-4 h-4 rounded-full mt-1 ${i === 0 ? 'bg-primary' : 'bg-muted'}`} />
+                            <div className="flex-1 pb-4">
+                              <div className="flex justify-between">
+                                <div className="flex-1">
+                                  <p className="font-medium">{event.statusLabel}</p>
+                                  {event.description && (
+                                    <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                                  )}
+                                  {event.podFileUrl && (
+                                    <div className="mt-2">
+                                      <a
+                                        href={event.podFileUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 underline"
+                                      >
+                                        📄 View Proof of Delivery
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-sm text-muted-foreground text-right">
+                                  <div>{new Date(event.eventDatetime).toLocaleDateString()}</div>
+                                  <div>{new Date(event.eventDatetime).toLocaleTimeString()}</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : trackingError ? (
+                  <div className="p-4 text-center text-red-500">Failed to load tracking data</div>
+                ) : (
+                  <div className="p-8 text-center text-muted-foreground">Loading tracking data...</div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Tracking Tab */}
@@ -751,6 +890,15 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                   <Button
                     type="button"
                     variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => handleLoadShipper(shipper.id.toString())}
+                  >
+                    Load
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
                     size="icon"
                     className="h-6 w-6 text-destructive hover:text-destructive/80"
                     onClick={() => handleDeleteShipper(shipper.id)}
@@ -765,12 +913,13 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
 
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Shipper Name *</Label>
+            <Label>Shipper Company *</Label>
             <Input
               value={formData.shipperName}
               onChange={(e) => setFormData({ ...formData, shipperName: e.target.value })}
               required
               className="bg-background/50 focus:bg-background transition-colors"
+              placeholder="Company Name"
             />
           </div>
           <div className="space-y-2">
@@ -782,33 +931,52 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
               className="bg-background/50 focus:bg-background transition-colors"
             />
           </div>
-          <div className="col-span-2 space-y-2">
-            <Label>Shipper Address *</Label>
-            <Input
-              value={formData.shipperAddress}
-              onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-              placeholder="Building, Street, Area"
-            />
-          </div>
+
           <div className="space-y-2">
             <Label>City *</Label>
-            <Input
+            <Select
               value={formData.shipperCity}
-              onChange={(e) => setFormData({ ...formData, shipperCity: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-            />
+              onValueChange={(val) => setFormData({ ...formData, shipperCity: val })}
+            >
+              <SelectTrigger className="bg-background/50">
+                <SelectValue placeholder="Select City" />
+              </SelectTrigger>
+              <SelectContent>
+                {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(city => (
+                  <SelectItem key={city} value={city}>{city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Country *</Label>
-            <Input
+            <Select
               value={formData.shipperCountry}
-              onChange={(e) => setFormData({ ...formData, shipperCountry: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-            />
+              onValueChange={(val) => setFormData({ ...formData, shipperCountry: val })}
+            >
+              <SelectTrigger className="bg-background/50">
+                <SelectValue placeholder="Select Country" />
+              </SelectTrigger>
+              <SelectContent>
+                {['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman'].map(country => (
+                  <SelectItem key={country} value={country}>{country}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="col-span-2 space-y-2">
+            <Label>Shipper Address *</Label>
+            <div className="flex gap-2">
+              <Input
+                value={formData.shipperAddress}
+                onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
+                required
+                className="bg-background/50 focus:bg-background transition-colors flex-1"
+                placeholder="Building, Street, Area"
+              />
+              {/* Quick load button inside address row if needed, but existing top select is fine too */}
+            </div>
           </div>
         </div>
       </div>
@@ -852,22 +1020,29 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           </div>
           <div className="space-y-2">
             <Label>City *</Label>
-            <Input
+            <Select
               value={formData.city}
-              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Emirate (if UAE)</Label>
-            <Select value={formData.emirate} onValueChange={(value) => setFormData({ ...formData, emirate: value })}>
-              <SelectTrigger className="bg-background/50 focus:bg-background transition-colors">
-                <SelectValue placeholder="Select emirate" />
+              onValueChange={(val) => setFormData({ ...formData, city: val })}
+            >
+              <SelectTrigger className="bg-background/50">
+                <SelectValue placeholder="Select City" />
               </SelectTrigger>
               <SelectContent>
-                {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain'].map(e => (
-                  <SelectItem key={e} value={e}>{e}</SelectItem>
+                {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(city => (
+                  <SelectItem key={city} value={city}>{city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Country *</Label>
+            <Select value={formData.destinationCountry} onValueChange={(value) => setFormData({ ...formData, destinationCountry: value })}>
+              <SelectTrigger className="bg-background/50 focus:bg-background transition-colors">
+                <SelectValue placeholder="Select Country" />
+              </SelectTrigger>
+              <SelectContent>
+                {['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman'].map(country => (
+                  <SelectItem key={country} value={country}>{country}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -24,6 +24,7 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
     const [shipperDetails, setShipperDetails] = useState<any>(null);
+    const [resultsLog, setResultsLog] = useState<{ row: number, status: 'success' | 'error', message: string }[]>([]);
 
     // Fetch saved shippers to populate the dropdown
     const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery({ token });
@@ -68,8 +69,10 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
         }
 
         setUploading(true);
+        setResultsLog([]);
         let successCount = 0;
         let failCount = 0;
+        const newLog: typeof resultsLog = [];
 
         for (let i = 0; i < parsedData.length; i++) {
             const row = parsedData[i];
@@ -107,23 +110,31 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                         codAmount: codAmount ? codAmount.toString() : undefined,
                         codCurrency: 'AED'
                     }
+
                 });
                 successCount++;
-            } catch (error) {
+                newLog.push({ row: i + 1, status: 'success', message: 'Created successfully' });
+            } catch (error: any) {
                 console.error('Failed row', row, error);
                 failCount++;
+                const errorMessage = error.message || error.shape?.message || 'Unknown error';
+                newLog.push({ row: i + 1, status: 'error', message: errorMessage });
             }
 
             setProgress(Math.round(((i + 1) / parsedData.length) * 100));
         }
 
+        setResultsLog(newLog);
         setUploading(false);
         toast.success(`Processed ${parsedData.length} records. Success: ${successCount}, Failed: ${failCount}`);
-        setOpen(false);
-        setParsedData([]);
-        setFile(null);
-        setProgress(0);
-        onSuccess();
+
+        if (successCount === parsedData.length) {
+            setOpen(false);
+            setParsedData([]);
+            setFile(null);
+            setProgress(0);
+            onSuccess();
+        }
     };
 
     const handleSelectShipper = (id: string) => {
@@ -275,6 +286,26 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                                 <span>{progress}%</span>
                             </div>
                             <Progress value={progress} className="h-2" />
+                        </div>
+                    )}
+
+                    {/* Results Log */}
+                    {resultsLog.length > 0 && (
+                        <div className="space-y-2">
+                            <Label>Processing Results</Label>
+                            <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 text-xs space-y-1">
+                                {resultsLog.filter(l => l.status === 'error').map((log, i) => (
+                                    <div key={i} className="text-red-500 flex gap-2">
+                                        <span className="font-semibold">Row {log.row}:</span>
+                                        <span>{log.message}</span>
+                                    </div>
+                                ))}
+                                {resultsLog.filter(l => l.status === 'error').length === 0 && (
+                                    <div className="text-green-500 flex items-center gap-2">
+                                        <CheckCircle className="w-4 h-4" /> All rows processed successfully.
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 

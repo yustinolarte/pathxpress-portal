@@ -316,7 +316,10 @@ export const codRemittances = mysqlTable("codRemittances", {
   id: int("id").autoincrement().primaryKey(),
   clientId: int("clientId").notNull(), // Foreign key to clientAccounts
   remittanceNumber: varchar("remittanceNumber", { length: 50 }).notNull().unique(),
-  totalAmount: varchar("totalAmount", { length: 50 }).notNull(),
+  grossAmount: varchar("grossAmount", { length: 50 }).notNull(), // Total COD collected before fees
+  feeAmount: varchar("feeAmount", { length: 50 }).notNull().default("0"), // Fee deducted
+  feePercentage: varchar("feePercentage", { length: 10 }).notNull().default("0"), // Fee percentage applied
+  totalAmount: varchar("totalAmount", { length: 50 }).notNull(), // Net amount to client (grossAmount - feeAmount)
   currency: varchar("currency", { length: 10 }).notNull(),
   shipmentCount: int("shipmentCount").notNull(),
   status: mysqlEnum("status", ["pending", "processed", "completed"]).default("pending").notNull(),

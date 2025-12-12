@@ -13,10 +13,23 @@ export default function CustomerRateCalculator() {
   const { token, user } = usePortalAuth();
   const [serviceType, setServiceType] = useState<'DOM' | 'SDD'>('DOM');
   const [weight, setWeight] = useState<string>('');
+  const [dimL, setDimL] = useState<string>('');
+  const [dimW, setDimW] = useState<string>('');
+  const [dimH, setDimH] = useState<string>('');
   const [codRequired, setCodRequired] = useState(false);
   const [codAmount, setCodAmount] = useState<string>('');
   const [calculatedRate, setCalculatedRate] = useState<any>(null);
   const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
+
+  const getVolumetricWeight = () => {
+    const l = parseFloat(dimL) || 0;
+    const w = parseFloat(dimW) || 0;
+    const h = parseFloat(dimH) || 0;
+    if (l > 0 && w > 0 && h > 0) {
+      return (l * w * h) / 5000;
+    }
+    return 0;
+  };
 
   // Calculate rate mutation
   const calculateRateMutation = trpc.portal.rates.calculate.useMutation({
@@ -42,7 +55,7 @@ export default function CustomerRateCalculator() {
       token: token || '',
       clientId: user.clientId,
       serviceType,
-      weight: weightNum,
+      weight: Math.max(weightNum, getVolumetricWeight()),
     });
 
     if (codRequired && codAmount) {
@@ -110,6 +123,45 @@ export default function CustomerRateCalculator() {
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
             />
+          </div>
+
+          {/* Dimensions (Volumetric Weight) */}
+          <div className="space-y-2">
+            <Label>Dimensions (cm) - Optional for Volumetric Weight</Label>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Input
+                  placeholder="L"
+                  type="number"
+                  value={dimL}
+                  onChange={(e) => setDimL(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Input
+                  placeholder="W"
+                  type="number"
+                  value={dimW}
+                  onChange={(e) => setDimW(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Input
+                  placeholder="H"
+                  type="number"
+                  value={dimH}
+                  onChange={(e) => setDimH(e.target.value)}
+                />
+              </div>
+            </div>
+            {getVolumetricWeight() > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Volumetric Weight: <span className="font-medium">{getVolumetricWeight().toFixed(2)} kg</span>
+                {parseFloat(weight) < getVolumetricWeight() && (
+                  <span className="text-orange-400 ml-1">(Chargeable Weight)</span>
+                )}
+              </p>
+            )}
           </div>
 
           {/* COD Options */}

@@ -5,31 +5,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { FileText, Download, CheckCircle, Clock, AlertCircle, Eye } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import * as XLSX from 'xlsx';
 
 export default function CustomerInvoices() {
   const { token } = usePortalAuth();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
   // Download invoice PDF handler
   const handleDownloadPDF = async (invoice: any) => {
     try {
       if (!token) return;
-      
+
       // Fetch invoice details
       const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
       const result = await response.json();
-      
+
       if (!result.result?.data?.json) {
         toast.error('Failed to load invoice details');
         return;
       }
-      
+
       const details = result.result.data.json;
-      
+
       // Prepare invoice data for PDF
       const invoiceData = {
         id: details.invoice.id,
@@ -59,7 +63,7 @@ export default function CustomerInvoices() {
           amount: item.total,
         })),
       };
-      
+
       generateInvoicePDF(invoiceData);
       toast.success('Invoice PDF downloaded');
     } catch (error) {
@@ -73,6 +77,42 @@ export default function CustomerInvoices() {
     { token: token || '' },
     { enabled: !!token }
   );
+
+  const filteredInvoices = useMemo(() => {
+    if (!invoices) return [];
+    if (filterStatus === 'all') return invoices;
+    return invoices.filter(inv => inv.status === filterStatus);
+  }, [invoices, filterStatus]);
+
+  const handleExportExcel = () => {
+    if (!filteredInvoices || filteredInvoices.length === 0) {
+      toast.error('No invoices to export');
+      return;
+    }
+
+    const data = filteredInvoices.map(inv => ({
+      'Invoice #': inv.invoiceNumber,
+      'Period Start': new Date(inv.periodFrom).toLocaleDateString(),
+      'Period End': new Date(inv.periodTo).toLocaleDateString(),
+      'Issue Date': new Date(inv.issueDate).toLocaleDateString(),
+      'Due Date': new Date(inv.dueDate).toLocaleDateString(),
+      'Amount': parseFloat(inv.total).toFixed(2),
+      'Currency': inv.currency,
+      'Status': inv.status.toUpperCase(),
+      'Adjusted': inv.isAdjusted === 1 ? 'Yes' : 'No'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Invoices');
+
+    // Auto-size columns
+    const wscols = Object.keys(data[0] || {}).map(() => ({ wch: 15 }));
+    worksheet['!cols'] = wscols;
+
+    XLSX.writeFile(workbook, `Invoices_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Invoices exported to Excel');
+  };
 
   // Get invoice details when selected
   const { data: invoiceDetails } = trpc.portal.billing.getInvoiceDetails.useQuery(
@@ -154,12 +194,34 @@ export default function CustomerInvoices() {
 
       {/* Invoices Table */}
       <Card className="glass-strong border-blue-500/20">
-        <CardHeader>
-          <CardTitle>Invoice History</CardTitle>
-          <CardDescription>All your invoices and payment records</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Invoice History</CardTitle>
+            <CardDescription>All your invoices and payment records</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleExportExcel}>
+            <Download className="mr-2 h-4 w-4" /> Export Excel
+          </Button>
         </CardHeader>
         <CardContent>
-          {!invoices || invoices.length === 0 ? (
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-[200px] space-y-1">
+              <Label>Filter Status</Label>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Invoices</SelectItem>
+                  <SelectItem value="paid">Paid</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {!filteredInvoices || filteredInvoices.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
               <p>No invoices found</p>
@@ -178,7 +240,7 @@ export default function CustomerInvoices() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoices.map((invoice) => (
+                {filteredInvoices.map((invoice) => (
                   <TableRow key={invoice.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
@@ -199,16 +261,16 @@ export default function CustomerInvoices() {
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => setSelectedInvoiceId(invoice.id)}
                         >
                           <Eye className="w-4 h-4 mr-1" />
                           View
                         </Button>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
                           onClick={() => handleDownloadPDF(invoice)}
                         >
@@ -230,7 +292,7 @@ export default function CustomerInvoices() {
           <DialogHeader>
             <DialogTitle>Invoice Details</DialogTitle>
           </DialogHeader>
-          
+
           {invoiceDetails && (
             <div className="space-y-6">
               {/* Invoice Header */}
@@ -317,7 +379,7 @@ export default function CustomerInvoices() {
 
               {/* Actions */}
               <div className="flex gap-2 justify-end">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => invoiceDetails && handleDownloadPDF(invoiceDetails.invoice)}
                 >
