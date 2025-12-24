@@ -247,6 +247,69 @@ export const adminPortalRouter = router({
       return { success: true, userId: user.id };
     }),
 
+  // Update user password (for existing customer users)
+  updateUserPassword: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+      newPassword: z.string().min(8),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      // Validate password
+      const passwordValidation = validatePassword(input.newPassword);
+      if (!passwordValidation.valid) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: passwordValidation.error || 'Invalid password' });
+      }
+
+      // Find user by clientId
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+      }
+
+      const { portalUsers } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const users = await db.select().from(portalUsers).where(eq(portalUsers.clientId, input.clientId));
+      if (users.length === 0) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'No user found for this client' });
+      }
+
+      // Hash new password and update
+      const passwordHash = await hashPassword(input.newPassword);
+      await db.update(portalUsers)
+        .set({ passwordHash })
+        .where(eq(portalUsers.clientId, input.clientId));
+
+      return { success: true };
+    }),
+
+  // Update client notes
+  updateClientNotes: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+      notes: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const updated = await updateClientAccount(input.clientId, { notes: input.notes });
+      if (!updated) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
+      }
+
+      return { success: true };
+    }),
+
   // Get all orders (global view)
   getAllOrders: publicProcedure
     .input(z.object({

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3 } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
@@ -69,6 +70,16 @@ export default function AdminDashboard() {
     email: '',
     password: '',
   });
+
+  // Client Notes Dialog State
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [selectedClientForNotes, setSelectedClientForNotes] = useState<any>(null);
+  const [clientNotes, setClientNotes] = useState('');
+
+  // Password Change Dialog State
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [selectedClientForPassword, setSelectedClientForPassword] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState('');
 
   const deleteClientMutation = trpc.portal.admin.deleteClient.useMutation({
     onSuccess: () => {
@@ -118,6 +129,55 @@ export default function AdminDashboard() {
       clientId: selectedClientForUser.id,
       email: newUser.email,
       password: newUser.password,
+    });
+  };
+
+  // Update client notes mutation
+  const updateNotesMutation = trpc.portal.admin.updateClientNotes.useMutation({
+    onSuccess: () => {
+      toast.success('Notes updated successfully');
+      setNotesDialogOpen(false);
+      setSelectedClientForNotes(null);
+      setClientNotes('');
+      refetchClients();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update notes: ${error.message}`);
+    },
+  });
+
+  // Update user password mutation
+  const updatePasswordMutation = trpc.portal.admin.updateUserPassword.useMutation({
+    onSuccess: () => {
+      toast.success('Password updated successfully');
+      setPasswordDialogOpen(false);
+      setSelectedClientForPassword(null);
+      setNewPassword('');
+    },
+    onError: (error) => {
+      toast.error(`Failed to update password: ${error.message}`);
+    },
+  });
+
+  const handleSaveNotes = () => {
+    if (!selectedClientForNotes) return;
+    updateNotesMutation.mutate({
+      token: token || '',
+      clientId: selectedClientForNotes.id,
+      notes: clientNotes,
+    });
+  };
+
+  const handleChangePassword = () => {
+    if (!selectedClientForPassword) return;
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    updatePasswordMutation.mutate({
+      token: token || '',
+      clientId: selectedClientForPassword.id,
+      newPassword: newPassword,
     });
   };
 
@@ -422,7 +482,7 @@ export default function AdminDashboard() {
                             </TableCell>
                             <TableCell>{client.codAllowed ? 'Yes' : 'No'}</TableCell>
                             <TableCell>
-                              <div className="flex gap-2">
+                              <div className="flex gap-1 flex-wrap">
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -438,6 +498,19 @@ export default function AdminDashboard() {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => {
+                                    setSelectedClientForNotes(client);
+                                    setClientNotes(client.notes || '');
+                                    setNotesDialogOpen(true);
+                                  }}
+                                  title="Client Notes"
+                                  className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+                                >
+                                  <StickyNote className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
                                     setSelectedClientForUser(client);
                                     setNewUser({ ...newUser, email: client.billingEmail }); // Pre-fill email
                                     setCreateUserDialogOpen(true);
@@ -445,6 +518,19 @@ export default function AdminDashboard() {
                                   title="Create Login User"
                                 >
                                   <Users className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedClientForPassword(client);
+                                    setNewPassword('');
+                                    setPasswordDialogOpen(true);
+                                  }}
+                                  title="Change Password"
+                                  className="text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+                                >
+                                  <Key className="h-4 w-4" />
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -1147,6 +1233,87 @@ export default function AdminDashboard() {
                 disabled={createClientUserMutation.isPending}
               >
                 {createClientUserMutation.isPending ? 'Creating...' : 'Create Login'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Client Notes Dialog */}
+        <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
+          <DialogContent className="glass-strong max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <StickyNote className="h-5 w-5 text-amber-500" />
+                Client Notes: {selectedClientForNotes?.companyName}
+              </DialogTitle>
+              <DialogDescription>
+                Add internal notes about this client. This information is only visible to admins.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="space-y-2">
+                <Label htmlFor="clientNotes">Notes</Label>
+                <Textarea
+                  id="clientNotes"
+                  value={clientNotes}
+                  onChange={(e) => setClientNotes(e.target.value)}
+                  placeholder="Enter notes about this client... (e.g., special arrangements, contact preferences, billing notes, etc.)"
+                  className="min-h-[200px] resize-y"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveNotes}
+                disabled={updateNotesMutation.isPending}
+                className="bg-amber-500 hover:bg-amber-600"
+              >
+                {updateNotesMutation.isPending ? 'Saving...' : 'Save Notes'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Change Password Dialog */}
+        <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+          <DialogContent className="glass-strong">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5 text-blue-500" />
+                Change Password
+              </DialogTitle>
+              <DialogDescription>
+                Set a new password for {selectedClientForPassword?.companyName}'s user account.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">New Password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Minimum 8 characters"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Password must be at least 8 characters long.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleChangePassword}
+                disabled={updatePasswordMutation.isPending || newPassword.length < 8}
+                className="bg-blue-500 hover:bg-blue-600"
+              >
+                {updatePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
               </Button>
             </DialogFooter>
           </DialogContent>
