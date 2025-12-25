@@ -317,6 +317,18 @@ export async function updatePortalUserLastSignIn(id: number): Promise<void> {
   }
 }
 
+export async function updatePortalUserPassword(id: number, passwordHash: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  try {
+    await db.update(portalUsers).set({ passwordHash }).where(eq(portalUsers.id, id));
+  } catch (error) {
+    console.error("[Database] Failed to update password:", error);
+    throw error;
+  }
+}
+
 /**
  * Client Accounts
  */

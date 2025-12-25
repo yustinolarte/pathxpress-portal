@@ -32,6 +32,24 @@ interface ShipmentData {
   specialInstructions?: string | null;
 }
 
+// City code mapping for UAE cities
+function getCityCode(city: string): string {
+  const cityLower = city.toLowerCase().trim();
+
+  // UAE Cities
+  if (cityLower.includes('dubai') || cityLower === 'dxb') return 'DXB';
+  if (cityLower.includes('sharjah') || cityLower === 'shj') return 'SHJ';
+  if (cityLower.includes('abu dhabi') || cityLower.includes('abudhabi')) return 'AUH';
+  if (cityLower.includes('ajman')) return 'AJM';
+  if (cityLower.includes('fujairah') || cityLower.includes('fujeirah')) return 'FUJ';
+  if (cityLower.includes('ras al') || cityLower.includes('rak')) return 'RAK';
+  if (cityLower.includes('umm al') || cityLower.includes('uaq')) return 'UAQ';
+  if (cityLower.includes('al ain')) return 'AAN';
+
+  // Default: first 3 letters uppercase
+  return city.substring(0, 3).toUpperCase();
+}
+
 // Function to load image and convert to base64
 async function loadImageAsBase64(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -54,6 +72,24 @@ async function loadImageAsBase64(url: string): Promise<string> {
   });
 }
 
+// Encode package data for route scanning
+function encodePackageData(shipment: ShipmentData): string {
+  const data = {
+    w: shipment.waybillNumber,           // waybill
+    n: shipment.customerName,             // name
+    p: shipment.customerPhone,            // phone
+    a: shipment.address.substring(0, 50), // address (truncated)
+    c: shipment.city,                     // city
+    kg: shipment.weight,                  // weight
+    s: shipment.serviceType,              // service
+    cod: shipment.codRequired === 1 ? shipment.codAmount : '0',
+    pcs: shipment.pieces
+  };
+
+  // Encode as base64 for compactness
+  return btoa(JSON.stringify(data));
+}
+
 export async function generateWaybillPDF(shipment: ShipmentData) {
   // Standard shipping label (100mm x 150mm)
   const pdf = new jsPDF({
@@ -64,233 +100,220 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
 
   const pageWidth = 100;
   const pageHeight = 150;
-  const margin = 4;
+  const margin = 3;
   const contentWidth = pageWidth - (margin * 2);
 
-  // Colors
-  const borderBlue = '#2563EB';
+  // Black and white colors only
   const black = '#000000';
-  const darkGray = '#374151';
-  const mediumGray = '#6B7280';
-  const lightGray = '#9CA3AF';
+  const white = '#FFFFFF';
 
-  // Draw blue border around the entire label
-  pdf.setDrawColor(borderBlue);
-  pdf.setLineWidth(2);
+  // Black border
+  pdf.setDrawColor(black);
+  pdf.setLineWidth(1);
   pdf.rect(1, 1, pageWidth - 2, pageHeight - 2);
 
   let y = margin + 2;
 
-  // ===== HEADER: Logo + QR Code =====
+  // ===== HEADER: Logo =====
 
-  // Try to load the logo
+  // Try to load the logo with correct proportions
   try {
     const logoBase64 = await loadImageAsBase64('/pathxpress-logo.png');
-    pdf.addImage(logoBase64, 'PNG', margin + 2, y, 40, 12);
+    pdf.addImage(logoBase64, 'PNG', margin, y, 48, 12);
   } catch (e) {
-    // Fallback: Text logo
-    pdf.setFontSize(16);
+    // Fallback: Text logo in black
+    pdf.setFontSize(18);
     pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(darkGray);
-    pdf.text('PATH', margin + 2, y + 8);
-    pdf.setTextColor('#DC2626');
-    pdf.text('X', margin + 20, y + 8);
-    pdf.setTextColor(darkGray);
-    pdf.text('PRESS', margin + 24, y + 8);
+    pdf.setTextColor(black);
+    pdf.text('PATHXPRESS', margin, y + 8);
   }
 
-  // QR Code (top right)
-  const qrSize = 18;
-  const qrX = pageWidth - margin - qrSize - 2;
+  // Date on right
+  pdf.setFontSize(7);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(black);
+  const dateStr = new Date(shipment.createdAt).toLocaleDateString('en-GB');
+  pdf.text(dateStr, pageWidth - margin, y + 4, { align: 'right' });
+  pdf.setFontSize(8);
+  pdf.setFont('helvetica', 'bold');
+  pdf.text(shipment.waybillNumber, pageWidth - margin, y + 9, { align: 'right' });
 
-  try {
-    const trackingUrl = `https://pathxpress.net/track/${shipment.waybillNumber}`;
-    const qrDataUrl = await QRCode.toDataURL(trackingUrl, {
-      width: 150,
-      margin: 0,
-      color: { dark: '#000000', light: '#ffffff' }
-    });
-    pdf.addImage(qrDataUrl, 'PNG', qrX, y, qrSize, qrSize);
-  } catch (e) {
-    pdf.setDrawColor(200);
-    pdf.rect(qrX, y, qrSize, qrSize);
-  }
-
-  y += 22;
+  y += 16;
 
   // Separator line
-  pdf.setDrawColor(200, 200, 200);
-  pdf.setLineWidth(0.3);
+  pdf.setDrawColor(black);
+  pdf.setLineWidth(0.5);
   pdf.line(margin, y, pageWidth - margin, y);
 
   // ===== SHIPPER (FROM) Section =====
-  y += 3;
+  y += 2;
 
-  pdf.setFillColor(245, 245, 245);
-  pdf.rect(margin, y, contentWidth, 18, 'F');
-
-  pdf.setFontSize(7);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(lightGray);
-  pdf.text('FROM / SHIPPER', margin + 2, y + 4);
-
-  pdf.setFontSize(9);
+  pdf.setFontSize(6);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(black);
-  pdf.text(shipment.shipperName, margin + 2, y + 9);
+  pdf.text('FROM:', margin, y + 3);
+
+  pdf.setFontSize(8);
+  pdf.text(shipment.shipperName, margin + 11, y + 3);
 
   pdf.setFontSize(7);
   pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(mediumGray);
-  pdf.text(shipment.shipperPhone, margin + 2, y + 13);
-  pdf.text(`${shipment.shipperCity}, ${shipment.shipperCountry}`, margin + 2, y + 16.5);
+  pdf.text(`${shipment.shipperPhone} | ${shipment.shipperCity}`, margin + 11, y + 7);
 
-  y += 20;
-  pdf.setDrawColor(200);
+  y += 10;
   pdf.line(margin, y, pageWidth - margin, y);
 
   // ===== CONSIGNEE (TO) Section =====
-  y += 3;
+  y += 2;
 
-  pdf.setFontSize(7);
+  pdf.setFontSize(6);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(lightGray);
-  pdf.text('TO / CONSIGNEE', margin + 2, y + 4);
+  pdf.text('TO:', margin, y + 4);
 
-  // Customer name (large)
-  pdf.setFontSize(12);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(black);
-  pdf.text(shipment.customerName, margin + 2, y + 10);
+  // Customer name (large and bold)
+  pdf.setFontSize(13);
+  pdf.text(shipment.customerName, margin + 7, y + 5);
 
   // Phone
-  pdf.setFontSize(10);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(darkGray);
-  pdf.text(shipment.customerPhone, margin + 2, y + 16);
+  pdf.setFontSize(11);
+  pdf.text(shipment.customerPhone, margin + 7, y + 11);
 
   // Address
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(mediumGray);
   const addressLines = pdf.splitTextToSize(shipment.address, contentWidth - 35);
-  pdf.text(addressLines.slice(0, 2), margin + 2, y + 22);
+  pdf.text(addressLines.slice(0, 2), margin + 7, y + 16);
 
   // City (bold)
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(black);
-  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 2, y + 30);
+  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 24);
 
-  // ROUTING CODE (right side - large city code)
-  const routingX = pageWidth - margin - 25;
-  const cityCode = shipment.city.substring(0, 3).toUpperCase();
+  // ROUTING CODE + QR (right side)
+  const routingX = pageWidth - margin - 40;
+  const cityCode = getCityCode(shipment.city);
 
-  pdf.setFillColor(darkGray);
-  pdf.rect(routingX, y, 23, 28, 'F');
+  // City code box (black background)
+  pdf.setFillColor(black);
+  pdf.rect(routingX, y, 18, 22, 'F');
 
-  pdf.setFontSize(24);
+  pdf.setFontSize(16);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(255, 255, 255);
-  pdf.text(cityCode, routingX + 11.5, y + 18, { align: 'center' });
+  pdf.setTextColor(white);
+  pdf.text(cityCode, routingX + 9, y + 14, { align: 'center' });
 
-  y += 34;
-  pdf.setDrawColor(200);
-  pdf.setLineWidth(0.3);
+  // Service type below city code
+  pdf.setFontSize(8);
+  const serviceType = shipment.serviceType === 'SDD' ? 'SDD' : 'DOM';
+  pdf.text(serviceType, routingX + 9, y + 20, { align: 'center' });
+  pdf.setTextColor(black);
+
+  // QR Code with encoded package data (for route scanning)
+  const qrSize = 20;
+  const qrX = routingX + 20;
+
+  try {
+    const packageData = encodePackageData(shipment);
+    const qrDataUrl = await QRCode.toDataURL(packageData, {
+      width: 200,
+      margin: 0,
+      color: { dark: '#000000', light: '#FFFFFF' }
+    });
+    pdf.addImage(qrDataUrl, 'PNG', qrX, y + 1, qrSize, qrSize);
+  } catch (e) {
+    pdf.setDrawColor(black);
+    pdf.rect(qrX, y + 1, qrSize, qrSize);
+    pdf.setFontSize(5);
+    pdf.text('SCAN', qrX + qrSize / 2, y + qrSize / 2, { align: 'center' });
+  }
+
+  y += 28;
+  pdf.setDrawColor(black);
   pdf.line(margin, y, pageWidth - margin, y);
 
   // ===== PACKAGE INFO + COD =====
-  y += 3;
+  y += 2;
 
   // Info grid - 4 columns
   const colWidth = contentWidth / 4;
 
   // Pieces
-  pdf.setDrawColor(180);
-  pdf.rect(margin, y, colWidth, 16);
+  pdf.setDrawColor(black);
+  pdf.setLineWidth(0.3);
+  pdf.rect(margin, y, colWidth, 14);
   pdf.setFontSize(6);
   pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(lightGray);
-  pdf.text('PIECES', margin + colWidth / 2, y + 4, { align: 'center' });
-  pdf.setFontSize(14);
+  pdf.text('PCS', margin + colWidth / 2, y + 4, { align: 'center' });
+  pdf.setFontSize(12);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(black);
-  pdf.text(shipment.pieces.toString(), margin + colWidth / 2, y + 12, { align: 'center' });
+  pdf.text(shipment.pieces.toString(), margin + colWidth / 2, y + 11, { align: 'center' });
 
   // Weight
-  pdf.rect(margin + colWidth, y, colWidth, 16);
+  pdf.rect(margin + colWidth, y, colWidth, 14);
   pdf.setFontSize(6);
   pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(lightGray);
-  pdf.text('WEIGHT', margin + colWidth + colWidth / 2, y + 4, { align: 'center' });
-  pdf.setFontSize(14);
+  pdf.text('KG', margin + colWidth + colWidth / 2, y + 4, { align: 'center' });
+  pdf.setFontSize(12);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(black);
   const weightVal = typeof shipment.weight === 'string' ? parseFloat(shipment.weight) : shipment.weight;
-  pdf.text(`${weightVal.toFixed(1)}`, margin + colWidth + colWidth / 2, y + 12, { align: 'center' });
+  pdf.text(weightVal.toFixed(1), margin + colWidth + colWidth / 2, y + 11, { align: 'center' });
 
   // Service Type
-  const serviceType = shipment.serviceType === 'SDD' ? 'SDD' : 'DOM';
-  pdf.rect(margin + colWidth * 2, y, colWidth, 16);
+  pdf.rect(margin + colWidth * 2, y, colWidth, 14);
   pdf.setFontSize(6);
   pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(lightGray);
   pdf.text('SERVICE', margin + colWidth * 2 + colWidth / 2, y + 4, { align: 'center' });
-  pdf.setFontSize(14);
+  pdf.setFontSize(12);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(serviceType === 'SDD' ? '#EA580C' : '#2563EB');
-  pdf.text(serviceType, margin + colWidth * 2 + colWidth / 2, y + 12, { align: 'center' });
+  pdf.text(serviceType, margin + colWidth * 2 + colWidth / 2, y + 11, { align: 'center' });
 
-  // COD or Date
-  pdf.rect(margin + colWidth * 3, y, colWidth, 16);
+  // COD or Prepaid
+  pdf.rect(margin + colWidth * 3, y, colWidth, 14);
 
   if (shipment.codRequired === 1 && shipment.codAmount) {
-    pdf.setFillColor('#EA580C');
-    pdf.rect(margin + colWidth * 3, y, colWidth, 16, 'F');
+    // COD - black background
+    pdf.setFillColor(black);
+    pdf.rect(margin + colWidth * 3, y, colWidth, 14, 'F');
     pdf.setFontSize(6);
     pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor(255, 255, 255);
+    pdf.setTextColor(white);
     pdf.text('COD', margin + colWidth * 3 + colWidth / 2, y + 4, { align: 'center' });
-    pdf.setFontSize(10);
+    pdf.setFontSize(9);
     const codAmount = parseFloat(shipment.codAmount).toFixed(0);
-    pdf.text(`${codAmount}`, margin + colWidth * 3 + colWidth / 2, y + 12, { align: 'center' });
+    pdf.text(`${codAmount}`, margin + colWidth * 3 + colWidth / 2, y + 11, { align: 'center' });
+    pdf.setTextColor(black);
   } else {
     pdf.setFontSize(6);
     pdf.setFont('helvetica', 'normal');
-    pdf.setTextColor(lightGray);
     pdf.text('STATUS', margin + colWidth * 3 + colWidth / 2, y + 4, { align: 'center' });
-    pdf.setFontSize(9);
+    pdf.setFontSize(8);
     pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor('#16A34A');
-    pdf.text('PREPAID', margin + colWidth * 3 + colWidth / 2, y + 12, { align: 'center' });
+    pdf.text('PREPAID', margin + colWidth * 3 + colWidth / 2, y + 11, { align: 'center' });
   }
 
-  y += 18;
+  y += 16;
 
   // ===== SPECIAL INSTRUCTIONS =====
   if (shipment.specialInstructions && shipment.specialInstructions.trim()) {
-    pdf.setFillColor(254, 249, 195);
-    pdf.rect(margin, y, contentWidth, 10, 'F');
-    pdf.setDrawColor(250, 204, 21);
+    pdf.setDrawColor(black);
     pdf.setLineWidth(0.5);
     pdf.rect(margin, y, contentWidth, 10);
 
     pdf.setFontSize(6);
     pdf.setFont('helvetica', 'bold');
-    pdf.setTextColor('#92400E');
-    pdf.text('INSTRUCTIONS:', margin + 2, y + 4);
+    pdf.text('NOTE:', margin + 2, y + 4);
 
     pdf.setFontSize(7);
     pdf.setFont('helvetica', 'normal');
-    const instrLines = pdf.splitTextToSize(shipment.specialInstructions, contentWidth - 28);
-    pdf.text(instrLines.slice(0, 1).join(' '), margin + 22, y + 4);
+    const instrLines = pdf.splitTextToSize(shipment.specialInstructions, contentWidth - 15);
+    pdf.text(instrLines.slice(0, 1).join(' '), margin + 12, y + 4);
 
     y += 12;
   }
 
-  // ===== MAIN BARCODE =====
-  y = pageHeight - 32;
+  // ===== MAIN BARCODE (Large, High Quality) =====
+  y = pageHeight - 35;
 
-  pdf.setDrawColor(200);
+  pdf.setDrawColor(black);
   pdf.setLineWidth(0.3);
   pdf.line(margin, y - 2, pageWidth - margin, y - 2);
 
@@ -298,25 +321,29 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
     const canvas = document.createElement('canvas');
     JsBarcode(canvas, shipment.waybillNumber, {
       format: 'CODE128',
-      width: 2.5,
-      height: 55,
-      displayValue: true,
-      fontSize: 14,
-      fontOptions: 'bold',
+      width: 3,
+      height: 60,
+      displayValue: false,
       margin: 0,
-      textMargin: 3
+      background: '#FFFFFF',
+      lineColor: '#000000'
     });
     const barcodeUrl = canvas.toDataURL('image/png');
-    pdf.addImage(barcodeUrl, 'PNG', margin + 8, y, contentWidth - 16, 22);
+    pdf.addImage(barcodeUrl, 'PNG', margin + 5, y, contentWidth - 10, 18);
   } catch (e) {
     console.error('Barcode error:', e);
   }
 
+  // Waybill number text (separate for clarity)
+  pdf.setFontSize(14);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setTextColor(black);
+  pdf.text(shipment.waybillNumber, pageWidth / 2, y + 24, { align: 'center' });
+
   // Footer
-  pdf.setFontSize(5);
-  pdf.setTextColor(lightGray);
+  pdf.setFontSize(6);
   pdf.setFont('helvetica', 'normal');
-  pdf.text('pathxpress.net  |  +971 522803433  |  support@pathxpress.net', pageWidth / 2, pageHeight - 4, { align: 'center' });
+  pdf.text('pathxpress.net  |  +971 522803433', pageWidth / 2, pageHeight - 4, { align: 'center' });
 
   // Save
   pdf.save(`waybill-${shipment.waybillNumber}.pdf`);

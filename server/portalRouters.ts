@@ -128,6 +128,56 @@ export const portalAuthRouter = router({
 
       return payload;
     }),
+
+  // Change password (user can change their own password)
+  changePassword: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Invalid or expired token',
+        });
+      }
+
+      // Get user
+      const user = await getPortalUserByEmail(payload.email);
+      if (!user) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'User not found',
+        });
+      }
+
+      // Verify current password
+      const isValid = await comparePassword(input.currentPassword, user.passwordHash);
+      if (!isValid) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Current password is incorrect',
+        });
+      }
+
+      // Validate new password
+      if (!validatePassword(input.newPassword)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'New password does not meet requirements',
+        });
+      }
+
+      // Hash and update password
+      const newHash = await hashPassword(input.newPassword);
+      const { updatePortalUserPassword } = await import('./db');
+      await updatePortalUserPassword(user.id, newHash);
+
+      return { success: true, message: 'Password changed successfully' };
+    }),
 });
 
 /**

@@ -3,8 +3,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Sidebar,
   SidebarContent,
@@ -20,10 +31,12 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LogOut, PanelLeft } from "lucide-react";
+import { LogOut, PanelLeft, Settings, Key, Loader2 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 
 export interface MenuItem {
   icon: any;
@@ -160,6 +173,44 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.value === activeItem);
 
+  // Password change state
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Get token from localStorage
+  const token = localStorage.getItem('portal_token') || '';
+
+  const changePasswordMutation = trpc.portalAuth.changePassword.useMutation({
+    onSuccess: () => {
+      toast.success('Password changed successfully');
+      setPasswordDialogOpen(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to change password');
+    },
+  });
+
+  const handleChangePassword = () => {
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    changePasswordMutation.mutate({
+      token,
+      currentPassword,
+      newPassword,
+    });
+  };
+
   useEffect(() => {
     if (isCollapsed) {
       setIsResizing(false);
@@ -274,7 +325,7 @@ function DashboardLayoutContent({
           <SidebarFooter className="p-3">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <Avatar className="h-9 w-9 border shrink-0">
                     <AvatarFallback className="text-xs font-medium">
                       {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase()}
@@ -288,9 +339,25 @@ function DashboardLayoutContent({
                       {user?.email || "-"}
                     </p>
                   </div>
+                  <Settings className="h-4 w-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user?.name || user?.email?.split('@')[0]}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setPasswordDialogOpen(true)}
+                  className="cursor-pointer"
+                >
+                  <Key className="mr-2 h-4 w-4" />
+                  <span>Change Password</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={logout}
                   className="cursor-pointer text-destructive focus:text-destructive"
@@ -300,6 +367,67 @@ function DashboardLayoutContent({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Change Password Dialog */}
+            <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Key className="h-5 w-5" />
+                    Change Password
+                  </DialogTitle>
+                  <DialogDescription>
+                    Enter your current password and choose a new one.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="current-password">Current Password</Label>
+                    <Input
+                      id="current-password"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">New Password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password (min 8 characters)"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-password">Confirm New Password</Label>
+                    <Input
+                      id="confirm-password"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm new password"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleChangePassword}
+                    disabled={changePasswordMutation.isPending}
+                  >
+                    {changePasswordMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Change Password
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </SidebarFooter>
         </Sidebar>
         <div
