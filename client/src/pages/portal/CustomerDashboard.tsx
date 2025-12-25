@@ -816,70 +816,20 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             <LayoutDashboard className="h-5 w-5 text-primary" />
             Shipper Details
           </h3>
-          <div className="flex gap-2">
-            {savedShippers.length > 0 && (
-              <Select onValueChange={handleLoadShipper}>
-                <SelectTrigger className="w-[180px] h-8 text-xs">
-                  <SelectValue placeholder="Load saved shipper" />
-                </SelectTrigger>
-                <SelectContent>
-                  {savedShippers.map((shipper: any) => (
-                    <SelectItem key={shipper.id} value={shipper.id.toString()}>
-                      {shipper.nickname}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Dialog open={showSaveShipperDialog} onOpenChange={setShowSaveShipperDialog}>
-              <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  disabled={!canSaveShipper}
-                  title={!canSaveShipper ? "Fill in shipper information first" : "Save this shipper for future use"}
-                >
-                  <Save className="mr-2 h-3 w-3" />
-                  Save Shipper
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="glass-strong">
-                <DialogHeader>
-                  <DialogTitle>Save Shipper Information</DialogTitle>
-                  <DialogDescription>
-                    Give this shipper a nickname to easily reuse this information later
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Nickname *</Label>
-                    <Input
-                      value={shipperNickname}
-                      onChange={(e) => setShipperNickname(e.target.value)}
-                      placeholder="e.g., Main Warehouse, Dubai Office"
-                    />
-                  </div>
-                  <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-3 rounded">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><span className="font-medium">Name:</span> {formData.shipperName}</div>
-                      <div><span className="font-medium">Phone:</span> {formData.shipperPhone}</div>
-                      <div className="col-span-2"><span className="font-medium">Address:</span> {formData.shipperAddress}, {formData.shipperCity}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setShowSaveShipperDialog(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="button" onClick={handleSaveShipper}>
-                    Save
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
+          {savedShippers.length > 0 && (
+            <Select onValueChange={handleLoadShipper}>
+              <SelectTrigger className="w-[180px] h-8 text-xs">
+                <SelectValue placeholder="Load saved shipper" />
+              </SelectTrigger>
+              <SelectContent>
+                {savedShippers.map((shipper: any) => (
+                  <SelectItem key={shipper.id} value={shipper.id.toString()}>
+                    {shipper.nickname}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Saved Shippers Management */}
@@ -975,17 +925,66 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
 
           <div className="col-span-2 space-y-2">
             <Label>Shipper Address *</Label>
-            <div className="flex gap-2">
-              <Input
-                value={formData.shipperAddress}
-                onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
-                required
-                className="bg-background/50 focus:bg-background transition-colors flex-1"
-                placeholder="Building, Street, Area"
-              />
-              {/* Quick load button inside address row if needed, but existing top select is fine too */}
-            </div>
+            <Input
+              value={formData.shipperAddress}
+              onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
+              required
+              className="bg-background/50 focus:bg-background transition-colors"
+              placeholder="Building, Street, Area"
+            />
           </div>
+        </div>
+
+        {/* Save Shipper Button - Now at the bottom of the section */}
+        <div className="pt-2 border-t flex justify-end">
+          <Dialog open={showSaveShipperDialog} onOpenChange={setShowSaveShipperDialog}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canSaveShipper}
+                className="gap-2"
+                title={!canSaveShipper ? "Fill in shipper information first" : "Save this shipper for future use"}
+              >
+                <Save className="h-4 w-4" />
+                Save Shipper for Future Use
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="glass-strong">
+              <DialogHeader>
+                <DialogTitle>Save Shipper Information</DialogTitle>
+                <DialogDescription>
+                  Give this shipper a nickname to easily reuse this information later
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Nickname *</Label>
+                  <Input
+                    value={shipperNickname}
+                    onChange={(e) => setShipperNickname(e.target.value)}
+                    placeholder="e.g., Main Warehouse, Dubai Office"
+                  />
+                </div>
+                <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-3 rounded">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><span className="font-medium">Name:</span> {formData.shipperName}</div>
+                    <div><span className="font-medium">Phone:</span> {formData.shipperPhone}</div>
+                    <div className="col-span-2"><span className="font-medium">Address:</span> {formData.shipperAddress}, {formData.shipperCity}</div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setShowSaveShipperDialog(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={handleSaveShipper}>
+                  Save
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

@@ -1821,6 +1821,11 @@ export const clientsRouter = router({
       token: z.string(),
       clientId: z.number(),
       tierId: z.number().nullable(),
+      // Custom rates (used when tierId is null and these are provided)
+      customDomBaseRate: z.string().optional(),
+      customDomPerKg: z.string().optional(),
+      customSddBaseRate: z.string().optional(),
+      customSddPerKg: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
@@ -1835,8 +1840,17 @@ export const clientsRouter = router({
       const db = await getDb();
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
 
+      // If custom rates are provided, clear the tierId and set custom rates
+      const isCustom = input.customDomBaseRate || input.customSddBaseRate;
+
       await db.update(clientAccounts)
-        .set({ manualRateTierId: input.tierId })
+        .set({
+          manualRateTierId: isCustom ? null : input.tierId,
+          customDomBaseRate: input.customDomBaseRate || null,
+          customDomPerKg: input.customDomPerKg || null,
+          customSddBaseRate: input.customSddBaseRate || null,
+          customSddPerKg: input.customSddPerKg || null,
+        })
         .where(eq(clientAccounts.id, input.clientId));
 
       return { success: true };

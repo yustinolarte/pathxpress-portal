@@ -82,10 +82,37 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                     throw new Error('Missing required fields');
                 }
 
-                const serviceType = row['Service Type (DOM/SDD)']?.toUpperCase() === 'SDD' ? 'SDD' : 'DOM';
-                const weight = parseFloat(row['Weight']) || 1;
-                const codAmount = row['COD Amount'];
+                // More flexible column name matching for Service Type
+                const serviceTypeRaw =
+                    row['Service Type (DOM/SDD)'] ||
+                    row['Service Type'] ||
+                    row['ServiceType'] ||
+                    row['service_type'] ||
+                    row['Service'] ||
+                    '';
 
+                // Parse service type - check for SDD in any format
+                const serviceTypeUpper = String(serviceTypeRaw).trim().toUpperCase();
+                const serviceType = serviceTypeUpper.includes('SDD') || serviceTypeUpper === 'SAME DAY'
+                    ? 'SDD'
+                    : 'DOM';
+
+                const weight = parseFloat(row['Weight']) || 1;
+
+                // More flexible COD amount detection
+                const codAmountRaw =
+                    row['COD Amount'] ||
+                    row['COD'] ||
+                    row['cod_amount'] ||
+                    row['Cod Amount'] ||
+                    row['cod'] ||
+                    '';
+
+                // Parse COD amount - handle various formats
+                const codAmountParsed = parseFloat(String(codAmountRaw).replace(/[^0-9.]/g, ''));
+                const hasCOD = !isNaN(codAmountParsed) && codAmountParsed > 0;
+
+                console.log(`[Bulk Import] Row ${i + 1}: serviceType=${serviceType} (raw: "${serviceTypeRaw}"), COD=${hasCOD ? codAmountParsed : 'none'} (raw: "${codAmountRaw}")`);
 
                 await createMutation.mutateAsync({
                     token,
@@ -105,16 +132,16 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                         weight: weight,
                         pieces: 1, // Default to 1 piece
                         serviceType: serviceType,
-                        specialInstructions: String(row['Instructions'] || ''),
+                        specialInstructions: String(row['Instructions'] || row['Special Instructions'] || ''),
 
-                        codRequired: codAmount ? 1 : 0,
-                        codAmount: codAmount ? String(codAmount) : undefined,
+                        codRequired: hasCOD ? 1 : 0,
+                        codAmount: hasCOD ? String(codAmountParsed) : undefined,
                         codCurrency: 'AED'
                     }
 
                 });
                 successCount++;
-                newLog.push({ row: i + 1, status: 'success', message: 'Created successfully' });
+                newLog.push({ row: i + 1, status: 'success', message: `Created successfully (${serviceType}${hasCOD ? ', COD: ' + codAmountParsed : ''})` });
             } catch (error: any) {
                 console.error('Failed row', row, error);
                 failCount++;
@@ -255,20 +282,43 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                                             <TableHead>City</TableHead>
                                             <TableHead>Weight</TableHead>
                                             <TableHead>Service</TableHead>
+                                            <TableHead>COD</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {parsedData.slice(0, 5).map((row, i) => (
-                                            <TableRow key={i}>
-                                                <TableCell className="font-medium">{row['Customer Name']}</TableCell>
-                                                <TableCell>{row['City']}</TableCell>
-                                                <TableCell>{row['Weight']}</TableCell>
-                                                <TableCell>{row['Service Type (DOM/SDD)'] || 'DOM'}</TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {parsedData.slice(0, 5).map((row, i) => {
+                                            // Use same flexible matching as processUpload
+                                            const serviceTypeRaw = row['Service Type (DOM/SDD)'] || row['Service Type'] || row['ServiceType'] || row['service_type'] || row['Service'] || '';
+                                            const serviceTypeUpper = String(serviceTypeRaw).trim().toUpperCase();
+                                            const serviceType = serviceTypeUpper.includes('SDD') || serviceTypeUpper === 'SAME DAY' ? 'SDD' : 'DOM';
+
+                                            const codAmountRaw = row['COD Amount'] || row['COD'] || row['cod_amount'] || row['Cod Amount'] || row['cod'] || '';
+                                            const codAmountParsed = parseFloat(String(codAmountRaw).replace(/[^0-9.]/g, ''));
+                                            const hasCOD = !isNaN(codAmountParsed) && codAmountParsed > 0;
+
+                                            return (
+                                                <TableRow key={i}>
+                                                    <TableCell className="font-medium">{row['Customer Name']}</TableCell>
+                                                    <TableCell>{row['City']}</TableCell>
+                                                    <TableCell>{row['Weight']}</TableCell>
+                                                    <TableCell>
+                                                        <span className={serviceType === 'SDD' ? 'text-orange-500 font-medium' : ''}>
+                                                            {serviceType}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {hasCOD ? (
+                                                            <span className="text-green-500 font-medium">{codAmountParsed}</span>
+                                                        ) : (
+                                                            <span className="text-muted-foreground">-</span>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                         {parsedData.length > 5 && (
                                             <TableRow>
-                                                <TableCell colSpan={4} className="text-center text-muted-foreground py-2">
+                                                <TableCell colSpan={5} className="text-center text-muted-foreground py-2">
                                                     ...and {parsedData.length - 5} more
                                                 </TableCell>
                                             </TableRow>

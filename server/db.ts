@@ -998,6 +998,7 @@ export async function calculateShipmentRate(params: {
   totalRate: number;
   appliedTier: RateTier | null;
   usingManualTier: boolean;
+  usingCustomRates?: boolean;
   chargeableWeight?: number;
 }> {
   const db = await getDb();
@@ -1005,11 +1006,53 @@ export async function calculateShipmentRate(params: {
     return { baseRate: 0, additionalKgCharge: 0, totalRate: 0, appliedTier: null, usingManualTier: false };
   }
 
+  // Check if client exists and has custom rates
+  const client = await getClientAccountById(params.clientId);
+
+  // PRIORITY 1: Check for custom rates first
+  if (client) {
+    const isDOM = params.serviceType === "DOM";
+    const customBaseRate = isDOM ? client.customDomBaseRate : client.customSddBaseRate;
+    const customPerKg = isDOM ? client.customDomPerKg : client.customSddPerKg;
+
+    if (customBaseRate) {
+      const baseRate = parseFloat(customBaseRate);
+      const additionalKgRate = customPerKg ? parseFloat(customPerKg) : 0;
+      const maxWeight = 5; // Standard max weight for base rate
+
+      let totalRate = baseRate;
+      let additionalKgCharge = 0;
+      let chargeableWeight = params.weight;
+
+      // Calculate volumetric weight
+      if (params.length && params.width && params.height) {
+        const volumetricWeight = (params.length * params.width * params.height) / 5000;
+        chargeableWeight = Math.max(params.weight, volumetricWeight);
+      }
+
+      // Calculate additional weight charges
+      if (chargeableWeight > maxWeight) {
+        const extraKg = Math.ceil(chargeableWeight - maxWeight);
+        additionalKgCharge = extraKg * additionalKgRate;
+        totalRate += additionalKgCharge;
+      }
+
+      return {
+        baseRate,
+        additionalKgCharge,
+        totalRate,
+        appliedTier: null,
+        usingManualTier: false,
+        usingCustomRates: true,
+        chargeableWeight,
+      };
+    }
+  }
+
   let applicableTier: RateTier | null = null;
   let usingManualTier = false;
 
-  // Check if client has a manual tier assigned
-  const client = await getClientAccountById(params.clientId);
+  // PRIORITY 2: Check if client has a manual tier assigned
   if (client?.manualRateTierId) {
     const manualTier = await db
       .select()
@@ -1029,7 +1072,7 @@ export async function calculateShipmentRate(params: {
     }
   }
 
-  // If no manual tier, calculate based on monthly volume
+  // PRIORITY 3: If no manual tier, calculate based on monthly volume
   if (!applicableTier) {
     const monthlyVolume = await getMonthlyShipmentCount(params.clientId);
 

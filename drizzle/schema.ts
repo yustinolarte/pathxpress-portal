@@ -122,6 +122,13 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   codMaxFee: varchar("codMaxFee", { length: 50 }), // Custom max COD fee (null = use default)
   defaultRateTableId: int("defaultRateTableId"),
   manualRateTierId: int("manualRateTierId"), // Admin-assigned rate tier (overrides automatic volume calculation)
+
+  // Custom rates - when set, these override tier rates completely
+  customDomBaseRate: varchar("customDomBaseRate", { length: 20 }), // Custom DOM base rate (0-5kg)
+  customDomPerKg: varchar("customDomPerKg", { length: 20 }), // Custom DOM rate per additional kg
+  customSddBaseRate: varchar("customSddBaseRate", { length: 20 }), // Custom SDD base rate (0-5kg)
+  customSddPerKg: varchar("customSddPerKg", { length: 20 }), // Custom SDD rate per additional kg
+
   notes: text("notes"),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

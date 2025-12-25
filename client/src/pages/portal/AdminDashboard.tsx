@@ -40,6 +40,11 @@ export default function AdminDashboard() {
     codFeePercent: '',
     codMinFee: '',
     codMaxFee: '',
+    // Custom rates
+    customDomBaseRate: '',
+    customDomPerKg: '',
+    customSddBaseRate: '',
+    customSddPerKg: '',
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
@@ -215,11 +220,17 @@ export default function AdminDashboard() {
     if (!editingClient) return;
 
     try {
-      // Update Tier
+      // Update Tier (and custom rates if applicable)
+      const isCustom = editForm.tierId === 'custom';
       await updateTierMutation.mutateAsync({
         token: token || '',
         clientId: editingClient.id,
-        tierId: editForm.tierId === 'auto' ? null : parseInt(editForm.tierId),
+        tierId: editForm.tierId === 'auto' || isCustom ? null : parseInt(editForm.tierId),
+        // Pass custom rates if using custom tier
+        customDomBaseRate: isCustom ? editForm.customDomBaseRate : undefined,
+        customDomPerKg: isCustom ? editForm.customDomPerKg : undefined,
+        customSddBaseRate: isCustom ? editForm.customSddBaseRate : undefined,
+        customSddPerKg: isCustom ? editForm.customSddPerKg : undefined,
       });
 
       // Update Settings
@@ -238,12 +249,24 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (editingClient) {
+      // Determine tier type: auto, custom, or a specific tier ID
+      let tierId = 'auto';
+      if (editingClient.customDomBaseRate || editingClient.customSddBaseRate) {
+        tierId = 'custom';
+      } else if (editingClient.manualRateTierId) {
+        tierId = editingClient.manualRateTierId.toString();
+      }
+
       setEditForm({
-        tierId: editingClient.manualRateTierId ? editingClient.manualRateTierId.toString() : 'auto',
+        tierId,
         codAllowed: !!editingClient.codAllowed,
         codFeePercent: editingClient.codFeePercent || '',
         codMinFee: editingClient.codMinFee || '',
         codMaxFee: editingClient.codMaxFee || '',
+        customDomBaseRate: editingClient.customDomBaseRate || '',
+        customDomPerKg: editingClient.customDomPerKg || '',
+        customSddBaseRate: editingClient.customSddBaseRate || '',
+        customSddPerKg: editingClient.customSddPerKg || '',
       });
     }
   }, [editingClient]);
@@ -467,7 +490,11 @@ export default function AdminDashboard() {
                             <TableCell>{client.billingEmail}</TableCell>
                             <TableCell>{client.country}</TableCell>
                             <TableCell>
-                              {client.manualRateTierId ? (
+                              {client.customDomBaseRate || client.customSddBaseRate ? (
+                                <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30">
+                                  ✨ Custom
+                                </Badge>
+                              ) : client.manualRateTierId ? (
                                 <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
                                   Manual Tier
                                 </Badge>
@@ -985,27 +1012,89 @@ export default function AdminDashboard() {
             <div className="space-y-6 py-4">
 
               {/* Rate Tier Section */}
-              <div className="space-y-2">
-                <Label>Rate Tier</Label>
-                <Select
-                  value={editForm.tierId}
-                  onValueChange={(val) => setEditForm({ ...editForm, tierId: val })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select tier or use automatic" />
-                  </SelectTrigger>
-                  <SelectContent className="glass-strong">
-                    <SelectItem value="auto">Automatic (Volume-based)</SelectItem>
-                    {rateTiers?.filter((t: any) => t.serviceType === 'DOM').map((tier: any) => (
-                      <SelectItem key={tier.id} value={tier.id.toString()}>
-                        Tier {tier.minVolume}-{tier.maxVolume || '∞'}: {tier.baseRate} AED (0-{tier.maxWeight}kg)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Overrides the automatic volume-based tier assignment.
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Rate Tier</Label>
+                  <Select
+                    value={editForm.tierId}
+                    onValueChange={(val) => setEditForm({ ...editForm, tierId: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select tier or use automatic" />
+                    </SelectTrigger>
+                    <SelectContent className="glass-strong">
+                      <SelectItem value="auto">Automatic (Volume-based)</SelectItem>
+                      <SelectItem value="custom" className="text-amber-500 font-medium">✨ Custom Rates</SelectItem>
+                      {rateTiers?.filter((t: any) => t.serviceType === 'DOM').map((tier: any) => (
+                        <SelectItem key={tier.id} value={tier.id.toString()}>
+                          Tier {tier.minVolume}-{tier.maxVolume || '∞'}: {tier.baseRate} AED (0-{tier.maxWeight}kg)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {editForm.tierId === 'custom'
+                      ? 'Enter custom rates below for this client.'
+                      : 'Overrides the automatic volume-based tier assignment.'}
+                  </p>
+                </div>
+
+                {/* Custom Rate Fields - Only shown when Custom is selected */}
+                {editForm.tierId === 'custom' && (
+                  <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-4">
+                    <h4 className="text-sm font-medium text-amber-500">Custom Rates</h4>
+
+                    {/* DOM (Next Day) Rates */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Next Day (DOM)</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="customDomBase" className="text-xs">Base Rate (0-5kg)</Label>
+                          <Input
+                            id="customDomBase"
+                            value={editForm.customDomBaseRate}
+                            onChange={(e) => setEditForm({ ...editForm, customDomBaseRate: e.target.value })}
+                            placeholder="e.g. 15.00"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="customDomKg" className="text-xs">Per Additional KG</Label>
+                          <Input
+                            id="customDomKg"
+                            value={editForm.customDomPerKg}
+                            onChange={(e) => setEditForm({ ...editForm, customDomPerKg: e.target.value })}
+                            placeholder="e.g. 2.00"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SDD (Same Day) Rates */}
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Same Day (SDD)</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="customSddBase" className="text-xs">Base Rate (0-5kg)</Label>
+                          <Input
+                            id="customSddBase"
+                            value={editForm.customSddBaseRate}
+                            onChange={(e) => setEditForm({ ...editForm, customSddBaseRate: e.target.value })}
+                            placeholder="e.g. 25.00"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor="customSddKg" className="text-xs">Per Additional KG</Label>
+                          <Input
+                            id="customSddKg"
+                            value={editForm.customSddPerKg}
+                            onChange={(e) => setEditForm({ ...editForm, customSddPerKg: e.target.value })}
+                            placeholder="e.g. 3.00"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="h-px bg-border/50" />
