@@ -182,7 +182,7 @@ function DashboardLayoutContent({
   // Get token from localStorage
   const token = localStorage.getItem('portal_token') || '';
 
-  const changePasswordMutation = trpc.portalAuth.changePassword.useMutation({
+  const changePasswordMutation = trpc.portal.auth.changePassword.useMutation({
     onSuccess: () => {
       toast.success('Password changed successfully');
       setPasswordDialogOpen(false);
