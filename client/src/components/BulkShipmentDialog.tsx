@@ -62,6 +62,27 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
         XLSX.writeFile(wb, 'pathxpress_bulk_template.xlsx');
     };
 
+    // Helper function to find a column value by multiple possible names (case-insensitive)
+    const getColumnValue = (row: any, possibleNames: string[]): any => {
+        // Get all keys from the row
+        const rowKeys = Object.keys(row);
+
+        for (const name of possibleNames) {
+            // First try exact match
+            if (row[name] !== undefined) return row[name];
+
+            // Then try case-insensitive match
+            const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            for (const key of rowKeys) {
+                const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (normalizedKey === normalizedName || normalizedKey.includes(normalizedName) || normalizedName.includes(normalizedKey)) {
+                    return row[key];
+                }
+            }
+        }
+        return undefined;
+    };
+
     const processUpload = async () => {
         if (!shipperDetails) {
             toast.error('Please select a shipper first');
@@ -74,45 +95,46 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
         let failCount = 0;
         const newLog: typeof resultsLog = [];
 
+        // Debug: Log all column names from first row
+        if (parsedData.length > 0) {
+            console.log('[Bulk Import] Detected columns:', Object.keys(parsedData[0]));
+            console.log('[Bulk Import] First row data:', parsedData[0]);
+        }
+
         for (let i = 0; i < parsedData.length; i++) {
             const row = parsedData[i];
             try {
-                // Validation with defaults
-                if (!row['Customer Name'] || !row['Address'] || !row['City']) {
-                    throw new Error('Missing required fields');
+                // Get values using flexible column matching
+                const customerName = getColumnValue(row, ['Customer Name', 'CustomerName', 'customer_name', 'Name', 'Consignee', 'Consignee Name']);
+                const customerPhone = getColumnValue(row, ['Customer Phone', 'CustomerPhone', 'customer_phone', 'Phone', 'Mobile', 'Consignee Phone', 'Tel']);
+                const address = getColumnValue(row, ['Address', 'Delivery Address', 'DeliveryAddress', 'Street', 'Full Address']);
+                const city = getColumnValue(row, ['City', 'Destination City', 'DestinationCity', 'Town']);
+
+                // Validation
+                if (!customerName || !address || !city) {
+                    throw new Error(`Missing required fields: ${!customerName ? 'Customer Name' : ''} ${!address ? 'Address' : ''} ${!city ? 'City' : ''}`);
                 }
 
-                // More flexible column name matching for Service Type
-                const serviceTypeRaw =
-                    row['Service Type (DOM/SDD)'] ||
-                    row['Service Type'] ||
-                    row['ServiceType'] ||
-                    row['service_type'] ||
-                    row['Service'] ||
-                    '';
-
-                // Parse service type - check for SDD in any format
-                const serviceTypeUpper = String(serviceTypeRaw).trim().toUpperCase();
-                const serviceType = serviceTypeUpper.includes('SDD') || serviceTypeUpper === 'SAME DAY'
+                // Service Type - flexible matching
+                const serviceTypeRaw = getColumnValue(row, ['Service Type (DOM/SDD)', 'Service Type', 'ServiceType', 'service_type', 'Service', 'Type']);
+                const serviceTypeUpper = String(serviceTypeRaw || '').trim().toUpperCase();
+                const serviceType = serviceTypeUpper.includes('SDD') || serviceTypeUpper === 'SAME DAY' || serviceTypeUpper === 'SAMEDAY'
                     ? 'SDD'
                     : 'DOM';
 
-                const weight = parseFloat(row['Weight']) || 1;
+                // Weight - flexible matching
+                const weightRaw = getColumnValue(row, ['Weight (kg)', 'Weight(kg)', 'Weight', 'weight', 'Kg', 'KG', 'Peso', 'Weight (Kg)']);
+                const weight = parseFloat(String(weightRaw || '').replace(/[^0-9.]/g, '')) || 1;
 
-                // More flexible COD amount detection
-                const codAmountRaw =
-                    row['COD Amount'] ||
-                    row['COD'] ||
-                    row['cod_amount'] ||
-                    row['Cod Amount'] ||
-                    row['cod'] ||
-                    '';
-
-                // Parse COD amount - handle various formats
-                const codAmountParsed = parseFloat(String(codAmountRaw).replace(/[^0-9.]/g, ''));
+                // COD Amount - flexible matching
+                const codAmountRaw = getColumnValue(row, ['COD Amount (AED)', 'COD Amount', 'COD', 'cod_amount', 'Cod Amount', 'cod', 'Cash on Delivery', 'COD Value', 'Amount (AED)']);
+                const codAmountParsed = parseFloat(String(codAmountRaw || '').replace(/[^0-9.]/g, ''));
                 const hasCOD = !isNaN(codAmountParsed) && codAmountParsed > 0;
 
-                console.log(`[Bulk Import] Row ${i + 1}: serviceType=${serviceType} (raw: "${serviceTypeRaw}"), COD=${hasCOD ? codAmountParsed : 'none'} (raw: "${codAmountRaw}")`);
+                // Instructions - flexible matching
+                const instructions = getColumnValue(row, ['Instructions', 'Special Instructions', 'SpecialInstructions', 'Notes', 'Comments', 'Remarks', 'Instrucciones']);
+
+                console.log(`[Bulk Import] Row ${i + 1}: weight=${weight} (raw: "${weightRaw}"), serviceType=${serviceType} (raw: "${serviceTypeRaw}"), COD=${hasCOD ? codAmountParsed : 'none'} (raw: "${codAmountRaw}"), instructions="${instructions || 'none'}"`);
 
                 await createMutation.mutateAsync({
                     token,
@@ -123,27 +145,26 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                         shipperCity: String(shipperDetails.shipperCity || ''),
                         shipperCountry: String(shipperDetails.shipperCountry || 'UAE'),
 
-                        customerName: String(row['Customer Name'] || ''),
-                        customerPhone: String(row['Customer Phone'] || ''),
-                        address: String(row['Address'] || ''),
-                        city: String(row['City'] || ''),
-                        destinationCountry: 'UAE', // Default to UAE for now
+                        customerName: String(customerName || ''),
+                        customerPhone: String(customerPhone || ''),
+                        address: String(address || ''),
+                        city: String(city || ''),
+                        destinationCountry: 'UAE',
 
                         weight: weight,
-                        pieces: 1, // Default to 1 piece
+                        pieces: 1,
                         serviceType: serviceType,
-                        specialInstructions: String(row['Instructions'] || row['Special Instructions'] || ''),
+                        specialInstructions: String(instructions || ''),
 
                         codRequired: hasCOD ? 1 : 0,
                         codAmount: hasCOD ? String(codAmountParsed) : undefined,
                         codCurrency: 'AED'
                     }
-
                 });
                 successCount++;
-                newLog.push({ row: i + 1, status: 'success', message: `Created successfully (${serviceType}${hasCOD ? ', COD: ' + codAmountParsed : ''})` });
+                newLog.push({ row: i + 1, status: 'success', message: `Created (${serviceType}, ${weight}kg${hasCOD ? ', COD: ' + codAmountParsed : ''})` });
             } catch (error: any) {
-                console.error('Failed row', row, error);
+                console.error('[Bulk Import] Failed row', i + 1, row, error);
                 failCount++;
                 const errorMessage = error.message || error.shape?.message || 'Unknown error';
                 newLog.push({ row: i + 1, status: 'error', message: errorMessage });
@@ -287,20 +308,25 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                                     </TableHeader>
                                     <TableBody>
                                         {parsedData.slice(0, 5).map((row, i) => {
-                                            // Use same flexible matching as processUpload
-                                            const serviceTypeRaw = row['Service Type (DOM/SDD)'] || row['Service Type'] || row['ServiceType'] || row['service_type'] || row['Service'] || '';
-                                            const serviceTypeUpper = String(serviceTypeRaw).trim().toUpperCase();
-                                            const serviceType = serviceTypeUpper.includes('SDD') || serviceTypeUpper === 'SAME DAY' ? 'SDD' : 'DOM';
+                                            // Use getColumnValue for consistent matching
+                                            const customerName = getColumnValue(row, ['Customer Name', 'CustomerName', 'customer_name', 'Name', 'Consignee', 'Consignee Name']);
+                                            const city = getColumnValue(row, ['City', 'Destination City', 'DestinationCity', 'Town']);
+                                            const weightRaw = getColumnValue(row, ['Weight (kg)', 'Weight(kg)', 'Weight', 'weight', 'Kg', 'KG', 'Peso', 'Weight (Kg)']);
+                                            const weight = parseFloat(String(weightRaw || '').replace(/[^0-9.]/g, '')) || 1;
 
-                                            const codAmountRaw = row['COD Amount'] || row['COD'] || row['cod_amount'] || row['Cod Amount'] || row['cod'] || '';
-                                            const codAmountParsed = parseFloat(String(codAmountRaw).replace(/[^0-9.]/g, ''));
+                                            const serviceTypeRaw = getColumnValue(row, ['Service Type (DOM/SDD)', 'Service Type', 'ServiceType', 'service_type', 'Service', 'Type']);
+                                            const serviceTypeUpper = String(serviceTypeRaw || '').trim().toUpperCase();
+                                            const serviceType = serviceTypeUpper.includes('SDD') || serviceTypeUpper === 'SAME DAY' || serviceTypeUpper === 'SAMEDAY' ? 'SDD' : 'DOM';
+
+                                            const codAmountRaw = getColumnValue(row, ['COD Amount (AED)', 'COD Amount', 'COD', 'cod_amount', 'Cod Amount', 'cod', 'Cash on Delivery', 'COD Value', 'Amount (AED)']);
+                                            const codAmountParsed = parseFloat(String(codAmountRaw || '').replace(/[^0-9.]/g, ''));
                                             const hasCOD = !isNaN(codAmountParsed) && codAmountParsed > 0;
 
                                             return (
                                                 <TableRow key={i}>
-                                                    <TableCell className="font-medium">{row['Customer Name']}</TableCell>
-                                                    <TableCell>{row['City']}</TableCell>
-                                                    <TableCell>{row['Weight']}</TableCell>
+                                                    <TableCell className="font-medium">{customerName || '-'}</TableCell>
+                                                    <TableCell>{city || '-'}</TableCell>
+                                                    <TableCell>{weight}kg</TableCell>
                                                     <TableCell>
                                                         <span className={serviceType === 'SDD' ? 'text-orange-500 font-medium' : ''}>
                                                             {serviceType}
