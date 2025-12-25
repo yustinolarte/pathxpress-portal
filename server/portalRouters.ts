@@ -245,7 +245,14 @@ export const adminPortalRouter = router({
       }
 
       const { deleteClientAccount } = await import('./db');
-      await deleteClientAccount(input.clientId);
+      const result = await deleteClientAccount(input.clientId);
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || 'Failed to delete client',
+        });
+      }
 
       return { success: true };
     }),

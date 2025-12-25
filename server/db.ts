@@ -386,19 +386,41 @@ export async function updateClientAccount(id: number, data: Partial<InsertClient
 }
 
 
-export async function deleteClientAccount(id: number): Promise<boolean> {
+// Estados que se consideran "pendientes" y bloquean la eliminación del cliente
+const PENDING_ORDER_STATUSES = ['pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery'];
+
+export async function deleteClientAccount(id: number): Promise<{ success: boolean; error?: string; pendingOrdersCount?: number }> {
   const db = await getDb();
-  if (!db) return false;
+  if (!db) return { success: false, error: 'Database not available' };
 
   const { clientAccounts } = await import("../drizzle/schema");
-  const { eq } = await import("drizzle-orm");
+  const { eq, and, inArray } = await import("drizzle-orm");
 
   try {
+    // Verificar si hay órdenes pendientes
+    const pendingOrders = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.clientId, id),
+          inArray(orders.status, PENDING_ORDER_STATUSES)
+        )
+      );
+
+    if (pendingOrders.length > 0) {
+      return {
+        success: false,
+        error: `No se puede eliminar este cliente porque tiene ${pendingOrders.length} orden(es) pendiente(s) por entregar. Por favor, complete o cancele todas las órdenes antes de eliminar el cliente.`,
+        pendingOrdersCount: pendingOrders.length
+      };
+    }
+
     await db.delete(clientAccounts).where(eq(clientAccounts.id, id));
-    return true;
+    return { success: true };
   } catch (error) {
     console.error("[Database] Failed to delete client account:", error);
-    return false;
+    return { success: false, error: 'Error al eliminar el cliente' };
   }
 }
 
