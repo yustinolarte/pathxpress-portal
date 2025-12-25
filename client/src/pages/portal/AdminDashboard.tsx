@@ -706,6 +706,7 @@ export default function AdminDashboard() {
                           <TableHead>Client</TableHead>
                           <TableHead>Consignee</TableHead>
                           <TableHead>Destination</TableHead>
+                          <TableHead>Weight</TableHead>
                           <TableHead>Service</TableHead>
                           <TableHead>COD</TableHead>
                           <TableHead>Status</TableHead>
@@ -747,6 +748,10 @@ export default function AdminDashboard() {
                                 </div>
                               </TableCell>
                               <TableCell>{order.city}, {order.destinationCountry}</TableCell>
+                              <TableCell>
+                                <span className="font-medium">{order.weight}</span>
+                                <span className="text-muted-foreground text-xs ml-1">kg</span>
+                              </TableCell>
                               <TableCell>{order.serviceType}</TableCell>
                               <TableCell>
                                 {order.codRequired ? (

@@ -365,7 +365,9 @@ export default function CustomerDashboard() {
                           <TableHead>Waybill</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Destination</TableHead>
+                          <TableHead>Weight</TableHead>
                           <TableHead>Service</TableHead>
+                          <TableHead>COD</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Created</TableHead>
                           <TableHead>Actions</TableHead>
@@ -385,7 +387,20 @@ export default function CustomerDashboard() {
                             </TableCell>
                             <TableCell>{order.customerName}</TableCell>
                             <TableCell>{order.city}, {order.destinationCountry}</TableCell>
+                            <TableCell>
+                              <span className="font-medium">{order.weight}</span>
+                              <span className="text-muted-foreground text-xs ml-1">kg</span>
+                            </TableCell>
                             <TableCell>{order.serviceType}</TableCell>
+                            <TableCell>
+                              {order.codRequired === 1 && order.codAmount ? (
+                                <Badge className="bg-orange-500 text-white border-none">
+                                  {order.codCurrency || 'AED'} {parseFloat(order.codAmount).toFixed(2)}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge className={`${getStatusColor(order.status)} border-none text-white shadow-sm`}>
                                 {getStatusLabel(order.status)}
@@ -818,8 +833,8 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           </h3>
           {savedShippers.length > 0 && (
             <Select onValueChange={handleLoadShipper}>
-              <SelectTrigger className="w-[180px] h-8 text-xs">
-                <SelectValue placeholder="Load saved shipper" />
+              <SelectTrigger className="w-[200px] h-8 text-xs">
+                <SelectValue placeholder="📋 Select saved shipper" />
               </SelectTrigger>
               <SelectContent>
                 {savedShippers.map((shipper: any) => (
@@ -836,30 +851,28 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         {savedShippers.length > 0 && (
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground hover:text-primary transition-colors">
-              Manage saved shippers ({savedShippers.length})
+              Select from saved shippers ({savedShippers.length})
             </summary>
             <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-2">
               {savedShippers.map((shipper) => (
-                <div key={shipper.id} className="flex items-center justify-between p-2 bg-muted/30 rounded border border-transparent hover:border-border transition-colors">
-                  <div>
-                    <p className="font-medium">{shipper.nickname}</p>
+                <div
+                  key={shipper.id}
+                  className="flex items-center justify-between p-2 bg-muted/30 rounded border border-transparent hover:border-primary hover:bg-primary/10 transition-colors cursor-pointer group"
+                  onClick={() => handleLoadShipper(shipper.id.toString())}
+                >
+                  <div className="flex-1">
+                    <p className="font-medium group-hover:text-primary transition-colors">{shipper.nickname}</p>
                     <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">{shipper.shipperName} - {shipper.shipperCity}</p>
                   </div>
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
-                    className="h-6 text-xs"
-                    onClick={() => handleLoadShipper(shipper.id.toString())}
-                  >
-                    Load
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-destructive hover:text-destructive/80"
-                    onClick={() => handleDeleteShipper(shipper.id)}
+                    className="h-6 w-6 text-destructive hover:text-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteShipper(shipper.id);
+                    }}
                   >
                     <LogOut className="h-3 w-3" />
                   </Button>

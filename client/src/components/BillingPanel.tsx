@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit } from 'lucide-react';
+import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2 } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,6 +24,9 @@ export default function BillingPanel() {
   const [periodEnd, setPeriodEnd] = useState('');
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewInvoice, setPreviewInvoice] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [selectedShipmentIds, setSelectedShipmentIds] = useState<number[]>([]);
   const [selectAll, setSelectAll] = useState(true);
@@ -211,6 +214,38 @@ export default function BillingPanel() {
   const handleStatusChange = (invoiceId: number, status: 'pending' | 'paid' | 'overdue') => {
     if (!token) return;
     updateStatus.mutate({ token, invoiceId, status });
+  };
+
+  const handlePreviewInvoice = async (invoice: any) => {
+    setPreviewLoading(true);
+    setPreviewDialogOpen(true);
+    try {
+      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
+      const result = await response.json();
+
+      if (!result.result?.data?.json) {
+        toast.error('Failed to load invoice details');
+        setPreviewDialogOpen(false);
+        return;
+      }
+
+      const details = result.result.data.json;
+      const client = clients?.find((c: any) => c.id === invoice.clientId);
+
+      setPreviewInvoice({
+        ...details.invoice,
+        clientName: client?.companyName || `Client #${invoice.clientId}`,
+        billingAddress: client?.billingAddress || '',
+        billingEmail: client?.billingEmail || '',
+        items: details.items,
+      });
+    } catch (error) {
+      console.error('Error loading invoice:', error);
+      toast.error('Failed to load invoice details');
+      setPreviewDialogOpen(false);
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -550,7 +585,12 @@ export default function BillingPanel() {
               <TableBody>
                 {invoices.map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                    <TableCell
+                      className="font-medium cursor-pointer text-blue-500 hover:text-blue-400 hover:underline"
+                      onClick={() => handlePreviewInvoice(invoice)}
+                    >
+                      {invoice.invoiceNumber}
+                    </TableCell>
                     <TableCell>
                       {clients?.find(c => c.id === invoice.clientId)?.companyName || invoice.clientId}
                     </TableCell>
@@ -620,6 +660,126 @@ export default function BillingPanel() {
           />
         )
       }
+
+      {/* Invoice Preview Dialog */}
+      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Invoice Preview
+            </DialogTitle>
+            <DialogDescription>
+              {previewInvoice?.invoiceNumber || 'Loading...'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : previewInvoice ? (
+            <div className="space-y-6">
+              {/* Invoice Header */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+                <div>
+                  <h3 className="font-bold text-lg">{previewInvoice.clientName}</h3>
+                  <p className="text-sm text-muted-foreground">{previewInvoice.billingAddress}</p>
+                  <p className="text-sm text-muted-foreground">{previewInvoice.billingEmail}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm"><span className="text-muted-foreground">Invoice #:</span> <strong>{previewInvoice.invoiceNumber}</strong></p>
+                  <p className="text-sm"><span className="text-muted-foreground">Issue Date:</span> {formatDate(previewInvoice.issueDate)}</p>
+                  <p className="text-sm"><span className="text-muted-foreground">Due Date:</span> {formatDate(previewInvoice.dueDate)}</p>
+                  <p className="text-sm"><span className="text-muted-foreground">Period:</span> {formatDate(previewInvoice.periodFrom)} - {formatDate(previewInvoice.periodTo)}</p>
+                  <div className="mt-2">{getStatusBadge(previewInvoice.status)}</div>
+                </div>
+              </div>
+
+              {/* Invoice Items */}
+              <div>
+                <h4 className="font-semibold mb-2">Items</h4>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Description</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {previewInvoice.items?.map((item: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell>{item.description}</TableCell>
+                        <TableCell className="text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(item.unitPrice, previewInvoice.currency)}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(item.total, previewInvoice.currency)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Totals */}
+              <div className="border-t pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>{formatCurrency(previewInvoice.subtotal, previewInvoice.currency)}</span>
+                </div>
+                {previewInvoice.taxes && parseFloat(previewInvoice.taxes) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Taxes</span>
+                    <span>{formatCurrency(previewInvoice.taxes, previewInvoice.currency)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-lg">
+                  <span>Total</span>
+                  <span className="text-primary">{formatCurrency(previewInvoice.total, previewInvoice.currency)}</span>
+                </div>
+                {previewInvoice.amountPaid && parseFloat(previewInvoice.amountPaid) > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Amount Paid</span>
+                      <span className="text-green-500">{formatCurrency(previewInvoice.amountPaid, previewInvoice.currency)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span>Balance Due</span>
+                      <span className="text-orange-500">{formatCurrency(previewInvoice.balance || '0', previewInvoice.currency)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Adjustment Notes */}
+              {previewInvoice.isAdjusted && previewInvoice.adjustmentNotes && (
+                <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
+                  <p className="text-sm font-medium text-yellow-500">Adjustment Notes:</p>
+                  <p className="text-sm text-muted-foreground">{previewInvoice.adjustmentNotes}</p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
+                  Close
+                </Button>
+                <Button onClick={() => {
+                  handleDownloadPDF(previewInvoice);
+                  setPreviewDialogOpen(false);
+                }}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No invoice data available
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div >
   );
 }
