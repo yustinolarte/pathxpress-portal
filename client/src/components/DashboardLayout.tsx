@@ -180,7 +180,7 @@ function DashboardLayoutContent({
   const [confirmPassword, setConfirmPassword] = useState('');
 
   // Get token from localStorage
-  const token = localStorage.getItem('portal_token') || '';
+  const token = localStorage.getItem('pathxpress_portal_token') || '';
 
   const changePasswordMutation = trpc.portal.auth.changePassword.useMutation({
     onSuccess: () => {
