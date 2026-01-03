@@ -30,6 +30,7 @@ interface ShipmentData {
   codAmount?: string | null;
   codCurrency?: string | null;
   specialInstructions?: string | null;
+  hideShipperAddress?: number; // 0 = show, 1 = hide shipper address on waybill
 }
 
 // City code mapping for UAE cities
@@ -158,7 +159,15 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
 
   pdf.setFontSize(7);
   pdf.setFont('helvetica', 'normal');
-  pdf.text(`${shipment.shipperPhone} | ${shipment.shipperCity}`, margin + 11, y + 7);
+
+  // Check if shipper address should be hidden
+  if (shipment.hideShipperAddress === 1) {
+    // Only show city (no phone or full address for privacy)
+    pdf.text(`${shipment.shipperCity}`, margin + 11, y + 7);
+  } else {
+    // Show full contact info
+    pdf.text(`${shipment.shipperPhone} | ${shipment.shipperCity}`, margin + 11, y + 7);
+  }
 
   y += 10;
   pdf.line(margin, y, pageWidth - margin, y);

@@ -129,6 +129,9 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   customSddBaseRate: varchar("customSddBaseRate", { length: 20 }), // Custom SDD base rate (0-5kg)
   customSddPerKg: varchar("customSddPerKg", { length: 20 }), // Custom SDD rate per additional kg
 
+  // Waybill preferences
+  hideShipperAddress: int("hideShipperAddress").default(0).notNull(), // 0 = show address, 1 = hide address on waybill
+
   notes: text("notes"),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

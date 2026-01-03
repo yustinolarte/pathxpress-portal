@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3 } from 'lucide-react';
+import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3, Settings } from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -140,6 +140,7 @@ export default function CustomerDashboard() {
     { icon: FileText, label: 'Invoices', value: 'invoices' },
     { icon: Wallet, label: 'COD', value: 'cod' },
     { icon: FileText, label: 'Reports', value: 'reports' },
+    { icon: Settings, label: 'Settings', value: 'settings' },
   ];
 
   return (
@@ -176,60 +177,60 @@ export default function CustomerDashboard() {
                   {/* Total Shipments This Month */}
                   <Card className="glass-strong border-blue-500/20 hover:border-blue-400/40 transition-all">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Envíos del Mes</CardTitle>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Shipments This Month</CardTitle>
                       <Package className="h-4 w-4 text-blue-400" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-3xl font-bold text-blue-400">{metrics?.totalShipmentsThisMonth || 0}</div>
-                      <p className="text-xs text-muted-foreground mt-1">Mes actual</p>
+                      <p className="text-xs text-muted-foreground mt-1">Current month</p>
                     </CardContent>
                   </Card>
 
                   {/* On-Time Delivery % */}
                   <Card className="glass-strong border-green-500/20 hover:border-green-400/40 transition-all">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Entrega a Tiempo</CardTitle>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">On-Time Delivery</CardTitle>
                       <Package className="h-4 w-4 text-green-400" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-3xl font-bold text-green-400">{metrics?.onTimePercentage || 0}%</div>
-                      <p className="text-xs text-muted-foreground mt-1">Este mes</p>
+                      <p className="text-xs text-muted-foreground mt-1">This month</p>
                     </CardContent>
                   </Card>
 
                   {/* Pending COD */}
                   <Card className="glass-strong border-yellow-500/20 hover:border-yellow-400/40 transition-all">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">COD Pendiente</CardTitle>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Pending COD</CardTitle>
                       <DollarSign className="h-4 w-4 text-yellow-400" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold text-yellow-400">{metrics?.totalPendingCOD || '0.00'} AED</div>
-                      <p className="text-xs text-muted-foreground mt-1">Por cobrar</p>
+                      <p className="text-xs text-muted-foreground mt-1">To collect</p>
                     </CardContent>
                   </Card>
 
                   {/* Average Delivery Time */}
                   <Card className="glass-strong border-purple-500/20 hover:border-purple-400/40 transition-all">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Tiempo Promedio</CardTitle>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Average Time</CardTitle>
                       <Package className="h-4 w-4 text-purple-400" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-3xl font-bold text-purple-400">{metrics?.averageDeliveryHours || 0}h</div>
-                      <p className="text-xs text-muted-foreground mt-1">Tiempo de entrega</p>
+                      <p className="text-xs text-muted-foreground mt-1">Delivery time</p>
                     </CardContent>
                   </Card>
 
                   {/* Active Shipments */}
                   <Card className="glass-strong border-cyan-500/20 hover:border-cyan-400/40 transition-all">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Envíos Activos</CardTitle>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Active Shipments</CardTitle>
                       <Package className="h-4 w-4 text-cyan-400" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-3xl font-bold text-cyan-400">{stats.activeOrders}</div>
-                      <p className="text-xs text-muted-foreground mt-1">En tránsito</p>
+                      <p className="text-xs text-muted-foreground mt-1">In transit</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -238,8 +239,8 @@ export default function CustomerDashboard() {
                 {metrics?.frequentRoutes && metrics.frequentRoutes.length > 0 && (
                   <Card className="glass-strong border-blue-500/20">
                     <CardHeader>
-                      <CardTitle className="text-lg">Rutas Más Frecuentes</CardTitle>
-                      <CardDescription>Tus rutas de envío más utilizadas</CardDescription>
+                      <CardTitle className="text-lg">Most Frequent Routes</CardTitle>
+                      <CardDescription>Your most used shipping routes</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
@@ -252,7 +253,7 @@ export default function CustomerDashboard() {
                               <span className="font-medium">{route.route}</span>
                             </div>
                             <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                              {route.count} envíos
+                              {route.count} shipments
                             </Badge>
                           </div>
                         ))}
@@ -597,6 +598,12 @@ export default function CustomerDashboard() {
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-4">
             <CustomerReports token={token} companyName={account?.companyName || 'Your Company'} />
+          </TabsContent>
+
+          {/* Settings Tab */}
+          <TabsContent value="settings" className="space-y-4 mt-0">
+            <h2 className="text-2xl font-bold">Settings</h2>
+            <CustomerSettings token={token} account={account} />
           </TabsContent>
         </Tabs>
       </div>
@@ -1228,5 +1235,118 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         </Button>
       </div>
     </form>
+  );
+}
+
+// Customer Settings Component
+function CustomerSettings({ token, account }: { token: string; account: any }) {
+  const [hideShipperAddress, setHideShipperAddress] = useState(account?.hideShipperAddress === 1);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Update when account data changes
+  useEffect(() => {
+    if (account) {
+      setHideShipperAddress(account.hideShipperAddress === 1);
+    }
+  }, [account]);
+
+  const updateSettingsMutation = trpc.portal.customer.updateAccountSettings.useMutation({
+    onSuccess: () => {
+      toast.success('Settings saved successfully!');
+      setIsSaving(false);
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || 'Failed to save settings');
+      setIsSaving(false);
+    },
+  });
+
+  const handleToggleHideAddress = async (checked: boolean) => {
+    setHideShipperAddress(checked);
+    setIsSaving(true);
+    updateSettingsMutation.mutate({
+      token,
+      hideShipperAddress: checked ? 1 : 0,
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Waybill Settings */}
+      <Card className="glass-strong border-blue-500/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            Waybill Settings
+          </CardTitle>
+          <CardDescription>
+            Configure how your waybills are generated
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Hide Shipper Address Toggle */}
+          <div className="flex items-start justify-between p-4 rounded-lg border bg-background/50 hover:bg-background transition-colors">
+            <div className="space-y-1 flex-1 pr-4">
+              <Label htmlFor="hideShipperAddress" className="text-base font-medium cursor-pointer">
+                Hide Shipper Address on Waybill
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, your phone number will not appear on the shipping label.
+                Only your company name and city will be shown in the "FROM" section.
+              </p>
+              <div className="mt-2 text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                <strong>When enabled:</strong> Label shows "FROM: Your Company | Dubai"<br />
+                <strong>When disabled:</strong> Label shows "FROM: Your Company | +971... | Dubai"
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {isSaving && (
+                <span className="text-sm text-muted-foreground animate-pulse">Saving...</span>
+              )}
+              <Checkbox
+                id="hideShipperAddress"
+                checked={hideShipperAddress}
+                onCheckedChange={handleToggleHideAddress}
+                disabled={isSaving}
+                className="h-5 w-5"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Account Info */}
+      <Card className="glass-strong border-slate-500/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutDashboard className="h-5 w-5 text-muted-foreground" />
+            Account Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Company:</span>
+              <span className="ml-2 font-medium">{account?.companyName || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Contact:</span>
+              <span className="ml-2 font-medium">{account?.contactName || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Email:</span>
+              <span className="ml-2 font-medium">{account?.billingEmail || 'N/A'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Phone:</span>
+              <span className="ml-2 font-medium">{account?.phone || 'N/A'}</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4">
+            To update your account information, please contact support.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

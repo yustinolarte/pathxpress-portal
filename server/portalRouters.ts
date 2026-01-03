@@ -781,7 +781,17 @@ export const customerPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
       }
 
-      return await getOrdersByClientId(payload.clientId);
+      const orders = await getOrdersByClientId(payload.clientId);
+
+      // Get client's hideShipperAddress setting
+      const client = await getClientAccountById(payload.clientId);
+      const hideShipperAddress = client?.hideShipperAddress || 0;
+
+      // Add hideShipperAddress to each order for waybill generation
+      return orders.map(order => ({
+        ...order,
+        hideShipperAddress,
+      }));
     }),
 
   // Create new shipment/order
@@ -1364,6 +1374,35 @@ export const customerPortalRouter = router({
 
       return { success: true };
     }),
+
+  // Customer: Update account settings (hideShipperAddress)
+  updateAccountSettings: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      hideShipperAddress: z.number().min(0).max(1).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'customer' || !payload.clientId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
+      }
+
+      const updateData: Record<string, number> = {};
+      if (input.hideShipperAddress !== undefined) {
+        updateData.hideShipperAddress = input.hideShipperAddress;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return { success: true };
+      }
+
+      const result = await updateClientAccount(payload.clientId, updateData);
+      if (!result) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update settings' });
+      }
+
+      return { success: true };
+    }),
 });
 
 /**
@@ -1529,6 +1568,37 @@ export const billingRouter = router({
       }
 
       await updateInvoice(input.invoiceId, updateData);
+
+      return { success: true };
+    }),
+
+  // Customer: Update account settings (hideShipperAddress)
+  updateAccountSettings: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      hideShipperAddress: z.number().min(0).max(1).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'customer' || !payload.clientId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
+      }
+
+      const { updateClientAccount } = await import('./db');
+
+      const updateData: any = {};
+      if (input.hideShipperAddress !== undefined) {
+        updateData.hideShipperAddress = input.hideShipperAddress;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return { success: true };
+      }
+
+      const result = await updateClientAccount(payload.clientId, updateData);
+      if (!result) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update settings' });
+      }
 
       return { success: true };
     }),
