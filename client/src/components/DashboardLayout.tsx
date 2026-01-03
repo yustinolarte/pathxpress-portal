@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LogOut, PanelLeft, Settings, Key, Loader2 } from "lucide-react";
+import { LogOut, PanelLeft, Settings, Key, Loader2, FileText } from "lucide-react";
+import { Checkbox } from "./ui/checkbox";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
@@ -179,8 +180,47 @@ function DashboardLayoutContent({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Waybill settings state (for customers only)
+  const [waybillSettingsOpen, setWaybillSettingsOpen] = useState(false);
+  const [hideShipperAddress, setHideShipperAddress] = useState(false);
+  const [isSavingWaybillSettings, setIsSavingWaybillSettings] = useState(false);
+
   // Get token from localStorage
   const token = localStorage.getItem('pathxpress_portal_token') || '';
+  const isCustomer = user?.role === 'customer';
+
+  // Fetch customer account to get current hideShipperAddress setting
+  const { data: customerAccount } = trpc.portal.customer.getMyAccount.useQuery(
+    { token },
+    { enabled: !!token && isCustomer }
+  );
+
+  // Update hideShipperAddress when account data loads
+  useEffect(() => {
+    if (customerAccount) {
+      setHideShipperAddress(customerAccount.hideShipperAddress === 1);
+    }
+  }, [customerAccount]);
+
+  const updateWaybillSettingsMutation = trpc.portal.customer.updateAccountSettings.useMutation({
+    onSuccess: () => {
+      toast.success('Waybill settings saved!');
+      setIsSavingWaybillSettings(false);
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || 'Failed to save settings');
+      setIsSavingWaybillSettings(false);
+    },
+  });
+
+  const handleToggleHideAddress = (checked: boolean) => {
+    setHideShipperAddress(checked);
+    setIsSavingWaybillSettings(true);
+    updateWaybillSettingsMutation.mutate({
+      token,
+      hideShipperAddress: checked ? 1 : 0,
+    });
+  };
 
   const changePasswordMutation = trpc.portal.auth.changePassword.useMutation({
     onSuccess: () => {
@@ -350,6 +390,15 @@ function DashboardLayoutContent({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {isCustomer && (
+                  <DropdownMenuItem
+                    onClick={() => setWaybillSettingsOpen(true)}
+                    className="cursor-pointer"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    <span>Waybill Settings</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem
                   onClick={() => setPasswordDialogOpen(true)}
                   className="cursor-pointer"
@@ -428,6 +477,53 @@ function DashboardLayoutContent({
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Waybill Settings Dialog (for customers) */}
+            {isCustomer && (
+              <Dialog open={waybillSettingsOpen} onOpenChange={setWaybillSettingsOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <FileText className="h-5 w-5" />
+                      Waybill Settings
+                    </DialogTitle>
+                    <DialogDescription>
+                      Configure how your shipping labels are generated.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="flex items-start justify-between p-4 rounded-lg border bg-background/50 hover:bg-background transition-colors">
+                      <div className="space-y-1 flex-1 pr-4">
+                        <Label htmlFor="hideShipperAddressToggle" className="text-base font-medium cursor-pointer">
+                          Hide Shipper Address
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          When enabled, your phone number will not appear on the shipping label.
+                          Only your company name and city will be shown.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isSavingWaybillSettings && (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        )}
+                        <Checkbox
+                          id="hideShipperAddressToggle"
+                          checked={hideShipperAddress}
+                          onCheckedChange={handleToggleHideAddress}
+                          disabled={isSavingWaybillSettings}
+                          className="h-5 w-5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button variant="outline" onClick={() => setWaybillSettingsOpen(false)}>
+                      Close
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </SidebarFooter>
         </Sidebar>
         <div

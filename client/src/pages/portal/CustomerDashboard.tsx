@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3, Settings } from 'lucide-react';
+import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3 } from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -140,7 +140,6 @@ export default function CustomerDashboard() {
     { icon: FileText, label: 'Invoices', value: 'invoices' },
     { icon: Wallet, label: 'COD', value: 'cod' },
     { icon: FileText, label: 'Reports', value: 'reports' },
-    { icon: Settings, label: 'Settings', value: 'settings' },
   ];
 
   return (
@@ -598,12 +597,6 @@ export default function CustomerDashboard() {
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-4">
             <CustomerReports token={token} companyName={account?.companyName || 'Your Company'} />
-          </TabsContent>
-
-          {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-4 mt-0">
-            <h2 className="text-2xl font-bold">Settings</h2>
-            <CustomerSettings token={token} account={account} />
           </TabsContent>
         </Tabs>
       </div>
@@ -1235,118 +1228,5 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         </Button>
       </div>
     </form>
-  );
-}
-
-// Customer Settings Component
-function CustomerSettings({ token, account }: { token: string; account: any }) {
-  const [hideShipperAddress, setHideShipperAddress] = useState(account?.hideShipperAddress === 1);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Update when account data changes
-  useEffect(() => {
-    if (account) {
-      setHideShipperAddress(account.hideShipperAddress === 1);
-    }
-  }, [account]);
-
-  const updateSettingsMutation = trpc.portal.customer.updateAccountSettings.useMutation({
-    onSuccess: () => {
-      toast.success('Settings saved successfully!');
-      setIsSaving(false);
-    },
-    onError: (error: { message?: string }) => {
-      toast.error(error.message || 'Failed to save settings');
-      setIsSaving(false);
-    },
-  });
-
-  const handleToggleHideAddress = async (checked: boolean) => {
-    setHideShipperAddress(checked);
-    setIsSaving(true);
-    updateSettingsMutation.mutate({
-      token,
-      hideShipperAddress: checked ? 1 : 0,
-    });
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Waybill Settings */}
-      <Card className="glass-strong border-blue-500/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary" />
-            Waybill Settings
-          </CardTitle>
-          <CardDescription>
-            Configure how your waybills are generated
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Hide Shipper Address Toggle */}
-          <div className="flex items-start justify-between p-4 rounded-lg border bg-background/50 hover:bg-background transition-colors">
-            <div className="space-y-1 flex-1 pr-4">
-              <Label htmlFor="hideShipperAddress" className="text-base font-medium cursor-pointer">
-                Hide Shipper Address on Waybill
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                When enabled, your phone number will not appear on the shipping label.
-                Only your company name and city will be shown in the "FROM" section.
-              </p>
-              <div className="mt-2 text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                <strong>When enabled:</strong> Label shows "FROM: Your Company | Dubai"<br />
-                <strong>When disabled:</strong> Label shows "FROM: Your Company | +971... | Dubai"
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {isSaving && (
-                <span className="text-sm text-muted-foreground animate-pulse">Saving...</span>
-              )}
-              <Checkbox
-                id="hideShipperAddress"
-                checked={hideShipperAddress}
-                onCheckedChange={handleToggleHideAddress}
-                disabled={isSaving}
-                className="h-5 w-5"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Account Info */}
-      <Card className="glass-strong border-slate-500/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <LayoutDashboard className="h-5 w-5 text-muted-foreground" />
-            Account Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Company:</span>
-              <span className="ml-2 font-medium">{account?.companyName || 'N/A'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Contact:</span>
-              <span className="ml-2 font-medium">{account?.contactName || 'N/A'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Email:</span>
-              <span className="ml-2 font-medium">{account?.billingEmail || 'N/A'}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Phone:</span>
-              <span className="ml-2 font-medium">{account?.phone || 'N/A'}</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4">
-            To update your account information, please contact support.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
   );
 }
