@@ -381,6 +381,46 @@ export const adminPortalRouter = router({
       return await getAllOrders();
     }),
 
+  // Delete order (admin only)
+  deleteOrder: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      orderId: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+      }
+
+      const { orders, trackingEvents, codRecords, invoiceItems } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+
+      try {
+        // Delete related tracking events first
+        await db.delete(trackingEvents).where(eq(trackingEvents.shipmentId, input.orderId));
+
+        // Delete related COD records
+        await db.delete(codRecords).where(eq(codRecords.shipmentId, input.orderId));
+
+        // Delete related invoice items
+        await db.delete(invoiceItems).where(eq(invoiceItems.shipmentId, input.orderId));
+
+        // Finally delete the order
+        await db.delete(orders).where(eq(orders.id, input.orderId));
+
+        return { success: true };
+      } catch (error) {
+        console.error('[Database] Failed to delete order:', error);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete order' });
+      }
+    }),
+
   // Get dashboard analytics
   getAnalytics: publicProcedure
     .input(z.object({

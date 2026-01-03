@@ -330,6 +330,26 @@ export default function AdminDashboard() {
     },
   });
 
+  // Delete order mutation
+  const deleteOrderMutation = trpc.portal.admin.deleteOrder.useMutation({
+    onSuccess: () => {
+      toast.success('Order deleted successfully');
+      refetchOrders();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete order: ${error.message}`);
+    },
+  });
+
+  const handleDeleteOrder = (orderId: number, waybillNumber: string) => {
+    if (confirm(`Are you sure you want to delete order ${waybillNumber}? This will also delete all related tracking events, COD records, and invoice items. This action cannot be undone.`)) {
+      deleteOrderMutation.mutate({
+        token: token || '',
+        orderId,
+      });
+    }
+  };
+
   // Filter orders
   const orders = useMemo(() => {
     if (!allOrders) return [];
@@ -788,6 +808,16 @@ export default function AdminDashboard() {
                                     title="Add Tracking Event"
                                   >
                                     <Package className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                    onClick={() => handleDeleteOrder(order.id, order.waybillNumber)}
+                                    title="Delete Order"
+                                    disabled={deleteOrderMutation.isPending}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
                               </TableCell>
