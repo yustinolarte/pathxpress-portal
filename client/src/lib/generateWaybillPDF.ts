@@ -31,6 +31,8 @@ interface ShipmentData {
   codCurrency?: string | null;
   specialInstructions?: string | null;
   hideShipperAddress?: number; // 0 = show, 1 = hide shipper address on waybill
+  isReturn?: number; // 0 = normal shipment, 1 = return shipment
+  originalOrderId?: number | null; // Reference to original order for returns
 }
 
 // City code mapping for UAE cities
@@ -140,6 +142,18 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
   pdf.text(shipment.waybillNumber, pageWidth - margin, y + 9, { align: 'right' });
 
   y += 16;
+
+  // Return shipment banner
+  if (shipment.isReturn === 1) {
+    pdf.setFillColor(0, 150, 150); // Cyan color
+    pdf.rect(margin, y, pageWidth - 2 * margin, 6, 'F');
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(255, 255, 255);
+    pdf.text('🔄 RETURN SHIPMENT', pageWidth / 2, y + 4, { align: 'center' });
+    pdf.setTextColor(black);
+    y += 8;
+  }
 
   // Separator line
   pdf.setDrawColor(black);

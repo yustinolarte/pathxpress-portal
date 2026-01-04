@@ -132,6 +132,9 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   // Waybill preferences
   hideShipperAddress: int("hideShipperAddress").default(0).notNull(), // 0 = show address, 1 = hide address on waybill
 
+  // Return shipment settings
+  returnFee: varchar("returnFee", { length: 20 }), // Fixed fee for return shipments (e.g., "15.00")
+
   notes: text("notes"),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -198,6 +201,11 @@ export const orders = mysqlTable("orders", {
   timeWindowEnd: varchar("timeWindowEnd", { length: 20 }),
   priorityLevel: int("priorityLevel").default(1),
   routeBatchId: varchar("routeBatchId", { length: 100 }),
+
+  // Return shipment fields
+  isReturn: int("isReturn").default(0).notNull(), // 0 = normal shipment, 1 = return shipment
+  originalOrderId: int("originalOrderId"), // Reference to the original order that generated this return
+  returnCharged: int("returnCharged").default(1).notNull(), // 0 = free return, 1 = charged return
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

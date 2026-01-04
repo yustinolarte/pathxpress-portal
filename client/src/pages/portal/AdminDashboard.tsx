@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -54,6 +54,11 @@ export default function AdminDashboard() {
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
+
+  // Return dialog state
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null);
+  const [chargeReturn, setChargeReturn] = useState(true);
 
   // Create client dialog state
   const [createClientDialogOpen, setCreateClientDialogOpen] = useState(false);
@@ -348,6 +353,29 @@ export default function AdminDashboard() {
         orderId,
       });
     }
+  };
+
+  // Create return mutation
+  const createReturnMutation = trpc.portal.admin.createReturn.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message || 'Return created successfully');
+      setReturnDialogOpen(false);
+      setSelectedOrderForReturn(null);
+      setChargeReturn(true);
+      refetchOrders();
+    },
+    onError: (error) => {
+      toast.error(`Failed to create return: ${error.message}`);
+    },
+  });
+
+  const handleCreateReturn = () => {
+    if (!selectedOrderForReturn) return;
+    createReturnMutation.mutate({
+      token: token || '',
+      orderId: selectedOrderForReturn.id,
+      chargeReturn,
+    });
   };
 
   // Filter orders
@@ -744,8 +772,11 @@ export default function AdminDashboard() {
                             delivered: 'bg-green-500/80 hover:bg-green-500',
                             failed_delivery: 'bg-red-500/80 hover:bg-red-500',
                             returned: 'bg-gray-500/80 hover:bg-gray-500',
+                            exchange: 'bg-amber-500/80 hover:bg-amber-500',
                             canceled: 'bg-slate-500/80 hover:bg-slate-500',
                           };
+
+                          const canCreateReturn = ['failed_delivery', 'returned', 'exchange'].includes(order.status) && !order.isReturn;
 
                           return (
                             <TableRow key={order.id}>
@@ -756,7 +787,14 @@ export default function AdminDashboard() {
                                   setHistoryDialogOpen(true);
                                 }}
                               >
-                                {order.waybillNumber}
+                                <div className="flex items-center gap-2">
+                                  {order.waybillNumber}
+                                  {order.isReturn === 1 && (
+                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs">
+                                      🔄 RETURN
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="font-medium text-primary">
                                 {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
@@ -809,6 +847,21 @@ export default function AdminDashboard() {
                                   >
                                     <Package className="h-4 w-4" />
                                   </Button>
+                                  {canCreateReturn && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-cyan-500 hover:text-cyan-600 hover:bg-cyan-500/10"
+                                      onClick={() => {
+                                        setSelectedOrderForReturn(order);
+                                        setChargeReturn(true);
+                                        setReturnDialogOpen(true);
+                                      }}
+                                      title="Create Return Shipment"
+                                    >
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -1450,6 +1503,67 @@ export default function AdminDashboard() {
             shipmentId={selectedShipmentId}
           />
         )}
+
+        {/* Create Return Dialog */}
+        <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <RotateCcw className="h-5 w-5 text-cyan-500" />
+                Create Return Shipment
+              </DialogTitle>
+              <DialogDescription>
+                This will create a return shipment to send the package back to the original shipper.
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedOrderForReturn && (
+              <div className="space-y-4 py-4">
+                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                  <p className="text-sm"><strong>Original Order:</strong> {selectedOrderForReturn.waybillNumber}</p>
+                  <p className="text-sm"><strong>From:</strong> {selectedOrderForReturn.shipperName} ({selectedOrderForReturn.shipperCity})</p>
+                  <p className="text-sm"><strong>To:</strong> {selectedOrderForReturn.customerName} ({selectedOrderForReturn.city})</p>
+                  <p className="text-sm"><strong>Weight:</strong> {selectedOrderForReturn.weight} kg</p>
+                </div>
+
+                <div className="bg-cyan-500/10 p-4 rounded-lg border border-cyan-500/20">
+                  <p className="text-sm font-medium text-cyan-400 mb-2">Return Details:</p>
+                  <p className="text-sm text-muted-foreground">
+                    📦 From: <strong>{selectedOrderForReturn.customerName}</strong> ({selectedOrderForReturn.city})<br />
+                    📍 To: <strong>{selectedOrderForReturn.shipperName}</strong> ({selectedOrderForReturn.shipperCity})
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <Label htmlFor="chargeReturn" className="text-base font-medium">Charge for this return</Label>
+                    <p className="text-sm text-muted-foreground">
+                      If enabled, the return fee will be added to the client's invoice
+                    </p>
+                  </div>
+                  <Checkbox
+                    id="chargeReturn"
+                    checked={chargeReturn}
+                    onCheckedChange={(checked) => setChargeReturn(checked as boolean)}
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReturnDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateReturn}
+                disabled={createReturnMutation.isPending}
+                className="bg-cyan-500 hover:bg-cyan-600"
+              >
+                {createReturnMutation.isPending ? 'Creating...' : 'Create Return'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout >
   );

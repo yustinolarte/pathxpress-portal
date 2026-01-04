@@ -421,6 +421,120 @@ export const adminPortalRouter = router({
       }
     }),
 
+  // Create return shipment (admin only)
+  createReturn: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      orderId: z.number(),
+      chargeReturn: z.boolean().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+      }
+
+      // Get original order
+      const originalOrder = await getOrderById(input.orderId);
+      if (!originalOrder) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Original order not found' });
+      }
+
+      // Check if order status allows return
+      const allowedStatuses = ['failed_delivery', 'returned', 'exchange'];
+      if (!allowedStatuses.includes(originalOrder.status)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Cannot create return for order with status "${originalOrder.status}". Only failed_delivery, returned, or exchange orders can have returns.`
+        });
+      }
+
+      // Check if return already exists for this order
+      const { orders: ordersTable } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+      const existingReturns = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.originalOrderId, input.orderId));
+
+      if (existingReturns.length > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `A return shipment already exists for this order (${existingReturns[0].waybillNumber})`
+        });
+      }
+
+      // Generate new waybill number for return
+      const returnWaybill = await generateWaybillNumber();
+
+      // Create return order with swapped shipper/consignee
+      const returnOrder = await createOrder({
+        clientId: originalOrder.clientId,
+        orderNumber: `RTN-${originalOrder.orderNumber || originalOrder.waybillNumber}`,
+        waybillNumber: returnWaybill,
+
+        // Swap shipper and consignee for return
+        shipperName: originalOrder.customerName, // Original consignee becomes shipper
+        shipperAddress: originalOrder.address,
+        shipperCity: originalOrder.city,
+        shipperCountry: originalOrder.destinationCountry,
+        shipperPhone: originalOrder.customerPhone,
+
+        customerName: originalOrder.shipperName, // Original shipper becomes consignee
+        customerPhone: originalOrder.shipperPhone,
+        address: originalOrder.shipperAddress,
+        city: originalOrder.shipperCity,
+        destinationCountry: originalOrder.shipperCountry,
+
+        // Same package details
+        pieces: originalOrder.pieces,
+        weight: originalOrder.weight,
+        length: originalOrder.length || null,
+        width: originalOrder.width || null,
+        height: originalOrder.height || null,
+        serviceType: originalOrder.serviceType,
+        specialInstructions: `RETURN SHIPMENT - Original: ${originalOrder.waybillNumber}`,
+
+        // No COD on returns
+        codRequired: 0,
+        codAmount: null,
+        codCurrency: null,
+
+        // Return fields
+        isReturn: 1,
+        originalOrderId: input.orderId,
+        returnCharged: input.chargeReturn ? 1 : 0,
+
+        status: 'pending_pickup',
+        lastStatusUpdate: new Date(),
+      });
+
+      if (!returnOrder) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create return shipment' });
+      }
+
+      // Create initial tracking event for return
+      await createTrackingEvent({
+        shipmentId: returnOrder.id,
+        eventDatetime: new Date(),
+        statusCode: 'pending_pickup',
+        statusLabel: 'RETURN PENDING PICKUP',
+        description: `Return shipment created for order ${originalOrder.waybillNumber}`,
+        createdBy: payload.email || 'admin',
+      });
+
+      return {
+        success: true,
+        returnOrder,
+        message: `Return shipment ${returnWaybill} created successfully`
+      };
+    }),
+
   // Get dashboard analytics
   getAnalytics: publicProcedure
     .input(z.object({
