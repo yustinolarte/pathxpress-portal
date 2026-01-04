@@ -790,8 +790,8 @@ export default function AdminDashboard() {
                                 <div className="flex items-center gap-2">
                                   {order.waybillNumber}
                                   {order.isReturn === 1 && (
-                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs">
-                                      🔄 RETURN
+                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1">
+                                      <RotateCcw className="h-3 w-3" /> RETURN
                                     </Badge>
                                   )}
                                 </div>
@@ -1528,10 +1528,16 @@ export default function AdminDashboard() {
 
                 <div className="bg-cyan-500/10 p-4 rounded-lg border border-cyan-500/20">
                   <p className="text-sm font-medium text-cyan-400 mb-2">Return Details:</p>
-                  <p className="text-sm text-muted-foreground">
-                    📦 From: <strong>{selectedOrderForReturn.customerName}</strong> ({selectedOrderForReturn.city})<br />
-                    📍 To: <strong>{selectedOrderForReturn.shipperName}</strong> ({selectedOrderForReturn.shipperCity})
-                  </p>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p className="flex items-center gap-2">
+                      <Package className="h-4 w-4 text-cyan-400" />
+                      <span>From: <strong>{selectedOrderForReturn.customerName}</strong> ({selectedOrderForReturn.city})</span>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-cyan-400" />
+                      <span>To: <strong>{selectedOrderForReturn.shipperName}</strong> ({selectedOrderForReturn.shipperCity})</span>
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 border rounded-lg">

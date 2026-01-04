@@ -150,7 +150,7 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(255, 255, 255);
-    pdf.text('🔄 RETURN SHIPMENT', pageWidth / 2, y + 4, { align: 'center' });
+    pdf.text('<<< RETURN SHIPMENT >>>', pageWidth / 2, y + 4, { align: 'center' });
     pdf.setTextColor(black);
     y += 8;
   }

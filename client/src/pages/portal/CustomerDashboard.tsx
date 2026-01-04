@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3 } from 'lucide-react';
+import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3, RotateCcw } from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -377,13 +377,20 @@ export default function CustomerDashboard() {
                         {filteredOrders.map((order) => (
                           <TableRow key={order.id}>
                             <TableCell className="font-mono font-medium">
-                              <Button
-                                variant="link"
-                                className="p-0 h-auto text-primary underline"
-                                onClick={() => handleViewTracking(order.waybillNumber)}
-                              >
-                                {order.waybillNumber}
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-primary underline"
+                                  onClick={() => handleViewTracking(order.waybillNumber)}
+                                >
+                                  {order.waybillNumber}
+                                </Button>
+                                {order.isReturn === 1 && (
+                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1">
+                                    <RotateCcw className="h-3 w-3" /> RETURN
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell>{order.customerName}</TableCell>
                             <TableCell>{order.city}, {order.destinationCountry}</TableCell>
