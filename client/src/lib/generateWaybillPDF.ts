@@ -2,6 +2,7 @@
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+import { WAYBILL_LOGO } from '@/const';
 
 interface ShipmentData {
   waybillNumber: string;
@@ -121,7 +122,7 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
 
   // Try to load the logo with correct proportions
   try {
-    const logoBase64 = await loadImageAsBase64('/pathxpress-logo.png');
+    const logoBase64 = await loadImageAsBase64(WAYBILL_LOGO);
     pdf.addImage(logoBase64, 'PNG', margin, y, 48, 12);
   } catch (e) {
     // Fallback: Text logo in black
