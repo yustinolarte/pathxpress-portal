@@ -1432,9 +1432,9 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                     onChange={(e) => setFormData({ ...formData, codAmount: e.target.value })}
                     placeholder="0.00"
                     required
-                    className="text-lg font-medium pl-8 font-mono bg-background/50 focus:bg-background transition-colors"
+                    className="text-lg font-medium pl-12 font-mono bg-background/50 focus:bg-background transition-colors"
                   />
-                  <span className="absolute left-3 top-2.5 text-muted-foreground">$</span>
+                  <span className="absolute left-3 top-3 text-xs font-bold text-muted-foreground">AED</span>
                 </div>
                 {calculatedCODFee > 0 && (
                   <div className="text-sm border-l pl-4">
