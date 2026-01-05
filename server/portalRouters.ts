@@ -924,7 +924,7 @@ export const customerPortalRouter = router({
       return await getClientAccountById(payload.clientId);
     }),
 
-  // Get customer's orders
+  // Get customer's orders (excluding returns and exchanges - those appear in separate section)
   getMyOrders: publicProcedure
     .input(z.object({
       token: z.string(),
@@ -935,7 +935,12 @@ export const customerPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
       }
 
-      const orders = await getOrdersByClientId(payload.clientId);
+      const allOrders = await getOrdersByClientId(payload.clientId);
+
+      // Filter out returns and exchanges (they appear in separate Returns & Exchanges section)
+      const orders = allOrders.filter(order =>
+        order.orderType === 'standard' || !order.orderType
+      );
 
       // Get client's hideShipperAddress setting
       const client = await getClientAccountById(payload.clientId);
@@ -1090,33 +1095,33 @@ export const customerPortalRouter = router({
         });
       }
 
-      // Update order status to canceled
+      // Delete order completely (cascade delete related records)
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
       }
 
-      const { orders } = await import('../drizzle/schema');
+      const { orders, trackingEvents, codRecords, invoiceItems } = await import('../drizzle/schema');
       const { eq } = await import('drizzle-orm');
 
-      await db.update(orders)
-        .set({
-          status: 'canceled',
-          lastStatusUpdate: new Date(),
-        })
-        .where(eq(orders.id, input.orderId));
+      try {
+        // Delete related tracking events
+        await db.delete(trackingEvents).where(eq(trackingEvents.shipmentId, input.orderId));
 
-      // Create tracking event for cancellation
-      await createTrackingEvent({
-        shipmentId: input.orderId,
-        eventDatetime: new Date(),
-        statusCode: 'canceled',
-        statusLabel: 'CANCELED',
-        description: 'Order canceled by customer',
-        createdBy: payload.email || 'customer',
-      });
+        // Delete related COD records
+        await db.delete(codRecords).where(eq(codRecords.shipmentId, input.orderId));
 
-      return { success: true, message: 'Order canceled successfully' };
+        // Delete related invoice items
+        await db.delete(invoiceItems).where(eq(invoiceItems.shipmentId, input.orderId));
+
+        // Delete the order itself
+        await db.delete(orders).where(eq(orders.id, input.orderId));
+
+        return { success: true, message: 'Order deleted successfully' };
+      } catch (error) {
+        console.error('[Database] Failed to delete order:', error);
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to delete order' });
+      }
     }),
 
   // Get customer's returns and exchanges

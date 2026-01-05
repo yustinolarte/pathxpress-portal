@@ -14,7 +14,40 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3, RotateCcw, X, ArrowLeftRight } from 'lucide-react';
+import {
+  Package,
+  Truck,
+  CheckCircle,
+  XCircle,
+  Calendar,
+  Search,
+  Filter,
+  MoreHorizontal,
+  FileText,
+  Download,
+  Plus,
+  ArrowRight,
+  TrendingUp,
+  MapPin,
+  Clock,
+  Phone,
+  Mail,
+  User,
+  ShieldCheck,
+  CreditCard,
+  MessageSquare,
+  Euro,
+  ArrowLeftRight,
+  Loader2,
+  X,
+  LogOut,
+  Save,
+  LayoutDashboard,
+  Calculator,
+  Wallet,
+  BarChart3,
+  RotateCcw
+} from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -35,7 +68,10 @@ export default function CustomerDashboard() {
   const [trackingWaybill, setTrackingWaybill] = useState('');
   const [searchedWaybill, setSearchedWaybill] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
 
   const { data: trackingData, error: trackingError } = trpc.portal.publicTracking.track.useQuery(
     { waybillNumber: searchedWaybill },
@@ -69,10 +105,28 @@ export default function CustomerDashboard() {
     { enabled: !!token }
   );
 
-  // Filtered orders based on status
+  // Filtered orders based on status and date
   const filteredOrders = orders?.filter((order: any) => {
-    if (filterStatus === 'all') return true;
-    return order.status === filterStatus;
+    let matchesStatus = true;
+    let matchesDate = true;
+
+    if (filterStatus !== 'all') {
+      matchesStatus = order.status === filterStatus;
+    }
+
+    if (filterDateFrom) {
+      const orderDate = new Date(order.createdAt).setHours(0, 0, 0, 0);
+      const fromDate = new Date(filterDateFrom).setHours(0, 0, 0, 0);
+      if (orderDate < fromDate) matchesDate = false;
+    }
+
+    if (filterDateTo && matchesDate) {
+      const orderDate = new Date(order.createdAt).setHours(0, 0, 0, 0);
+      const toDate = new Date(filterDateTo).setHours(0, 0, 0, 0);
+      if (orderDate > toDate) matchesDate = false;
+    }
+
+    return matchesStatus && matchesDate;
   });
 
   const handleExportOrders = () => {
@@ -98,6 +152,75 @@ export default function CustomerDashboard() {
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders');
     XLSX.writeFile(workbook, `Orders_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success('Orders exported successfully');
+  };
+
+  const handleBulkDownloadWaybills = async () => {
+    if (!filteredOrders || filteredOrders.length === 0) {
+      toast.error('No orders to download waybills for');
+      return;
+    }
+
+    setBulkDownloading(true);
+    toast.info('Starting bulk download, please wait...');
+
+    try {
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      let count = 0;
+
+      // Process sequentially to avoid browser hanging
+      for (const order of filteredOrders) {
+        // We use a trick here: generateWaybillPDF saves the file, but we want the blob.
+        // We'll modify generateWaybillPDF to accept a returnBlob flag, or just use the logic directly.
+        // For now, let's assume we can't easily modify generateWaybillPDF to return blob without breaking other things.
+        // So we will reconstruct the logic here mainly or try to use a modified version.
+
+        // Actually, let's use a simpler approach: create a separate minimal generation function or
+        // define a way to capture the PDF output.
+        // Since we can't easily change the imported function's return type without affecting other calls,
+        // we'll use the existing function but we need it to return the PDF object or blob instead of saving.
+
+        // LIMITATION: generateWaybillPDF currently forces .save(). 
+        // We need to modify generateWaybillPDF first to support returning the blob.
+
+        // Let's assume we will modify generateWaybillPDF in the next step to support 'returnBlob' option.
+        // For now, I will write this assuming generateWaybillPDF can return a blob if a second arg is true.
+        // I will update generateWaybillPDF immediately after this.
+
+        try {
+          // We will modify generateWaybillPDF to take an optional second argument `returnBlob?: boolean`
+          // @ts-ignore
+          const pdfBlob = await generateWaybillPDF(order, true);
+          if (pdfBlob) {
+            zip.file(`${order.waybillNumber}.pdf`, pdfBlob);
+            count++;
+          }
+        } catch (e) {
+          console.error(`Failed to generate PDF for ${order.waybillNumber}`, e);
+        }
+      }
+
+      if (count > 0) {
+        const content = await zip.generateAsync({ type: 'blob' });
+        const url = window.URL.createObjectURL(content);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Waybills_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        toast.success(`Downloaded ${count} waybills`);
+      } else {
+        toast.error('Failed to generate any waybills');
+      }
+
+    } catch (error) {
+      console.error('Bulk download error:', error);
+      toast.error('Failed to download waybills');
+    } finally {
+      setBulkDownloading(false);
+    }
   };
 
   const handleViewTracking = (waybill: string) => {
@@ -223,7 +346,7 @@ export default function CustomerDashboard() {
                   <Card className="glass-strong border-yellow-500/20 hover:border-yellow-400/40 transition-all">
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
                       <CardTitle className="text-sm font-medium text-muted-foreground">Pending COD</CardTitle>
-                      <DollarSign className="h-4 w-4 text-yellow-400" />
+                      <span className="h-4 w-4 text-yellow-400 font-bold text-xs flex items-center justify-center">AED</span>
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold text-yellow-400">{metrics?.totalPendingCOD || '0.00'} AED</div>
@@ -355,7 +478,32 @@ export default function CustomerDashboard() {
                   <CardTitle>My Shipments</CardTitle>
                   <CardDescription>View and track all your shipments</CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="date"
+                    className="w-[140px] h-8"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                  />
+                  <Input
+                    type="date"
+                    className="w-[140px] h-8"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkDownloadWaybills}
+                    disabled={bulkDownloading || !filterDateFrom || !filterDateTo}
+                  >
+                    {bulkDownloading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    Waybills
+                  </Button>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Filter Status" />
@@ -1219,7 +1367,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
         <div className="border-b pb-2">
           <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <DollarSign className="h-5 w-5 text-green-600" />
+            <span className="h-5 w-5 text-green-600 font-bold text-sm flex items-center justify-center">AED</span>
             Payment (COD)
           </h3>
         </div>

@@ -11,7 +11,7 @@ export type Order = {
     destinationCountry: string;
     serviceType: string;
     status: string;
-    weight: number;
+    weight: number | string;
     createdAt: Date | string;
     deliveryDateReal?: Date | string | null;
     codRequired: number;

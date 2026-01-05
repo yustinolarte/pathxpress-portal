@@ -94,12 +94,12 @@ function encodePackageData(shipment: ShipmentData): string {
   return btoa(JSON.stringify(data));
 }
 
-export async function generateWaybillPDF(shipment: ShipmentData) {
+export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boolean = false) {
   // Standard shipping label (100mm x 150mm)
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: [100, 150],
+    format: [100, 150]
   });
 
   const pageWidth = 100;
@@ -194,27 +194,29 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
   pdf.setFont('helvetica', 'bold');
   pdf.text('TO:', margin, y + 4);
 
-  // Customer name (large and bold)
-  pdf.setFontSize(13);
+  // Customer name (bold)
+  pdf.setFontSize(11);
   pdf.text(shipment.customerName, margin + 7, y + 5);
 
   // Phone
-  pdf.setFontSize(11);
-  pdf.text(shipment.customerPhone, margin + 7, y + 11);
+  pdf.setFontSize(9);
+  pdf.text(shipment.customerPhone, margin + 7, y + 10);
 
-  // Address (wrap to multiple lines, but limit width to avoid QR code)
-  pdf.setFontSize(8);
+  // Address (wrap to multiple lines, smaller font to fit more text)
+  pdf.setFontSize(7);
   pdf.setFont('helvetica', 'normal');
-  const addressMaxWidth = contentWidth - 50; // Leave space for city code and QR
+  const addressMaxWidth = contentWidth - 48; // Leave space for city code and QR
   const addressLines = pdf.splitTextToSize(shipment.address, addressMaxWidth);
-  pdf.text(addressLines.slice(0, 3), margin + 7, y + 16); // Allow up to 3 lines
+  const displayedLines = addressLines.slice(0, 4); // Allow up to 4 lines
+  pdf.text(displayedLines, margin + 7, y + 14);
 
-  // Calculate address height
-  const addressHeight = Math.min(addressLines.length, 3) * 3.5;
+  // Calculate address height based on lines displayed
+  const addressHeight = displayedLines.length * 3;
 
-  // City (bold) - positioned after address
+  // City (bold, smaller) - positioned after address
+  pdf.setFontSize(7);
   pdf.setFont('helvetica', 'bold');
-  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 16 + addressHeight + 2);
+  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 14 + addressHeight + 1);
 
   // ROUTING CODE + QR (right side)
   const routingX = pageWidth - margin - 40;
@@ -254,7 +256,8 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
     pdf.text('SCAN', qrX + qrSize / 2, y + qrSize / 2, { align: 'center' });
   }
 
-  y += 28;
+  // Increase section height to accommodate more address lines
+  y += 30;
   pdf.setDrawColor(black);
   pdf.line(margin, y, pageWidth - margin, y);
 
@@ -379,6 +382,10 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
   pdf.setFont('helvetica', 'normal');
   pdf.text('pathxpress.net  |  +971 522803433', pageWidth / 2, pageHeight - 4, { align: 'center' });
 
-  // Save
-  pdf.save(`waybill-${shipment.waybillNumber}.pdf`);
+  // Save or return blob
+  if (returnBlob) {
+    return pdf.output('blob');
+  } else {
+    pdf.save(`waybill-${shipment.waybillNumber}.pdf`);
+  }
 }

@@ -55,11 +55,6 @@ export default function AdminDashboard() {
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
 
-  // Return dialog state
-  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
-  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null);
-  const [chargeReturn, setChargeReturn] = useState(true);
-
   // Create client dialog state
   const [createClientDialogOpen, setCreateClientDialogOpen] = useState(false);
   const [newClient, setNewClient] = useState({
@@ -353,29 +348,6 @@ export default function AdminDashboard() {
         orderId,
       });
     }
-  };
-
-  // Create return mutation
-  const createReturnMutation = trpc.portal.admin.createReturn.useMutation({
-    onSuccess: (data) => {
-      toast.success(data.message || 'Return created successfully');
-      setReturnDialogOpen(false);
-      setSelectedOrderForReturn(null);
-      setChargeReturn(true);
-      refetchOrders();
-    },
-    onError: (error) => {
-      toast.error(`Failed to create return: ${error.message}`);
-    },
-  });
-
-  const handleCreateReturn = () => {
-    if (!selectedOrderForReturn) return;
-    createReturnMutation.mutate({
-      token: token || '',
-      orderId: selectedOrderForReturn.id,
-      chargeReturn,
-    });
   };
 
   // Filter orders
@@ -847,21 +819,6 @@ export default function AdminDashboard() {
                                   >
                                     <Package className="h-4 w-4" />
                                   </Button>
-                                  {canCreateReturn && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-cyan-500 hover:text-cyan-600 hover:bg-cyan-500/10"
-                                      onClick={() => {
-                                        setSelectedOrderForReturn(order);
-                                        setChargeReturn(true);
-                                        setReturnDialogOpen(true);
-                                      }}
-                                      title="Create Return Shipment"
-                                    >
-                                      <RotateCcw className="h-4 w-4" />
-                                    </Button>
-                                  )}
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -1504,72 +1461,7 @@ export default function AdminDashboard() {
           />
         )}
 
-        {/* Create Return Dialog */}
-        <Dialog open={returnDialogOpen} onOpenChange={setReturnDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <RotateCcw className="h-5 w-5 text-cyan-500" />
-                Create Return Shipment
-              </DialogTitle>
-              <DialogDescription>
-                This will create a return shipment to send the package back to the original shipper.
-              </DialogDescription>
-            </DialogHeader>
 
-            {selectedOrderForReturn && (
-              <div className="space-y-4 py-4">
-                <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-                  <p className="text-sm"><strong>Original Order:</strong> {selectedOrderForReturn.waybillNumber}</p>
-                  <p className="text-sm"><strong>From:</strong> {selectedOrderForReturn.shipperName} ({selectedOrderForReturn.shipperCity})</p>
-                  <p className="text-sm"><strong>To:</strong> {selectedOrderForReturn.customerName} ({selectedOrderForReturn.city})</p>
-                  <p className="text-sm"><strong>Weight:</strong> {selectedOrderForReturn.weight} kg</p>
-                </div>
-
-                <div className="bg-cyan-500/10 p-4 rounded-lg border border-cyan-500/20">
-                  <p className="text-sm font-medium text-cyan-400 mb-2">Return Details:</p>
-                  <div className="text-sm text-muted-foreground space-y-1">
-                    <p className="flex items-center gap-2">
-                      <Package className="h-4 w-4 text-cyan-400" />
-                      <span>From: <strong>{selectedOrderForReturn.customerName}</strong> ({selectedOrderForReturn.city})</span>
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4 text-cyan-400" />
-                      <span>To: <strong>{selectedOrderForReturn.shipperName}</strong> ({selectedOrderForReturn.shipperCity})</span>
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <Label htmlFor="chargeReturn" className="text-base font-medium">Charge for this return</Label>
-                    <p className="text-sm text-muted-foreground">
-                      If enabled, the return fee will be added to the client's invoice
-                    </p>
-                  </div>
-                  <Checkbox
-                    id="chargeReturn"
-                    checked={chargeReturn}
-                    onCheckedChange={(checked) => setChargeReturn(checked as boolean)}
-                  />
-                </div>
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setReturnDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateReturn}
-                disabled={createReturnMutation.isPending}
-                className="bg-cyan-500 hover:bg-cyan-600"
-              >
-                {createReturnMutation.isPending ? 'Creating...' : 'Create Return'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </DashboardLayout >
   );

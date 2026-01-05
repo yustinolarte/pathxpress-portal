@@ -35,7 +35,16 @@ export const appRouter = router({
           if (!shipment) {
             throw new TRPCError({ code: 'NOT_FOUND', message: 'Shipment not found' });
           }
-          return shipment;
+          return {
+            trackingId: shipment.trackingId,
+            status: shipment.status,
+            pickupAddress: shipment.pickupAddress || '',
+            deliveryAddress: shipment.deliveryAddress || '',
+            serviceType: shipment.serviceType || '',
+            weight: shipment.weight || '',
+            updatedAt: shipment.updatedAt,
+            trackingEvents: [],
+          };
         }
 
         // Get tracking events for this order
