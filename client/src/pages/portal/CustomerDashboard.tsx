@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
-import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3, RotateCcw } from 'lucide-react';
+import { LogOut, Package, Plus, FileText, Download, DollarSign, Save, LayoutDashboard, Calculator, Search, Wallet, BarChart3, RotateCcw, X, ArrowLeftRight } from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ import CustomerRateCalculator from '@/components/CustomerRateCalculator';
 import CustomerReports from '@/components/CustomerReports';
 import BulkShipmentDialog from '@/components/BulkShipmentDialog';
 import CustomerAnalytics from '@/components/CustomerAnalytics';
+import ReturnsExchangesPanel from '@/components/ReturnsExchangesPanel';
 import * as XLSX from 'xlsx';
 
 export default function CustomerDashboard() {
@@ -104,6 +105,26 @@ export default function CustomerDashboard() {
     setTrackingDialogOpen(true);
   };
 
+  // Cancel order mutation
+  const cancelOrderMutation = trpc.portal.customer.cancelOrder.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message || 'Order canceled successfully');
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to cancel order');
+    },
+  });
+
+  const handleCancelOrder = (orderId: number, waybillNumber: string) => {
+    if (confirm(`Are you sure you want to cancel order ${waybillNumber}? This action cannot be undone.`)) {
+      cancelOrderMutation.mutate({
+        token: token || '',
+        orderId,
+      });
+    }
+  };
+
   // Fetch customer account
   const { data: account } = trpc.portal.customer.getMyAccount.useQuery(
     { token: token || '' },
@@ -135,6 +156,7 @@ export default function CustomerDashboard() {
     { icon: LayoutDashboard, label: 'Overview', value: 'overview' },
     { icon: BarChart3, label: 'Analytics', value: 'analytics' },
     { icon: Package, label: 'My Orders', value: 'orders' },
+    { icon: ArrowLeftRight, label: 'Returns & Exchanges', value: 'returns' },
     { icon: Search, label: 'Track Shipment', value: 'tracking' },
     { icon: Calculator, label: 'Rate Calculator', value: 'calculator' },
     { icon: FileText, label: 'Invoices', value: 'invoices' },
@@ -415,13 +437,28 @@ export default function CustomerDashboard() {
                             </TableCell>
                             <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                             <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => generateWaybillPDF(order)}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => generateWaybillPDF(order)}
+                                  title="Download Waybill"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                                {order.status === 'pending_pickup' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                    onClick={() => handleCancelOrder(order.id, order.waybillNumber)}
+                                    title="Cancel Order"
+                                    disabled={cancelOrderMutation.isPending}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -589,6 +626,11 @@ export default function CustomerDashboard() {
           {/* Rate Calculator Tab */}
           <TabsContent value="calculator" className="space-y-4">
             <CustomerRateCalculator />
+          </TabsContent>
+
+          {/* Returns & Exchanges Tab */}
+          <TabsContent value="returns" className="space-y-4 mt-0">
+            <ReturnsExchangesPanel token={token} />
           </TabsContent>
 
           {/* Invoices Tab */}

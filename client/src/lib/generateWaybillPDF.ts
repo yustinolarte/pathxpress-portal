@@ -202,15 +202,19 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
   pdf.setFontSize(11);
   pdf.text(shipment.customerPhone, margin + 7, y + 11);
 
-  // Address
+  // Address (wrap to multiple lines, but limit width to avoid QR code)
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
-  const addressLines = pdf.splitTextToSize(shipment.address, contentWidth - 35);
-  pdf.text(addressLines.slice(0, 2), margin + 7, y + 16);
+  const addressMaxWidth = contentWidth - 50; // Leave space for city code and QR
+  const addressLines = pdf.splitTextToSize(shipment.address, addressMaxWidth);
+  pdf.text(addressLines.slice(0, 3), margin + 7, y + 16); // Allow up to 3 lines
 
-  // City (bold)
+  // Calculate address height
+  const addressHeight = Math.min(addressLines.length, 3) * 3.5;
+
+  // City (bold) - positioned after address
   pdf.setFont('helvetica', 'bold');
-  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 24);
+  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 16 + addressHeight + 2);
 
   // ROUTING CODE + QR (right side)
   const routingX = pageWidth - margin - 40;
@@ -318,9 +322,15 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
 
   // ===== SPECIAL INSTRUCTIONS =====
   if (shipment.specialInstructions && shipment.specialInstructions.trim()) {
+    // Calculate how many lines needed
+    const instrMaxWidth = contentWidth - 15;
+    const instrLines = pdf.splitTextToSize(shipment.specialInstructions, instrMaxWidth);
+    const numLines = Math.min(instrLines.length, 2); // Max 2 lines
+    const boxHeight = 6 + (numLines * 4);
+
     pdf.setDrawColor(black);
     pdf.setLineWidth(0.5);
-    pdf.rect(margin, y, contentWidth, 10);
+    pdf.rect(margin, y, contentWidth, boxHeight);
 
     pdf.setFontSize(6);
     pdf.setFont('helvetica', 'bold');
@@ -328,10 +338,10 @@ export async function generateWaybillPDF(shipment: ShipmentData) {
 
     pdf.setFontSize(7);
     pdf.setFont('helvetica', 'normal');
-    const instrLines = pdf.splitTextToSize(shipment.specialInstructions, contentWidth - 15);
-    pdf.text(instrLines.slice(0, 1).join(' '), margin + 12, y + 4);
+    // Display up to 2 lines of instructions
+    pdf.text(instrLines.slice(0, 2), margin + 12, y + 4);
 
-    y += 12;
+    y += boxHeight + 2;
   }
 
   // ===== MAIN BARCODE (Large, High Quality) =====

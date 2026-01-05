@@ -207,6 +207,10 @@ export const orders = mysqlTable("orders", {
   originalOrderId: int("originalOrderId"), // Reference to the original order that generated this return
   returnCharged: int("returnCharged").default(1).notNull(), // 0 = free return, 1 = charged return
 
+  // Order type: standard, return, exchange
+  orderType: varchar("orderType", { length: 20 }).default("standard").notNull(), // standard, return, exchange
+  exchangeOrderId: int("exchangeOrderId"), // For exchanges: links return waybill to new shipment waybill
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
