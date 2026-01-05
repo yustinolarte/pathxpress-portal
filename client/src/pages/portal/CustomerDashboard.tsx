@@ -72,6 +72,7 @@ export default function CustomerDashboard() {
   const [filterDateTo, setFilterDateTo] = useState('');
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
 
   const { data: trackingData, error: trackingError } = trpc.portal.publicTracking.track.useQuery(
     { waybillNumber: searchedWaybill },
@@ -129,6 +130,24 @@ export default function CustomerDashboard() {
     return matchesStatus && matchesDate;
   });
 
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      if (filteredOrders) {
+        setSelectedOrderIds(filteredOrders.map((o: any) => o.id));
+      }
+    } else {
+      setSelectedOrderIds([]);
+    }
+  };
+
+  const handleSelectRow = (id: number, checked: boolean) => {
+    if (checked) {
+      setSelectedOrderIds((prev) => [...prev, id]);
+    } else {
+      setSelectedOrderIds((prev) => prev.filter((orderId) => orderId !== id));
+    }
+  };
+
   const handleExportOrders = () => {
     if (!filteredOrders || filteredOrders.length === 0) {
       toast.error('No orders to export');
@@ -155,7 +174,15 @@ export default function CustomerDashboard() {
   };
 
   const handleBulkDownloadWaybills = async () => {
-    if (!filteredOrders || filteredOrders.length === 0) {
+    let ordersToDownload = [];
+
+    if (selectedOrderIds.length > 0) {
+      ordersToDownload = orders?.filter((o: any) => selectedOrderIds.includes(o.id)) || [];
+    } else {
+      ordersToDownload = filteredOrders || [];
+    }
+
+    if (!ordersToDownload || ordersToDownload.length === 0) {
       toast.error('No orders to download waybills for');
       return;
     }
@@ -169,7 +196,7 @@ export default function CustomerDashboard() {
       let count = 0;
 
       // Process sequentially to avoid browser hanging
-      for (const order of filteredOrders) {
+      for (const order of ordersToDownload) {
         // We use a trick here: generateWaybillPDF saves the file, but we want the blob.
         // We'll modify generateWaybillPDF to accept a returnBlob flag, or just use the logic directly.
         // For now, let's assume we can't easily modify generateWaybillPDF to return blob without breaking other things.
@@ -495,14 +522,14 @@ export default function CustomerDashboard() {
                     variant="outline"
                     size="sm"
                     onClick={handleBulkDownloadWaybills}
-                    disabled={bulkDownloading || !filterDateFrom || !filterDateTo}
+                    disabled={bulkDownloading || (selectedOrderIds.length === 0 && (!filterDateFrom || !filterDateTo))}
                   >
                     {bulkDownloading ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    Download Waybills
+                    Download Waybills {selectedOrderIds.length > 0 ? `(${selectedOrderIds.length})` : ''}
                   </Button>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
                     <SelectTrigger className="w-[180px]">
@@ -530,6 +557,12 @@ export default function CustomerDashboard() {
                     <Table>
                       <TableHeader>
                         <TableRow>
+                          <TableHead className="w-[50px]">
+                            <Checkbox
+                              checked={filteredOrders && filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
+                              onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                            />
+                          </TableHead>
                           <TableHead>Waybill</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Destination</TableHead>
@@ -544,6 +577,12 @@ export default function CustomerDashboard() {
                       <TableBody>
                         {filteredOrders.map((order) => (
                           <TableRow key={order.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedOrderIds.includes(order.id)}
+                                onCheckedChange={(checked) => handleSelectRow(order.id, checked as boolean)}
+                              />
+                            </TableCell>
                             <TableCell className="font-mono font-medium">
                               <div className="flex items-center gap-2">
                                 <Button
