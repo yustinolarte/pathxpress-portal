@@ -502,7 +502,7 @@ export default function CustomerDashboard() {
                     ) : (
                       <Download className="mr-2 h-4 w-4" />
                     )}
-                    Waybills
+                    Download Waybills
                   </Button>
                   <Select value={filterStatus} onValueChange={setFilterStatus}>
                     <SelectTrigger className="w-[180px]">
@@ -519,9 +519,7 @@ export default function CustomerDashboard() {
                       <SelectItem value="cancelled">Cancelled</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button variant="outline" size="sm" onClick={handleExportOrders}>
-                    <Download className="w-4 h-4 mr-2" /> Export
-                  </Button>
+
                 </div>
               </CardHeader>
               <CardContent>
