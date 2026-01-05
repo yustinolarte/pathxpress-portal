@@ -34,7 +34,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
         city: '',
         destinationCountry: 'UAE',
         pieces: 1,
-        weight: 0.5,
+        weight: '',
         serviceType: 'DOM',
         specialInstructions: '',
     });
@@ -56,7 +56,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
         deliveryCountry: 'UAE',
         // Package
         pieces: 1,
-        weight: 0.5,
+        weight: '',
         serviceType: 'DOM',
         specialInstructions: '',
         // For exchange - new shipment details
@@ -65,7 +65,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
         exchangeAddress: '',
         exchangeCity: '',
         exchangePieces: 1,
-        exchangeWeight: 0.5,
+        exchangeWeight: '',
     });
 
     // Fetch returns/exchanges for this client
@@ -115,7 +115,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                 city: '',
                 destinationCountry: 'UAE',
                 pieces: 1,
-                weight: 0.5,
+                weight: '',
                 serviceType: 'DOM',
                 specialInstructions: '',
             });
@@ -144,7 +144,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                 deliveryCity: '',
                 deliveryCountry: 'UAE',
                 pieces: 1,
-                weight: 0.5,
+                weight: '',
                 serviceType: 'DOM',
                 specialInstructions: '',
                 exchangeCustomerName: '',
@@ -152,7 +152,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                 exchangeAddress: '',
                 exchangeCity: '',
                 exchangePieces: 1,
-                exchangeWeight: 0.5,
+                exchangeWeight: '',
             });
             refetch();
         },
@@ -187,7 +187,10 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
         createExchangeMutation.mutate({
             token,
             orderId: foundOrder.id,
-            newShipment: exchangeForm,
+            newShipment: {
+                ...exchangeForm,
+                weight: parseFloat(exchangeForm.weight) || 0.5,
+            },
         });
     };
 
@@ -203,6 +206,8 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
         createManualMutation.mutate({
             token,
             ...manualForm,
+            weight: parseFloat(manualForm.weight) || 0.5,
+            exchangeWeight: parseFloat(manualForm.exchangeWeight) || 0.5,
         });
     };
 
@@ -469,7 +474,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                                                     step="0.1"
                                                     min="0.1"
                                                     value={exchangeForm.weight}
-                                                    onChange={(e) => setExchangeForm({ ...exchangeForm, weight: parseFloat(e.target.value) || 0.5 })}
+                                                    onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })}
                                                 />
                                             </div>
                                         </div>
@@ -644,7 +649,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                                     step="0.1"
                                     min="0.1"
                                     value={manualForm.weight}
-                                    onChange={(e) => setManualForm({ ...manualForm, weight: parseFloat(e.target.value) || 0.5 })}
+                                    onChange={(e) => setManualForm({ ...manualForm, weight: e.target.value })}
                                 />
                             </div>
                             <div>
@@ -720,7 +725,7 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                                                 step="0.1"
                                                 min="0.1"
                                                 value={manualForm.exchangeWeight}
-                                                onChange={(e) => setManualForm({ ...manualForm, exchangeWeight: parseFloat(e.target.value) || 0.5 })}
+                                                onChange={(e) => setManualForm({ ...manualForm, exchangeWeight: e.target.value })}
                                             />
                                         </div>
                                     </div>
