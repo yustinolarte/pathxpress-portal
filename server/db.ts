@@ -574,12 +574,86 @@ export async function generateWaybillNumber(): Promise<string> {
 // ============================================
 
 // Helper to get billable shipments
+// Helper to calculate rate for a shipment
+export const calculateRate = (client: any, shipment: any, domTier: any, sddTier: any): number => {
+  // Logic for Exchange: Charge only 1 leg for the two waybills via "Free Return" logic
+  // We charge the forward leg (isReturn=0) and make the return leg (isReturn=1) free
+  if (shipment.orderType === 'exchange' && shipment.isReturn === 1) {
+    return 0;
+  }
+
+  // Logic for standard Returns: Use fixed return fee if set on client
+  if (shipment.isReturn === 1 && shipment.orderType !== 'exchange' && client.returnFee) {
+    return parseFloat(client.returnFee);
+  }
+
+  const weight = parseFloat(shipment.weight || '0');
+  const isBasWeight = weight <= 5;
+  const additionalKg = Math.max(0, weight - 5);
+  const serviceType = shipment.serviceType?.toUpperCase() || 'DOM';
+
+  let baseRate = 0;
+  let perKgRate = 0;
+
+  // Priority 1: Custom rates
+  if (serviceType === 'SDD' || serviceType === 'SAME DAY') {
+    if (client.customSddBaseRate && client.customSddPerKg) {
+      baseRate = parseFloat(client.customSddBaseRate);
+      perKgRate = parseFloat(client.customSddPerKg);
+    } else if (sddTier) {
+      baseRate = parseFloat(sddTier.baseRate);
+      perKgRate = parseFloat(sddTier.additionalKgRate);
+    } else {
+      // Default SDD rates
+      baseRate = 25;
+      perKgRate = 3;
+    }
+  } else {
+    // DOM
+    if (client.customDomBaseRate && client.customDomPerKg) {
+      baseRate = parseFloat(client.customDomBaseRate);
+      perKgRate = parseFloat(client.customDomPerKg);
+    } else if (domTier) {
+      baseRate = parseFloat(domTier.baseRate);
+      perKgRate = parseFloat(domTier.additionalKgRate);
+    } else {
+      // Default DOM rates
+      baseRate = 15;
+      perKgRate = 2;
+    }
+  }
+
+  // Calculate total: base rate + additional kg rate
+  const total = isBasWeight ? baseRate : baseRate + (additionalKg * perKgRate);
+  return Math.round(total * 100) / 100; // Round to 2 decimals
+};
+
+// Helper to get billable shipments with calculated rates
 export async function getBillableShipments(clientId: number, periodStart: Date, periodEnd: Date) {
   const db = await getDb();
   if (!db) return [];
 
-  const { invoiceItems } = await import("../drizzle/schema");
+  const { invoiceItems, rateTiers } = await import("../drizzle/schema");
   const { isNull, inArray } = await import("drizzle-orm");
+
+  // Get client and tiers first
+  const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
+  if (!client) return [];
+
+  let domTier: any = null;
+  let sddTier: any = null;
+
+  if (client.manualRateTierId) {
+    const domTiers = await db.select().from(rateTiers)
+      .where(and(eq(rateTiers.id, client.manualRateTierId), eq(rateTiers.serviceType, 'DOM'))).limit(1);
+    domTier = domTiers[0];
+
+    if (domTier) {
+      const sddTiers = await db.select().from(rateTiers)
+        .where(and(eq(rateTiers.serviceType, 'SDD'), eq(rateTiers.minVolume, domTier.minVolume))).limit(1);
+      sddTier = sddTiers[0];
+    }
+  }
 
   const shipmentsData = await db
     .select({
@@ -597,7 +671,11 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
       )
     );
 
-  return shipmentsData.map(d => d.order);
+  // Return orders with calculated rates attached
+  return shipmentsData.map(d => ({
+    ...d.order,
+    calculatedRate: calculateRate(client, d.order, domTier, sddTier)
+  }));
 }
 
 export async function generateInvoiceForClient(
@@ -610,7 +688,6 @@ export async function generateInvoiceForClient(
   if (!db) throw new Error("Database not available");
 
   let shipments: typeof orders.$inferSelect[] = [];
-
   const { invoiceItems, rateTiers } = await import("../drizzle/schema");
 
   if (shipmentIds && shipmentIds.length > 0) {
@@ -626,103 +703,42 @@ export async function generateInvoiceForClient(
         )
       );
   } else {
-    shipments = await getBillableShipments(clientId, periodStart, periodEnd);
+    // If getting all billable, we can reuse getBillableShipments logic but we need raw orders
+    const result = await getBillableShipments(clientId, periodStart, periodEnd);
+    // Remove calculatedRate property to match type
+    shipments = result.map(({ calculatedRate, ...order }) => order as any);
   }
 
   if (shipments.length === 0) {
-    return null; // No billingable shipments found
+    return null;
   }
 
   // Get client info to determine rates
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
-  if (!client) {
-    throw new Error("Client not found");
-  }
+  if (!client) throw new Error("Client not found");
 
-  // Get rate tiers for this client (if using tier-based pricing)
+  // Get rate tiers for this client
   let domTier: any = null;
   let sddTier: any = null;
 
   if (client.manualRateTierId) {
-    // Get DOM tier
     const domTiers = await db.select().from(rateTiers)
-      .where(and(
-        eq(rateTiers.id, client.manualRateTierId),
-        eq(rateTiers.serviceType, 'DOM')
-      )).limit(1);
+      .where(and(eq(rateTiers.id, client.manualRateTierId), eq(rateTiers.serviceType, 'DOM'))).limit(1);
     domTier = domTiers[0];
 
-    // Get SDD tier with same volume bracket
     if (domTier) {
       const sddTiers = await db.select().from(rateTiers)
-        .where(and(
-          eq(rateTiers.serviceType, 'SDD'),
-          eq(rateTiers.minVolume, domTier.minVolume)
-        )).limit(1);
+        .where(and(eq(rateTiers.serviceType, 'SDD'), eq(rateTiers.minVolume, domTier.minVolume))).limit(1);
       sddTier = sddTiers[0];
     }
   }
-
-  // Helper function to calculate rate for a shipment
-  const calculateShipmentRate = (shipment: typeof orders.$inferSelect): number => {
-    // Logic for Exchange: Charge only 1 leg for the two waybills via "Free Return" logic
-    // We charge the forward leg (isReturn=0) and make the return leg (isReturn=1) free
-    if (shipment.orderType === 'exchange' && shipment.isReturn === 1) {
-      return 0;
-    }
-
-    // Logic for standard Returns: Use fixed return fee if set on client
-    if (shipment.isReturn === 1 && shipment.orderType !== 'exchange' && client.returnFee) {
-      return parseFloat(client.returnFee);
-    }
-
-    const weight = parseFloat(shipment.weight || '0');
-    const isBasWeight = weight <= 5;
-    const additionalKg = Math.max(0, weight - 5);
-    const serviceType = shipment.serviceType?.toUpperCase() || 'DOM';
-
-    let baseRate = 0;
-    let perKgRate = 0;
-
-    // Priority 1: Custom rates
-    if (serviceType === 'SDD' || serviceType === 'SAME DAY') {
-      if (client.customSddBaseRate && client.customSddPerKg) {
-        baseRate = parseFloat(client.customSddBaseRate);
-        perKgRate = parseFloat(client.customSddPerKg);
-      } else if (sddTier) {
-        baseRate = parseFloat(sddTier.baseRate);
-        perKgRate = parseFloat(sddTier.additionalKgRate);
-      } else {
-        // Default SDD rates
-        baseRate = 25;
-        perKgRate = 3;
-      }
-    } else {
-      // DOM
-      if (client.customDomBaseRate && client.customDomPerKg) {
-        baseRate = parseFloat(client.customDomBaseRate);
-        perKgRate = parseFloat(client.customDomPerKg);
-      } else if (domTier) {
-        baseRate = parseFloat(domTier.baseRate);
-        perKgRate = parseFloat(domTier.additionalKgRate);
-      } else {
-        // Default DOM rates
-        baseRate = 15;
-        perKgRate = 2;
-      }
-    }
-
-    // Calculate total: base rate + additional kg rate
-    const total = isBasWeight ? baseRate : baseRate + (additionalKg * perKgRate);
-    return Math.round(total * 100) / 100; // Round to 2 decimals
-  };
 
   // Calculate totals using proper rates
   let subtotal = 0;
   const shipmentRates: { shipment: typeof orders.$inferSelect; rate: number }[] = [];
 
   for (const shipment of shipments) {
-    const rate = calculateShipmentRate(shipment);
+    const rate = calculateRate(client, shipment, domTier, sddTier);
     subtotal += rate;
     shipmentRates.push({ shipment, rate });
   }

@@ -433,6 +433,9 @@ export default function BillingPanel() {
                             </p>
                           </div>
 
+                          <div className="ml-auto text-xs font-mono font-medium">
+                            AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
+                          </div>
                         </div>
                       ))}
                     </div>
