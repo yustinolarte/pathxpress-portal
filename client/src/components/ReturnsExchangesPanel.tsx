@@ -361,9 +361,21 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                                                     <><ArrowLeftRight className="h-3 w-3 mr-1" /> Exchange</>
                                                 )}
                                             </Badge>
-                                            {order.orderType === 'exchange' && order.exchangeOrderId && (
-                                                <div className="text-xs text-amber-400 mt-1">
-                                                    ↔ {returnsExchanges?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber || `ID:${order.exchangeOrderId}`}
+                                            {order.orderType === 'exchange' && order.exchangeWaybill && (
+                                                <div className="mt-1">
+                                                    <Badge variant="secondary" className="text-[10px] h-5 px-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border-amber-200 cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            // Logic to open/find that order would go here. 
+                                                            // Since we don't have global navigation to a specific tracking ID from here easily,
+                                                            // we will just display it clearly for now or copy to clipboard?
+                                                            // Ideally this should link to the tracking/shipment details.
+                                                            navigator.clipboard.writeText(order.exchangeWaybill);
+                                                            toast.success(`Copied ${order.exchangeWaybill} to clipboard`);
+                                                        }}
+                                                    >
+                                                        ↔ {order.exchangeWaybill}
+                                                    </Badge>
                                                 </div>
                                             )}
                                         </TableCell>

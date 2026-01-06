@@ -1168,10 +1168,18 @@ export const customerPortalRouter = router({
           const original = await getOrderById(order.originalOrderId);
           originalWaybill = original?.waybillNumber;
         }
+
+        let exchangeWaybill = null;
+        if (order.exchangeOrderId) {
+          const exchangeOrder = await getOrderById(order.exchangeOrderId);
+          exchangeWaybill = exchangeOrder?.waybillNumber;
+        }
+
         return {
           ...order,
           shipperAddress: hideAddress ? '' : order.shipperAddress,
-          originalWaybill
+          originalWaybill,
+          exchangeWaybill
         };
       }));
 
