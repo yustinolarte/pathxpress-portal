@@ -944,12 +944,13 @@ export const customerPortalRouter = router({
 
       // Get client's hideShipperAddress setting
       const client = await getClientAccountById(payload.clientId);
-      const hideShipperAddress = client?.hideShipperAddress || 0;
+      const hideShipperAddress = client?.hideShipperAddress === 1;
 
-      // Add hideShipperAddress to each order for waybill generation
+      // Add hideShipperAddress to each order for waybill generation, and hide address if setting enabled
       return orders.map(order => ({
         ...order,
-        hideShipperAddress,
+        shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
+        hideShipperAddress: hideShipperAddress ? 1 : 0,
       }));
     }),
 
@@ -1156,14 +1157,22 @@ export const customerPortalRouter = router({
         ))
         .orderBy(desc(orders.createdAt));
 
-      // Get original waybill numbers
+      // Check if client has hideShipperAddress enabled
+      const client = await getClientAccountById(payload.clientId);
+      const hideAddress = client?.hideShipperAddress === 1;
+
+      // Get original waybill numbers and hide shipper address if needed
       const result = await Promise.all(returnsExchanges.map(async (order) => {
         let originalWaybill = null;
         if (order.originalOrderId) {
           const original = await getOrderById(order.originalOrderId);
           originalWaybill = original?.waybillNumber;
         }
-        return { ...order, originalWaybill };
+        return {
+          ...order,
+          shipperAddress: hideAddress ? '' : order.shipperAddress,
+          originalWaybill
+        };
       }));
 
       return result;
@@ -1199,7 +1208,15 @@ export const customerPortalRouter = router({
         });
       }
 
-      return order;
+      // Check if client has hideShipperAddress enabled
+      const client = await getClientAccountById(payload.clientId);
+      const hideShipperAddress = client?.hideShipperAddress === 1;
+
+      // Return order with shipper address hidden if setting is enabled
+      return {
+        ...order,
+        shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
+      };
     }),
 
   // Create return request

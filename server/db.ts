@@ -524,7 +524,7 @@ export async function getTrackingEventsByShipmentId(shipmentId: number) {
   if (!db) return [];
 
   try {
-    return await db.select().from(trackingEvents).where(eq(trackingEvents.shipmentId, shipmentId)).orderBy(trackingEvents.eventDatetime);
+    return await db.select().from(trackingEvents).where(eq(trackingEvents.shipmentId, shipmentId)).orderBy(desc(trackingEvents.eventDatetime));
   } catch (error) {
     console.error("[Database] Failed to get tracking events:", error);
     return [];
