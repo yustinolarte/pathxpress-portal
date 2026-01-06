@@ -45,9 +45,9 @@ export default function ShipmentHistoryDialog({ open, onOpenChange, shipmentId }
                                         )}
                                     </div>
                                     <div className="text-xs text-muted-foreground text-right whitespace-nowrap">
-                                        {new Date(event.eventDatetime).toLocaleDateString()}
+                                        {new Date(event.eventDatetime).toLocaleDateString('en-AE', { timeZone: 'Asia/Dubai' })}
                                         <br />
-                                        {new Date(event.eventDatetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(event.eventDatetime).toLocaleTimeString('en-AE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' })}
                                     </div>
                                 </div>
                             </div>

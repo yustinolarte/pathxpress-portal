@@ -188,9 +188,8 @@ export default function TrackShipment() {
                         <div key={event.id} className="relative flex gap-4">
                           {/* Timeline dot */}
                           <div
-                            className={`relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                              index === 0 ? 'bg-blue-500' : 'bg-gray-600'
-                            }`}
+                            className={`relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${index === 0 ? 'bg-blue-500' : 'bg-gray-600'
+                              }`}
                           >
                             <div className="w-3 h-3 rounded-full bg-white" />
                           </div>
@@ -209,8 +208,8 @@ export default function TrackShipment() {
                                 )}
                               </div>
                               <div className="text-right text-sm text-gray-400 flex-shrink-0">
-                                <div>{new Date(event.eventDatetime).toLocaleDateString()}</div>
-                                <div>{new Date(event.eventDatetime).toLocaleTimeString()}</div>
+                                <div>{new Date(event.eventDatetime).toLocaleDateString('en-AE', { timeZone: 'Asia/Dubai' })}</div>
+                                <div>{new Date(event.eventDatetime).toLocaleTimeString('en-AE', { timeZone: 'Asia/Dubai' })}</div>
                               </div>
                             </div>
                           </div>

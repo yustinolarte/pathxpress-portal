@@ -72,11 +72,17 @@ export default function AddTrackingEventDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Convert local datetime input to Dubai timezone (UTC+4)
+    // The datetime-local input gives us a string like "2026-01-06T10:00"
+    // We append the Dubai offset to ensure correct interpretation on the server
+    const eventDatetimeWithOffset = `${formData.eventDatetime}:00+04:00`;
+
     // Add tracking event
     await addEventMutation.mutateAsync({
       token,
       shipmentId,
       ...formData,
+      eventDatetime: eventDatetimeWithOffset,
       podFileUrl: podFileUrl || undefined,
     });
   };

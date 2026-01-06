@@ -192,7 +192,7 @@ export default function Tracking() {
                                     {event.statusLabel}
                                   </h4>
                                   <span className="text-sm text-muted-foreground">
-                                    {new Date(event.eventDatetime).toLocaleString()}
+                                    {new Date(event.eventDatetime).toLocaleString('en-AE', { timeZone: 'Asia/Dubai' })}
                                   </span>
                                 </div>
                                 {event.location && (
