@@ -579,7 +579,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
   if (!db) return [];
 
   const { invoiceItems } = await import("../drizzle/schema");
-  const { isNull } = await import("drizzle-orm");
+  const { isNull, inArray } = await import("drizzle-orm");
 
   const shipmentsData = await db
     .select({
@@ -592,7 +592,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         eq(orders.clientId, clientId),
         gte(orders.createdAt, periodStart),
         lte(orders.createdAt, periodEnd),
-        eq(orders.status, 'delivered'),
+        inArray(orders.status, ['delivered', 'returned', 'exchange']),
         isNull(invoiceItems.id)
       )
     );
@@ -622,7 +622,7 @@ export async function generateInvoiceForClient(
         and(
           eq(orders.clientId, clientId),
           inArray(orders.id, shipmentIds),
-          eq(orders.status, 'delivered')
+          inArray(orders.status, ['delivered', 'returned', 'exchange'])
         )
       );
   } else {
@@ -665,6 +665,17 @@ export async function generateInvoiceForClient(
 
   // Helper function to calculate rate for a shipment
   const calculateShipmentRate = (shipment: typeof orders.$inferSelect): number => {
+    // Logic for Exchange: Charge only 1 leg for the two waybills via "Free Return" logic
+    // We charge the forward leg (isReturn=0) and make the return leg (isReturn=1) free
+    if (shipment.orderType === 'exchange' && shipment.isReturn === 1) {
+      return 0;
+    }
+
+    // Logic for standard Returns: Use fixed return fee if set on client
+    if (shipment.isReturn === 1 && shipment.orderType !== 'exchange' && client.returnFee) {
+      return parseFloat(client.returnFee);
+    }
+
     const weight = parseFloat(shipment.weight || '0');
     const isBasWeight = weight <= 5;
     const additionalKg = Math.max(0, weight - 5);

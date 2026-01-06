@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -759,11 +759,32 @@ export default function AdminDashboard() {
                                   setHistoryDialogOpen(true);
                                 }}
                               >
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   {order.waybillNumber}
-                                  {order.isReturn === 1 && (
+                                  {order.isReturn === 1 && order.orderType !== 'exchange' && (
                                     <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1">
                                       <RotateCcw className="h-3 w-3" /> RETURN
+                                    </Badge>
+                                  )}
+                                  {order.orderType === 'exchange' && (
+                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1">
+                                      <ArrowLeftRight className="h-3 w-3" /> EXCHANGE
+                                      {order.exchangeOrderId && (
+                                        <span
+                                          className="ml-1 underline cursor-pointer hover:text-amber-300"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const linkedOrder = allOrders?.find((o: any) => o.id === order.exchangeOrderId);
+                                            if (linkedOrder) {
+                                              setSelectedShipmentId(linkedOrder.id);
+                                              setHistoryDialogOpen(true);
+                                            }
+                                          }}
+                                          title={`View linked order: ${allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber || ''}`}
+                                        >
+                                          → {allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber?.slice(-3) || ''}
+                                        </span>
+                                      )}
                                     </Badge>
                                   )}
                                 </div>

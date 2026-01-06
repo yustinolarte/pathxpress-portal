@@ -361,6 +361,11 @@ export default function ReturnsExchangesPanel({ token }: ReturnsExchangesPanelPr
                                                     <><ArrowLeftRight className="h-3 w-3 mr-1" /> Exchange</>
                                                 )}
                                             </Badge>
+                                            {order.orderType === 'exchange' && order.exchangeOrderId && (
+                                                <div className="text-xs text-amber-400 mt-1">
+                                                    ↔ {returnsExchanges?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber || `ID:${order.exchangeOrderId}`}
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-xs">
                                             {order.originalWaybill || '-'}

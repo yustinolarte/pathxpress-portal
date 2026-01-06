@@ -432,10 +432,7 @@ export default function BillingPanel() {
                               {new Date(shipment.createdAt).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
                             </p>
                           </div>
-                          <div className="ml-auto text-xs font-mono">
-                            {/* Simple estimation for display */}
-                            AED {(parseFloat(shipment.weight || '0') * 10).toFixed(2)}
-                          </div>
+
                         </div>
                       ))}
                     </div>
