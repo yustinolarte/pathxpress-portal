@@ -50,10 +50,20 @@ export const appRouter = router({
         // Get tracking events for this order
         const trackingEvents = await getTrackingEventsByShipmentId(order.id);
 
+        // Check if client has hideShipperAddress enabled
+        const { getClientAccountById } = await import('./db');
+        const client = await getClientAccountById(order.clientId);
+        const hideShipperAddress = client?.hideShipperAddress === 1;
+
+        // Build pickup address - hide full address if setting enabled
+        const pickupAddress = hideShipperAddress
+          ? `${order.shipperCity}, ${order.shipperCountry}`
+          : `${order.shipperAddress}, ${order.shipperCity}, ${order.shipperCountry}`;
+
         return {
           trackingId: order.waybillNumber,
           status: order.status,
-          pickupAddress: `${order.shipperAddress}, ${order.shipperCity}, ${order.shipperCountry}`,
+          pickupAddress,
           deliveryAddress: `${order.address}, ${order.city}, ${order.destinationCountry}`,
           serviceType: order.serviceType,
           weight: `${order.weight} kg`,
