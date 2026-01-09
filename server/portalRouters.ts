@@ -50,6 +50,7 @@ import {
   calculateCODFee,
   getAllRateTiers,
 } from './db';
+import { driverRouter } from './driverRouter';
 
 /**
  * Portal authentication router
@@ -2825,4 +2826,5 @@ export const portalRouter = router({
   clients: clientsRouter,
   publicTracking: publicTrackingRouter,
   tracking: trackingRouter,
+  drivers: driverRouter,
 });

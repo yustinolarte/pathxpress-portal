@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -19,6 +19,7 @@ import RatesPanel from '@/components/RatesPanel';
 import AdminReports from '@/components/AdminReports';
 import AdminAnalytics from '@/components/AdminAnalytics';
 import ShipmentHistoryDialog from '@/components/ShipmentHistoryDialog';
+import DriversSection from '@/components/DriversSection';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -406,6 +407,7 @@ export default function AdminDashboard() {
     { icon: BarChart3, label: 'Analytics', value: 'analytics' },
     { icon: Users, label: 'Clients', value: 'clients' },
     { icon: Package, label: 'All Orders', value: 'orders' },
+    { icon: Truck, label: 'Drivers', value: 'drivers' },
     { icon: FileText, label: 'Billing', value: 'billing' },
     { icon: Wallet, label: 'COD Management', value: 'cod' },
     { icon: TrendingUp, label: 'Rates & Pricing', value: 'rates' },
@@ -863,6 +865,11 @@ export default function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Drivers Tab */}
+          <TabsContent value="drivers" className="space-y-4">
+            <DriversSection />
           </TabsContent>
 
           {/* Billing Tab */}

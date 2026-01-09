@@ -459,3 +459,100 @@ export const contactMessages = mysqlTable("contactMessages", {
 
 export type ContactMessage = typeof contactMessages.$inferSelect;
 export type InsertContactMessage = typeof contactMessages.$inferInsert;
+
+// ==================== DRIVER MANAGEMENT TABLES ====================
+
+/**
+ * Drivers table for delivery drivers
+ */
+export const drivers = mysqlTable("drivers", {
+  id: int("id").autoincrement().primaryKey(),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  email: varchar("email", { length: 320 }),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  fullName: varchar("fullName", { length: 100 }).notNull(),
+  phone: varchar("phone", { length: 50 }),
+  vehicleNumber: varchar("vehicleNumber", { length: 50 }),
+  photoUrl: text("photoUrl"),
+  emiratesId: varchar("emiratesId", { length: 50 }),
+  emiratesIdExp: timestamp("emiratesIdExp"),
+  licenseNo: varchar("licenseNo", { length: 50 }),
+  licenseExp: timestamp("licenseExp"),
+  status: mysqlEnum("status", ["active", "inactive", "suspended"]).default("active").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Driver = typeof drivers.$inferSelect;
+export type InsertDriver = typeof drivers.$inferInsert;
+
+/**
+ * Driver routes - daily routes assigned to drivers
+ */
+export const driverRoutes = mysqlTable("driverRoutes", {
+  id: varchar("id", { length: 50 }).primaryKey(), // e.g., DXB-2025-0001
+  driverId: int("driverId"),
+  date: timestamp("date").notNull(),
+  zone: varchar("zone", { length: 100 }),
+  vehicleInfo: varchar("vehicleInfo", { length: 100 }),
+  status: mysqlEnum("status", ["pending", "in_progress", "completed", "cancelled"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DriverRoute = typeof driverRoutes.$inferSelect;
+export type InsertDriverRoute = typeof driverRoutes.$inferInsert;
+
+/**
+ * Route orders - links orders to routes with delivery status
+ */
+export const routeOrders = mysqlTable("routeOrders", {
+  id: int("id").autoincrement().primaryKey(),
+  routeId: varchar("routeId", { length: 50 }).notNull(),
+  orderId: int("orderId").notNull(),
+  sequence: int("sequence"), // Optimized delivery order
+  status: mysqlEnum("status", ["pending", "in_progress", "delivered", "attempted", "returned"]).default("pending").notNull(),
+  proofPhotoUrl: text("proofPhotoUrl"),
+  notes: text("notes"),
+  attemptedAt: timestamp("attemptedAt"),
+  deliveredAt: timestamp("deliveredAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type RouteOrder = typeof routeOrders.$inferSelect;
+export type InsertRouteOrder = typeof routeOrders.$inferInsert;
+
+/**
+ * Driver reports - issue reports from drivers
+ */
+export const driverReports = mysqlTable("driverReports", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  issueType: varchar("issueType", { length: 50 }).notNull(),
+  description: text("description"),
+  photoUrl: text("photoUrl"),
+  latitude: varchar("latitude", { length: 50 }),
+  longitude: varchar("longitude", { length: 50 }),
+  accuracy: varchar("accuracy", { length: 50 }),
+  status: mysqlEnum("status", ["pending", "in_review", "resolved", "rejected"]).default("pending").notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DriverReport = typeof driverReports.$inferSelect;
+export type InsertDriverReport = typeof driverReports.$inferInsert;
+
+/**
+ * Driver shifts - work shifts tracking
+ */
+export const driverShifts = mysqlTable("driverShifts", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  startTime: timestamp("startTime").notNull(),
+  endTime: timestamp("endTime"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type DriverShift = typeof driverShifts.$inferSelect;
+export type InsertDriverShift = typeof driverShifts.$inferInsert;
