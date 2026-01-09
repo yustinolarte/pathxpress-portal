@@ -3,7 +3,7 @@
  * Used by tRPC router for admin panel driver management
  */
 import bcrypt from 'bcryptjs';
-import { eq, and, desc, sql, gte, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, isNull, notInArray, or, inArray } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts } from '../drizzle/schema';
 
@@ -403,4 +403,44 @@ export async function updateReportStatus(id: number, status: 'pending' | 'in_rev
 
     await db.update(driverReports).set(updateData).where(eq(driverReports.id, id));
     return { success: true };
+}
+
+// ============ AVAILABLE ORDERS ============
+
+export async function getAvailableOrders() {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    // Get order IDs already assigned to routes
+    const assignedOrders = await db.select({ orderId: routeOrders.orderId }).from(routeOrders);
+    const assignedIds = assignedOrders.map(o => o.orderId);
+
+    // Get orders that are out_for_delivery or pending_pickup but not yet assigned
+    const availableOrders = await db
+        .select({
+            id: orders.id,
+            waybillNumber: orders.waybillNumber,
+            customerName: orders.customerName,
+            city: orders.city,
+            status: orders.status,
+            codRequired: orders.codRequired,
+            codAmount: orders.codAmount,
+        })
+        .from(orders)
+        .where(
+            and(
+                or(
+                    eq(orders.status, 'out_for_delivery'),
+                    eq(orders.status, 'pending_pickup'),
+                    eq(orders.status, 'picked_up'),
+                    eq(orders.status, 'in_transit')
+                ),
+                assignedIds.length > 0
+                    ? notInArray(orders.id, assignedIds)
+                    : sql`1=1`
+            )
+        )
+        .orderBy(desc(orders.createdAt));
+
+    return availableOrders;
 }

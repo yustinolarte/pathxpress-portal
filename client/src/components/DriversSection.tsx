@@ -29,10 +29,12 @@ export default function DriversSection() {
     const [editDriverDialogOpen, setEditDriverDialogOpen] = useState(false);
     const [createRouteDialogOpen, setCreateRouteDialogOpen] = useState(false);
     const [routeDetailsDialogOpen, setRouteDetailsDialogOpen] = useState(false);
+    const [addOrdersDialogOpen, setAddOrdersDialogOpen] = useState(false);
 
     // Selected items
     const [selectedDriver, setSelectedDriver] = useState<any>(null);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+    const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
 
     // Forms
     const [newDriver, setNewDriver] = useState({
@@ -85,9 +87,14 @@ export default function DriversSection() {
             { enabled: !!token }
         );
 
-    const { data: routeDetails } = trpc.portal.drivers.getRouteDetails.useQuery(
+    const { data: routeDetails, refetch: refetchRouteDetails } = trpc.portal.drivers.getRouteDetails.useQuery(
         { token: token || '', routeId: selectedRouteId || '' },
         { enabled: !!token && !!selectedRouteId }
+    );
+
+    const { data: availableOrders, refetch: refetchAvailableOrders } = trpc.portal.drivers.getAvailableOrders.useQuery(
+        { token: token || '' },
+        { enabled: !!token && addOrdersDialogOpen }
     );
 
     // Mutations
@@ -141,6 +148,18 @@ export default function DriversSection() {
         onError: (error) => toast.error(error.message),
     });
 
+    const addOrdersToRouteMutation = trpc.portal.drivers.addOrdersToRoute.useMutation({
+        onSuccess: () => {
+            toast.success('Orders added to route');
+            setAddOrdersDialogOpen(false);
+            setSelectedOrderIds([]);
+            refetchRouteDetails();
+            refetchRoutes();
+            refetchAvailableOrders();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
     // Handlers
     const handleCreateDriver = () => {
         if (!newDriver.username || !newDriver.password || !newDriver.fullName) {
@@ -182,6 +201,26 @@ export default function DriversSection() {
 
     const handleUpdateReportStatus = (reportId: number, status: 'pending' | 'in_review' | 'resolved' | 'rejected') => {
         updateReportStatusMutation.mutate({ token: token || '', id: reportId, status });
+    };
+
+    const handleAddOrdersToRoute = () => {
+        if (!selectedRouteId || selectedOrderIds.length === 0) {
+            toast.error('Select at least one order');
+            return;
+        }
+        addOrdersToRouteMutation.mutate({
+            token: token || '',
+            routeId: selectedRouteId,
+            orderIds: selectedOrderIds,
+        });
+    };
+
+    const toggleOrderSelection = (orderId: number) => {
+        setSelectedOrderIds(prev =>
+            prev.includes(orderId)
+                ? prev.filter(id => id !== orderId)
+                : [...prev, orderId]
+        );
     };
 
     const getStatusBadge = (status: string) => {
@@ -767,6 +806,11 @@ export default function DriversSection() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4">
+                        <div className="flex justify-end mb-4">
+                            <Button onClick={() => setAddOrdersDialogOpen(true)}>
+                                <Plus className="mr-2 h-4 w-4" /> Add Orders
+                            </Button>
+                        </div>
                         {routeDetails?.deliveries && routeDetails.deliveries.length > 0 ? (
                             <Table>
                                 <TableHeader>
@@ -798,6 +842,74 @@ export default function DriversSection() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Add Orders to Route Dialog */}
+            <Dialog open={addOrdersDialogOpen} onOpenChange={(open) => {
+                setAddOrdersDialogOpen(open);
+                if (!open) setSelectedOrderIds([]);
+            }}>
+                <DialogContent className="sm:max-w-[600px]">
+                    <DialogHeader>
+                        <DialogTitle>Add Orders to Route</DialogTitle>
+                        <DialogDescription>Select orders to add to route {selectedRouteId}</DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 max-h-[400px] overflow-y-auto">
+                        {availableOrders && availableOrders.length > 0 ? (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead className="w-10"></TableHead>
+                                        <TableHead>Waybill</TableHead>
+                                        <TableHead>Customer</TableHead>
+                                        <TableHead>City</TableHead>
+                                        <TableHead>Type</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {availableOrders.map((order: any) => (
+                                        <TableRow
+                                            key={order.id}
+                                            className="cursor-pointer hover:bg-muted/50"
+                                            onClick={() => toggleOrderSelection(order.id)}
+                                        >
+                                            <TableCell>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedOrderIds.includes(order.id)}
+                                                    onChange={() => toggleOrderSelection(order.id)}
+                                                    className="h-4 w-4 rounded border-gray-300"
+                                                />
+                                            </TableCell>
+                                            <TableCell className="font-mono">{order.waybillNumber}</TableCell>
+                                            <TableCell>{order.customerName}</TableCell>
+                                            <TableCell>{order.city}</TableCell>
+                                            <TableCell>
+                                                {order.codRequired ? (
+                                                    <Badge className="bg-orange-500/20 text-orange-400">COD {order.codAmount}</Badge>
+                                                ) : (
+                                                    <Badge className="bg-green-500/20 text-green-400">Prepaid</Badge>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        ) : (
+                            <p className="text-center py-8 text-muted-foreground">No available orders to add</p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddOrdersDialogOpen(false)}>Cancel</Button>
+                        <Button
+                            onClick={handleAddOrdersToRoute}
+                            disabled={selectedOrderIds.length === 0 || addOrdersToRouteMutation.isPending}
+                        >
+                            {addOrdersToRouteMutation.isPending ? 'Adding...' : `Add ${selectedOrderIds.length} Order(s)`}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
+

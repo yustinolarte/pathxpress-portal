@@ -153,6 +153,13 @@ export const driverRouter = router({
             return driverAdmin.addOrdersToRoute(input.routeId, input.orderIds);
         }),
 
+    getAvailableOrders: publicProcedure
+        .input(z.object({ token: z.string() }))
+        .query(async ({ input }) => {
+            requireAdmin(input.token);
+            return driverAdmin.getAvailableOrders();
+        }),
+
     // ============ DELIVERIES ============
 
     getAllDeliveries: publicProcedure
