@@ -258,6 +258,19 @@ export async function updateRouteStatus(routeId: string, status: 'pending' | 'in
     return { success: true };
 }
 
+export async function deleteRoute(routeId: string) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    // First delete associated route orders
+    await db.delete(routeOrders).where(eq(routeOrders.routeId, routeId));
+
+    // Then delete the route
+    await db.delete(driverRoutes).where(eq(driverRoutes.id, routeId));
+
+    return { success: true };
+}
+
 export async function assignDriverToRoute(routeId: string, driverId: number | null) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
@@ -402,6 +415,14 @@ export async function updateReportStatus(id: number, status: 'pending' | 'in_rev
     }
 
     await db.update(driverReports).set(updateData).where(eq(driverReports.id, id));
+    return { success: true };
+}
+
+export async function deleteReport(id: number) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    await db.delete(driverReports).where(eq(driverReports.id, id));
     return { success: true };
 }
 

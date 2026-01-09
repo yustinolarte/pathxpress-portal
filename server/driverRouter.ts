@@ -199,4 +199,18 @@ export const driverRouter = router({
             requireAdmin(input.token);
             return driverAdmin.updateReportStatus(input.id, input.status);
         }),
+
+    deleteReport: publicProcedure
+        .input(z.object({ token: z.string(), id: z.number() }))
+        .mutation(async ({ input }) => {
+            requireAdmin(input.token);
+            return driverAdmin.deleteReport(input.id);
+        }),
+
+    deleteRoute: publicProcedure
+        .input(z.object({ token: z.string(), routeId: z.string() }))
+        .mutation(async ({ input }) => {
+            requireAdmin(input.token);
+            return driverAdmin.deleteRoute(input.routeId);
+        }),
 });

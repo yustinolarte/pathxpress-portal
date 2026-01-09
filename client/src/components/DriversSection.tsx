@@ -160,6 +160,24 @@ export default function DriversSection() {
         onError: (error) => toast.error(error.message),
     });
 
+    const deleteRouteMutation = trpc.portal.drivers.deleteRoute.useMutation({
+        onSuccess: () => {
+            toast.success('Route deleted successfully');
+            refetchRoutes();
+            refetchStats();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
+    const deleteReportMutation = trpc.portal.drivers.deleteReport.useMutation({
+        onSuccess: () => {
+            toast.success('Report deleted successfully');
+            refetchReports();
+            refetchStats();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
     // Handlers
     const handleCreateDriver = () => {
         if (!newDriver.username || !newDriver.password || !newDriver.fullName) {
@@ -213,6 +231,18 @@ export default function DriversSection() {
             routeId: selectedRouteId,
             orderIds: selectedOrderIds,
         });
+    };
+
+    const handleDeleteRoute = (routeId: string) => {
+        if (confirm(`Are you sure you want to delete route ${routeId}?`)) {
+            deleteRouteMutation.mutate({ token: token || '', routeId });
+        }
+    };
+
+    const handleDeleteReport = (id: number) => {
+        if (confirm('Are you sure you want to delete this report?')) {
+            deleteReportMutation.mutate({ token: token || '', id });
+        }
     };
 
     const toggleOrderSelection = (orderId: number) => {
@@ -440,6 +470,14 @@ export default function DriversSection() {
                                                     >
                                                         <Eye className="h-4 w-4" />
                                                     </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-destructive"
+                                                        onClick={() => handleDeleteRoute(route.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -559,6 +597,14 @@ export default function DriversSection() {
                                                             <SelectItem value="rejected">Rejected</SelectItem>
                                                         </SelectContent>
                                                     </Select>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-destructive ml-2"
+                                                        onClick={() => handleDeleteReport(report.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
