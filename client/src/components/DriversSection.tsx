@@ -174,7 +174,7 @@ export default function DriversSection() {
             token: token || '',
             id: newRoute.id,
             date: newRoute.date,
-            driverId: newRoute.driverId ? parseInt(newRoute.driverId) : undefined,
+            driverId: newRoute.driverId && newRoute.driverId !== 'none' ? parseInt(newRoute.driverId) : undefined,
             zone: newRoute.zone,
             vehicleInfo: newRoute.vehicleInfo,
         });
@@ -720,7 +720,7 @@ export default function DriversSection() {
                                     <SelectValue placeholder="Select driver (optional)" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">Unassigned</SelectItem>
+                                    <SelectItem value="none">Unassigned</SelectItem>
                                     {drivers?.map((driver: any) => (
                                         <SelectItem key={driver.id} value={driver.id.toString()}>
                                             {driver.fullName} ({driver.vehicleNumber || 'No vehicle'})
