@@ -103,16 +103,7 @@ router.get('/profile', driverAuthMiddleware, async (req: DriverRequest, res: Res
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
         const [driver] = await db
-            .select({
-                id: drivers.id,
-                username: drivers.username,
-                fullName: drivers.fullName,
-                email: drivers.email,
-                phone: drivers.phone,
-                vehicleNumber: drivers.vehicleNumber,
-                photoUrl: drivers.photoUrl,
-                status: drivers.status,
-            })
+            .select()
             .from(drivers)
             .where(eq(drivers.id, req.driverId!))
             .limit(1);
@@ -121,7 +112,44 @@ router.get('/profile', driverAuthMiddleware, async (req: DriverRequest, res: Res
             return res.status(404).json({ error: 'Driver not found' });
         }
 
-        res.json(driver);
+        // Get delivery stats for this driver
+        const driverRoutesData = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.driverId, req.driverId!));
+
+        const routeIds = driverRoutesData.map(r => r.id);
+
+        let deliveryStats = {
+            total: 0,
+            delivered: 0,
+            pending: 0,
+            attempted: 0,
+        };
+
+        if (routeIds.length > 0) {
+            // Get all route orders for this driver's routes
+            const allDeliveries = await db
+                .select()
+                .from(routeOrders);
+
+            const driverDeliveries = allDeliveries.filter(d => routeIds.includes(d.routeId));
+
+            deliveryStats = {
+                total: driverDeliveries.length,
+                delivered: driverDeliveries.filter(d => d.status === 'delivered').length,
+                pending: driverDeliveries.filter(d => d.status === 'pending' || d.status === 'in_progress').length,
+                attempted: driverDeliveries.filter(d => d.status === 'attempted').length,
+            };
+        }
+
+        // Remove password hash from response
+        const { passwordHash, ...driverData } = driver;
+
+        res.json({
+            ...driverData,
+            deliveryStats,
+        });
     } catch (error) {
         console.error('Get profile error:', error);
         res.status(500).json({ error: 'Internal server error' });
