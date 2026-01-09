@@ -373,7 +373,16 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
 
         // Upload photo if provided
         if (photoBase64) {
-            photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
+            console.log('Received photo upload request for delivery:', id);
+            console.log('Photo base64 length:', photoBase64.length);
+            try {
+                photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
+                console.log('Cloudinary upload result:', photoUrl);
+            } catch (err) {
+                console.error('Error uploading to Cloudinary:', err);
+            }
+        } else {
+            console.log('No photo provided for delivery:', id);
         }
 
         const statusLower = status.toLowerCase();

@@ -51,7 +51,7 @@ export async function uploadImageToCloudinary(
 
         return result.secure_url;
     } catch (error) {
-        console.error('Cloudinary upload error:', error);
+        console.error('Cloudinary upload error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
         return null;
     }
 }
