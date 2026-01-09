@@ -212,31 +212,65 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             return res.status(400).json({ error: 'This route is already completed' });
         }
 
-        if (route.driverId !== null) {
-            if (route.driverId === req.driverId) {
-                return res.json(route);
-            }
+        if (route.driverId !== null && route.driverId !== req.driverId) {
             return res.status(403).json({ error: 'This route is already assigned to another driver' });
         }
 
-        // Claim the route
-        await db
-            .update(driverRoutes)
-            .set({ driverId: req.driverId, status: 'in_progress' })
-            .where(eq(driverRoutes.id, routeId));
+        // Claim the route if not already claimed by this driver
+        if (route.driverId !== req.driverId) {
+            await db
+                .update(driverRoutes)
+                .set({ driverId: req.driverId, status: 'in_progress' })
+                .where(eq(driverRoutes.id, routeId));
+        }
 
+        // Get updated route
         const [updatedRoute] = await db
             .select()
             .from(driverRoutes)
             .where(eq(driverRoutes.id, routeId))
             .limit(1);
 
-        res.json(updatedRoute);
+        // Get the deliveries for this route
+        const routeOrdersList = await db
+            .select({
+                routeOrder: routeOrders,
+                order: orders,
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.routeId, routeId))
+            .orderBy(routeOrders.sequence);
+
+        // Format deliveries for the app
+        const deliveries = routeOrdersList.map((item) => ({
+            id: item.routeOrder.id,
+            orderId: item.order.id,
+            customerName: item.order.customerName,
+            customerPhone: item.order.customerPhone,
+            address: item.order.address,
+            latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
+            longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+            packageRef: item.order.waybillNumber,
+            weight: item.order.weight,
+            type: item.order.codRequired ? 'COD' : 'PREPAID',
+            codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+            status: item.routeOrder.status?.toUpperCase() || 'PENDING',
+            proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+            notes: item.routeOrder.notes,
+        }));
+
+        res.json({
+            ...updatedRoute,
+            status: updatedRoute?.status?.toUpperCase() || 'PENDING',
+            deliveries,
+        });
     } catch (error) {
         console.error('Claim route error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
