@@ -143,12 +143,23 @@ router.get('/profile', driverAuthMiddleware, async (req: DriverRequest, res: Res
             };
         }
 
+        // Calculate metrics based on stats
+        const metrics = {
+            efficiency: deliveryStats.total > 0
+                ? `${Math.round((deliveryStats.delivered / deliveryStats.total) * 100)}%`
+                : '100%',
+            totalDeliveries: deliveryStats.delivered,
+            hoursWorked: 8, // Placeholder for now, could be calculated from shifts
+            deliveryStats // Include raw stats too just in case
+        };
+
         // Remove password hash from response
         const { passwordHash, ...driverData } = driver;
 
+        // Return structure expected by the mobile app: { driver: ..., metrics: ... }
         res.json({
-            ...driverData,
-            deliveryStats,
+            driver: driverData,
+            metrics
         });
     } catch (error) {
         console.error('Get profile error:', error);
