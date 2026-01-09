@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { eq, and } from 'drizzle-orm';
 import { getDb } from './db';
-import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents } from '../drizzle/schema';
+import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
 
 const router = Router();
@@ -398,6 +398,36 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             podFileUrl: photoUrl || undefined,
             createdBy: 'driver',
         });
+
+        // If this is a COD order and it's delivered, mark COD as collected
+        if (statusLower === 'delivered' && routeOrder.order.codRequired) {
+            // Check if COD record exists
+            const [existingCod] = await db
+                .select()
+                .from(codRecords)
+                .where(eq(codRecords.shipmentId, routeOrder.order.id))
+                .limit(1);
+
+            if (existingCod) {
+                // Update existing COD record to collected
+                await db
+                    .update(codRecords)
+                    .set({
+                        status: 'collected',
+                        collectedDate: new Date(),
+                    })
+                    .where(eq(codRecords.id, existingCod.id));
+            } else {
+                // Create new COD record as collected
+                await db.insert(codRecords).values({
+                    shipmentId: routeOrder.order.id,
+                    codAmount: routeOrder.order.codAmount || '0',
+                    codCurrency: routeOrder.order.codCurrency || 'AED',
+                    status: 'collected',
+                    collectedDate: new Date(),
+                });
+            }
+        }
 
         res.json({ message: 'Delivery updated successfully' });
     } catch (error) {
