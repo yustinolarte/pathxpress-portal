@@ -146,27 +146,29 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="min-h-screen flex items-center justify-center pt-20 relative overflow-hidden">
-        {/* Video Background - Desktop only for performance */}
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover z-0 hidden md:block"
-        >
-          <source src="/vid.mp4" type="video/mp4" />
-        </video>
-
-        {/* Static Hero Image - Mobile only for performance (LCP optimization) */}
+        {/* Static Hero Image - Shows on mobile always, on desktop as fallback/poster */}
         <img
           src="/hero-mobile.png"
           alt=""
-          className="absolute inset-0 w-full h-full object-cover z-0 md:hidden"
+          className="absolute inset-0 w-full h-full object-cover z-0"
           loading="eager"
           fetchPriority="high"
           width="1024"
           height="1024"
         />
+
+        {/* Video Background - Desktop only, overlays the static image */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="none"
+          poster="/hero-mobile.png"
+          className="absolute inset-0 w-full h-full object-cover z-0 hidden md:block"
+        >
+          <source src="/vid.mp4" type="video/mp4" />
+        </video>
 
         {/* Dark Overlay with Glassmorphism effect */}
         <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-[1]"></div>
