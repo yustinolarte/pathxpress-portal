@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
-Disallow: /404/
+Disallow: /portal/
+Disallow: /customer-portal
+Disallow: /404
+
+# AI crawler rules
+User-agent: GPTBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
 Sitemap: https://pathxpress.net/sitemap.xml

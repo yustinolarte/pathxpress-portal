@@ -27,6 +27,12 @@ const Terms = lazy(() => import("./pages/Legal").then(module => ({ default: modu
 const Refund = lazy(() => import("./pages/Legal").then(module => ({ default: module.Refund })));
 const Accessibility = lazy(() => import("./pages/Legal").then(module => ({ default: module.Accessibility })));
 
+// SEO Landing Pages
+const SameDayDeliveryDubai = lazy(() => import("./pages/seo/SameDayDeliveryDubai"));
+const NextDayDeliveryUAE = lazy(() => import("./pages/seo/NextDayDeliveryUAE"));
+const CashOnDeliveryUAE = lazy(() => import("./pages/seo/CashOnDeliveryUAE"));
+const EcommerceLastMileUAE = lazy(() => import("./pages/seo/EcommerceLastMileUAE"));
+
 function Router() {
   return (
     <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Spinner className="size-10" /></div>}>
@@ -48,6 +54,11 @@ function Router() {
         <Route path="/terms" component={Terms} />
         <Route path="/refund" component={Refund} />
         <Route path="/accessibility" component={Accessibility} />
+        {/* SEO Landing Pages */}
+        <Route path="/same-day-delivery-dubai" component={SameDayDeliveryDubai} />
+        <Route path="/next-day-delivery-uae" component={NextDayDeliveryUAE} />
+        <Route path="/cash-on-delivery-uae" component={CashOnDeliveryUAE} />
+        <Route path="/ecommerce-last-mile-uae" component={EcommerceLastMileUAE} />
         <Route path={"/404"} component={NotFound} />
         <Route component={NotFound} />
       </Switch>

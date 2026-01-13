@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import SEOHead, { createBreadcrumbSchema } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -40,6 +41,15 @@ export default function Contact() {
 
   return (
     <div className="min-h-screen">
+      <SEOHead
+        title="Contact PATHXPRESS | Get a Quote | UAE Delivery Support"
+        description="Contact PATHXPRESS for shipping quotes, pickup requests, or customer support. Call +971 522803433 or email info@pathxpress.net. Dubai Silicon Oasis, UAE."
+        canonical="https://pathxpress.net/contact"
+        schema={createBreadcrumbSchema([
+          { name: 'Home', url: 'https://pathxpress.net/' },
+          { name: 'Contact', url: 'https://pathxpress.net/contact' },
+        ])}
+      />
       <Header />
 
       <main className="pt-32 pb-20 gradient-dark min-h-screen">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation } from 'wouter';
 import Header from '@/components/Header';
@@ -6,6 +6,7 @@ import Footer from '@/components/Footer';
 import FloatingParticles from '@/components/FloatingParticles';
 import AnimatedSection from '@/components/AnimatedSection';
 import MouseGradientText from '@/components/MouseGradientText';
+import SEOHead, { PATHXPRESS_ORGANIZATION_SCHEMA, createFAQSchema } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -128,28 +129,50 @@ export default function Home() {
     },
   ];
 
+  // SEO: Create FAQ schema from translated FAQ content
+  const faqSchemaData = useMemo(() => createFAQSchema(
+    faqs.map(faq => ({ question: faq.question, answer: faq.answer }))
+  ), [faqs]);
+
   return (
     <div className="min-h-screen">
+      <SEOHead
+        title="Last Mile Delivery & COD Courier in UAE | PATHXPRESS"
+        description="PATHXPRESS provides same-day, next-day and COD last-mile delivery services across Dubai, Abu Dhabi and all UAE. AI-powered logistics for faster, affordable e-commerce shipping."
+        canonical="https://pathxpress.net/"
+        schema={[PATHXPRESS_ORGANIZATION_SCHEMA, faqSchemaData]}
+      />
       <Header />
 
       {/* Hero Section */}
       <section className="min-h-screen flex items-center justify-center pt-20 relative overflow-hidden">
-        {/* Video Background */}
+        {/* Video Background - Desktop only for performance */}
         <video
           autoPlay
           loop
           muted
           playsInline
-          className="absolute inset-0 w-full h-full object-cover z-0"
+          className="absolute inset-0 w-full h-full object-cover z-0 hidden md:block"
         >
           <source src="/vid.mp4" type="video/mp4" />
         </video>
 
+        {/* Static Hero Image - Mobile only for performance (LCP optimization) */}
+        <img
+          src="/hero-mobile.png"
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover z-0 md:hidden"
+          loading="eager"
+          fetchPriority="high"
+          width="1024"
+          height="1024"
+        />
+
         {/* Dark Overlay with Glassmorphism effect */}
         <div className="absolute inset-0 bg-background/70 backdrop-blur-sm z-[1]"></div>
 
-        {/* Floating Particles - reduced for performance */}
-        <FloatingParticles count={8} color="mixed" />
+        {/* Floating Particles - reduced count for better mobile performance */}
+        <FloatingParticles count={6} color="mixed" />
 
         {/* Decorative Glow Elements - optimized */}
         <div className="absolute inset-0 z-[2] opacity-15 pointer-events-none">

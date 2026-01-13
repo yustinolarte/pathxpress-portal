@@ -6,6 +6,7 @@ import Footer from '@/components/Footer';
 import AnimatedSection from '@/components/AnimatedSection';
 import RateCalculator from '@/components/RateCalculator';
 import InternationalRateForm from '@/components/InternationalRateForm';
+import SEOHead, { createBreadcrumbSchema } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -53,6 +54,15 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen">
+      <SEOHead
+        title="Shipping Rates UAE | Delivery Pricing Calculator | PATHXPRESS"
+        description="Transparent delivery pricing in UAE. Calculate shipping rates for same-day, next-day, and international deliveries. No hidden fees. Volume discounts available."
+        canonical="https://pathxpress.net/pricing"
+        schema={createBreadcrumbSchema([
+          { name: 'Home', url: 'https://pathxpress.net/' },
+          { name: 'Pricing', url: 'https://pathxpress.net/pricing' },
+        ])}
+      />
       <Header />
 
       <main className="pt-32 pb-20 gradient-dark min-h-screen">

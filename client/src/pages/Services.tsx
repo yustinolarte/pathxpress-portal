@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AnimatedSection from '@/components/AnimatedSection';
+import SEOHead, { createBreadcrumbSchema } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -143,6 +144,15 @@ export default function Services() {
 
   return (
     <div className="min-h-screen">
+      <SEOHead
+        title="Delivery Services in UAE | Same-Day, Last Mile & Freight | PATHXPRESS"
+        description="Complete logistics solutions in UAE: same-day delivery, last-mile fulfillment, international freight, and e-commerce shipping. AI-powered for faster, affordable service."
+        canonical="https://pathxpress.net/services"
+        schema={createBreadcrumbSchema([
+          { name: 'Home', url: 'https://pathxpress.net/' },
+          { name: 'Services', url: 'https://pathxpress.net/services' },
+        ])}
+      />
       <Header />
 
       <main className="pt-32 pb-20 gradient-dark min-h-screen">

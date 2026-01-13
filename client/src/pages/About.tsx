@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AnimatedSection from '@/components/AnimatedSection';
+import SEOHead, { createBreadcrumbSchema } from '@/components/SEOHead';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -96,6 +97,15 @@ export default function About() {
 
   return (
     <div className="min-h-screen">
+      <SEOHead
+        title="About PATHXPRESS | AI-Powered Logistics Company in UAE"
+        description="Learn about PATHXPRESS - UAE's AI-powered delivery company. Our innovative technology delivers faster, more affordable logistics services across Dubai and all Emirates."
+        canonical="https://pathxpress.net/about"
+        schema={createBreadcrumbSchema([
+          { name: 'Home', url: 'https://pathxpress.net/' },
+          { name: 'About', url: 'https://pathxpress.net/about' },
+        ])}
+      />
       <Header />
 
       <main className="pt-32 pb-20 gradient-dark min-h-screen">
