@@ -86,9 +86,8 @@
       "title": "Same Day Delivery",
       "label": "Dubai / UAE",
       "point1": "Dubai / Sharjah / Abu Dhabi (city limits)",
-      "point2": "Cut-off: 14:00",
-      "point3": "Max 10 kg",
-      "point4": "Min 4 shipments per pickup"
+      "point2": "Flexible cut-off",
+      "point3": "Max 10 kg"
     },
     "domestic": {
       "title": "Domestic Next Day / Economy",

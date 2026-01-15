@@ -37,7 +37,6 @@ export default function Home() {
         t('services.sameDay.point1'),
         t('services.sameDay.point2'),
         t('services.sameDay.point3'),
-        t('services.sameDay.point4'),
       ],
     },
     {

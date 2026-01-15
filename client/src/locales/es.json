@@ -85,9 +85,8 @@
       "title": "Entrega el Mismo Día",
       "label": "Dubái / EAU",
       "point1": "Dubái / Sharjah / Abu Dhabi (límites de la ciudad)",
-      "point2": "Hora límite: 14:00",
-      "point3": "Máximo 10 kg",
-      "point4": "Mínimo 4 envíos por recogida"
+      "point2": "Hora límite flexible",
+      "point3": "Máximo 10 kg"
     },
     "domestic": {
       "title": "Nacional Día Siguiente / Económico",
