@@ -471,10 +471,11 @@ export async function getAvailableOrders() {
         .where(
             and(
                 or(
-                    eq(orders.status, 'out_for_delivery'),
+                    eq(orders.status, 'pending'),
                     eq(orders.status, 'pending_pickup'),
                     eq(orders.status, 'picked_up'),
-                    eq(orders.status, 'in_transit')
+                    eq(orders.status, 'in_transit'),
+                    eq(orders.status, 'failed_delivery')
                 ),
                 assignedIds.length > 0
                     ? notInArray(orders.id, assignedIds)

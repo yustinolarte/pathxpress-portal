@@ -18,9 +18,9 @@ import AddTrackingEventDialog from '@/components/AddTrackingEventDialog';
 import RatesPanel from '@/components/RatesPanel';
 import AdminReports from '@/components/AdminReports';
 import AdminAnalytics from '@/components/AdminAnalytics';
-import ShipmentHistoryDialog from '@/components/ShipmentHistoryDialog';
+import AdminAnalytics from '@/components/AdminAnalytics';
+import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import DriversSection from '@/components/DriversSection';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -49,7 +49,8 @@ export default function AdminDashboard() {
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [viewOrderDialogOpen, setViewOrderDialogOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<number | null>(null);
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
@@ -755,11 +756,7 @@ export default function AdminDashboard() {
                           return (
                             <TableRow key={order.id}>
                               <TableCell
-                                className="font-mono font-medium cursor-pointer text-blue-500 hover:underline hover:text-blue-600"
-                                onClick={() => {
-                                  setSelectedShipmentId(order.id);
-                                  setHistoryDialogOpen(true);
-                                }}
+                                className="font-mono font-medium text-blue-500"
                               >
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {order.waybillNumber}
@@ -778,8 +775,8 @@ export default function AdminDashboard() {
                                             e.stopPropagation();
                                             const linkedOrder = allOrders?.find((o: any) => o.id === order.exchangeOrderId);
                                             if (linkedOrder) {
-                                              setSelectedShipmentId(linkedOrder.id);
-                                              setHistoryDialogOpen(true);
+                                              setSelectedOrder(linkedOrder);
+                                              setViewOrderDialogOpen(true);
                                             }
                                           }}
                                           title={`View linked order: ${allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber || ''}`}
@@ -826,10 +823,13 @@ export default function AdminDashboard() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => generateWaybillPDF(order)}
-                                    title="Download Waybill"
+                                    onClick={() => {
+                                      setSelectedOrder(order);
+                                      setViewOrderDialogOpen(true);
+                                    }}
+                                    title="View Order Details"
                                   >
-                                    <Download className="h-4 w-4" />
+                                    <Eye className="h-4 w-4" />
                                   </Button>
                                   <Button
                                     variant="ghost"
@@ -1481,11 +1481,12 @@ export default function AdminDashboard() {
           </DialogContent>
         </Dialog>
 
-        {selectedShipmentId && (
-          <ShipmentHistoryDialog
-            open={historyDialogOpen}
-            onOpenChange={setHistoryDialogOpen}
-            shipmentId={selectedShipmentId}
+        {selectedOrder && (
+          <OrderDetailsDialog
+            open={viewOrderDialogOpen}
+            onOpenChange={setViewOrderDialogOpen}
+            order={selectedOrder}
+            clients={clients}
           />
         )}
 
