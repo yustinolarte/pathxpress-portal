@@ -241,8 +241,12 @@ export async function createDriverRoute(data: {
             // Get the order to check its status
             const [order] = await db.select().from(orders).where(eq(orders.id, data.orderIds[i])).limit(1);
 
-            // Determine type based on order status
-            const orderType = order?.status === 'pending_pickup' ? 'pickup' : 'delivery';
+            // Determine type based on order status - handle multiple formats
+            const orderStatus = order?.status?.toLowerCase().replace(/[\s_-]/g, '') || '';
+            const isPickup = orderStatus === 'pendingpickup' || orderStatus === 'pickup';
+            const orderType = isPickup ? 'pickup' : 'delivery';
+
+            console.log(`Order ${data.orderIds[i]}: status="${order?.status}" -> type="${orderType}"`);
 
             await db.insert(routeOrders).values({
                 routeId: data.id,
@@ -306,8 +310,10 @@ export async function addOrdersToRoute(routeId: string, orderIds: number[]) {
             // Get the order to check its status
             const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
 
-            // Determine type based on order status
-            const orderType = order?.status === 'pending_pickup' ? 'pickup' : 'delivery';
+            // Determine type based on order status - handle multiple formats
+            const orderStatus = order?.status?.toLowerCase().replace(/[\s_-]/g, '') || '';
+            const isPickup = orderStatus === 'pendingpickup' || orderStatus === 'pickup';
+            const orderType = isPickup ? 'pickup' : 'delivery';
 
             maxSeq++;
             await db.insert(routeOrders).values({
