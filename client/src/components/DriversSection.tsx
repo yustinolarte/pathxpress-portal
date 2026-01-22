@@ -279,7 +279,7 @@ export default function DriversSection() {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-5 bg-black/40 border border-white/10 p-1.5 rounded-xl backdrop-blur-md h-auto">
+                <TabsList className="grid w-full grid-cols-5 glass-strong border border-white/10 p-1.5 rounded-xl h-auto">
                     <TabsTrigger
                         value="dashboard"
                         className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"

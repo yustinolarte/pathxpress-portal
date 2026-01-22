@@ -2,7 +2,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle } from 'lucide-react';
+import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
@@ -59,8 +59,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
                         <div className="flex items-center gap-3">
                             <div className={`px-4 py-2 rounded-full border ${order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                                    order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                                        'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                                order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                                    'bg-blue-500/10 border-blue-500/20 text-blue-500'
                                 } flex items-center gap-2`}>
                                 {order.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                                 <span className="font-bold uppercase tracking-wide">{order.status.replace(/_/g, ' ')}</span>
