@@ -46,7 +46,11 @@ import {
   Calculator,
   Wallet,
   BarChart3,
-  RotateCcw
+  RotateCcw,
+  CheckCircle2,
+  Scale,
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -774,8 +778,8 @@ export default function CustomerDashboard() {
                         <h3 className="text-4xl font-mono font-bold text-white tracking-tight">{trackingData.order.waybillNumber}</h3>
                       </div>
                       <div className={`px-5 py-2.5 rounded-full border ${trackingData.order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                          trackingData.order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                            'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                        trackingData.order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                          'bg-blue-500/10 border-blue-500/20 text-blue-500'
                         } flex items-center gap-2.5 shadow-sm`}>
                         {trackingData.order.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                         <span className="font-bold uppercase tracking-wide text-sm">{trackingData.order.status.replace(/_/g, ' ')}</span>
