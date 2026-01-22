@@ -616,49 +616,7 @@ router.get('/shifts/status', driverAuthMiddleware, async (req: DriverRequest, re
 
 // ============ PICKUPS ============
 
-// Get all pickups assigned to this driver
-router.get('/pickups', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
-    try {
-        const db = await getDb();
-        if (!db) return res.status(500).json({ error: 'Database not available' });
-
-        // Get orders assigned to this driver with status pending_pickup
-        const pickups = await db
-            .select()
-            .from(orders)
-            .where(and(
-                eq(orders.pickupDriverId, req.driverId!),
-                eq(orders.status, 'pending_pickup')
-            ));
-
-        // Format for the mobile app
-        const formattedPickups = pickups.map(order => ({
-            id: order.id,
-            waybillNumber: order.waybillNumber,
-            shipperName: order.shipperName,
-            shipperAddress: order.shipperAddress,
-            shipperCity: order.shipperCity,
-            shipperPhone: order.shipperPhone,
-            customerName: order.customerName,
-            customerPhone: order.customerPhone,
-            address: order.address,
-            city: order.city,
-            pieces: order.pieces,
-            weight: order.weight,
-            serviceType: order.serviceType,
-            codRequired: order.codRequired === 1,
-            codAmount: order.codAmount,
-            createdAt: order.createdAt,
-        }));
-
-        res.json({ pickups: formattedPickups, count: formattedPickups.length });
-    } catch (error) {
-        console.error('Get pickups error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// Mark a waybill as picked up
+// Scan and mark a waybill as picked up (direct flow - no assignment required)
 router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { waybillNumber } = req.params;
@@ -676,18 +634,20 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
             return res.status(404).json({ error: 'Waybill not found' });
         }
 
-        // Verify driver is assigned to this pickup
-        if (order.pickupDriverId !== null && order.pickupDriverId !== req.driverId) {
-            return res.status(403).json({ error: 'This pickup is assigned to another driver' });
-        }
-
         // Verify order is in pending_pickup status
         if (order.status !== 'pending_pickup') {
             return res.status(400).json({
-                error: `Cannot pickup: order status is ${order.status}`,
+                error: `Cannot pickup: order status is "${order.status}"`,
                 currentStatus: order.status
             });
         }
+
+        // Get driver info for the tracking event
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.id, req.driverId!))
+            .limit(1);
 
         // Update order status to picked_up
         await db
@@ -696,26 +656,32 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
                 status: 'picked_up',
                 pickupDate: new Date(),
                 lastStatusUpdate: new Date(),
-                pickupDriverId: req.driverId, // Assign driver if not already assigned
+                pickupDriverId: req.driverId, // Record which driver picked it up
             })
             .where(eq(orders.id, order.id));
 
-        // Create tracking event
+        // Create tracking event with driver info
         await db.insert(trackingEvents).values({
             shipmentId: order.id,
             eventDatetime: new Date(),
             location: order.shipperCity || 'Pickup Location',
             statusCode: 'picked_up',
             statusLabel: 'Picked Up',
-            description: `Package picked up by driver`,
+            description: `Package picked up by driver ${driver?.fullName || 'Unknown'}`,
             createdBy: 'driver',
         });
 
+        // Return order details for confirmation
         res.json({
+            success: true,
             message: 'Package marked as picked up',
             waybillNumber,
             orderId: order.id,
-            status: 'picked_up'
+            status: 'picked_up',
+            shipperName: order.shipperName,
+            customerName: order.customerName,
+            pieces: order.pieces,
+            weight: order.weight,
         });
     } catch (error) {
         console.error('Pickup error:', error);
