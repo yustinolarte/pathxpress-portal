@@ -735,67 +735,152 @@ export default function CustomerDashboard() {
           </TabsContent>
 
           {/* Tracking Tab */}
+          {/* Tracking Tab */}
           <TabsContent value="tracking" className="space-y-4">
-            <Card className="glass-strong border-blue-500/20">
+            <Card className="glass-strong border-blue-500/20 overflow-hidden relative">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-red-600" />
               <CardHeader>
-                <CardTitle>Track Shipment</CardTitle>
-                <CardDescription>Enter waybill number to track</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="w-5 h-5 text-primary" /> Track Shipment
+                </CardTitle>
+                <CardDescription>Enter a waybill number to see real-time status</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
+              <CardContent className="space-y-8">
+                {/* Search Bar */}
+                <div className="flex gap-3 max-w-2xl">
                   <Input
-                    placeholder="Enter waybill number"
+                    placeholder="Enter waybill number (e.g., PX-12345)"
                     value={trackingWaybill}
                     onChange={(e) => setTrackingWaybill(e.target.value)}
+                    className="h-14 text-lg px-4 bg-background/50 focus:bg-background transition-colors font-mono"
                   />
-                  <Button onClick={() => setSearchedWaybill(trackingWaybill)}>Track</Button>
+                  <Button
+                    onClick={() => setSearchedWaybill(trackingWaybill)}
+                    size="lg"
+                    className="h-14 px-8 text-lg font-semibold shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all"
+                  >
+                    Track
+                  </Button>
                 </div>
+
                 {trackingData && (
-                  <div className="space-y-4 mt-6">
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-semibold">Shipment Details</h3>
-                      <Badge className={getStatusColor(trackingData.order.status)}>
-                        {getStatusLabel(trackingData.order.status)}
-                      </Badge>
+                  <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+                    {/* Status Header */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 rounded-2xl bg-white/5 border border-white/10">
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-1">
+                          <Package className="w-4 h-4 text-primary" /> Waybill Number
+                        </p>
+                        <h3 className="text-4xl font-mono font-bold text-white tracking-tight">{trackingData.order.waybillNumber}</h3>
+                      </div>
+                      <div className={`px-5 py-2.5 rounded-full border ${trackingData.order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
+                          trackingData.order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                            'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                        } flex items-center gap-2.5 shadow-sm`}>
+                        {trackingData.order.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                        <span className="font-bold uppercase tracking-wide text-sm">{trackingData.order.status.replace(/_/g, ' ')}</span>
+                      </div>
                     </div>
-                    <div className="grid md:grid-cols-2 gap-4 text-sm">
-                      <div><span className="text-muted-foreground">Waybill:</span> <span className="ml-2 font-medium">{trackingData.order.waybillNumber}</span></div>
-                      <div><span className="text-muted-foreground">Service:</span> <span className="ml-2 font-medium">{trackingData.order.serviceType}</span></div>
-                      <div><span className="text-muted-foreground">Destination:</span> <span className="ml-2 font-medium">{trackingData.order.city}, {trackingData.order.destinationCountry}</span></div>
-                      <div><span className="text-muted-foreground">Weight:</span> <span className="ml-2 font-medium">{trackingData.order.weight} kg</span></div>
+
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                          <Truck className="w-4 h-4" />
+                          <span className="text-xs uppercase font-bold">Service</span>
+                        </div>
+                        <p className="text-xl font-semibold">{trackingData.order.serviceType}</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                          <Package className="w-4 h-4" />
+                          <span className="text-xs uppercase font-bold">Pieces</span>
+                        </div>
+                        <p className="text-xl font-semibold">{trackingData.order.pieces || 1}</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                          <Scale className="w-4 h-4" />
+                          <span className="text-xs uppercase font-bold">Weight</span>
+                        </div>
+                        <p className="text-xl font-semibold">{trackingData.order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                          <CreditCard className="w-4 h-4" />
+                          <span className="text-xs uppercase font-bold">COD Amount</span>
+                        </div>
+                        <p className="text-xl font-semibold">
+                          {trackingData.order.codRequired ? `${trackingData.order.codAmount} ${trackingData.order.codCurrency || 'AED'}` : 'N/A'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="mt-6">
-                      <h4 className="font-semibold mb-4">Tracking History</h4>
-                      <div className="relative space-y-4">
-                        <div className="absolute left-2 top-0 bottom-0 w-0.5 bg-border" />
+
+                    {/* Addresses */}
+                    <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-white/5 border border-white/10">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                          </div>
+                          <span className="text-sm font-bold uppercase tracking-wider">Origin</span>
+                        </div>
+                        <p className="pl-8 text-lg font-medium text-white/90">{trackingData.order.shipperCity}, {trackingData.order.shipperCountry}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-primary">
+                          <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
+                            <MapPin className="w-3 h-3 text-primary" />
+                          </div>
+                          <span className="text-sm font-bold uppercase tracking-wider">Destination</span>
+                        </div>
+                        <p className="pl-8 text-lg font-medium text-white">{trackingData.order.city}, {trackingData.order.destinationCountry}</p>
+                      </div>
+                    </div>
+
+                    {/* Timeline */}
+                    <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
+                      <h4 className="text-lg font-bold flex items-center gap-2 mb-6 text-white">
+                        <Calendar className="w-5 h-5 text-primary" /> Tracking History
+                      </h4>
+                      <div className="relative space-y-0">
+                        <div className="absolute left-[19px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-primary/50 to-transparent" />
                         {trackingData.trackingEvents.sort((a, b) => new Date(b.eventDatetime).getTime() - new Date(a.eventDatetime).getTime()).map((event, i) => (
-                          <div key={event.id} className="relative flex gap-4">
-                            <div className={`relative z-10 w-4 h-4 rounded-full mt-1 ${i === 0 ? 'bg-primary' : 'bg-muted'}`} />
-                            <div className="flex-1 pb-4">
-                              <div className="flex justify-between">
-                                <div className="flex-1">
-                                  <p className="font-medium">{event.statusLabel}</p>
-                                  {event.description && (
-                                    <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
-                                  )}
-                                  {event.podFileUrl && (
-                                    <div className="mt-2">
-                                      <a
-                                        href={event.podFileUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 underline"
-                                      >
-                                        📄 View Proof of Delivery
-                                      </a>
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="text-sm text-muted-foreground text-right">
-                                  <div>{new Date(event.eventDatetime).toLocaleDateString()}</div>
-                                  <div>{new Date(event.eventDatetime).toLocaleTimeString()}</div>
+                          <div key={event.id} className="relative pl-12 pb-8 last:pb-0 group">
+                            <div className={`absolute left-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-[#0f1115] transition-transform group-hover:scale-110 ${i === 0 ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-muted text-muted-foreground'
+                              }`}>
+                              {i === 0 ? <Truck className="w-4 h-4 text-primary-foreground" /> : <div className="w-3 h-3 rounded-full bg-muted-foreground/50" />}
+                            </div>
+
+                            <div className="p-4 rounded-xl border border-transparent hover:bg-white/5 hover:border-white/5 transition-all">
+                              <div className="flex flex-col md:flex-row justify-between md:items-center gap-1 mb-2">
+                                <p className={`font-bold text-lg ${i === 0 ? 'text-primary' : 'text-white/90'}`}>{event.statusLabel}</p>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground bg-white/5 px-2 py-1 rounded w-fit">
+                                  <Calendar className="w-3 h-3" />
+                                  {new Date(event.eventDatetime).toLocaleString()}
                                 </div>
                               </div>
+                              {event.description && <p className="text-muted-foreground mb-2">{event.description}</p>}
+
+                              {/* Embedded POD Image */}
+                              {event.podFileUrl && (
+                                <div className="mt-3 animate-fade-in">
+                                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-green-500" /> Proof of Delivery
+                                  </p>
+                                  <div className="relative group/image overflow-hidden rounded-lg border border-white/10 max-w-[240px]">
+                                    <img
+                                      src={event.podFileUrl}
+                                      alt="POD"
+                                      className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
+                                      onClick={() => window.open(event.podFileUrl, '_blank')}
+                                    />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                      <span className="text-xs text-white font-medium">View Full</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -803,7 +888,13 @@ export default function CustomerDashboard() {
                     </div>
                   </div>
                 )}
-                {trackingError && <div className="text-destructive text-sm">{trackingError.message || 'Shipment not found'}</div>}
+
+                {trackingError && (
+                  <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 animate-in slide-in-from-top-2">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <p className="font-medium">{trackingError.message || 'Shipment not found. Please check your waybill number.'}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
