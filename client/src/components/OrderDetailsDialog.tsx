@@ -38,171 +38,185 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong w-[90vw] max-w-[1200px] max-h-[95vh] overflow-y-auto">
-                <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/50">
-                    <div>
-                        <DialogTitle className="text-xl flex items-center gap-3">
-                            Order {order.waybillNumber}
-                            <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize shadow-sm text-sm font-normal`}>
-                                {order.status.replace(/_/g, ' ')}
-                            </Badge>
-                        </DialogTitle>
-                        <DialogDescription>
-                            Created on {new Date(order.createdAt).toLocaleDateString('en-AE', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </DialogDescription>
-                    </div>
-                    <Button onClick={() => generateWaybillPDF(order)} className="gap-2 bg-primary hover:bg-primary/90">
-                        <Download className="w-4 h-4" />
-                        Download Waybill
-                    </Button>
-                </DialogHeader>
+            <DialogContent className="glass-strong w-[90vw] max-w-[1200px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
+                {/* Decorative Top Line */}
+                <div className="w-full h-1 bg-gradient-to-r from-primary via-purple-500 to-red-600" />
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 py-4">
-                    {/* Column 1: Sender & Client Notes */}
-                    <div className="space-y-6">
-                        {/* Client / Sender */}
-                        <div className="space-y-3">
-                            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                                <Truck className="w-4 h-4" /> Sender
-                            </h3>
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50">
-                                <p className="font-semibold text-lg">{clientName}</p>
-                                {/* Assuming standardized sender address or client details if available */}
-                                <p className="text-sm text-muted-foreground mt-1">Merchant Account</p>
-                            </div>
+                <div className="p-6 space-y-8">
+                    {/* Header Section */}
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                                <Package className="w-4 h-4 text-primary" /> Waybill Number
+                            </p>
+                            <h2 className="text-4xl font-mono font-bold tracking-tight text-white">
+                                {order.waybillNumber}
+                            </h2>
+                            <p className="text-sm text-muted-foreground">
+                                Created on {new Date(order.createdAt).toLocaleDateString('en-AE', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </p>
                         </div>
 
-                        {/* Client Notes */}
-                        {clients?.find(c => c.id === order.clientId)?.notes && (
-                            <div className="space-y-3">
-                                <h3 className="text-sm font-medium text-amber-500 uppercase tracking-wider flex items-center gap-2">
-                                    <AlertCircle className="w-4 h-4" /> Client Notes
-                                </h3>
-                                <div className="bg-amber-500/10 p-4 rounded-xl border border-amber-500/20">
-                                    <p className="text-sm whitespace-pre-wrap">{clients.find(c => c.id === order.clientId)?.notes}</p>
-                                </div>
+                        <div className="flex items-center gap-3">
+                            <div className={`px-4 py-2 rounded-full border ${order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
+                                    order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                                        'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                                } flex items-center gap-2`}>
+                                {order.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                                <span className="font-bold uppercase tracking-wide">{order.status.replace(/_/g, ' ')}</span>
                             </div>
-                        )}
+
+                            <Button onClick={() => generateWaybillPDF(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                <Download className="w-4 h-4" /> Waybill
+                            </Button>
+                        </div>
                     </div>
 
-                    {/* Column 2: Recipient */}
-                    <div className="space-y-6">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                            <User className="w-4 h-4" /> Consignee
-                        </h3>
-                        <div className="bg-muted/30 p-5 rounded-xl border border-border/50 space-y-4 h-full">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="font-semibold text-xl">{order.customerName}</p>
-                                    <div className="flex items-center gap-2 mt-2">
-                                        <Badge variant="outline" className="font-mono">{order.customerPhone}</Badge>
-                                        <a href={`tel:${order.customerPhone}`} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 flex items-center gap-1 transition-colors">
-                                            <Phone className="w-3 h-3" /> Call
-                                        </a>
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                                <Truck className="w-4 h-4" />
+                                <span className="text-xs uppercase font-bold">Service</span>
+                            </div>
+                            <p className="text-2xl font-semibold">{order.serviceType}</p>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                                <Package className="w-4 h-4" />
+                                <span className="text-xs uppercase font-bold">Pieces</span>
+                            </div>
+                            <p className="text-2xl font-semibold">{order.pieces}</p>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                                <Scale className="w-4 h-4" />
+                                <span className="text-xs uppercase font-bold">Weight</span>
+                            </div>
+                            <p className="text-2xl font-semibold">{order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
+                                <CreditCard className="w-4 h-4" />
+                                <span className="text-xs uppercase font-bold">COD Amount</span>
+                            </div>
+                            <p className="text-2xl font-semibold">
+                                {order.codRequired ? `${order.codAmount} ${order.codCurrency || 'AED'}` : 'N/A'}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Addresses Column */}
+                        <div className="space-y-6 lg:col-span-2">
+                            <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-white/5 border border-white/10">
+                                {/* Sender */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 text-muted-foreground mb-4">
+                                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                                            <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground" />
+                                        </div>
+                                        <span className="text-sm font-bold uppercase tracking-wider">Pickup From</span>
                                     </div>
-                                </div>
-                            </div>
-
-                            <Separator className="bg-border/50" />
-
-                            <div className="flex items-start gap-3">
-                                <MapPin className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
-                                <span className="text-base leading-relaxed">
-                                    {order.address} <br />
-                                    <span className="font-semibold text-lg block mt-1">{order.city}, {order.destinationCountry}</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Column 3: Shipment Details */}
-                    <div className="space-y-6">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                            <Package className="w-4 h-4" /> Shipment Details
-                        </h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50">
-                                <p className="text-xs text-muted-foreground uppercase mb-1">Service</p>
-                                <p className="font-bold text-xl">{order.serviceType}</p>
-                            </div>
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50">
-                                <p className="text-xs text-muted-foreground uppercase mb-1">Pieces</p>
-                                <p className="font-bold text-xl">{order.pieces}</p>
-                            </div>
-                            <div className="col-span-2 bg-muted/30 p-4 rounded-xl border border-border/50 flex justify-between items-center">
-                                <div>
-                                    <p className="text-xs text-muted-foreground uppercase mb-1">Weight</p>
-                                    <p className="font-bold text-xl">{order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
-                                </div>
-                                <Package className="w-8 h-8 text-muted-foreground/20" />
-                            </div>
-                            <div className={`col-span-2 p-4 rounded-xl border flex justify-between items-center ${order.codRequired ? 'bg-orange-500/10 border-orange-500/20' : 'bg-muted/30 border-border/50'}`}>
-                                <div>
-                                    <p className={`text-xs uppercase mb-1 ${order.codRequired ? 'text-orange-600/80' : 'text-muted-foreground'}`}>COD Amount</p>
-                                    <p className={`font-bold text-2xl ${order.codRequired ? 'text-orange-600' : 'text-muted-foreground'}`}>
-                                        {order.codRequired ? `${order.codAmount} ${order.codCurrency}` : 'N/A'}
-                                    </p>
-                                </div>
-                                {order.codRequired && <Badge className="bg-orange-500">Collect</Badge>}
-                            </div>
-                        </div>
-
-                        {order.isReturn === 1 && (
-                            <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-xl flex items-center gap-3">
-                                <AlertCircle className="w-5 h-5 text-cyan-500" />
-                                <div>
-                                    <p className="font-medium text-cyan-700 dark:text-cyan-400">Return Shipment</p>
-                                    <p className="text-xs text-cyan-600/80 dark:text-cyan-400/80">This is a return order.</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <Separator className="my-2" />
-
-                {/* Tracking Timeline */}
-                <div className="space-y-4">
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <Calendar className="w-5 h-5" /> Tracking History
-                    </h3>
-
-                    {eventsLoading ? (
-                        <div className="py-8 text-center text-muted-foreground">Loading history...</div>
-                    ) : events && events.length > 0 ? (
-                        <div className="relative border-l border-primary/20 ml-3 space-y-8 py-4 px-2">
-                            {events.map((event, index) => (
-                                <div key={index} className="ml-6 relative">
-                                    <span className={`absolute -left-[33px] top-1.5 h-4 w-4 rounded-full border-2 ${index === 0 ? 'bg-primary border-primary ring-4 ring-primary/20' : 'bg-background border-muted-foreground'}`} />
-                                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
-                                        <div>
-                                            <h4 className="font-semibold text-base flex items-center gap-2">
-                                                {event.statusLabel}
-                                                {index === 0 && <Badge variant="default" className="text-[10px] h-5 px-1.5">LATEST</Badge>}
-                                            </h4>
-                                            <p className="text-sm text-muted-foreground mt-1">{event.description || 'No description provided'}</p>
-                                            {event.location && (
-                                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1.5">
-                                                    📍 {event.location}
+                                    <div className="pl-10 space-y-1">
+                                        <p className="text-lg font-semibold text-white">{clientName}</p>
+                                        <p className="text-muted-foreground leading-relaxed">Merchant Account</p>
+                                        {clients?.find(c => c.id === order.clientId)?.notes && (
+                                            <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                                                <p className="text-xs text-amber-500 font-medium flex items-center gap-1.5">
+                                                    <AlertCircle className="w-3 h-3" /> Note: {clients.find(c => c.id === order.clientId)?.notes}
                                                 </p>
-                                            )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Receiver */}
+                                <div className="space-y-3 relative">
+                                    <div className="absolute left-[-12px] top-10 bottom-10 w-[1px] bg-white/10 hidden md:block" />
+                                    <div className="flex items-center gap-2 text-primary mb-4">
+                                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                                            <MapPin className="w-4 h-4 text-primary" />
                                         </div>
-                                        <div className="text-xs text-muted-foreground text-right whitespace-nowrap bg-muted/30 px-2 py-1 rounded">
-                                            {new Date(event.eventDatetime).toLocaleDateString('en-AE', { timeZone: 'Asia/Dubai' })}
-                                            <br />
-                                            <span className="font-mono">{new Date(event.eventDatetime).toLocaleTimeString('en-AE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' })}</span>
+                                        <span className="text-sm font-bold uppercase tracking-wider">Deliver To</span>
+                                    </div>
+                                    <div className="pl-10 space-y-1">
+                                        <p className="text-lg font-semibold text-white">{order.customerName}</p>
+                                        <p className="text-lg text-white/90 leading-relaxed font-medium">{order.address}</p>
+                                        <p className="text-muted-foreground">{order.city}, {order.destinationCountry}</p>
+                                        <div className="flex items-center gap-2 mt-3">
+                                            <Badge variant="secondary" className="font-mono bg-white/10 hover:bg-white/20">{order.customerPhone}</Badge>
+                                            <a href={`tel:${order.customerPhone}`} className="text-xs text-primary hover:underline">Call now</a>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
+                            </div>
                         </div>
-                    ) : (
-                        <div className="py-12 bg-muted/20 rounded-xl border border-dashed text-center text-muted-foreground">
-                            No tracking events found
-                        </div>
-                    )}
-                </div>
 
+                        {/* Timeline Column */}
+                        <div className="lg:col-span-1">
+                            <div className="rounded-2xl bg-white/5 border border-white/10 p-6 h-full">
+                                <h3 className="text-lg font-bold flex items-center gap-2 mb-6 text-white">
+                                    <Calendar className="w-5 h-5 text-primary" /> Tracking History
+                                </h3>
+
+                                {eventsLoading ? (
+                                    <div className="flex justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
+                                ) : events && events.length > 0 ? (
+                                    <div className="relative space-y-0">
+                                        {/* Line */}
+                                        <div className="absolute left-[19px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-primary/50 to-transparent" />
+
+                                        {events.map((event, index) => (
+                                            <div key={index} className="relative pl-12 pb-8 last:pb-0 group">
+                                                {/* Dot */}
+                                                <div className={`absolute left-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-[#0f1115] transition-transform group-hover:scale-110 ${index === 0 ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-muted text-muted-foreground'
+                                                    }`}>
+                                                    {index === 0 ? <Truck className="w-4 h-4 text-primary-foreground" /> : <div className="w-3 h-3 rounded-full bg-muted-foreground/50" />}
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between items-start">
+                                                        <p className={`font-bold ${index === 0 ? 'text-primary' : 'text-white/80'}`}>{event.statusLabel}</p>
+                                                        <span className="text-[10px] text-muted-foreground bg-white/5 px-1.5 py-0.5 rounded">
+                                                            {new Date(event.eventDatetime).toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground pb-1">
+                                                        {new Date(event.eventDatetime).toLocaleDateString('en-AE', { day: 'numeric', month: 'short' })}
+                                                    </p>
+                                                    {event.description && <p className="text-sm text-muted-foreground leading-snug">{event.description}</p>}
+
+                                                    {/* Embedded POD Image */}
+                                                    {event.podFileUrl && (
+                                                        <div className="mt-3 animate-fade-in">
+                                                            <div className="relative group/image overflow-hidden rounded-lg border border-white/10 max-w-[200px]">
+                                                                <img
+                                                                    src={event.podFileUrl}
+                                                                    alt="POD"
+                                                                    className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
+                                                                    onClick={() => window.open(event.podFileUrl, '_blank')}
+                                                                />
+                                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                                                    <span className="text-xs text-white font-medium">View Full</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-center text-muted-foreground py-4">No events yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </DialogContent>
         </Dialog>
     );

@@ -282,31 +282,31 @@ export default function DriversSection() {
                 <TabsList className="grid w-full grid-cols-5 bg-black/40 border border-white/10 p-1.5 rounded-xl backdrop-blur-md h-auto">
                     <TabsTrigger
                         value="dashboard"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
                     >
                         <Truck className="h-4 w-4" /> Dashboard
                     </TabsTrigger>
                     <TabsTrigger
                         value="drivers"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
                     >
                         <Users className="h-4 w-4" /> Drivers
                     </TabsTrigger>
                     <TabsTrigger
                         value="routes"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
                     >
                         <MapPin className="h-4 w-4" /> Routes
                     </TabsTrigger>
                     <TabsTrigger
                         value="deliveries"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
                     >
                         <Package className="h-4 w-4" /> Deliveries
                     </TabsTrigger>
                     <TabsTrigger
                         value="reports"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
                     >
                         <AlertTriangle className="h-4 w-4" /> Reports
                     </TabsTrigger>
@@ -315,51 +315,75 @@ export default function DriversSection() {
                 {/* Dashboard Tab */}
                 <TabsContent value="dashboard" className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <Card className="glass-strong border-blue-500/20">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                    <Users className="w-4 h-4" /> Active Drivers
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{dashboardStats?.drivers.active || 0}</div>
-                                <p className="text-xs text-muted-foreground">of {dashboardStats?.drivers.total || 0} total</p>
+                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-blue-600" />
+                            <CardContent className="pt-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-xs font-mono text-blue-400 bg-blue-500/5 px-2 py-1 rounded">ACTIVE</span>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">
+                                        {dashboardStats?.drivers.active || 0}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">Active Drivers</p>
+                                </div>
                             </CardContent>
                         </Card>
 
-                        <Card className="glass-strong border-green-500/20">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                    <MapPin className="w-4 h-4" /> Routes Today
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{dashboardStats?.routes.today || 0}</div>
-                                <p className="text-xs text-muted-foreground">of {dashboardStats?.routes.total || 0} total</p>
+                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-600" />
+                            <CardContent className="pt-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 rounded-lg bg-green-500/10 text-green-500">
+                                        <MapPin className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-xs font-mono text-green-400 bg-green-500/5 px-2 py-1 rounded">TODAY</span>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-green-400 transition-colors">
+                                        {dashboardStats?.routes.today || 0}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">Active Routes</p>
+                                </div>
                             </CardContent>
                         </Card>
 
-                        <Card className="glass-strong border-purple-500/20">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                    <Package className="w-4 h-4" /> Deliveries
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{dashboardStats?.deliveries.delivered || 0}</div>
-                                <p className="text-xs text-muted-foreground">{dashboardStats?.deliveries.pending || 0} pending</p>
+                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-purple-600" />
+                            <CardContent className="pt-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-xs font-mono text-purple-400 bg-purple-500/5 px-2 py-1 rounded">TOTAL</span>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-purple-400 transition-colors">
+                                        {dashboardStats?.deliveries.delivered || 0}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">Deliveries Completed</p>
+                                </div>
                             </CardContent>
                         </Card>
 
-                        <Card className="glass-strong border-orange-500/20">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                    <AlertTriangle className="w-4 h-4" /> Pending Reports
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">{dashboardStats?.reports.pending || 0}</div>
-                                <p className="text-xs text-muted-foreground">need attention</p>
+                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-red-600" />
+                            <CardContent className="pt-6">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
+                                        <AlertTriangle className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-xs font-mono text-red-400 bg-red-500/5 px-2 py-1 rounded">ISSUES</span>
+                                </div>
+                                <div>
+                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-red-400 transition-colors">
+                                        {dashboardStats?.reports.pending || 0}
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">Pending Reports</p>
+                                </div>
                             </CardContent>
                         </Card>
                     </div>
