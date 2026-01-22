@@ -279,34 +279,34 @@ export default function DriversSection() {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-5 glass-strong border border-white/10 p-1.5 rounded-xl h-auto">
+                <TabsList className="grid w-full grid-cols-5 bg-transparent border border-white/10 p-1.5 rounded-xl h-auto">
                     <TabsTrigger
                         value="dashboard"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <Truck className="h-4 w-4" /> Dashboard
                     </TabsTrigger>
                     <TabsTrigger
                         value="drivers"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <Users className="h-4 w-4" /> Drivers
                     </TabsTrigger>
                     <TabsTrigger
                         value="routes"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <MapPin className="h-4 w-4" /> Routes
                     </TabsTrigger>
                     <TabsTrigger
                         value="deliveries"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <Package className="h-4 w-4" /> Deliveries
                     </TabsTrigger>
                     <TabsTrigger
                         value="reports"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-red-600/25 data-[state=inactive]:hover:bg-red-600/10 data-[state=inactive]:hover:text-red-400 transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <AlertTriangle className="h-4 w-4" /> Reports
                     </TabsTrigger>
