@@ -238,10 +238,17 @@ export async function createDriverRoute(data: {
     // Add orders to route if provided
     if (data.orderIds && data.orderIds.length > 0) {
         for (let i = 0; i < data.orderIds.length; i++) {
+            // Get the order to check its status
+            const [order] = await db.select().from(orders).where(eq(orders.id, data.orderIds[i])).limit(1);
+
+            // Determine type based on order status
+            const orderType = order?.status === 'pending_pickup' ? 'pickup' : 'delivery';
+
             await db.insert(routeOrders).values({
                 routeId: data.id,
                 orderId: data.orderIds[i],
                 sequence: i + 1,
+                type: orderType,
                 status: 'pending',
             });
         }
@@ -296,11 +303,18 @@ export async function addOrdersToRoute(routeId: string, orderIds: number[]) {
             .limit(1);
 
         if (!exists) {
+            // Get the order to check its status
+            const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+
+            // Determine type based on order status
+            const orderType = order?.status === 'pending_pickup' ? 'pickup' : 'delivery';
+
             maxSeq++;
             await db.insert(routeOrders).values({
                 routeId,
                 orderId,
                 sequence: maxSeq,
+                type: orderType,
                 status: 'pending',
             });
         }
