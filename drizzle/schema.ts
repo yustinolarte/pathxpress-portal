@@ -211,6 +211,9 @@ export const orders = mysqlTable("orders", {
   orderType: varchar("orderType", { length: 20 }).default("standard").notNull(), // standard, return, exchange
   exchangeOrderId: int("exchangeOrderId"), // For exchanges: links return waybill to new shipment waybill
 
+  // Pickup assignment for Driver App
+  pickupDriverId: int("pickupDriverId"), // Assigned driver for pickup (null = unassigned)
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
