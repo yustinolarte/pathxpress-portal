@@ -2,7 +2,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2 } from 'lucide-react';
+import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
@@ -121,14 +121,29 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                         </div>
                                         <span className="text-sm font-bold uppercase tracking-wider">Pickup From</span>
                                     </div>
-                                    <div className="pl-10 space-y-1">
-                                        <p className="text-lg font-semibold text-white">{clientName}</p>
-                                        <p className="text-muted-foreground leading-relaxed">Merchant Account</p>
-                                        {clients?.find(c => c.id === order.clientId)?.notes && (
-                                            <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                                                <p className="text-xs text-amber-500 font-medium flex items-center gap-1.5">
-                                                    <AlertCircle className="w-3 h-3" /> Note: {clients.find(c => c.id === order.clientId)?.notes}
+                                    <div className="pl-10 space-y-3">
+                                        <div>
+                                            <p className="text-lg font-semibold text-white">{clientName}</p>
+                                            <p className="text-muted-foreground leading-relaxed">Merchant Account</p>
+                                        </div>
+
+                                        {/* Special Instructions (Client) */}
+                                        {order.specialInstructions && (
+                                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                                                <p className="text-xs text-blue-400 font-medium flex items-center gap-1.5 mb-1">
+                                                    <FileText className="w-3 h-3" /> Special Instructions
                                                 </p>
+                                                <p className="text-sm text-white/90">{order.specialInstructions}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Merchant/Internal Note (Nosotros) */}
+                                        {clients?.find(c => c.id === order.clientId)?.notes && (
+                                            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                                                <p className="text-xs text-amber-500 font-medium flex items-center gap-1.5 mb-1">
+                                                    <AlertCircle className="w-3 h-3" /> Account Note
+                                                </p>
+                                                <p className="text-sm text-white/90">{clients.find(c => c.id === order.clientId)?.notes}</p>
                                             </div>
                                         )}
                                     </div>
