@@ -38,9 +38,9 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong w-[90vw] max-w-[1200px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <DialogContent className="glass-strong !w-[90vw] !max-w-[1200px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
                 {/* Decorative Top Line */}
-                <div className="w-full h-1 bg-gradient-to-r from-primary via-purple-500 to-red-600" />
+                <div className="w-full h-1 bg-red-600" />
 
                 <div className="p-6 space-y-8">
                     {/* Header Section */}
