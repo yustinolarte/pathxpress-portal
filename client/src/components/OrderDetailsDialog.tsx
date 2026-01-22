@@ -38,7 +38,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="glass-strong max-w-6xl max-h-[95vh] overflow-y-auto">
                 <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/50">
                     <div>
                         <DialogTitle className="text-xl flex items-center gap-3">
@@ -57,8 +57,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                     </Button>
                 </DialogHeader>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 py-4">
-                    {/* Sender & Recipient Info */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 py-4">
+                    {/* Column 1: Sender & Client Notes */}
                     <div className="space-y-6">
                         {/* Client / Sender */}
                         <div className="space-y-3">
@@ -72,54 +72,78 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                             </div>
                         </div>
 
-                        {/* Recipient */}
-                        <div className="space-y-3">
-                            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                                <User className="w-4 h-4" /> Consignee
-                            </h3>
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50 space-y-2">
-                                <div className="flex justify-between items-start">
-                                    <p className="font-semibold text-lg">{order.customerName}</p>
-                                    <a href={`tel:${order.customerPhone}`} className="text-sm bg-background px-2 py-1 rounded border hover:bg-accent flex items-center gap-1">
-                                        <Phone className="w-3 h-3" /> {order.customerPhone}
-                                    </a>
+                        {/* Client Notes */}
+                        {clients?.find(c => c.id === order.clientId)?.notes && (
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-medium text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4" /> Client Notes
+                                </h3>
+                                <div className="bg-amber-500/10 p-4 rounded-xl border border-amber-500/20">
+                                    <p className="text-sm whitespace-pre-wrap">{clients.find(c => c.id === order.clientId)?.notes}</p>
                                 </div>
-                                <div className="space-y-1 pt-2 border-t border-border/30 mt-2">
-                                    <div className="flex items-start gap-2 text-sm">
-                                        <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                        <span>
-                                            {order.address} <br />
-                                            <span className="font-medium">{order.city}, {order.destinationCountry}</span>
-                                        </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Column 2: Recipient */}
+                    <div className="space-y-6">
+                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                            <User className="w-4 h-4" /> Consignee
+                        </h3>
+                        <div className="bg-muted/30 p-5 rounded-xl border border-border/50 space-y-4 h-full">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <p className="font-semibold text-xl">{order.customerName}</p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <Badge variant="outline" className="font-mono">{order.customerPhone}</Badge>
+                                        <a href={`tel:${order.customerPhone}`} className="text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20 flex items-center gap-1 transition-colors">
+                                            <Phone className="w-3 h-3" /> Call
+                                        </a>
                                     </div>
                                 </div>
+                            </div>
+
+                            <Separator className="bg-border/50" />
+
+                            <div className="flex items-start gap-3">
+                                <MapPin className="w-5 h-5 text-muted-foreground mt-0.5 shrink-0" />
+                                <span className="text-base leading-relaxed">
+                                    {order.address} <br />
+                                    <span className="font-semibold text-lg block mt-1">{order.city}, {order.destinationCountry}</span>
+                                </span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Shipment Details */}
+                    {/* Column 3: Shipment Details */}
                     <div className="space-y-6">
                         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                             <Package className="w-4 h-4" /> Shipment Details
                         </h3>
                         <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50 text-center">
-                                <p className="text-xs text-muted-foreground uppercase">Service</p>
-                                <p className="font-bold text-lg">{order.serviceType}</p>
+                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50">
+                                <p className="text-xs text-muted-foreground uppercase mb-1">Service</p>
+                                <p className="font-bold text-xl">{order.serviceType}</p>
                             </div>
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50 text-center">
-                                <p className="text-xs text-muted-foreground uppercase">Pieces</p>
-                                <p className="font-bold text-lg">{order.pieces}</p>
+                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50">
+                                <p className="text-xs text-muted-foreground uppercase mb-1">Pieces</p>
+                                <p className="font-bold text-xl">{order.pieces}</p>
                             </div>
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50 text-center">
-                                <p className="text-xs text-muted-foreground uppercase">Weight</p>
-                                <p className="font-bold text-lg">{order.weight} kg</p>
+                            <div className="col-span-2 bg-muted/30 p-4 rounded-xl border border-border/50 flex justify-between items-center">
+                                <div>
+                                    <p className="text-xs text-muted-foreground uppercase mb-1">Weight</p>
+                                    <p className="font-bold text-xl">{order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+                                </div>
+                                <Package className="w-8 h-8 text-muted-foreground/20" />
                             </div>
-                            <div className="bg-muted/30 p-4 rounded-xl border border-border/50 text-center">
-                                <p className="text-xs text-muted-foreground uppercase">COD Amount</p>
-                                <p className={`font-bold text-lg ${order.codRequired ? 'text-orange-500' : 'text-gray-400'}`}>
-                                    {order.codRequired ? `${order.codAmount} ${order.codCurrency}` : 'N/A'}
-                                </p>
+                            <div className={`col-span-2 p-4 rounded-xl border flex justify-between items-center ${order.codRequired ? 'bg-orange-500/10 border-orange-500/20' : 'bg-muted/30 border-border/50'}`}>
+                                <div>
+                                    <p className={`text-xs uppercase mb-1 ${order.codRequired ? 'text-orange-600/80' : 'text-muted-foreground'}`}>COD Amount</p>
+                                    <p className={`font-bold text-2xl ${order.codRequired ? 'text-orange-600' : 'text-muted-foreground'}`}>
+                                        {order.codRequired ? `${order.codAmount} ${order.codCurrency}` : 'N/A'}
+                                    </p>
+                                </div>
+                                {order.codRequired && <Badge className="bg-orange-500">Collect</Badge>}
                             </div>
                         </div>
 
@@ -135,7 +159,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                     </div>
                 </div>
 
-                <Separator className="my-6" />
+                <Separator className="my-2" />
 
                 {/* Tracking Timeline */}
                 <div className="space-y-4">

@@ -279,20 +279,35 @@ export default function DriversSection() {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-5">
-                    <TabsTrigger value="dashboard" className="flex items-center gap-2">
+                <TabsList className="grid w-full grid-cols-5 bg-black/40 border border-white/10 p-1.5 rounded-xl backdrop-blur-md h-auto">
+                    <TabsTrigger
+                        value="dashboard"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                    >
                         <Truck className="h-4 w-4" /> Dashboard
                     </TabsTrigger>
-                    <TabsTrigger value="drivers" className="flex items-center gap-2">
+                    <TabsTrigger
+                        value="drivers"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                    >
                         <Users className="h-4 w-4" /> Drivers
                     </TabsTrigger>
-                    <TabsTrigger value="routes" className="flex items-center gap-2">
+                    <TabsTrigger
+                        value="routes"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                    >
                         <MapPin className="h-4 w-4" /> Routes
                     </TabsTrigger>
-                    <TabsTrigger value="deliveries" className="flex items-center gap-2">
+                    <TabsTrigger
+                        value="deliveries"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                    >
                         <Package className="h-4 w-4" /> Deliveries
                     </TabsTrigger>
-                    <TabsTrigger value="reports" className="flex items-center gap-2">
+                    <TabsTrigger
+                        value="reports"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-cyan-500 data-[state=active]:text-black data-[state=active]:shadow-lg data-[state=active]:shadow-cyan-500/25 data-[state=inactive]:hover:bg-cyan-500/10 data-[state=inactive]:hover:text-cyan-400 transition-all duration-300"
+                    >
                         <AlertTriangle className="h-4 w-4" /> Reports
                     </TabsTrigger>
                 </TabsList>
