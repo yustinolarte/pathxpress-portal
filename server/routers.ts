@@ -42,6 +42,9 @@ export const appRouter = router({
             deliveryAddress: shipment.deliveryAddress || '',
             serviceType: shipment.serviceType || '',
             weight: shipment.weight || '',
+            pieces: 1,
+            codAmount: null,
+            codCurrency: null,
             updatedAt: shipment.updatedAt,
             trackingEvents: [],
           };
@@ -67,6 +70,10 @@ export const appRouter = router({
           deliveryAddress: `${order.address}, ${order.city}, ${order.destinationCountry}`,
           serviceType: order.serviceType,
           weight: `${order.weight} kg`,
+          pieces: order.pieces,
+          codAmount: order.codAmount,
+          codCurrency: order.codCurrency,
+
           updatedAt: order.updatedAt,
           trackingEvents,
         };

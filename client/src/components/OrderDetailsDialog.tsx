@@ -38,7 +38,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong max-w-6xl max-h-[95vh] overflow-y-auto">
+            <DialogContent className="glass-strong w-[90vw] max-w-[1200px] max-h-[95vh] overflow-y-auto">
                 <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/50">
                     <div>
                         <DialogTitle className="text-xl flex items-center gap-3">
