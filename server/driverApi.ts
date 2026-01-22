@@ -191,7 +191,7 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
             return res.status(403).json({ error: 'This route is assigned to another driver' });
         }
 
-        // Get the deliveries for this route
+        // Get the stops (pickups and deliveries) for this route
         const routeOrdersList = await db
             .select({
                 routeOrder: routeOrders,
@@ -202,30 +202,74 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
             .where(eq(routeOrders.routeId, routeId))
             .orderBy(routeOrders.sequence);
 
-        // Format deliveries for the app
-        const deliveries = routeOrdersList.map((item) => ({
-            id: item.routeOrder.id,
-            orderId: item.order.id,
-            customerName: item.order.customerName,
-            phone: item.order.customerPhone,
-            customerPhone: item.order.customerPhone,
-            address: item.order.address,
-            city: item.order.city,
-            latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
-            longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
-            packageRef: item.order.waybillNumber,
-            weight: item.order.weight,
-            type: item.order.codRequired ? 'COD' : 'PREPAID',
-            codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
-            status: item.routeOrder.status?.toUpperCase() || 'PENDING',
-            proofPhotoUrl: item.routeOrder.proofPhotoUrl,
-            notes: item.routeOrder.notes,
-        }));
+        // Format stops for the app - include both pickup and delivery info
+        const stops = routeOrdersList.map((item) => {
+            const stopType = item.routeOrder.type || 'delivery';
+            const isPickup = stopType === 'pickup';
+
+            return {
+                id: item.routeOrder.id,
+                orderId: item.order.id,
+                sequence: item.routeOrder.sequence,
+                stopType: stopType, // 'pickup' or 'delivery'
+
+                // Waybill info
+                waybillNumber: item.order.waybillNumber,
+                packageRef: item.order.waybillNumber,
+                pieces: item.order.pieces,
+                weight: item.order.weight,
+                serviceType: item.order.serviceType,
+
+                // For PICKUP: show shipper info (where to collect)
+                // For DELIVERY: show customer info (where to deliver)
+                contactName: isPickup ? item.order.shipperName : item.order.customerName,
+                contactPhone: isPickup ? item.order.shipperPhone : item.order.customerPhone,
+                address: isPickup ? item.order.shipperAddress : item.order.address,
+                city: isPickup ? item.order.shipperCity : item.order.city,
+
+                // Keep full info for detail view
+                shipperName: item.order.shipperName,
+                shipperPhone: item.order.shipperPhone,
+                shipperAddress: item.order.shipperAddress,
+                shipperCity: item.order.shipperCity,
+                customerName: item.order.customerName,
+                customerPhone: item.order.customerPhone,
+                deliveryAddress: item.order.address,
+                deliveryCity: item.order.city,
+
+                // Coordinates (use shipper for pickup, customer for delivery)
+                latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
+                longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+
+                // COD info (only relevant for delivery)
+                codRequired: item.order.codRequired === 1,
+                codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+
+                // Status
+                status: item.routeOrder.status?.toUpperCase() || 'PENDING',
+                proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+                notes: item.routeOrder.notes,
+            };
+        });
+
+        // Calculate stats
+        const pickupCount = stops.filter(s => s.stopType === 'pickup').length;
+        const deliveryCount = stops.filter(s => s.stopType === 'delivery').length;
+        const completedCount = stops.filter(s =>
+            s.status === 'PICKED_UP' || s.status === 'DELIVERED'
+        ).length;
 
         res.json({
             ...route,
             status: route.status?.toUpperCase() || 'PENDING',
-            deliveries,
+            stops, // New unified list
+            deliveries: stops, // Keep for backward compatibility
+            stats: {
+                total: stops.length,
+                completed: completedCount,
+                pickups: pickupCount,
+                deliveries: deliveryCount,
+            }
         });
     } catch (error) {
         console.error('Get route error:', error);
@@ -272,7 +316,7 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             .where(eq(driverRoutes.id, routeId))
             .limit(1);
 
-        // Get the deliveries for this route
+        // Get the stops (pickups and deliveries) for this route - same format as GET route
         const routeOrdersList = await db
             .select({
                 routeOrder: routeOrders,
@@ -283,30 +327,60 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             .where(eq(routeOrders.routeId, routeId))
             .orderBy(routeOrders.sequence);
 
-        // Format deliveries for the app
-        const deliveries = routeOrdersList.map((item) => ({
-            id: item.routeOrder.id,
-            orderId: item.order.id,
-            customerName: item.order.customerName,
-            phone: item.order.customerPhone,
-            customerPhone: item.order.customerPhone,
-            address: item.order.address,
-            city: item.order.city,
-            latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
-            longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
-            packageRef: item.order.waybillNumber,
-            weight: item.order.weight,
-            type: item.order.codRequired ? 'COD' : 'PREPAID',
-            codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
-            status: item.routeOrder.status?.toUpperCase() || 'PENDING',
-            proofPhotoUrl: item.routeOrder.proofPhotoUrl,
-            notes: item.routeOrder.notes,
-        }));
+        // Format stops for the app - same as GET route
+        const stops = routeOrdersList.map((item) => {
+            const stopType = item.routeOrder.type || 'delivery';
+            const isPickup = stopType === 'pickup';
+
+            return {
+                id: item.routeOrder.id,
+                orderId: item.order.id,
+                sequence: item.routeOrder.sequence,
+                stopType: stopType,
+                waybillNumber: item.order.waybillNumber,
+                packageRef: item.order.waybillNumber,
+                pieces: item.order.pieces,
+                weight: item.order.weight,
+                serviceType: item.order.serviceType,
+                contactName: isPickup ? item.order.shipperName : item.order.customerName,
+                contactPhone: isPickup ? item.order.shipperPhone : item.order.customerPhone,
+                address: isPickup ? item.order.shipperAddress : item.order.address,
+                city: isPickup ? item.order.shipperCity : item.order.city,
+                shipperName: item.order.shipperName,
+                shipperPhone: item.order.shipperPhone,
+                shipperAddress: item.order.shipperAddress,
+                shipperCity: item.order.shipperCity,
+                customerName: item.order.customerName,
+                customerPhone: item.order.customerPhone,
+                deliveryAddress: item.order.address,
+                deliveryCity: item.order.city,
+                latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
+                longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+                codRequired: item.order.codRequired === 1,
+                codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+                status: item.routeOrder.status?.toUpperCase() || 'PENDING',
+                proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+                notes: item.routeOrder.notes,
+            };
+        });
+
+        const pickupCount = stops.filter(s => s.stopType === 'pickup').length;
+        const deliveryCount = stops.filter(s => s.stopType === 'delivery').length;
+        const completedCount = stops.filter(s =>
+            s.status === 'PICKED_UP' || s.status === 'DELIVERED'
+        ).length;
 
         res.json({
             ...updatedRoute,
             status: updatedRoute?.status?.toUpperCase() || 'PENDING',
-            deliveries,
+            stops,
+            deliveries: stops, // backward compatibility
+            stats: {
+                total: stops.length,
+                completed: completedCount,
+                pickups: pickupCount,
+                deliveries: deliveryCount,
+            }
         });
     } catch (error) {
         console.error('Claim route error:', error);
@@ -349,9 +423,174 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
     }
 });
 
-// ============ DELIVERIES ============
+// ============ STOPS (Pickups & Deliveries) ============
 
+router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status, photoBase64, notes } = req.body;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Get the route order (stop)
+        const [routeOrder] = await db
+            .select({
+                routeOrder: routeOrders,
+                route: driverRoutes,
+                order: orders,
+            })
+            .from(routeOrders)
+            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.id, parseInt(id)))
+            .limit(1);
+
+        if (!routeOrder) {
+            return res.status(404).json({ error: 'Stop not found' });
+        }
+
+        // Check driver access
+        if (routeOrder.route.driverId !== null && routeOrder.route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const stopType = routeOrder.routeOrder.type || 'delivery';
+        const isPickup = stopType === 'pickup';
+        const statusLower = status.toLowerCase();
+
+        let photoUrl: string | null = routeOrder.routeOrder.proofPhotoUrl;
+
+        // Upload photo if provided
+        if (photoBase64) {
+            try {
+                photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
+            } catch (err) {
+                console.error('Error uploading to Cloudinary:', err);
+            }
+        }
+
+        // Prepare update data based on stop type
+        const updateData: Record<string, unknown> = {
+            status: statusLower,
+            notes: notes || routeOrder.routeOrder.notes,
+            proofPhotoUrl: photoUrl,
+        };
+
+        // Set timestamp based on status
+        if (statusLower === 'picked_up') {
+            updateData.pickedUpAt = new Date();
+        } else if (statusLower === 'delivered') {
+            updateData.deliveredAt = new Date();
+        } else if (statusLower === 'attempted') {
+            updateData.attemptedAt = new Date();
+        }
+
+        await db
+            .update(routeOrders)
+            .set(updateData)
+            .where(eq(routeOrders.id, parseInt(id)));
+
+        // Update the main order status based on stop type
+        let orderStatus = routeOrder.order.status;
+        let statusLabel = 'Updated';
+
+        if (isPickup) {
+            // PICKUP stop
+            if (statusLower === 'picked_up') {
+                orderStatus = 'picked_up';
+                statusLabel = 'Picked Up';
+            }
+        } else {
+            // DELIVERY stop
+            if (statusLower === 'delivered') {
+                orderStatus = 'delivered';
+                statusLabel = 'Delivered';
+            } else if (statusLower === 'attempted') {
+                orderStatus = 'delivery_attempted';
+                statusLabel = 'Delivery Attempted';
+            } else if (statusLower === 'returned') {
+                orderStatus = 'returned';
+                statusLabel = 'Returned';
+            }
+        }
+
+        // Update order
+        const orderUpdate: Record<string, unknown> = {
+            status: orderStatus,
+            lastStatusUpdate: new Date(),
+        };
+
+        if (isPickup && statusLower === 'picked_up') {
+            orderUpdate.pickupDate = new Date();
+            orderUpdate.pickupDriverId = req.driverId;
+        } else if (!isPickup && statusLower === 'delivered') {
+            orderUpdate.deliveryDateReal = new Date();
+        }
+
+        await db
+            .update(orders)
+            .set(orderUpdate)
+            .where(eq(orders.id, routeOrder.order.id));
+
+        // Get driver info for tracking event
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.id, req.driverId!))
+            .limit(1);
+
+        // Create tracking event
+        const location = isPickup ? routeOrder.order.shipperCity : routeOrder.order.city;
+        await db.insert(trackingEvents).values({
+            shipmentId: routeOrder.order.id,
+            eventDatetime: new Date(),
+            location: location || 'Unknown',
+            statusCode: orderStatus,
+            statusLabel: statusLabel,
+            description: notes || `${statusLabel} by driver ${driver?.fullName || 'Unknown'}`,
+            podFileUrl: photoUrl || undefined,
+            createdBy: 'driver',
+        });
+
+        // Handle COD for delivered deliveries
+        if (!isPickup && statusLower === 'delivered' && routeOrder.order.codRequired) {
+            const [existingCod] = await db
+                .select()
+                .from(codRecords)
+                .where(eq(codRecords.shipmentId, routeOrder.order.id))
+                .limit(1);
+
+            if (existingCod) {
+                await db
+                    .update(codRecords)
+                    .set({ status: 'collected', collectedDate: new Date() })
+                    .where(eq(codRecords.id, existingCod.id));
+            } else {
+                await db.insert(codRecords).values({
+                    shipmentId: routeOrder.order.id,
+                    codAmount: routeOrder.order.codAmount || '0',
+                    codCurrency: routeOrder.order.codCurrency || 'AED',
+                    status: 'collected',
+                    collectedDate: new Date(),
+                });
+            }
+        }
+
+        res.json({
+            message: isPickup ? 'Pickup completed' : 'Delivery updated',
+            stopType,
+            status: statusLower,
+        });
+    } catch (error) {
+        console.error('Update stop error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Keep old endpoint for backward compatibility
 router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    // Forward to new stops endpoint
+    req.params.id = req.params.id;
     try {
         const { id } = req.params;
         const { status, photoBase64, notes } = req.body;
@@ -384,16 +623,11 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
 
         // Upload photo if provided
         if (photoBase64) {
-            console.log('Received photo upload request for delivery:', id);
-            console.log('Photo base64 length:', photoBase64.length);
             try {
                 photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
-                console.log('Cloudinary upload result:', photoUrl);
             } catch (err) {
                 console.error('Error uploading to Cloudinary:', err);
             }
-        } else {
-            console.log('No photo provided for delivery:', id);
         }
 
         const statusLower = status.toLowerCase();
@@ -414,7 +648,7 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             .set(updateData)
             .where(eq(routeOrders.id, parseInt(id)));
 
-        // Also update the main order status
+        // Update main order status
         let orderStatus = routeOrder.order.status;
         if (statusLower === 'delivered') {
             orderStatus = 'delivered';
@@ -447,9 +681,8 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             createdBy: 'driver',
         });
 
-        // If this is a COD order and it's delivered, mark COD as collected
+        // Handle COD
         if (statusLower === 'delivered' && routeOrder.order.codRequired) {
-            // Check if COD record exists
             const [existingCod] = await db
                 .select()
                 .from(codRecords)
@@ -457,16 +690,11 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
                 .limit(1);
 
             if (existingCod) {
-                // Update existing COD record to collected
                 await db
                     .update(codRecords)
-                    .set({
-                        status: 'collected',
-                        collectedDate: new Date(),
-                    })
+                    .set({ status: 'collected', collectedDate: new Date() })
                     .where(eq(codRecords.id, existingCod.id));
             } else {
-                // Create new COD record as collected
                 await db.insert(codRecords).values({
                     shipmentId: routeOrder.order.id,
                     codAmount: routeOrder.order.codAmount || '0',

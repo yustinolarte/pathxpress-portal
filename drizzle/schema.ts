@@ -507,18 +507,20 @@ export type DriverRoute = typeof driverRoutes.$inferSelect;
 export type InsertDriverRoute = typeof driverRoutes.$inferInsert;
 
 /**
- * Route orders - links orders to routes with delivery status
+ * Route orders - links orders to routes with pickup/delivery stops
  */
 export const routeOrders = mysqlTable("routeOrders", {
   id: int("id").autoincrement().primaryKey(),
   routeId: varchar("routeId", { length: 50 }).notNull(),
   orderId: int("orderId").notNull(),
-  sequence: int("sequence"), // Optimized delivery order
-  status: mysqlEnum("status", ["pending", "in_progress", "delivered", "attempted", "returned"]).default("pending").notNull(),
+  sequence: int("sequence"), // Optimized stop order
+  type: mysqlEnum("type", ["pickup", "delivery"]).default("delivery").notNull(), // Type of stop
+  status: mysqlEnum("status", ["pending", "in_progress", "picked_up", "delivered", "attempted", "returned"]).default("pending").notNull(),
   proofPhotoUrl: text("proofPhotoUrl"),
   notes: text("notes"),
   attemptedAt: timestamp("attemptedAt"),
   deliveredAt: timestamp("deliveredAt"),
+  pickedUpAt: timestamp("pickedUpAt"), // For pickup stops
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
