@@ -2,7 +2,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard } from 'lucide-react';
+import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2 } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
