@@ -123,8 +123,19 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                     </div>
                                     <div className="pl-10 space-y-3">
                                         <div>
-                                            <p className="text-lg font-semibold text-white">{clientName}</p>
-                                            <p className="text-muted-foreground leading-relaxed">Merchant Account</p>
+                                            <p className="text-lg font-semibold text-white">{order.shipperName}</p>
+                                            <p className="text-white/90 leading-relaxed">{order.shipperAddress}</p>
+                                            <p className="text-muted-foreground">{order.shipperCity}, {order.shipperCountry}</p>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <Badge variant="secondary" className="font-mono bg-white/10 hover:bg-white/20">{order.shipperPhone}</Badge>
+                                                <a href={`tel:${order.shipperPhone}`} className="text-xs text-primary hover:underline">Call now</a>
+                                            </div>
+                                        </div>
+
+                                        {/* Merchant Account Badge */}
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <User className="w-3 h-3" />
+                                            <span>Merchant: {clientName}</span>
                                         </div>
 
                                         {/* Special Instructions (Client) */}
