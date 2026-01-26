@@ -369,6 +369,8 @@ export const adminPortalRouter = router({
     }),
 
   // Get all orders (global view)
+  // NOTE: Admin sees ALL information without privacy filters
+  // Privacy rules (hideShipperAddress/hideConsigneeAddress) only apply when customers generate waybills from their portal
   getAllOrders: publicProcedure
     .input(z.object({
       token: z.string(),
@@ -379,22 +381,8 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
       }
 
-      const allOrders = await getAllOrders();
-
-      // For return/exchange orders, dynamically check if client has privacy enabled
-      // This ensures existing returns also respect the hideConsigneeAddress setting
-      const ordersWithPrivacy = await Promise.all(allOrders.map(async (order) => {
-        // Only process returns/exchanges that don't already have hideConsigneeAddress set
-        if ((order.isReturn === 1 || order.orderType === 'return' || order.orderType === 'exchange') && order.hideConsigneeAddress !== 1) {
-          const client = await getClientAccountById(order.clientId);
-          if (client?.hideShipperAddress === 1) {
-            return { ...order, hideConsigneeAddress: 1 };
-          }
-        }
-        return order;
-      }));
-
-      return ordersWithPrivacy;
+      // Admin sees all orders with full information (no privacy filters)
+      return await getAllOrders();
     }),
 
   // Delete order (admin only)
