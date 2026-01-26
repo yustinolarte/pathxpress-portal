@@ -379,7 +379,22 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
       }
 
-      return await getAllOrders();
+      const allOrders = await getAllOrders();
+
+      // For return/exchange orders, dynamically check if client has privacy enabled
+      // This ensures existing returns also respect the hideConsigneeAddress setting
+      const ordersWithPrivacy = await Promise.all(allOrders.map(async (order) => {
+        // Only process returns/exchanges that don't already have hideConsigneeAddress set
+        if ((order.isReturn === 1 || order.orderType === 'return' || order.orderType === 'exchange') && order.hideConsigneeAddress !== 1) {
+          const client = await getClientAccountById(order.clientId);
+          if (client?.hideShipperAddress === 1) {
+            return { ...order, hideConsigneeAddress: 1 };
+          }
+        }
+        return order;
+      }));
+
+      return ordersWithPrivacy;
     }),
 
   // Delete order (admin only)
@@ -1162,7 +1177,7 @@ export const customerPortalRouter = router({
       const client = await getClientAccountById(payload.clientId);
       const hideAddress = client?.hideShipperAddress === 1;
 
-      // Get original waybill numbers and hide shipper address if needed
+      // Get original waybill numbers and set privacy flags
       const result = await Promise.all(returnsExchanges.map(async (order) => {
         let originalWaybill = null;
         if (order.originalOrderId) {
@@ -1179,6 +1194,8 @@ export const customerPortalRouter = router({
         return {
           ...order,
           shipperAddress: hideAddress ? '' : order.shipperAddress,
+          // For returns/exchanges, hide consignee address if client has privacy enabled
+          hideConsigneeAddress: hideAddress ? 1 : (order.hideConsigneeAddress || 0),
           originalWaybill,
           exchangeWaybill
         };
