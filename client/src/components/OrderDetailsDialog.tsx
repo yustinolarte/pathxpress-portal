@@ -224,7 +224,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                                                     src={event.podFileUrl}
                                                                     alt="POD"
                                                                     className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
-                                                                    onClick={() => window.open(event.podFileUrl, '_blank')}
+                                                                    onClick={() => event.podFileUrl && window.open(event.podFileUrl, '_blank')}
                                                                 />
                                                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                                                                     <span className="text-xs text-white font-medium">View Full</span>
