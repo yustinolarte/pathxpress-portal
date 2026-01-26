@@ -1245,23 +1245,28 @@ export const customerPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
       }
 
+      // Check if client has hideShipperAddress enabled (for privacy on waybill)
+      const client = await getClientAccountById(payload.clientId);
+      const hideConsigneeOnReturn = client?.hideShipperAddress === 1 ? 1 : 0;
+
       // Generate waybill for return
       const returnWaybill = await generateWaybillNumber();
 
       // Create return order (swap shipper/consignee)
+      // Note: On returns, the original client becomes the consignee, so we hide their address if they have privacy enabled
       const returnOrder = await createOrder({
         clientId: payload.clientId,
         orderNumber: `RTN-${originalOrder.waybillNumber}`,
         waybillNumber: returnWaybill,
 
-        // Swap: consignee becomes shipper
+        // Swap: consignee becomes shipper (show full address - this is the customer returning the package)
         shipperName: originalOrder.customerName,
         shipperAddress: originalOrder.address,
         shipperCity: originalOrder.city,
         shipperCountry: originalOrder.destinationCountry,
         shipperPhone: originalOrder.customerPhone,
 
-        // Swap: shipper becomes consignee
+        // Swap: shipper becomes consignee (hide address if client has privacy enabled)
         customerName: originalOrder.shipperName,
         customerPhone: originalOrder.shipperPhone,
         address: originalOrder.shipperAddress,
@@ -1279,6 +1284,7 @@ export const customerPortalRouter = router({
         originalOrderId: input.orderId,
         returnCharged: 1,
         orderType: 'return',
+        hideConsigneeAddress: hideConsigneeOnReturn, // Hide consignee (client) address on waybill if privacy enabled
 
         status: 'pending_pickup',
         lastStatusUpdate: new Date(),
@@ -1335,19 +1341,24 @@ export const customerPortalRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
       }
 
-      // 1. Create return waybill
+      // Check if client has privacy enabled (for hiding address on return waybills)
+      const hideConsigneeOnReturn = clientAccount.hideShipperAddress === 1 ? 1 : 0;
+
+      // 1. Create return waybill (client becomes consignee, hide their address if privacy enabled)
       const returnWaybill = await generateWaybillNumber();
       const returnOrder = await createOrder({
         clientId: payload.clientId,
         orderNumber: `EXC-RTN-${originalOrder.waybillNumber}`,
         waybillNumber: returnWaybill,
 
+        // Swap: original consignee becomes shipper (show full address)
         shipperName: originalOrder.customerName,
         shipperAddress: originalOrder.address,
         shipperCity: originalOrder.city,
         shipperCountry: originalOrder.destinationCountry,
         shipperPhone: originalOrder.customerPhone,
 
+        // Swap: original shipper (client) becomes consignee (hide if privacy enabled)
         customerName: originalOrder.shipperName,
         customerPhone: originalOrder.shipperPhone,
         address: originalOrder.shipperAddress,
@@ -1364,6 +1375,7 @@ export const customerPortalRouter = router({
         originalOrderId: input.orderId,
         returnCharged: 1,
         orderType: 'exchange',
+        hideConsigneeAddress: hideConsigneeOnReturn, // Hide consignee (client) address on waybill if privacy enabled
 
         status: 'pending_pickup',
         lastStatusUpdate: new Date(),

@@ -127,8 +127,8 @@ export default function Tracking() {
                           <CardTitle className="text-3xl md:text-4xl font-mono text-primary tracking-tight">{shipment.trackingId}</CardTitle>
                         </div>
                         <div className={`px-4 py-2 rounded-full border ${shipment.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                            shipment.status === 'canceled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                              'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                          shipment.status === 'canceled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
+                            'bg-blue-500/10 border-blue-500/20 text-blue-500'
                           } flex items-center gap-2`}>
                           {shipment.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                           <span className="font-semibold uppercase tracking-wide">{shipment.status.replace(/_/g, ' ')}</span>
@@ -227,8 +227,8 @@ export default function Tracking() {
 
                               {/* Event card */}
                               <div className={`p-5 rounded-xl border transition-all duration-300 ${index === 0
-                                  ? 'bg-primary/5 border-primary/20 shadow-sm'
-                                  : 'bg-muted/10 border-border/50 hover:bg-muted/20'
+                                ? 'bg-primary/5 border-primary/20 shadow-sm'
+                                : 'bg-muted/10 border-border/50 hover:bg-muted/20'
                                 }`}>
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
                                   <h4 className={`font-bold text-lg ${index === 0 ? 'text-primary' : ''}`}>

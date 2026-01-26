@@ -32,6 +32,7 @@ interface ShipmentData {
   codCurrency?: string | null;
   specialInstructions?: string | null;
   hideShipperAddress?: number; // 0 = show, 1 = hide shipper address on waybill
+  hideConsigneeAddress?: number; // 0 = show, 1 = hide consignee address on waybill (for returns with privacy)
   isReturn?: number; // 0 = normal shipment, 1 = return shipment
   originalOrderId?: number | null; // Reference to original order for returns
 }
@@ -194,29 +195,40 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
   pdf.setFont('helvetica', 'bold');
   pdf.text('TO:', margin, y + 4);
 
-  // Customer name (bold)
+  // Customer name (bold) - always shown
   pdf.setFontSize(11);
   pdf.text(shipment.customerName, margin + 7, y + 5);
 
-  // Phone
-  pdf.setFontSize(9);
-  pdf.text(shipment.customerPhone, margin + 7, y + 10);
+  // Check if consignee address should be hidden (for returns when client has privacy enabled)
+  let addressHeight = 0;
+  if (shipment.hideConsigneeAddress === 1) {
+    // Only show city (no phone or full address for privacy)
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 10);
+    addressHeight = 0;
+  } else {
+    // Show full consignee info
+    // Phone
+    pdf.setFontSize(9);
+    pdf.text(shipment.customerPhone, margin + 7, y + 10);
 
-  // Address (wrap to multiple lines, smaller font to fit more text)
-  pdf.setFontSize(7);
-  pdf.setFont('helvetica', 'normal');
-  const addressMaxWidth = contentWidth - 48; // Leave space for city code and QR
-  const addressLines = pdf.splitTextToSize(shipment.address, addressMaxWidth);
-  const displayedLines = addressLines.slice(0, 4); // Allow up to 4 lines
-  pdf.text(displayedLines, margin + 7, y + 14);
+    // Address (wrap to multiple lines, smaller font to fit more text)
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'normal');
+    const addressMaxWidth = contentWidth - 48; // Leave space for city code and QR
+    const addressLines = pdf.splitTextToSize(shipment.address, addressMaxWidth);
+    const displayedLines = addressLines.slice(0, 4); // Allow up to 4 lines
+    pdf.text(displayedLines, margin + 7, y + 14);
 
-  // Calculate address height based on lines displayed
-  const addressHeight = displayedLines.length * 3;
+    // Calculate address height based on lines displayed
+    addressHeight = displayedLines.length * 3;
 
-  // City (bold, smaller) - positioned after address
-  pdf.setFontSize(7);
-  pdf.setFont('helvetica', 'bold');
-  pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 14 + addressHeight + 1);
+    // City (bold, smaller) - positioned after address
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`${shipment.city}, ${shipment.destinationCountry}`, margin + 7, y + 14 + addressHeight + 1);
+  }
 
   // ROUTING CODE + QR (right side)
   const routingX = pageWidth - margin - 40;

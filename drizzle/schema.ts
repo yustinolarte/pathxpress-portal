@@ -214,6 +214,9 @@ export const orders = mysqlTable("orders", {
   // Pickup assignment for Driver App
   pickupDriverId: int("pickupDriverId"), // Assigned driver for pickup (null = unassigned)
 
+  // Privacy settings for waybill printing
+  hideConsigneeAddress: int("hideConsigneeAddress").default(0).notNull(), // 0 = show, 1 = hide consignee address (for returns when client has privacy)
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
