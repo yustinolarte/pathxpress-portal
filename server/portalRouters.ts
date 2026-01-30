@@ -986,6 +986,7 @@ export const customerPortalRouter = router({
         codRequired: z.number().default(0),
         codAmount: z.string().optional(),
         codCurrency: z.string().optional(),
+        fitOnDelivery: z.number().default(0),
       }),
     }))
     .mutation(async ({ input }) => {

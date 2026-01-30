@@ -110,6 +110,12 @@ export default function CustomerDashboard() {
     { enabled: !!token }
   );
 
+  // Fetch client account settings (for FOD, COD permissions)
+  const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery(
+    { token: token || '' },
+    { enabled: !!token }
+  );
+
   // Filtered orders based on status and date
   const filteredOrders = orders?.filter((order: any) => {
     let matchesStatus = true;
@@ -1551,38 +1557,40 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       </div>
 
       {/* SECTION 5: FIT ON DELIVERY */}
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4 border-purple-500/20">
-        <div className="border-b pb-2">
-          <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <span className="h-5 w-5 text-purple-500">👗</span>
-            Fit on Delivery (FOD)
-          </h3>
-        </div>
-        <div className="space-y-4">
-          <div className="flex items-center space-x-2 border p-3 rounded bg-background/50 hover:bg-background transition-colors border-purple-500/20">
-            <Checkbox
-              id="fitOnDelivery"
-              checked={formData.fitOnDelivery === 1}
-              onCheckedChange={(checked) => setFormData({ ...formData, fitOnDelivery: checked ? 1 : 0 })}
-            />
-            <Label htmlFor="fitOnDelivery" className="cursor-pointer flex-1 user-select-none">
-              Enable Fit on Delivery
-            </Label>
+      {clientSettings?.fodAllowed === 1 && (
+        <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4 border-purple-500/20">
+          <div className="border-b pb-2">
+            <h3 className="font-semibold flex items-center gap-2 text-lg">
+              <span className="h-5 w-5 text-purple-500">👗</span>
+              Fit on Delivery (FOD)
+            </h3>
           </div>
-
-          {formData.fitOnDelivery === 1 && (
-            <div className="animate-in fade-in slide-in-from-top-2 duration-300 p-3 bg-purple-500/10 rounded-lg border border-purple-500/30">
-              <p className="text-sm text-purple-200 flex items-center gap-2">
-                <span className="font-semibold text-purple-400">📦 Service Info:</span>
-                Driver will wait 10-20 min for customer to try the item.
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Fee: <span className="font-semibold text-purple-400">5.00 AED</span> (added to invoice)
-              </p>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 border p-3 rounded bg-background/50 hover:bg-background transition-colors border-purple-500/20">
+              <Checkbox
+                id="fitOnDelivery"
+                checked={formData.fitOnDelivery === 1}
+                onCheckedChange={(checked) => setFormData({ ...formData, fitOnDelivery: checked ? 1 : 0 })}
+              />
+              <Label htmlFor="fitOnDelivery" className="cursor-pointer flex-1 user-select-none">
+                Enable Fit on Delivery
+              </Label>
             </div>
-          )}
+
+            {formData.fitOnDelivery === 1 && (
+              <div className="animate-in fade-in slide-in-from-top-2 duration-300 p-3 bg-purple-500/10 rounded-lg border border-purple-500/30">
+                <p className="text-sm text-purple-200 flex items-center gap-2">
+                  <span className="font-semibold text-purple-400">📦 Service Info:</span>
+                  Driver will wait 10-20 min for customer to try the item.
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Fee: <span className="font-semibold text-purple-400">5.00 AED</span> (added to invoice)
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="sticky bottom-0 bg-background/95 backdrop-blur py-4 border-t flex justify-end gap-3 mt-4 -mx-6 px-6 z-10">
         <Button type="submit" disabled={createMutation.isPending} size="lg" className="w-full sm:w-auto shadow-lg hover:shadow-primary/25 transition-all">

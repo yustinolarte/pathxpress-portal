@@ -318,6 +318,7 @@ export default function CODPanel() {
       collected: { variant: 'default', icon: TrendingUp },
       remitted: { variant: 'secondary', icon: CheckCircle },
       disputed: { variant: 'destructive', icon: Clock },
+      cancelled: { variant: 'destructive', icon: Clock },
       pending: { variant: 'outline', icon: Clock },
       processed: { variant: 'default', icon: TrendingUp },
       completed: { variant: 'secondary', icon: CheckCircle },
@@ -795,6 +796,7 @@ export default function CODPanel() {
                           <SelectItem value="collected">Collected</SelectItem>
                           <SelectItem value="remitted">Remitted</SelectItem>
                           <SelectItem value="disputed">Disputed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
                         </SelectContent>
                       </Select>
                     </TableCell>

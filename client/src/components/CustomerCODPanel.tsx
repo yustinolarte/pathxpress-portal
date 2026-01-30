@@ -60,6 +60,7 @@ export default function CustomerCODPanel() {
       collected: { variant: 'default', icon: TrendingUp },
       remitted: { variant: 'secondary', icon: CheckCircle },
       disputed: { variant: 'destructive', icon: AlertCircle },
+      cancelled: { variant: 'destructive', icon: AlertCircle },
       pending: { variant: 'outline', icon: Clock },
       processed: { variant: 'default', icon: TrendingUp },
       completed: { variant: 'secondary', icon: CheckCircle },
