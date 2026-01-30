@@ -768,13 +768,13 @@ export default function AdminDashboard() {
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {order.waybillNumber}
                                   {order.isReturn === 1 && order.orderType !== 'exchange' && (
-                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1">
-                                      <RotateCcw className="h-3 w-3" /> RETURN
+                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
+                                      <RotateCcw className="h-4 w-4" />
                                     </Badge>
                                   )}
                                   {order.orderType === 'exchange' && (
-                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1">
-                                      <ArrowLeftRight className="h-3 w-3" /> EXCHANGE
+                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1" title="Exchange">
+                                      <ArrowLeftRight className="h-4 w-4" />
                                       {order.exchangeOrderId && (
                                         <span
                                           className="ml-1 underline cursor-pointer hover:text-amber-300"

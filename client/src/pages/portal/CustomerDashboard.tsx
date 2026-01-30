@@ -603,8 +603,8 @@ export default function CustomerDashboard() {
                                   {order.waybillNumber}
                                 </Button>
                                 {order.isReturn === 1 && (
-                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1">
-                                    <RotateCcw className="h-3 w-3" /> RETURN
+                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
+                                    <RotateCcw className="h-4 w-4" />
                                   </Badge>
                                 )}
                                 {order.fitOnDelivery === 1 && (
