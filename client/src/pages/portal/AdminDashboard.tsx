@@ -46,6 +46,9 @@ export default function AdminDashboard() {
     customDomPerKg: '',
     customSddBaseRate: '',
     customSddPerKg: '',
+    // FOD settings
+    fodAllowed: false,
+    fodFee: '',
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
@@ -243,6 +246,8 @@ export default function AdminDashboard() {
         codFeePercent: editForm.codFeePercent,
         codMinFee: editForm.codMinFee,
         codMaxFee: editForm.codMaxFee,
+        fodAllowed: editForm.fodAllowed,
+        fodFee: editForm.fodFee,
       });
     } catch (error) {
       // handled by onError
@@ -269,6 +274,8 @@ export default function AdminDashboard() {
         customDomPerKg: editingClient.customDomPerKg || '',
         customSddBaseRate: editingClient.customSddBaseRate || '',
         customSddPerKg: editingClient.customSddPerKg || '',
+        fodAllowed: !!editingClient.fodAllowed,
+        fodFee: editingClient.fodFee || '',
       });
     }
   }, [editingClient]);
@@ -1216,6 +1223,33 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
+              </div>
+
+              <div className="h-px bg-border/50" />
+
+              {/* FOD Settings Section */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="editFodAllowed"
+                    checked={editForm.fodAllowed}
+                    onCheckedChange={(checked) => setEditForm({ ...editForm, fodAllowed: checked as boolean })}
+                  />
+                  <Label htmlFor="editFodAllowed" className="flex items-center gap-2">
+                    <span>👗</span> Allow Fit on Delivery
+                  </Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="editFodFee">FOD Fee (AED)</Label>
+                  <Input
+                    id="editFodFee"
+                    value={editForm.fodFee}
+                    onChange={(e) => setEditForm({ ...editForm, fodFee: e.target.value })}
+                    placeholder="Default: 5.00"
+                    disabled={!editForm.fodAllowed}
+                  />
+                </div>
               </div>
             </div>
             <DialogFooter>

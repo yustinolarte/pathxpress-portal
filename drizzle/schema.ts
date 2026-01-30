@@ -135,6 +135,10 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   // Return shipment settings
   returnFee: varchar("returnFee", { length: 20 }), // Fixed fee for return shipments (e.g., "15.00")
 
+  // Fit on Delivery settings
+  fodAllowed: int("fodAllowed").default(0).notNull(), // 0 = no, 1 = yes
+  fodFee: varchar("fodFee", { length: 20 }), // Custom FOD fee (null = use default 5 AED)
+
   notes: text("notes"),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -184,6 +188,9 @@ export const orders = mysqlTable("orders", {
   codRequired: int("codRequired").default(0).notNull(), // 0 = no, 1 = yes
   codAmount: varchar("codAmount", { length: 50 }),
   codCurrency: varchar("codCurrency", { length: 10 }),
+
+  // Fit on Delivery service
+  fitOnDelivery: int("fitOnDelivery").default(0).notNull(), // 0 = no, 1 = yes
 
   // Dates
   pickupDate: timestamp("pickupDate"),
@@ -328,7 +335,7 @@ export const codRecords = mysqlTable("codRecords", {
   codCurrency: varchar("codCurrency", { length: 10 }).notNull(),
   collectedDate: timestamp("collectedDate"),
   remittedToClientDate: timestamp("remittedToClientDate"),
-  status: mysqlEnum("status", ["pending_collection", "collected", "remitted", "disputed"]).default("pending_collection").notNull(),
+  status: mysqlEnum("status", ["pending_collection", "collected", "remitted", "disputed", "cancelled"]).default("pending_collection").notNull(),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

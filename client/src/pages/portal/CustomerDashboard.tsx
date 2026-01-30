@@ -601,6 +601,11 @@ export default function CustomerDashboard() {
                                     <RotateCcw className="h-3 w-3" /> RETURN
                                   </Badge>
                                 )}
+                                {order.fitOnDelivery === 1 && (
+                                  <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs flex items-center gap-1">
+                                    👗 FOD
+                                  </Badge>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>{order.customerName}</TableCell>
@@ -877,7 +882,7 @@ export default function CustomerDashboard() {
                                       src={event.podFileUrl}
                                       alt="POD"
                                       className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
-                                      onClick={() => window.open(event.podFileUrl, '_blank')}
+                                      onClick={() => event.podFileUrl && window.open(event.podFileUrl, '_blank')}
                                     />
                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                                       <span className="text-xs text-white font-medium">View Full</span>
@@ -958,6 +963,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     codRequired: number;
     codAmount: string;
     codCurrency: string;
+    fitOnDelivery: number; // 0 = no, 1 = yes
   }>({
     shipperName: '',
     shipperAddress: '',
@@ -980,6 +986,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     codRequired: 0,
     codAmount: '',
     codCurrency: 'AED',
+    fitOnDelivery: 0,
   });
   const [calculatedRate, setCalculatedRate] = useState<any>(null);
   const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
@@ -1538,6 +1545,40 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 5: FIT ON DELIVERY */}
+      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4 border-purple-500/20">
+        <div className="border-b pb-2">
+          <h3 className="font-semibold flex items-center gap-2 text-lg">
+            <span className="h-5 w-5 text-purple-500">👗</span>
+            Fit on Delivery (FOD)
+          </h3>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2 border p-3 rounded bg-background/50 hover:bg-background transition-colors border-purple-500/20">
+            <Checkbox
+              id="fitOnDelivery"
+              checked={formData.fitOnDelivery === 1}
+              onCheckedChange={(checked) => setFormData({ ...formData, fitOnDelivery: checked ? 1 : 0 })}
+            />
+            <Label htmlFor="fitOnDelivery" className="cursor-pointer flex-1 user-select-none">
+              Enable Fit on Delivery
+            </Label>
+          </div>
+
+          {formData.fitOnDelivery === 1 && (
+            <div className="animate-in fade-in slide-in-from-top-2 duration-300 p-3 bg-purple-500/10 rounded-lg border border-purple-500/30">
+              <p className="text-sm text-purple-200 flex items-center gap-2">
+                <span className="font-semibold text-purple-400">📦 Service Info:</span>
+                Driver will wait 10-20 min for customer to try the item.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Fee: <span className="font-semibold text-purple-400">5.00 AED</span> (added to invoice)
+              </p>
             </div>
           )}
         </div>

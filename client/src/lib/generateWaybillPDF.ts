@@ -35,6 +35,7 @@ interface ShipmentData {
   hideConsigneeAddress?: number; // 0 = show, 1 = hide consignee address on waybill (for returns with privacy)
   isReturn?: number; // 0 = normal shipment, 1 = return shipment
   originalOrderId?: number | null; // Reference to original order for returns
+  fitOnDelivery?: number; // 0 = no, 1 = yes - Fit on Delivery service
 }
 
 // City code mapping for UAE cities
@@ -153,6 +154,18 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(255, 255, 255);
     pdf.text('<<< RETURN SHIPMENT >>>', pageWidth / 2, y + 4, { align: 'center' });
+    pdf.setTextColor(black);
+    y += 8;
+  }
+
+  // Fit on Delivery banner
+  if (shipment.fitOnDelivery === 1) {
+    pdf.setFillColor(128, 0, 128); // Purple color
+    pdf.rect(margin, y, pageWidth - 2 * margin, 6, 'F');
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(255, 255, 255);
+    pdf.text('FOD - WAIT FOR CUSTOMER', pageWidth / 2, y + 4, { align: 'center' });
     pdf.setTextColor(black);
     y += 8;
   }

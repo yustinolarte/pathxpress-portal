@@ -497,7 +497,26 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
   if (!db) return null;
 
   try {
+    const { codRecords } = await import("../drizzle/schema");
+    const { eq, and } = await import("drizzle-orm");
+
+    // Update order status
     await db.update(orders).set({ status, lastStatusUpdate: new Date() }).where(eq(orders.id, id));
+
+    // If status is a "failure" status, cancel pending COD
+    const failureStatuses = ['returned', 'failed_delivery', 'cancelled'];
+    if (failureStatuses.includes(status)) {
+      // Find pending COD record for this shipment
+      await db.update(codRecords)
+        .set({ status: 'cancelled' })
+        .where(
+          and(
+            eq(codRecords.shipmentId, id),
+            eq(codRecords.status, 'pending_collection')
+          )
+        );
+    }
+
     return getOrderById(id);
   } catch (error) {
     console.error("[Database] Failed to update order status:", error);
@@ -624,7 +643,14 @@ export const calculateRate = (client: any, shipment: any, domTier: any, sddTier:
   }
 
   // Calculate total: base rate + additional kg rate
-  const total = isBasWeight ? baseRate : baseRate + (additionalKg * perKgRate);
+  let total = isBasWeight ? baseRate : baseRate + (additionalKg * perKgRate);
+
+  // Add FOD fee if Fit on Delivery is enabled
+  if (shipment.fitOnDelivery === 1) {
+    const fodFee = client?.fodFee ? parseFloat(client.fodFee) : 5.00;
+    total += fodFee;
+  }
+
   return Math.round(total * 100) / 100; // Round to 2 decimals
 };
 

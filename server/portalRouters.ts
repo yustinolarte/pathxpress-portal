@@ -2698,6 +2698,8 @@ export const clientsRouter = router({
       codFeePercent: z.string().optional(),
       codMinFee: z.string().optional(),
       codMaxFee: z.string().optional(),
+      fodAllowed: z.boolean().optional(),
+      fodFee: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
@@ -2718,6 +2720,8 @@ export const clientsRouter = router({
           codFeePercent: input.codFeePercent || null,
           codMinFee: input.codMinFee || null,
           codMaxFee: input.codMaxFee || null,
+          fodAllowed: input.fodAllowed ? 1 : 0,
+          fodFee: input.fodFee || null,
         })
         .where(eq(clientAccounts.id, input.clientId));
 
@@ -2785,6 +2789,11 @@ export const publicTrackingRouter = router({
           destinationCountry: order.destinationCountry,
           createdAt: order.createdAt,
           lastStatusUpdate: order.lastStatusUpdate,
+          codRequired: order.codRequired,
+          codAmount: order.codAmount,
+          codCurrency: order.codCurrency,
+          shipperCity: order.shipperCity,
+          shipperCountry: order.shipperCountry,
         },
         trackingEvents,
       };
