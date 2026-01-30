@@ -609,7 +609,7 @@ export default function CustomerDashboard() {
                                 )}
                                 {order.fitOnDelivery === 1 && (
                                   <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs flex items-center gap-1">
-                                    👗 FOD
+                                    <Package className="h-3 w-3" /> FOD
                                   </Badge>
                                 )}
                               </div>
@@ -1567,7 +1567,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4 border-purple-500/20">
           <div className="border-b pb-2">
             <h3 className="font-semibold flex items-center gap-2 text-lg">
-              <span className="h-5 w-5 text-purple-500">👗</span>
+              <Package className="h-5 w-5 text-purple-500" />
               Fit on Delivery (FOD)
             </h3>
           </div>
@@ -1586,7 +1586,8 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             {formData.fitOnDelivery === 1 && (
               <div className="animate-in fade-in slide-in-from-top-2 duration-300 p-3 bg-purple-500/10 rounded-lg border border-purple-500/30">
                 <p className="text-sm text-purple-200 flex items-center gap-2">
-                  <span className="font-semibold text-purple-400">📦 Service Info:</span>
+                  <AlertCircle className="h-4 w-4 text-purple-400" />
+                  <span className="font-semibold text-purple-400">Service Info:</span>
                   Driver will wait 10-20 min for customer to try the item.
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">

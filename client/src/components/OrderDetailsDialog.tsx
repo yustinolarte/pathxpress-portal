@@ -58,6 +58,14 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                         </div>
 
                         <div className="flex items-center gap-3">
+                            {/* FOD Badge */}
+                            {order.fitOnDelivery === 1 && (
+                                <div className="px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center gap-2">
+                                    <Package className="w-4 h-4" />
+                                    <span className="font-bold uppercase tracking-wide text-sm">FOD</span>
+                                </div>
+                            )}
+
                             <div className={`px-4 py-2 rounded-full border ${order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
                                 order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
                                     'bg-blue-500/10 border-blue-500/20 text-blue-500'
