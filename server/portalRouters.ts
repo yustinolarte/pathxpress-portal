@@ -2364,7 +2364,7 @@ const codRouter = router({
     .input(z.object({
       token: z.string(),
       codRecordId: z.number(),
-      status: z.enum(['pending_collection', 'collected', 'remitted', 'disputed']),
+      status: z.enum(['pending_collection', 'collected', 'remitted', 'disputed', 'cancelled']),
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
