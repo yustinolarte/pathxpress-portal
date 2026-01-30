@@ -1591,7 +1591,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                   Driver will wait 10-20 min for customer to try the item.
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Fee: <span className="font-semibold text-purple-400">5.00 AED</span> (added to invoice)
+                  Fee: <span className="font-semibold text-purple-400">{clientSettings?.fodFee ? Number(clientSettings.fodFee).toFixed(2) : '5.00'} AED</span> (added to invoice)
                 </p>
               </div>
             )}
