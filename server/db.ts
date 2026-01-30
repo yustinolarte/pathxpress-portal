@@ -761,12 +761,22 @@ export async function generateInvoiceForClient(
 
   // Calculate totals using proper rates
   let subtotal = 0;
-  const shipmentRates: { shipment: typeof orders.$inferSelect; rate: number }[] = [];
+  const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number; fodFee: number }[] = [];
 
   for (const shipment of shipments) {
-    const rate = calculateRate(client, shipment, domTier, sddTier);
-    subtotal += rate;
-    shipmentRates.push({ shipment, rate });
+    const totalRate = calculateRate(client, shipment, domTier, sddTier);
+
+    // Check for FOD to separate it
+    let shippingRate = totalRate;
+    let fodFee = 0;
+
+    if (shipment.fitOnDelivery === 1) {
+      fodFee = client?.fodFee ? parseFloat(client.fodFee) : 5.00;
+      shippingRate = totalRate - fodFee;
+    }
+
+    subtotal += totalRate;
+    shipmentRates.push({ shipment, shippingRate, fodFee });
   }
 
   const tax = 0; // No tax for shipping in UAE 
@@ -794,18 +804,31 @@ export async function generateInvoiceForClient(
   });
 
   // Create invoice items with correct rates
-  for (const { shipment, rate } of shipmentRates) {
+  for (const { shipment, shippingRate, fodFee } of shipmentRates) {
     const weight = parseFloat(shipment.weight || '0');
     const serviceType = shipment.serviceType?.toUpperCase() === 'SDD' ? 'SDD' : 'DOM';
 
+    // Shipping Item
     await db.insert(invoiceItems).values({
       invoiceId: invoice.insertId,
       shipmentId: shipment.id,
       description: `${shipment.waybillNumber} - ${serviceType} - ${weight}kg - ${shipment.city}`,
       quantity: 1,
-      unitPrice: rate.toFixed(2),
-      total: rate.toFixed(2),
+      unitPrice: shippingRate.toFixed(2),
+      total: shippingRate.toFixed(2),
     });
+
+    // FOD Fee Item
+    if (fodFee > 0) {
+      await db.insert(invoiceItems).values({
+        invoiceId: invoice.insertId,
+        shipmentId: shipment.id,
+        description: `${shipment.waybillNumber} - FOD Service Fee`,
+        quantity: 1,
+        unitPrice: fodFee.toFixed(2),
+        total: fodFee.toFixed(2),
+      });
+    }
   }
 
   return invoice.insertId;
