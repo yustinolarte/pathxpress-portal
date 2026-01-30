@@ -1005,6 +1005,12 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     { enabled: !!token }
   );
 
+  // Fetch client settings (for FOD permission)
+  const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery(
+    { token },
+    { enabled: !!token }
+  );
+
   // Create saved shipper mutation
   const createShipperMutation = trpc.portal.customer.createSavedShipper.useMutation({
     onSuccess: () => {
