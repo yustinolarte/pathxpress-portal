@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2 } from 'lucide-react';
+import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2 } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -30,6 +30,7 @@ export default function BillingPanel() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [selectedShipmentIds, setSelectedShipmentIds] = useState<number[]>([]);
   const [selectAll, setSelectAll] = useState(true);
+  const [showPreviewStep, setShowPreviewStep] = useState(false);
 
   // Filter states
   const [filterClientId, setFilterClientId] = useState<string>('all');
@@ -84,6 +85,7 @@ export default function BillingPanel() {
       setSelectedClient(null);
       setPeriodStart('');
       setPeriodEnd('');
+      setShowPreviewStep(false);
       refetch();
     },
     onError: (error) => {
@@ -136,6 +138,25 @@ export default function BillingPanel() {
       toast.error(error.message || 'Failed to update status');
     },
   });
+
+  // Delete invoice mutation (only pending)
+  const deleteInvoiceMutation = trpc.portal.billing.deleteInvoice.useMutation({
+    onSuccess: () => {
+      toast.success('Invoice deleted successfully');
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Failed to delete invoice');
+    },
+  });
+
+  const handleDeleteInvoice = (invoiceId: number, invoiceNumber: string) => {
+    if (!token) return;
+    if (!confirm(`Are you sure you want to delete invoice ${invoiceNumber}?\n\nThis will allow the shipments to be billed again.`)) {
+      return;
+    }
+    deleteInvoiceMutation.mutate({ token, invoiceId });
+  };
 
   // Download invoice PDF handler
   const handleDownloadPDF = async (invoice: any) => {
@@ -194,13 +215,31 @@ export default function BillingPanel() {
     }
   };
 
-  const handleGenerateInvoice = () => {
+  // Calculate preview totals
+  const previewTotal = useMemo(() => {
+    if (!billableShipments) return 0;
+    return billableShipments
+      .filter((s: any) => selectedShipmentIds.includes(s.id))
+      .reduce((sum: number, s: any) => sum + (s.calculatedRate || 0), 0);
+  }, [billableShipments, selectedShipmentIds]);
+
+  const handleShowPreview = () => {
+    if (!selectedClient || !periodStart || !periodEnd) {
+      toast.error('Please select client and period');
+      return;
+    }
+    if (selectedShipmentIds.length === 0) {
+      toast.error('Please select at least one shipment');
+      return;
+    }
+    setShowPreviewStep(true);
+  };
+
+  const handleConfirmGenerate = () => {
     if (!token || !selectedClient || !periodStart || !periodEnd) {
       toast.error('Please fill all fields');
       return;
     }
-
-
 
     generateInvoice.mutate({
       token,
@@ -209,6 +248,10 @@ export default function BillingPanel() {
       periodEnd,
       shipmentIds: selectedShipmentIds
     });
+  };
+
+  const handleBackToSelection = () => {
+    setShowPreviewStep(false);
   };
 
   const handleStatusChange = (invoiceId: number, status: 'pending' | 'paid' | 'overdue') => {
@@ -443,13 +486,73 @@ export default function BillingPanel() {
                 </div>
               )}
 
-              <Button
-                onClick={handleGenerateInvoice}
-                className="w-full"
-                disabled={generateInvoice.isPending}
-              >
-                {generateInvoice.isPending ? 'Generating...' : 'Generate Invoice'}
-              </Button>
+              {/* Preview Step */}
+              {showPreviewStep ? (
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="font-semibold text-lg flex items-center gap-2">
+                    <Eye className="w-5 h-5" />
+                    Invoice Preview
+                  </h4>
+
+                  <div className="p-4 bg-muted/30 rounded-lg space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Client:</span>
+                      <span className="font-medium">{clients?.find(c => c.id === selectedClient)?.companyName}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Period:</span>
+                      <span>{periodStart} to {periodEnd}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Shipments:</span>
+                      <span>{selectedShipmentIds.length} items</span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t pt-2">
+                      <span className="text-muted-foreground">Subtotal:</span>
+                      <span>AED {previewTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Taxes:</span>
+                      <span>AED 0.00</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-lg border-t pt-2">
+                      <span>Total:</span>
+                      <span className="text-primary">AED {previewTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={handleBackToSelection}
+                    >
+                      Back
+                    </Button>
+                    <Button
+                      onClick={handleConfirmGenerate}
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      disabled={generateInvoice.isPending}
+                    >
+                      {generateInvoice.isPending ? (
+                        <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
+                      ) : (
+                        'Confirm & Generate Invoice'
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleShowPreview}
+                  className="w-full"
+                  disabled={!selectedClient || !periodStart || !periodEnd || selectedShipmentIds.length === 0}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Preview Invoice
+                </Button>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -634,6 +737,16 @@ export default function BillingPanel() {
                           title="Download PDF"
                         >
                           <Download className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteInvoice(invoice.id, invoice.invoiceNumber)}
+                          title={invoice.status === 'pending' ? 'Delete invoice' : 'Only pending invoices can be deleted'}
+                          disabled={invoice.status !== 'pending' || deleteInvoiceMutation.isPending}
+                          className={invoice.status === 'pending' ? 'text-red-400 hover:text-red-500 hover:bg-red-500/10' : 'opacity-50'}
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>

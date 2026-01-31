@@ -889,6 +889,98 @@ export async function updateInvoice(id: number, data: Partial<{
   await db.update(invoices).set(data).where(eq(invoices.id, id));
 }
 
+// Delete invoice (only if pending)
+export async function deleteInvoice(id: number): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+
+  // Check if invoice exists and is pending
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" };
+  }
+
+  if (invoice.status !== 'pending') {
+    return { success: false, error: "Only pending invoices can be deleted" };
+  }
+
+  // Delete invoice items first
+  await db.delete(invoiceItems).where(eq(invoiceItems.invoiceId, id));
+
+  // Delete invoice
+  await db.delete(invoices).where(eq(invoices.id, id));
+
+  return { success: true };
+}
+
+// Add invoice item (for manual charges like bags, discounts, etc.)
+export async function addInvoiceItem(data: {
+  invoiceId: number;
+  description: string;
+  quantity: number;
+  unitPrice: string;
+}): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const total = (data.quantity * parseFloat(data.unitPrice)).toFixed(2);
+
+  const [result] = await db.insert(invoiceItems).values({
+    invoiceId: data.invoiceId,
+    shipmentId: null, // null means it's a manual item
+    description: data.description,
+    quantity: data.quantity,
+    unitPrice: data.unitPrice,
+    total,
+  });
+
+  return result.insertId;
+}
+
+// Delete invoice item (only manual items without shipmentId)
+export async function deleteInvoiceItem(itemId: number): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+
+  // Check if item exists and is a manual item (no shipmentId)
+  const [item] = await db.select().from(invoiceItems).where(eq(invoiceItems.id, itemId)).limit(1);
+  if (!item) {
+    return { success: false, error: "Invoice item not found" };
+  }
+
+  if (item.shipmentId !== null) {
+    return { success: false, error: "Cannot delete shipment items, only manual charges can be deleted" };
+  }
+
+  await db.delete(invoiceItems).where(eq(invoiceItems.id, itemId));
+
+  return { success: true };
+}
+
+// Recalculate invoice totals based on items
+export async function recalculateInvoiceTotals(invoiceId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  const items = await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId));
+
+  const subtotal = items.reduce((sum, item) => sum + parseFloat(item.total), 0);
+  const taxes = 0; // UAE has no VAT on shipping
+  const total = subtotal + taxes;
+
+  // Get current invoice to preserve amountPaid
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  const amountPaid = invoice ? parseFloat(invoice.amountPaid || '0') : 0;
+  const balance = total - amountPaid;
+
+  await db.update(invoices).set({
+    subtotal: subtotal.toFixed(2),
+    taxes: taxes.toFixed(2),
+    total: total.toFixed(2),
+    balance: balance.toFixed(2),
+  }).where(eq(invoices.id, invoiceId));
+}
+
 // ==================== COD Functions ====================
 
 export async function getCODRecordsByClient(clientId: number) {

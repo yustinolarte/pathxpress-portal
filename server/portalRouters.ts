@@ -2310,6 +2310,99 @@ export const billingRouter = router({
 
       return { success: true };
     }),
+
+  // Admin: Delete invoice (only if pending)
+  deleteInvoice: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      invoiceId: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { deleteInvoice } = await import('./db');
+      const result = await deleteInvoice(input.invoiceId);
+
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.error });
+      }
+
+      return { success: true };
+    }),
+
+  // Admin: Add invoice item (manual charge like bags, discounts, etc.)
+  addInvoiceItem: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      invoiceId: z.number(),
+      description: z.string().min(1, 'Description is required'),
+      quantity: z.number().min(1).default(1),
+      unitPrice: z.string(), // Can be negative for discounts
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { addInvoiceItem, recalculateInvoiceTotals, updateInvoice } = await import('./db');
+
+      const itemId = await addInvoiceItem({
+        invoiceId: input.invoiceId,
+        description: input.description,
+        quantity: input.quantity,
+        unitPrice: input.unitPrice,
+      });
+
+      if (!itemId) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to add invoice item' });
+      }
+
+      // Recalculate totals and mark as adjusted
+      await recalculateInvoiceTotals(input.invoiceId);
+      await updateInvoice(input.invoiceId, {
+        isAdjusted: 1,
+        lastAdjustedBy: payload.userId,
+        lastAdjustedAt: new Date(),
+      });
+
+      return { success: true, itemId };
+    }),
+
+  // Admin: Delete invoice item (only manual items without shipmentId)
+  deleteInvoiceItem: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      invoiceId: z.number(),
+      itemId: z.number(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { deleteInvoiceItem, recalculateInvoiceTotals, updateInvoice } = await import('./db');
+
+      const result = await deleteInvoiceItem(input.itemId);
+
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.error });
+      }
+
+      // Recalculate totals
+      await recalculateInvoiceTotals(input.invoiceId);
+      await updateInvoice(input.invoiceId, {
+        isAdjusted: 1,
+        lastAdjustedBy: payload.userId,
+        lastAdjustedAt: new Date(),
+      });
+
+      return { success: true };
+    }),
 });
 
 /**
