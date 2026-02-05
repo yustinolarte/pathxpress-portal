@@ -20,7 +20,21 @@ import {
   Award,
   Globe2,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Brain,
+  Cpu,
+  TrafficCone,
+  RefreshCw,
+  BarChart3,
+  GitBranch,
+  CloudSun,
+  Check,
+  X,
+  CalendarClock,
+  Route,
+  Fuel,
+  MapPin,
+  Package
 } from 'lucide-react';
 
 export default function About() {
@@ -260,6 +274,135 @@ export default function About() {
                 </CardContent>
               </div>
             </Card>
+          </AnimatedSection>
+
+          {/* Savings/Results Banner - From Demo */}
+          <AnimatedSection animation="scale-in" className="mb-20">
+            <div className="glass-strong border-2 border-secondary/30 rounded-3xl p-8 md:p-12 text-center">
+              <h2 className="text-xl md:text-2xl font-bold mb-8 flex items-center justify-center gap-3">
+                <Target className="w-7 h-7 text-secondary" />
+                <span>Resultados de la <span className="text-secondary">Optimización con IA</span></span>
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+                {[
+                  { value: '19 km', label: 'Km Ahorrados' },
+                  { value: '33 min', label: 'Tiempo Ahorrado' },
+                  { value: '3.7 L', label: 'Combustible Ahorrado' },
+                  { value: '40%', label: 'Más Eficiente' },
+                ].map((stat, index) => (
+                  <div key={index} className="text-center">
+                    <div className="text-3xl md:text-5xl font-black text-secondary mb-2">{stat.value}</div>
+                    <div className="text-sm md:text-base text-muted-foreground">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </AnimatedSection>
+
+          {/* Comparison Table - From Demo */}
+          <AnimatedSection animation="fade-in" className="mb-20">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
+                <BarChart3 className="w-4 h-4 text-secondary" />
+                <span className="text-sm font-medium text-secondary">Comparación Detallada</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                Diferencias <span className="text-secondary">Clave</span>
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                Diferencias clave entre optimizadores tradicionales y PATHXPRESS IA
+              </p>
+            </div>
+
+            <div className="glass-strong rounded-2xl overflow-hidden border border-border max-w-4xl mx-auto">
+              {/* Table Header */}
+              <div className="grid grid-cols-3 bg-background/50 border-b border-border">
+                <div className="p-4 md:p-5 font-semibold text-sm uppercase tracking-wide text-foreground flex items-center gap-2">
+                  <Package className="w-4 h-4" /> Característica
+                </div>
+                <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+                  Tradicional
+                </div>
+                <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-secondary">
+                  PATHXPRESS
+                </div>
+              </div>
+
+              {/* Table Rows */}
+              {[
+                { icon: TrafficCone, feature: 'Análisis de tráfico en tiempo real', traditional: false, ai: true },
+                { icon: Brain, feature: 'Machine Learning predictivo', traditional: false, ai: true },
+                { icon: CalendarClock, feature: 'Ventanas de tiempo de entrega', traditional: false, ai: true },
+                { icon: RefreshCw, feature: 'Re-optimización dinámica', traditional: false, ai: true },
+                { icon: BarChart3, feature: 'Optimización multi-objetivo', traditional: false, ai: true },
+                { icon: CloudSun, feature: 'Factores climáticos', traditional: false, ai: true },
+                { icon: TrendingUp, feature: 'Aprendizaje de patrones', traditional: false, ai: true },
+              ].map((row, index) => {
+                const Icon = row.icon;
+                return (
+                  <div key={index} className="grid grid-cols-3 border-b border-border/50 last:border-b-0 hover:bg-white/5 transition-colors">
+                    <div className="p-4 md:p-5 flex items-center gap-3 text-foreground">
+                      <Icon className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm md:text-base">{row.feature}</span>
+                    </div>
+                    <div className="p-4 md:p-5 flex items-center justify-center">
+                      {row.traditional ? (
+                        <Check className="w-5 h-5 text-muted-foreground" />
+                      ) : (
+                        <X className="w-5 h-5 text-muted-foreground/50" />
+                      )}
+                    </div>
+                    <div className="p-4 md:p-5 flex items-center justify-center">
+                      <Check className="w-5 h-5 text-secondary" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </AnimatedSection>
+
+          {/* AI Technology Features Grid - From Demo */}
+          <AnimatedSection animation="fade-in" className="mb-20">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
+                <Cpu className="w-4 h-4 text-secondary" />
+                <span className="text-sm font-medium text-secondary">Tecnología de IA Avanzada</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                Algoritmos de <span className="text-secondary">Última Generación</span>
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                Algoritmos de última generación para optimizar cada aspecto de tus entregas
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { icon: TrafficCone, title: 'Tráfico en Tiempo Real', description: 'Evita congestionamientos y ajusta rutas dinámicamente.' },
+                { icon: Brain, title: 'Algoritmos Predictivos', description: 'Machine Learning para predecir tiempos óptimos.' },
+                { icon: CalendarClock, title: 'Ventanas de Tiempo', description: 'Respeta horarios preferidos por clientes.' },
+                { icon: RefreshCw, title: 'Re-optimización', description: 'Actualiza rutas ante cambios o imprevistos.' },
+                { icon: BarChart3, title: 'Multi-Objetivo', description: 'Optimiza distancia, tiempo y combustible.' },
+                { icon: GitBranch, title: 'Clustering', description: 'Agrupa entregas cercanas inteligentemente.' },
+                { icon: CloudSun, title: 'Clima', description: 'Considera condiciones meteorológicas.' },
+                { icon: TrendingUp, title: 'Análisis Histórico', description: 'Aprende de cada ruta completada.' },
+              ].map((feature, index) => {
+                const Icon = feature.icon;
+                return (
+                  <AnimatedSection key={index} animation="scale-in" delay={index * 0.05}>
+                    <Card className="glass-strong border-border h-full text-center card-hover-lift hover:border-secondary/50 transition-all">
+                      <CardContent className="pt-8 pb-6">
+                        <div className="w-14 h-14 rounded-2xl bg-secondary/10 flex items-center justify-center mx-auto mb-4">
+                          <Icon className="w-7 h-7 text-secondary" />
+                        </div>
+                        <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                        <p className="text-sm text-muted-foreground">{feature.description}</p>
+                      </CardContent>
+                    </Card>
+                  </AnimatedSection>
+                );
+              })}
+            </div>
           </AnimatedSection>
 
           {/* Company Culture */}
