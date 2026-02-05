@@ -4,6 +4,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import AnimatedSection from '@/components/AnimatedSection';
 import SEOHead, { createBreadcrumbSchema } from '@/components/SEOHead';
+import RouteSimulation from '@/components/RouteSimulation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -171,6 +172,11 @@ export default function About() {
               </Card>
             </AnimatedSection>
           </div>
+
+          {/* Route Simulation - Interactive Demo */}
+          <AnimatedSection animation="fade-in" className="mb-20">
+            <RouteSimulation />
+          </AnimatedSection>
 
           {/* Our Story Timeline */}
           <AnimatedSection animation="fade-in" className="mb-20">
