@@ -282,29 +282,6 @@ export default function About() {
             </Card>
           </AnimatedSection>
 
-          {/* Savings/Results Banner - From Demo */}
-          <AnimatedSection animation="scale-in" className="mb-20">
-            <div className="glass-strong border-2 border-secondary/30 rounded-3xl p-8 md:p-12 text-center">
-              <h2 className="text-xl md:text-2xl font-bold mb-8 flex items-center justify-center gap-3">
-                <Target className="w-7 h-7 text-secondary" />
-                <span>Resultados de la <span className="text-secondary">Optimización con IA</span></span>
-              </h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-                {[
-                  { value: '19 km', label: 'Km Ahorrados' },
-                  { value: '33 min', label: 'Tiempo Ahorrado' },
-                  { value: '3.7 L', label: 'Combustible Ahorrado' },
-                  { value: '40%', label: 'Más Eficiente' },
-                ].map((stat, index) => (
-                  <div key={index} className="text-center">
-                    <div className="text-3xl md:text-5xl font-black text-secondary mb-2">{stat.value}</div>
-                    <div className="text-sm md:text-base text-muted-foreground">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </AnimatedSection>
-
           {/* Comparison Table - From Demo */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-10">
