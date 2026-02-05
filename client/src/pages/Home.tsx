@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Package, Truck, Globe2, Plane, ShoppingCart, Clock, MapPin, MessageCircle, TrendingUp, Leaf, ChevronDown, Brain, Route, FileCheck, DollarSign, BarChart3, ShieldAlert, Sparkles, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Package, Truck, Globe2, Plane, ShoppingCart, Clock, MapPin, MessageCircle, TrendingUp, Leaf, ChevronDown, Brain, Route, FileCheck, DollarSign, BarChart3, ShieldAlert, Sparkles, ArrowRight, CheckCircle2, Eye, Target } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Home() {
@@ -478,59 +478,167 @@ export default function Home() {
         </div>
       </section>
 
-      {/* About Section */}
-      <section className="py-20 gradient-dark">
-        <div className="container">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-12 animate-fade-in">
-              <h2 className="text-4xl md:text-5xl font-bold mb-4">{t('about.title')}</h2>
-              <p className="text-xl text-muted-foreground mb-8">{t('about.subtitle')}</p>
-              <p className="text-lg text-foreground/80 leading-relaxed">{t('about.description')}</p>
-            </div>
+      {/* About Section - Enhanced with Demo Design */}
+      <section className="py-20 gradient-dark relative overflow-hidden">
+        {/* Subtle wave background pattern */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 50px, rgba(255,255,255,0.03) 50px, rgba(255,255,255,0.03) 51px)',
+            transform: 'rotate(-15deg) scale(2)',
+          }} />
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-12">
-              <Card className="glass-strong border-border">
-                <CardHeader>
+        <div className="container relative z-10">
+          {/* Header */}
+          <AnimatedSection animation="fade-in" className="text-center mb-16 max-w-4xl mx-auto">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
+              <Brain className="w-4 h-4 text-secondary" />
+              <span className="text-sm font-medium text-secondary">{t('about.hero.badge') || 'AI-Powered Logistics'}</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">{t('about.title')}</h2>
+            <p className="text-xl text-muted-foreground mb-4">{t('about.subtitle')}</p>
+            <p className="text-lg text-foreground/80 leading-relaxed">{t('about.description')}</p>
+          </AnimatedSection>
+
+          {/* Stats Banner - Similar to Demo Savings Banner */}
+          <AnimatedSection animation="scale-in" className="mb-16">
+            <div className="glass-strong border-2 border-secondary/30 rounded-3xl p-8 md:p-12">
+              <h3 className="text-xl md:text-2xl font-bold text-center mb-8 flex items-center justify-center gap-3">
+                <Target className="w-7 h-7 text-secondary" />
+                {t('aiPowered.whyLowerPrices.title') || 'AI Optimization Results'}
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+                {[
+                  { value: '40%', label: t('about.stats.faster') || 'Faster Delivery' },
+                  { value: '30%', label: t('about.stats.cheaper') || 'Cost Savings' },
+                  { value: '99%', label: t('about.stats.accuracy') || 'On-Time Rate' },
+                  { value: '24/7', label: t('about.stats.support') || 'Support' },
+                ].map((stat, index) => (
+                  <div key={index} className="text-center">
+                    <div className="text-3xl md:text-5xl font-black text-secondary mb-2">{stat.value}</div>
+                    <div className="text-sm md:text-base text-muted-foreground">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </AnimatedSection>
+
+          {/* Vision & Mission Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16 max-w-5xl mx-auto">
+            <AnimatedSection animation="slide-right">
+              <Card className="glass-strong border-primary/30 h-full card-hover-lift overflow-hidden">
+                <CardHeader className="pb-4">
+                  <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mb-4">
+                    <Eye className="w-8 h-8 text-primary" />
+                  </div>
                   <CardTitle className="text-2xl text-primary">{t('about.vision.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground">{t('about.vision.content')}</p>
+                  <p className="text-muted-foreground leading-relaxed">{t('about.vision.content')}</p>
                 </CardContent>
               </Card>
+            </AnimatedSection>
 
-              <Card className="glass-strong border-border">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-primary">{t('about.mission.title')}</CardTitle>
+            <AnimatedSection animation="slide-left" delay={0.1}>
+              <Card className="glass-strong border-secondary/30 h-full card-hover-lift overflow-hidden">
+                <CardHeader className="pb-4">
+                  <div className="w-16 h-16 rounded-2xl bg-secondary/20 flex items-center justify-center mb-4">
+                    <Target className="w-8 h-8 text-secondary" />
+                  </div>
+                  <CardTitle className="text-2xl text-secondary">{t('about.mission.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-muted-foreground">{t('about.mission.content')}</p>
+                  <p className="text-muted-foreground leading-relaxed">{t('about.mission.content')}</p>
                 </CardContent>
               </Card>
+            </AnimatedSection>
+          </div>
+
+          {/* Comparison Table - Traditional vs PathXpress AI */}
+          <AnimatedSection animation="fade-in" className="mb-16">
+            <div className="text-center mb-8">
+              <h3 className="text-2xl md:text-3xl font-bold mb-2 flex items-center justify-center gap-3">
+                <BarChart3 className="w-7 h-7 text-secondary" />
+                {t('about.comparison.title') || 'Why Choose PATHXPRESS?'}
+              </h3>
+              <p className="text-muted-foreground">{t('about.comparison.subtitle') || 'Traditional delivery vs AI-powered logistics'}</p>
             </div>
 
-            <div className="mt-12 text-center">
-              <h3 className="text-2xl font-semibold mb-6">{t('about.values.title')}</h3>
-              <div className="flex flex-wrap justify-center gap-4">
-                {[
-                  { icon: TrendingUp, label: t('about.values.innovation') },
-                  { icon: MessageCircle, label: t('about.values.empathy') },
-                  { icon: Clock, label: t('about.values.efficiency') },
-                  { icon: Leaf, label: t('about.values.sustainability') },
-                ].map((value, index) => {
-                  const Icon = value.icon;
-                  return (
-                    <div
-                      key={index}
-                      className="glass-strong px-6 py-3 rounded-full flex items-center gap-2"
-                    >
-                      <Icon className="w-5 h-5 text-primary" />
-                      <span className="font-medium">{value.label}</span>
-                    </div>
-                  );
-                })}
+            <div className="glass-strong rounded-2xl overflow-hidden border border-border max-w-4xl mx-auto">
+              {/* Table Header */}
+              <div className="grid grid-cols-3 bg-background/50 border-b border-border">
+                <div className="p-4 md:p-5 font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+                  {t('about.comparison.feature') || 'Feature'}
+                </div>
+                <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+                  {t('about.comparison.traditional') || 'Traditional'}
+                </div>
+                <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-secondary">
+                  PATHXPRESS
+                </div>
               </div>
+
+              {/* Table Rows */}
+              {[
+                { feature: t('about.comparison.realTimeTracking') || 'Real-time Tracking', traditional: true, ai: true },
+                { feature: t('about.comparison.aiRouteOptimization') || 'AI Route Optimization', traditional: false, ai: true },
+                { feature: t('about.comparison.dynamicPricing') || 'Dynamic Pricing', traditional: false, ai: true },
+                { feature: t('about.comparison.predictiveETA') || 'Predictive ETA', traditional: false, ai: true },
+                { feature: t('about.comparison.sameDayDelivery') || 'Same-Day Delivery', traditional: true, ai: true },
+                { feature: t('about.comparison.codService') || 'COD Service', traditional: true, ai: true },
+                { feature: t('about.comparison.autoReoptimization') || 'Auto Re-Optimization', traditional: false, ai: true },
+                { feature: t('about.comparison.trafficAnalysis') || 'Traffic Analysis', traditional: false, ai: true },
+              ].map((row, index) => (
+                <div key={index} className="grid grid-cols-3 border-b border-border/50 last:border-b-0 hover:bg-white/5 transition-colors">
+                  <div className="p-4 md:p-5 flex items-center gap-3 text-foreground">
+                    {index === 1 && <Brain className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+                    {index === 2 && <DollarSign className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+                    {index === 3 && <Clock className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+                    {index === 6 && <Route className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+                    {index === 7 && <MapPin className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+                    {![1, 2, 3, 6, 7].includes(index) && <Package className="w-5 h-5 text-muted-foreground flex-shrink-0" />}
+                    <span className="text-sm md:text-base">{row.feature}</span>
+                  </div>
+                  <div className="p-4 md:p-5 flex items-center justify-center">
+                    {row.traditional ? (
+                      <CheckCircle2 className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                    )}
+                  </div>
+                  <div className="p-4 md:p-5 flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-secondary" />
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          </AnimatedSection>
+
+          {/* Core Values Pills */}
+          <AnimatedSection animation="slide-up" className="text-center">
+            <h3 className="text-2xl font-semibold mb-8">{t('about.values.title')}</h3>
+            <div className="flex flex-wrap justify-center gap-4">
+              {[
+                { icon: TrendingUp, label: t('about.values.innovation'), color: 'primary' },
+                { icon: MessageCircle, label: t('about.values.empathy'), color: 'secondary' },
+                { icon: Clock, label: t('about.values.efficiency'), color: 'primary' },
+                { icon: Leaf, label: t('about.values.sustainability'), color: 'secondary' },
+              ].map((value, index) => {
+                const Icon = value.icon;
+                const colorClass = value.color === 'secondary' ? 'text-secondary bg-secondary/20 border-secondary/30' : 'text-primary bg-primary/20 border-primary/30';
+                return (
+                  <AnimatedSection key={index} animation="scale-in" delay={index * 0.1}>
+                    <div className={`glass-strong px-6 py-4 rounded-2xl flex items-center gap-3 border card-hover-lift ${value.color === 'secondary' ? 'border-secondary/30' : 'border-primary/30'}`}>
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${value.color === 'secondary' ? 'bg-secondary/20' : 'bg-primary/20'}`}>
+                        <Icon className={`w-5 h-5 ${value.color === 'secondary' ? 'text-secondary' : 'text-primary'}`} />
+                      </div>
+                      <span className="font-semibold">{value.label}</span>
+                    </div>
+                  </AnimatedSection>
+                );
+              })}
+            </div>
+          </AnimatedSection>
         </div>
       </section>
 

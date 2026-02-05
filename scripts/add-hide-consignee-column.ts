@@ -17,7 +17,7 @@ async function main() {
 
     try {
         // Check if column already exists
-        const result = await db.execute(sql`
+        const [rows] = await db.execute(sql`
       SELECT COLUMN_NAME 
       FROM INFORMATION_SCHEMA.COLUMNS 
       WHERE TABLE_SCHEMA = DATABASE() 
@@ -25,7 +25,7 @@ async function main() {
       AND COLUMN_NAME = 'hideConsigneeAddress'
     `);
 
-        if (result.rows && result.rows.length > 0) {
+        if (Array.isArray(rows) && rows.length > 0) {
             console.log('Column hideConsigneeAddress already exists');
         } else {
             // Add the column
