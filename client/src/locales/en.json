@@ -226,6 +226,86 @@
       "description": "Whether you're a business looking for a reliable logistics partner or an individual shipping a precious package, we're here for you.",
       "getStarted": "Get Started",
       "contactUs": "Contact Us"
+    },
+    "simulation": {
+      "badge": "Live Simulation",
+      "title": "Intelligent Route Optimization",
+      "subtitle": "Live comparison: 10 deliveries in Dubai - Traditional route vs our AI that analyzes traffic, distance, and time",
+      "startSimulation": "Start Simulation",
+      "reset": "Reset",
+      "showTraffic": "Show Traffic",
+      "hideTraffic": "Hide Traffic",
+      "traditional": {
+        "title": "Traditional Route",
+        "badge": "Minimum Distance",
+        "waiting": "Waiting...",
+        "running": "En route...",
+        "completed": "Completed"
+      },
+      "ai": {
+        "title": "AI Route",
+        "badge": "Multi-Objective",
+        "waiting": "Waiting...",
+        "running": "Optimizing...",
+        "completed": "Arrived first!"
+      },
+      "metrics": {
+        "km": "Kilometers",
+        "time": "Minutes",
+        "fuel": "Liters",
+        "deliveries": "Deliveries",
+        "progress": "Route Progress"
+      },
+      "features": {
+        "noTraffic": "No traffic analysis",
+        "distanceOnly": "Distance only",
+        "fixedRoute": "Fixed route",
+        "realTimeTraffic": "Real-time traffic",
+        "timeDistance": "Time + Distance",
+        "reOptimization": "Re-optimization"
+      },
+      "results": {
+        "title": "AI Optimization Results",
+        "kmSaved": "Km Saved",
+        "timeSaved": "Min Saved",
+        "fuelSaved": "Liters Saved",
+        "moreEfficient": "More Efficient"
+      }
+    },
+    "howWeAchieve": {
+      "badge": "Our Technology",
+      "title": "How We Achieve These Results",
+      "subtitle": "Real-world technology powering our AI optimization",
+      "realTimeData": {
+        "title": "Real-Time Traffic Data",
+        "description": "Integration with live traffic APIs provides current road conditions, accidents, and closures to avoid delays."
+      },
+      "mlAlgorithms": {
+        "title": "Machine Learning Algorithms",
+        "description": "Our proprietary algorithms analyze historical delivery data to predict optimal routes and delivery windows."
+      },
+      "clusterOptimization": {
+        "title": "Cluster Optimization",
+        "description": "Deliveries are grouped by geographic proximity, reducing backtracking and maximizing efficiency."
+      },
+      "dynamicRerouting": {
+        "title": "Dynamic Re-routing",
+        "description": "Routes are continuously updated as conditions change, ensuring drivers always take the fastest path."
+      }
+    },
+    "comparison": {
+      "badge": "Detailed Comparison",
+      "title": "Key Differences",
+      "subtitle": "Key differences between traditional optimizers and PATHXPRESS AI",
+      "feature": "Feature",
+      "traditional": "Traditional",
+      "trafficAnalysis": "Real-time traffic analysis",
+      "predictiveML": "Predictive Machine Learning",
+      "deliveryWindows": "Delivery time windows",
+      "dynamicReopt": "Dynamic re-optimization",
+      "multiObjective": "Multi-objective optimization",
+      "weatherFactors": "Weather factors",
+      "patternLearning": "Pattern learning"
     }
   },
   "faq": {

@@ -35,7 +35,10 @@ import {
   Route,
   Fuel,
   MapPin,
-  Package
+  Package,
+  Radio,
+  Database,
+  Navigation
 } from 'lucide-react';
 
 export default function About() {
@@ -110,6 +113,39 @@ export default function About() {
     },
   ];
 
+  const howWeAchieveItems = [
+    {
+      icon: Radio,
+      title: t('about.howWeAchieve.realTimeData.title'),
+      description: t('about.howWeAchieve.realTimeData.description'),
+    },
+    {
+      icon: Brain,
+      title: t('about.howWeAchieve.mlAlgorithms.title'),
+      description: t('about.howWeAchieve.mlAlgorithms.description'),
+    },
+    {
+      icon: Database,
+      title: t('about.howWeAchieve.clusterOptimization.title'),
+      description: t('about.howWeAchieve.clusterOptimization.description'),
+    },
+    {
+      icon: Navigation,
+      title: t('about.howWeAchieve.dynamicRerouting.title'),
+      description: t('about.howWeAchieve.dynamicRerouting.description'),
+    },
+  ];
+
+  const comparisonRows = [
+    { icon: TrafficCone, feature: t('about.comparison.trafficAnalysis'), traditional: false, ai: true },
+    { icon: Brain, feature: t('about.comparison.predictiveML'), traditional: false, ai: true },
+    { icon: CalendarClock, feature: t('about.comparison.deliveryWindows'), traditional: false, ai: true },
+    { icon: RefreshCw, feature: t('about.comparison.dynamicReopt'), traditional: false, ai: true },
+    { icon: BarChart3, feature: t('about.comparison.multiObjective'), traditional: false, ai: true },
+    { icon: CloudSun, feature: t('about.comparison.weatherFactors'), traditional: false, ai: true },
+    { icon: TrendingUp, feature: t('about.comparison.patternLearning'), traditional: false, ai: true },
+  ];
+
   return (
     <div className="min-h-screen">
       <SEOHead
@@ -138,7 +174,7 @@ export default function About() {
             </p>
           </AnimatedSection>
 
-          {/* Vision & Mission Cards */}
+          {/* 1. Vision & Mission Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20 max-w-5xl mx-auto">
             <AnimatedSection animation="slide-right">
               <Card className="glass-strong border-primary/30 h-full card-hover-lift">
@@ -173,12 +209,7 @@ export default function About() {
             </AnimatedSection>
           </div>
 
-          {/* Route Simulation - Interactive Demo */}
-          <AnimatedSection animation="fade-in" className="mb-20">
-            <RouteSimulation />
-          </AnimatedSection>
-
-          {/* Our Story Timeline */}
+          {/* 2. Our Story Timeline */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
@@ -213,7 +244,7 @@ export default function About() {
             </div>
           </AnimatedSection>
 
-          {/* Core Values */}
+          {/* 3. Core Values */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.values.title')}</h2>
@@ -242,58 +273,23 @@ export default function About() {
             </div>
           </AnimatedSection>
 
-          {/* What Sets Us Apart */}
-          <AnimatedSection animation="slide-up" className="mb-20">
-            <Card className="glass-strong border-border overflow-hidden">
-              <div className="grid grid-cols-1 lg:grid-cols-2">
-                <div className="hidden lg:flex items-center justify-center p-12 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10">
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl scale-150" />
-                    <div className="relative glass-strong rounded-2xl p-8">
-                      <Globe2 className="w-32 h-32 text-primary mx-auto" />
-                    </div>
-                  </div>
-                </div>
-
-                <CardContent className="p-8 lg:p-12 flex flex-col justify-center">
-                  <h2 className="text-3xl md:text-4xl font-bold mb-6">{t('about.differentiators.title')}</h2>
-                  <p className="text-muted-foreground mb-8">
-                    {t('about.differentiators.description')}
-                  </p>
-
-                  <div className="space-y-6">
-                    {differentiators.map((item, index) => {
-                      const Icon = item.icon;
-                      return (
-                        <div key={index} className="flex items-start gap-4">
-                          <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-                            <Icon className="w-6 h-6 text-primary" />
-                          </div>
-                          <div>
-                            <h4 className="font-semibold text-lg mb-1">{item.title}</h4>
-                            <p className="text-sm text-muted-foreground">{item.description}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </div>
-            </Card>
+          {/* 4. Route Simulation - Interactive Demo */}
+          <AnimatedSection animation="fade-in" className="mb-20">
+            <RouteSimulation />
           </AnimatedSection>
 
-          {/* Comparison Table - From Demo */}
+          {/* 5. Comparison Table */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-10">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
                 <BarChart3 className="w-4 h-4 text-secondary" />
-                <span className="text-sm font-medium text-secondary">Comparación Detallada</span>
+                <span className="text-sm font-medium text-secondary">{t('about.comparison.badge')}</span>
               </div>
               <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Diferencias <span className="text-secondary">Clave</span>
+                {t('about.comparison.title')}
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Diferencias clave entre optimizadores tradicionales y PATHXPRESS IA
+                {t('about.comparison.subtitle')}
               </p>
             </div>
 
@@ -301,10 +297,10 @@ export default function About() {
               {/* Table Header */}
               <div className="grid grid-cols-3 bg-background/50 border-b border-border">
                 <div className="p-4 md:p-5 font-semibold text-sm uppercase tracking-wide text-foreground flex items-center gap-2">
-                  <Package className="w-4 h-4" /> Característica
+                  <Package className="w-4 h-4" /> {t('about.comparison.feature')}
                 </div>
                 <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-muted-foreground">
-                  Tradicional
+                  {t('about.comparison.traditional')}
                 </div>
                 <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-secondary">
                   PATHXPRESS
@@ -312,15 +308,7 @@ export default function About() {
               </div>
 
               {/* Table Rows */}
-              {[
-                { icon: TrafficCone, feature: 'Análisis de tráfico en tiempo real', traditional: false, ai: true },
-                { icon: Brain, feature: 'Machine Learning predictivo', traditional: false, ai: true },
-                { icon: CalendarClock, feature: 'Ventanas de tiempo de entrega', traditional: false, ai: true },
-                { icon: RefreshCw, feature: 'Re-optimización dinámica', traditional: false, ai: true },
-                { icon: BarChart3, feature: 'Optimización multi-objetivo', traditional: false, ai: true },
-                { icon: CloudSun, feature: 'Factores climáticos', traditional: false, ai: true },
-                { icon: TrendingUp, feature: 'Aprendizaje de patrones', traditional: false, ai: true },
-              ].map((row, index) => {
+              {comparisonRows.map((row, index) => {
                 const Icon = row.icon;
                 return (
                   <div key={index} className="grid grid-cols-3 border-b border-border/50 last:border-b-0 hover:bg-white/5 transition-colors">
@@ -344,31 +332,27 @@ export default function About() {
             </div>
           </AnimatedSection>
 
-          {/* AI Technology Features Grid - From Demo */}
+          {/* 6. AI Technology Features Grid */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-10">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
                 <Cpu className="w-4 h-4 text-secondary" />
-                <span className="text-sm font-medium text-secondary">Tecnología de IA Avanzada</span>
+                <span className="text-sm font-medium text-secondary">{t('aiPowered.badge')}</span>
               </div>
               <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                Algoritmos de <span className="text-secondary">Última Generación</span>
+                {t('aiPowered.title')}
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                Algoritmos de última generación para optimizar cada aspecto de tus entregas
+                {t('aiPowered.subtitle')}
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
-                { icon: TrafficCone, title: 'Tráfico en Tiempo Real', description: 'Evita congestionamientos y ajusta rutas dinámicamente.' },
-                { icon: Brain, title: 'Algoritmos Predictivos', description: 'Machine Learning para predecir tiempos óptimos.' },
-                { icon: CalendarClock, title: 'Ventanas de Tiempo', description: 'Respeta horarios preferidos por clientes.' },
-                { icon: RefreshCw, title: 'Re-optimización', description: 'Actualiza rutas ante cambios o imprevistos.' },
-                { icon: BarChart3, title: 'Multi-Objetivo', description: 'Optimiza distancia, tiempo y combustible.' },
-                { icon: GitBranch, title: 'Clustering', description: 'Agrupa entregas cercanas inteligentemente.' },
-                { icon: CloudSun, title: 'Clima', description: 'Considera condiciones meteorológicas.' },
-                { icon: TrendingUp, title: 'Análisis Histórico', description: 'Aprende de cada ruta completada.' },
+                { icon: TrafficCone, title: t('aiPowered.smartRoutes.title'), description: t('aiPowered.smartRoutes.description') },
+                { icon: Brain, title: t('aiPowered.demandPrediction.title'), description: t('aiPowered.demandPrediction.description') },
+                { icon: Cpu, title: t('aiPowered.automation.title'), description: t('aiPowered.automation.description') },
+                { icon: BarChart3, title: t('aiPowered.pricing.title'), description: t('aiPowered.pricing.description') },
               ].map((feature, index) => {
                 const Icon = feature.icon;
                 return (
@@ -388,7 +372,44 @@ export default function About() {
             </div>
           </AnimatedSection>
 
-          {/* Company Culture */}
+          {/* 7. How We Achieve This - NEW Section */}
+          <AnimatedSection animation="fade-in" className="mb-20">
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
+                <Cpu className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{t('about.howWeAchieve.badge')}</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                {t('about.howWeAchieve.title')}
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                {t('about.howWeAchieve.subtitle')}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+              {howWeAchieveItems.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <AnimatedSection key={index} animation="slide-up" delay={index * 0.1}>
+                    <Card className="glass-strong border-primary/20 h-full card-hover-lift">
+                      <CardContent className="p-6 flex items-start gap-4">
+                        <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-7 h-7 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
+                          <p className="text-sm text-muted-foreground">{item.description}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </AnimatedSection>
+                );
+              })}
+            </div>
+          </AnimatedSection>
+
+          {/* 8. Company Culture */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="max-w-3xl mx-auto text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
@@ -405,7 +426,7 @@ export default function About() {
             </div>
           </AnimatedSection>
 
-          {/* CTA Section */}
+          {/* 9. CTA Section */}
           <AnimatedSection animation="scale-in">
             <div className="text-center py-16 px-6 rounded-2xl glass-strong max-w-4xl mx-auto">
               <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.cta.title')}</h2>

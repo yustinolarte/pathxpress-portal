@@ -221,6 +221,86 @@
       "description": "Ya sea que sea una empresa que busca un socio logístico confiable o un individuo que envía un paquete preciado, estamos aquí para usted.",
       "getStarted": "Comenzar",
       "contactUs": "Contáctenos"
+    },
+    "simulation": {
+      "badge": "Simulación en Vivo",
+      "title": "Optimización de Rutas Inteligente",
+      "subtitle": "Comparación en vivo: 10 entregas en Dubái - Ruta tradicional vs nuestra IA que analiza tráfico, distancia y tiempo",
+      "startSimulation": "Iniciar Simulación",
+      "reset": "Reiniciar",
+      "showTraffic": "Mostrar Tráfico",
+      "hideTraffic": "Ocultar Tráfico",
+      "traditional": {
+        "title": "Ruta Tradicional",
+        "badge": "Distancia Mínima",
+        "waiting": "Esperando...",
+        "running": "En ruta...",
+        "completed": "Completado"
+      },
+      "ai": {
+        "title": "Ruta IA",
+        "badge": "Multi-Objetivo",
+        "waiting": "Esperando...",
+        "running": "Optimizando...",
+        "completed": "¡Llegó primero!"
+      },
+      "metrics": {
+        "km": "Kilómetros",
+        "time": "Minutos",
+        "fuel": "Litros",
+        "deliveries": "Entregas",
+        "progress": "Progreso de Ruta"
+      },
+      "features": {
+        "noTraffic": "Sin análisis de tráfico",
+        "distanceOnly": "Solo distancia",
+        "fixedRoute": "Ruta fija",
+        "realTimeTraffic": "Tráfico en tiempo real",
+        "timeDistance": "Tiempo + Distancia",
+        "reOptimization": "Re-optimización"
+      },
+      "results": {
+        "title": "Resultados de Optimización IA",
+        "kmSaved": "Km Ahorrados",
+        "timeSaved": "Min Ahorrados",
+        "fuelSaved": "Litros Ahorrados",
+        "moreEfficient": "Más Eficiente"
+      }
+    },
+    "howWeAchieve": {
+      "badge": "Nuestra Tecnología",
+      "title": "Cómo Logramos Estos Resultados",
+      "subtitle": "Tecnología real que impulsa nuestra optimización con IA",
+      "realTimeData": {
+        "title": "Datos de Tráfico en Tiempo Real",
+        "description": "Integración con APIs de tráfico en vivo proporciona condiciones actuales de carreteras, accidentes y cierres para evitar retrasos."
+      },
+      "mlAlgorithms": {
+        "title": "Algoritmos de Machine Learning",
+        "description": "Nuestros algoritmos propietarios analizan datos históricos de entrega para predecir rutas óptimas y ventanas de entrega."
+      },
+      "clusterOptimization": {
+        "title": "Optimización por Clusters",
+        "description": "Las entregas se agrupan por proximidad geográfica, reduciendo retrocesos y maximizando la eficiencia."
+      },
+      "dynamicRerouting": {
+        "title": "Re-ruteo Dinámico",
+        "description": "Las rutas se actualizan continuamente según cambian las condiciones, asegurando que los conductores siempre tomen el camino más rápido."
+      }
+    },
+    "comparison": {
+      "badge": "Comparación Detallada",
+      "title": "Diferencias Clave",
+      "subtitle": "Diferencias clave entre optimizadores tradicionales y PATHXPRESS IA",
+      "feature": "Característica",
+      "traditional": "Tradicional",
+      "trafficAnalysis": "Análisis de tráfico en tiempo real",
+      "predictiveML": "Machine Learning predictivo",
+      "deliveryWindows": "Ventanas de tiempo de entrega",
+      "dynamicReopt": "Re-optimización dinámica",
+      "multiObjective": "Optimización multi-objetivo",
+      "weatherFactors": "Factores climáticos",
+      "patternLearning": "Aprendizaje de patrones"
     }
   },
   "faq": {
