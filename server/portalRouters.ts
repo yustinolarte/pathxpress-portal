@@ -931,6 +931,13 @@ export const adminPortalRouter = router({
         codAmount: z.string().optional(),
         codCurrency: z.string().default('AED'),
         fitOnDelivery: z.number().default(0),
+        // Shipper override fields (for walk-in customers)
+        shipperOverride: z.boolean().optional(),
+        shipperName: z.string().optional(),
+        shipperAddress: z.string().optional(),
+        shipperCity: z.string().optional(),
+        shipperCountry: z.string().optional(),
+        shipperPhone: z.string().optional(),
       }),
     }))
     .mutation(async ({ input }) => {
@@ -958,18 +965,35 @@ export const adminPortalRouter = router({
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber();
 
-      // Create order with client's shipper info
+      // Determine shipper info - use override if provided, else use client account
+      const shipperName = input.shipment.shipperOverride && input.shipment.shipperName
+        ? input.shipment.shipperName
+        : clientAccount.companyName;
+      const shipperAddress = input.shipment.shipperOverride && input.shipment.shipperAddress
+        ? input.shipment.shipperAddress
+        : clientAccount.billingAddress;
+      const shipperCity = input.shipment.shipperOverride && input.shipment.shipperCity
+        ? input.shipment.shipperCity
+        : clientAccount.city;
+      const shipperCountry = input.shipment.shipperOverride && input.shipment.shipperCountry
+        ? input.shipment.shipperCountry
+        : clientAccount.country;
+      const shipperPhone = input.shipment.shipperOverride && input.shipment.shipperPhone
+        ? input.shipment.shipperPhone
+        : clientAccount.phone;
+
+      // Create order with shipper info (override or client)
       const order = await createOrder({
         clientId: input.clientId,
         waybillNumber,
         orderNumber: input.shipment.orderNumber || null,
 
-        // Shipper info from client account
-        shipperName: clientAccount.companyName,
-        shipperAddress: clientAccount.billingAddress,
-        shipperCity: clientAccount.city,
-        shipperCountry: clientAccount.country,
-        shipperPhone: clientAccount.phone,
+        // Shipper info (override or from client account)
+        shipperName,
+        shipperAddress,
+        shipperCity,
+        shipperCountry,
+        shipperPhone,
 
         // Consignee info from input
         customerName: input.shipment.customerName,

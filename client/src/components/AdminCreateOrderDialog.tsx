@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2 } from 'lucide-react';
+import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2, Edit3 } from 'lucide-react';
 
 interface Client {
     id: number;
@@ -39,6 +39,7 @@ export default function AdminCreateOrderDialog({
 }: AdminCreateOrderDialogProps) {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+    const [overrideShipper, setOverrideShipper] = useState(false);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -58,6 +59,15 @@ export default function AdminCreateOrderDialog({
         fitOnDelivery: false,
     });
 
+    // Shipper override state
+    const [shipperData, setShipperData] = useState({
+        shipperName: '',
+        shipperAddress: '',
+        shipperCity: '',
+        shipperCountry: 'UAE',
+        shipperPhone: '',
+    });
+
     // Update selected client when clientId changes
     useEffect(() => {
         if (selectedClientId && clients) {
@@ -73,6 +83,7 @@ export default function AdminCreateOrderDialog({
         if (!open) {
             setSelectedClientId('');
             setSelectedClient(null);
+            setOverrideShipper(false);
             setFormData({
                 orderNumber: '',
                 customerName: '',
@@ -88,6 +99,13 @@ export default function AdminCreateOrderDialog({
                 codRequired: false,
                 codAmount: '',
                 fitOnDelivery: false,
+            });
+            setShipperData({
+                shipperName: '',
+                shipperAddress: '',
+                shipperCity: '',
+                shipperCountry: 'UAE',
+                shipperPhone: '',
             });
         }
     }, [open]);
@@ -108,7 +126,11 @@ export default function AdminCreateOrderDialog({
             return;
         }
         if (!formData.customerName || !formData.customerPhone || !formData.address || !formData.city) {
-            toast.error('Please fill in all required fields');
+            toast.error('Please fill in all required consignee fields');
+            return;
+        }
+        if (overrideShipper && (!shipperData.shipperName || !shipperData.shipperAddress || !shipperData.shipperCity || !shipperData.shipperPhone)) {
+            toast.error('Please fill in all shipper fields when using custom shipper');
             return;
         }
         if (formData.weight <= 0) {
@@ -139,6 +161,13 @@ export default function AdminCreateOrderDialog({
                 codAmount: formData.codRequired ? formData.codAmount : undefined,
                 codCurrency: 'AED',
                 fitOnDelivery: formData.fitOnDelivery ? 1 : 0,
+                // Shipper override fields
+                shipperOverride: overrideShipper,
+                shipperName: overrideShipper ? shipperData.shipperName : undefined,
+                shipperAddress: overrideShipper ? shipperData.shipperAddress : undefined,
+                shipperCity: overrideShipper ? shipperData.shipperCity : undefined,
+                shipperCountry: overrideShipper ? shipperData.shipperCountry : undefined,
+                shipperPhone: overrideShipper ? shipperData.shipperPhone : undefined,
             },
         });
     };
@@ -185,35 +214,106 @@ export default function AdminCreateOrderDialog({
                             <>
                                 {/* Two Column Layout: Shipper + Consignee */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Shipper Section (Read-only) */}
-                                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-5">
-                                        <h4 className="font-semibold mb-4 flex items-center gap-2 text-blue-400">
-                                            <Building2 className="h-5 w-5" />
-                                            Shipper (From Client)
-                                        </h4>
+                                    {/* Shipper Section */}
+                                    <div className={`rounded-xl p-5 ${overrideShipper ? 'bg-orange-500/5 border border-orange-500/20' : 'bg-blue-500/5 border border-blue-500/20'}`}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h4 className={`font-semibold flex items-center gap-2 ${overrideShipper ? 'text-orange-400' : 'text-blue-400'}`}>
+                                                <Building2 className="h-5 w-5" />
+                                                {overrideShipper ? 'Custom Shipper' : 'Shipper (From Client)'}
+                                            </h4>
+                                            <div className="flex items-center gap-2">
+                                                <Checkbox
+                                                    id="overrideShipper"
+                                                    checked={overrideShipper}
+                                                    onCheckedChange={(checked) => setOverrideShipper(!!checked)}
+                                                />
+                                                <label htmlFor="overrideShipper" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
+                                                    <Edit3 className="h-3 w-3" />
+                                                    Custom Address
+                                                </label>
+                                            </div>
+                                        </div>
                                         <div className="space-y-3">
-                                            <div>
-                                                <Label className="text-xs text-muted-foreground">Company Name</Label>
-                                                <Input value={selectedClient.companyName} disabled className="bg-muted/50 mt-1" />
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs text-muted-foreground">Address</Label>
-                                                <Input value={selectedClient.billingAddress || '-'} disabled className="bg-muted/50 mt-1" />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <Label className="text-xs text-muted-foreground">City</Label>
-                                                    <Input value={selectedClient.city || '-'} disabled className="bg-muted/50 mt-1" />
-                                                </div>
-                                                <div>
-                                                    <Label className="text-xs text-muted-foreground">Country</Label>
-                                                    <Input value={selectedClient.country || 'UAE'} disabled className="bg-muted/50 mt-1" />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs text-muted-foreground">Phone</Label>
-                                                <Input value={selectedClient.phone || '-'} disabled className="bg-muted/50 mt-1" />
-                                            </div>
+                                            {overrideShipper ? (
+                                                <>
+                                                    {/* Editable shipper fields */}
+                                                    <div>
+                                                        <Label className="text-xs">Shipper Name *</Label>
+                                                        <Input
+                                                            value={shipperData.shipperName}
+                                                            onChange={(e) => setShipperData({ ...shipperData, shipperName: e.target.value })}
+                                                            placeholder="Customer name or company"
+                                                            className="mt-1"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-xs">Pickup Address *</Label>
+                                                        <Input
+                                                            value={shipperData.shipperAddress}
+                                                            onChange={(e) => setShipperData({ ...shipperData, shipperAddress: e.target.value })}
+                                                            placeholder="Full pickup address"
+                                                            className="mt-1"
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <Label className="text-xs">City *</Label>
+                                                            <Input
+                                                                value={shipperData.shipperCity}
+                                                                onChange={(e) => setShipperData({ ...shipperData, shipperCity: e.target.value })}
+                                                                placeholder="Dubai"
+                                                                className="mt-1"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <Label className="text-xs">Country</Label>
+                                                            <Input
+                                                                value={shipperData.shipperCountry}
+                                                                onChange={(e) => setShipperData({ ...shipperData, shipperCountry: e.target.value })}
+                                                                placeholder="UAE"
+                                                                className="mt-1"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-xs flex items-center gap-1">
+                                                            <Phone className="h-3 w-3" /> Phone *
+                                                        </Label>
+                                                        <Input
+                                                            value={shipperData.shipperPhone}
+                                                            onChange={(e) => setShipperData({ ...shipperData, shipperPhone: e.target.value })}
+                                                            placeholder="+971..."
+                                                            className="mt-1"
+                                                        />
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {/* Read-only client fields */}
+                                                    <div>
+                                                        <Label className="text-xs text-muted-foreground">Company Name</Label>
+                                                        <Input value={selectedClient.companyName} disabled className="bg-muted/50 mt-1" />
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-xs text-muted-foreground">Address</Label>
+                                                        <Input value={selectedClient.billingAddress || '-'} disabled className="bg-muted/50 mt-1" />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <Label className="text-xs text-muted-foreground">City</Label>
+                                                            <Input value={selectedClient.city || '-'} disabled className="bg-muted/50 mt-1" />
+                                                        </div>
+                                                        <div>
+                                                            <Label className="text-xs text-muted-foreground">Country</Label>
+                                                            <Input value={selectedClient.country || 'UAE'} disabled className="bg-muted/50 mt-1" />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-xs text-muted-foreground">Phone</Label>
+                                                        <Input value={selectedClient.phone || '-'} disabled className="bg-muted/50 mt-1" />
+                                                    </div>
+                                                </>
+                                            )}
                                             <div className="flex gap-3 mt-3">
                                                 <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${selectedClient.codAllowed ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
                                                     COD: {selectedClient.codAllowed ? 'Allowed' : 'Not Allowed'}
