@@ -20,6 +20,7 @@ import AdminReports from '@/components/AdminReports';
 import AdminAnalytics from '@/components/AdminAnalytics';
 import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import DriversSection from '@/components/DriversSection';
+import AdminCreateOrderDialog from '@/components/AdminCreateOrderDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -62,6 +63,7 @@ export default function AdminDashboard() {
 
   // Create client dialog state
   const [createClientDialogOpen, setCreateClientDialogOpen] = useState(false);
+  const [createOrderDialogOpen, setCreateOrderDialogOpen] = useState(false);
   const [newClient, setNewClient] = useState({
     companyName: '',
     contactName: '',
@@ -619,47 +621,53 @@ export default function AdminDashboard() {
                 <CardTitle>All Orders</CardTitle>
                 <div className="flex justify-between items-center">
                   <CardDescription>View and manage all shipments</CardDescription>
-                  <Button variant="outline" size="sm" onClick={() => {
-                    if (!orders || orders.length === 0) {
-                      toast.error("No orders to export");
-                      return;
-                    }
+                  <div className="flex gap-2">
+                    <Button onClick={() => setCreateOrderDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Order
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => {
+                      if (!orders || orders.length === 0) {
+                        toast.error("No orders to export");
+                        return;
+                      }
 
-                    // CSV Header
-                    let csvContent = "data:text/csv;charset=utf-8,";
-                    csvContent += "Waybill,Client,Consignee,Phone,City,Service,Weight(kg),Pieces,COD Amount,Status,Created At\n";
+                      // CSV Header
+                      let csvContent = "data:text/csv;charset=utf-8,";
+                      csvContent += "Waybill,Client,Consignee,Phone,City,Service,Weight(kg),Pieces,COD Amount,Status,Created At\n";
 
-                    // Rows
-                    orders.forEach(order => {
-                      const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
-                      const row = [
-                        order.waybillNumber,
-                        `"${clientName.replace(/"/g, '""')}"`, // Handle commas in name
-                        `"${order.customerName.replace(/"/g, '""')}"`,
-                        order.customerPhone,
-                        order.city,
-                        order.serviceType,
-                        order.weight,
-                        order.pieces,
-                        order.codRequired ? order.codAmount : "0",
-                        order.status,
-                        new Date(order.createdAt).toLocaleDateString()
-                      ].join(",");
-                      csvContent += row + "\n";
-                    });
+                      // Rows
+                      orders.forEach(order => {
+                        const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
+                        const row = [
+                          order.waybillNumber,
+                          `"${clientName.replace(/"/g, '""')}"`, // Handle commas in name
+                          `"${order.customerName.replace(/"/g, '""')}"`,
+                          order.customerPhone,
+                          order.city,
+                          order.serviceType,
+                          order.weight,
+                          order.pieces,
+                          order.codRequired ? order.codAmount : "0",
+                          order.status,
+                          new Date(order.createdAt).toLocaleDateString()
+                        ].join(",");
+                        csvContent += row + "\n";
+                      });
 
-                    // Download
-                    const encodedUri = encodeURI(csvContent);
-                    const link = document.createElement("a");
-                    link.setAttribute("href", encodedUri);
-                    link.setAttribute("download", `orders_export_${new Date().toISOString().slice(0, 10)}.csv`);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Export to Excel
-                  </Button>
+                      // Download
+                      const encodedUri = encodeURI(csvContent);
+                      const link = document.createElement("a");
+                      link.setAttribute("href", encodedUri);
+                      link.setAttribute("download", `orders_export_${new Date().toISOString().slice(0, 10)}.csv`);
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export to Excel
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1523,6 +1531,18 @@ export default function AdminDashboard() {
             clients={clients}
           />
         )}
+
+        {/* Admin Create Order Dialog */}
+        <AdminCreateOrderDialog
+          open={createOrderDialogOpen}
+          onOpenChange={setCreateOrderDialogOpen}
+          clients={clients}
+          token={token || ''}
+          onSuccess={() => {
+            setCreateOrderDialogOpen(false);
+            refetchOrders();
+          }}
+        />
 
 
       </div>

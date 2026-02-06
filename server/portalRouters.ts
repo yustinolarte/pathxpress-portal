@@ -908,6 +908,129 @@ export const adminPortalRouter = router({
 
       return { success: true };
     }),
+
+  // Admin creates order on behalf of a client
+  adminCreateOrder: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+      shipment: z.object({
+        orderNumber: z.string().optional(),
+        customerName: z.string().min(1),
+        customerPhone: z.string().min(1),
+        address: z.string().min(1),
+        city: z.string().min(1),
+        emirate: z.string().optional(),
+        postalCode: z.string().optional(),
+        destinationCountry: z.string().min(1).default('UAE'),
+        pieces: z.number().min(1).default(1),
+        weight: z.number().min(0.1),
+        serviceType: z.string().min(1).default('DOM'),
+        specialInstructions: z.string().optional(),
+        codRequired: z.number().default(0),
+        codAmount: z.string().optional(),
+        codCurrency: z.string().default('AED'),
+        fitOnDelivery: z.number().default(0),
+      }),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      // Get client account for shipper info
+      const clientAccount = await getClientAccountById(input.clientId);
+      if (!clientAccount) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
+      }
+
+      // Check if client allows FOD
+      if (input.shipment.fitOnDelivery === 1 && clientAccount.fodAllowed !== 1) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'FOD not allowed for this client' });
+      }
+
+      // Check if client allows COD
+      if (input.shipment.codRequired === 1 && clientAccount.codAllowed !== 1) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'COD not allowed for this client' });
+      }
+
+      // Generate waybill number
+      const waybillNumber = await generateWaybillNumber();
+
+      // Create order with client's shipper info
+      const order = await createOrder({
+        clientId: input.clientId,
+        waybillNumber,
+        orderNumber: input.shipment.orderNumber || null,
+
+        // Shipper info from client account
+        shipperName: clientAccount.companyName,
+        shipperAddress: clientAccount.billingAddress,
+        shipperCity: clientAccount.city,
+        shipperCountry: clientAccount.country,
+        shipperPhone: clientAccount.phone,
+
+        // Consignee info from input
+        customerName: input.shipment.customerName,
+        customerPhone: input.shipment.customerPhone,
+        address: input.shipment.address,
+        city: input.shipment.city,
+        emirate: input.shipment.emirate || null,
+        postalCode: input.shipment.postalCode || null,
+        destinationCountry: input.shipment.destinationCountry,
+
+        // Shipment details
+        pieces: input.shipment.pieces,
+        weight: input.shipment.weight.toString(),
+        serviceType: input.shipment.serviceType,
+        specialInstructions: input.shipment.specialInstructions || null,
+
+        // COD
+        codRequired: input.shipment.codRequired,
+        codAmount: input.shipment.codAmount || null,
+        codCurrency: input.shipment.codCurrency || 'AED',
+
+        // FOD
+        fitOnDelivery: input.shipment.fitOnDelivery,
+
+        status: 'pending_pickup',
+        lastStatusUpdate: new Date(),
+      });
+
+      if (!order) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
+      }
+
+      // Create initial tracking event
+      await createTrackingEvent({
+        shipmentId: order.id,
+        eventDatetime: new Date(),
+        statusCode: 'pending_pickup',
+        statusLabel: 'PENDING PICKUP',
+        description: 'Order created by admin',
+        createdBy: 'admin',
+      });
+
+      // Create COD record if COD is required
+      if (input.shipment.codRequired === 1 && input.shipment.codAmount) {
+        const db = await import('./db').then(m => m.getDb());
+        if (db) {
+          const { codRecords } = await import('../drizzle/schema');
+          await db.insert(codRecords).values({
+            shipmentId: order.id,
+            codAmount: input.shipment.codAmount,
+            codCurrency: input.shipment.codCurrency || 'AED',
+            status: 'pending_collection',
+            collectedDate: null,
+            remittedToClientDate: null,
+            notes: null,
+          });
+        }
+      }
+
+      return order;
+    }),
 });
 
 /**
