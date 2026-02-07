@@ -435,6 +435,54 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
             .set({ status: statusLower as typeof route.status })
             .where(eq(driverRoutes.id, routeId));
 
+        // When route changes to in_progress, mark delivery-only orders as out_for_delivery
+        if (statusLower === 'in_progress') {
+            // Get all stops for this route
+            const allStops = await db
+                .select()
+                .from(routeOrders)
+                .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+                .where(eq(routeOrders.routeId, routeId));
+
+            // Group by orderId to find which orders only have delivery (no pickup)
+            const orderStops = new Map<number, { hasPickup: boolean; hasDelivery: boolean }>();
+            allStops.forEach(stop => {
+                const orderId = stop.orders.id;
+                if (!orderStops.has(orderId)) {
+                    orderStops.set(orderId, { hasPickup: false, hasDelivery: false });
+                }
+                const entry = orderStops.get(orderId)!;
+                if (stop.routeOrders.type === 'pickup') entry.hasPickup = true;
+                if (stop.routeOrders.type === 'delivery') entry.hasDelivery = true;
+            });
+
+            // Mark delivery-only orders as out_for_delivery
+            const entries = Array.from(orderStops.entries());
+            for (const [orderId, stops] of entries) {
+                if (!stops.hasPickup && stops.hasDelivery) {
+                    // This order only has delivery stop - mark as out_for_delivery
+                    await db
+                        .update(orders)
+                        .set({
+                            status: 'out_for_delivery',
+                            lastStatusUpdate: new Date()
+                        })
+                        .where(eq(orders.id, orderId));
+
+                    // Create tracking event
+                    await db.insert(trackingEvents).values({
+                        shipmentId: orderId,
+                        eventDatetime: new Date(),
+                        location: 'Driver Route',
+                        statusCode: 'out_for_delivery',
+                        statusLabel: 'Out for Delivery',
+                        description: 'Package is out for delivery',
+                        createdBy: 'driver',
+                    });
+                }
+            }
+        }
+
         res.json({ message: 'Route status updated' });
     } catch (error) {
         console.error('Update route status error:', error);
@@ -518,6 +566,23 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             if (statusLower === 'picked_up') {
                 orderStatus = 'picked_up';
                 statusLabel = 'Picked Up';
+
+                // Check if there's a delivery stop for this order - if so, mark order as out_for_delivery
+                const [deliveryStop] = await db
+                    .select()
+                    .from(routeOrders)
+                    .where(and(
+                        eq(routeOrders.routeId, routeOrder.routeOrder.routeId),
+                        eq(routeOrders.orderId, routeOrder.order.id),
+                        eq(routeOrders.type, 'delivery')
+                    ))
+                    .limit(1);
+
+                if (deliveryStop) {
+                    // Has delivery stop - mark as out_for_delivery
+                    orderStatus = 'out_for_delivery';
+                    statusLabel = 'Out for Delivery';
+                }
             }
         } else {
             // DELIVERY stop
@@ -530,6 +595,12 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             } else if (statusLower === 'returned') {
                 orderStatus = 'returned';
                 statusLabel = 'Returned';
+            } else if (statusLower === 'failed') {
+                orderStatus = 'failed_delivery';
+                statusLabel = 'Failed Delivery';
+            } else if (statusLower === 'on_hold') {
+                orderStatus = 'on_hold';
+                statusLabel = 'On Hold';
             }
         }
 

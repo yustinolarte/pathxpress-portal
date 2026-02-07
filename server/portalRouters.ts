@@ -1189,6 +1189,27 @@ export const customerPortalRouter = router({
         }
       }
 
+      // 🤖 LOGISTICS BOT INTEGRATION
+      try {
+        const BOT_URL = process.env.BOT_API_URL || 'http://localhost:3000';
+
+        // Dynamic import of axios to avoid breaking if dependency is missing
+        const axios = (await import('axios')).default;
+
+        console.log(`🤖 Notifying Bot about order ${waybillNumber}...`);
+
+        await axios.post(`${BOT_URL}/new-order`, {
+          customer_name: input.shipment.customerName,
+          phone_number: input.shipment.customerPhone, // Assuming customer phone is the contact
+          order_id: waybillNumber // Usamos el Waybill como ID visible
+        }, { timeout: 5000 }); // Short timeout to avoid hanging portal if bot is down
+
+        console.log('✅ Bot notified successfully.');
+      } catch (error: any) {
+        // Do not block order creation if bot fails
+        console.warn('⚠️ Failed to notify Bot:', error.message);
+      }
+
       return order;
     }),
 

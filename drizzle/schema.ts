@@ -525,7 +525,7 @@ export const routeOrders = mysqlTable("routeOrders", {
   orderId: int("orderId").notNull(),
   sequence: int("sequence"), // Optimized stop order
   type: mysqlEnum("type", ["pickup", "delivery"]).default("delivery").notNull(), // Type of stop
-  status: mysqlEnum("status", ["pending", "in_progress", "picked_up", "delivered", "attempted", "returned"]).default("pending").notNull(),
+  status: mysqlEnum("status", ["pending", "in_progress", "picked_up", "delivered", "attempted", "returned", "failed", "on_hold"]).default("pending").notNull(),
   proofPhotoUrl: text("proofPhotoUrl"),
   notes: text("notes"),
   attemptedAt: timestamp("attemptedAt"),
