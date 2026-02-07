@@ -222,9 +222,12 @@ export async function createDriverRoute(data: {
     zone?: string;
     vehicleInfo?: string;
     orderIds?: number[];
+    stopMode?: 'pickup_only' | 'delivery_only' | 'both';
 }) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
+
+    const stopMode = data.stopMode || 'both';
 
     await db.insert(driverRoutes).values({
         id: data.id,
@@ -237,24 +240,37 @@ export async function createDriverRoute(data: {
 
     // Add orders to route if provided
     if (data.orderIds && data.orderIds.length > 0) {
-        for (let i = 0; i < data.orderIds.length; i++) {
-            // Get the order to check its status
-            const [order] = await db.select().from(orders).where(eq(orders.id, data.orderIds[i])).limit(1);
+        let sequence = 1;
 
-            // Determine type based on order status - handle multiple formats
-            const orderStatus = order?.status?.toLowerCase().replace(/[\s_-]/g, '') || '';
-            const isPickup = orderStatus === 'pendingpickup' || orderStatus === 'pickup';
-            const orderType = isPickup ? 'pickup' : 'delivery';
+        for (const orderId of data.orderIds) {
+            // Get the order
+            const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
 
-            console.log(`Order ${data.orderIds[i]}: status="${order?.status}" -> type="${orderType}"`);
+            if (stopMode === 'pickup_only' || stopMode === 'both') {
+                // Create PICKUP stop
+                await db.insert(routeOrders).values({
+                    routeId: data.id,
+                    orderId: orderId,
+                    sequence: sequence,
+                    type: 'pickup',
+                    status: 'pending',
+                });
+                sequence++;
+            }
 
-            await db.insert(routeOrders).values({
-                routeId: data.id,
-                orderId: data.orderIds[i],
-                sequence: i + 1,
-                type: orderType,
-                status: 'pending',
-            });
+            if (stopMode === 'delivery_only' || stopMode === 'both') {
+                // Create DELIVERY stop
+                await db.insert(routeOrders).values({
+                    routeId: data.id,
+                    orderId: orderId,
+                    sequence: sequence,
+                    type: 'delivery',
+                    status: 'pending',
+                });
+                sequence++;
+            }
+
+            console.log(`Order ${orderId}: stopMode="${stopMode}" -> created ${stopMode === 'both' ? 'pickup + delivery' : stopMode} stops`);
         }
     }
 
@@ -290,43 +306,57 @@ export async function assignDriverToRoute(routeId: string, driverId: number | nu
     return { success: true };
 }
 
-export async function addOrdersToRoute(routeId: string, orderIds: number[]) {
+export async function addOrdersToRoute(routeId: string, orderIds: number[], stopMode: 'pickup_only' | 'delivery_only' | 'both' = 'both') {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
     // Get current max sequence
     const existing = await db.select().from(routeOrders).where(eq(routeOrders.routeId, routeId));
     let maxSeq = existing.length;
+    let addedCount = 0;
 
     for (const orderId of orderIds) {
-        // Check if already in route
-        const [exists] = await db
+        // Check if already in route (check if this order already has any stops in this route)
+        const [existingStop] = await db
             .select()
             .from(routeOrders)
             .where(and(eq(routeOrders.routeId, routeId), eq(routeOrders.orderId, orderId)))
             .limit(1);
 
-        if (!exists) {
-            // Get the order to check its status
+        if (!existingStop) {
+            // Get the order
             const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
 
-            // Determine type based on order status - handle multiple formats
-            const orderStatus = order?.status?.toLowerCase().replace(/[\s_-]/g, '') || '';
-            const isPickup = orderStatus === 'pendingpickup' || orderStatus === 'pickup';
-            const orderType = isPickup ? 'pickup' : 'delivery';
+            if (stopMode === 'pickup_only' || stopMode === 'both') {
+                // Create PICKUP stop
+                maxSeq++;
+                await db.insert(routeOrders).values({
+                    routeId,
+                    orderId,
+                    sequence: maxSeq,
+                    type: 'pickup',
+                    status: 'pending',
+                });
+            }
 
-            maxSeq++;
-            await db.insert(routeOrders).values({
-                routeId,
-                orderId,
-                sequence: maxSeq,
-                type: orderType,
-                status: 'pending',
-            });
+            if (stopMode === 'delivery_only' || stopMode === 'both') {
+                // Create DELIVERY stop
+                maxSeq++;
+                await db.insert(routeOrders).values({
+                    routeId,
+                    orderId,
+                    sequence: maxSeq,
+                    type: 'delivery',
+                    status: 'pending',
+                });
+            }
+
+            addedCount++;
+            console.log(`Order ${orderId}: stopMode="${stopMode}" -> created ${stopMode === 'both' ? 'pickup + delivery' : stopMode} stops`);
         }
     }
 
-    return { success: true, added: orderIds.length };
+    return { success: true, added: addedCount, stopsCreated: stopMode === 'both' ? addedCount * 2 : addedCount };
 }
 
 // ============ DELIVERIES ============

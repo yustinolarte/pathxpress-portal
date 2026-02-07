@@ -202,16 +202,35 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
             .where(eq(routeOrders.routeId, routeId))
             .orderBy(routeOrders.sequence);
 
+        // First pass: collect pickup status by orderId
+        const pickupStatusByOrderId = new Map<number, string>();
+        routeOrdersList.forEach((item) => {
+            if (item.routeOrder.type === 'pickup') {
+                pickupStatusByOrderId.set(item.order.id, item.routeOrder.status || 'pending');
+            }
+        });
+
         // Format stops for the app - include both pickup and delivery info
         const stops = routeOrdersList.map((item) => {
             const stopType = item.routeOrder.type || 'delivery';
             const isPickup = stopType === 'pickup';
+
+            // Delivery stops are disabled until their corresponding pickup is completed
+            let isDisabled = false;
+            if (!isPickup) {
+                const pickupStatus = pickupStatusByOrderId.get(item.order.id);
+                // Delivery is disabled if there's a pickup for this order that isn't completed
+                if (pickupStatus && pickupStatus !== 'picked_up') {
+                    isDisabled = true;
+                }
+            }
 
             return {
                 id: item.routeOrder.id,
                 orderId: item.order.id,
                 sequence: item.routeOrder.sequence,
                 stopType: stopType, // 'pickup' or 'delivery'
+                isDisabled: isDisabled, // NEW: delivery disabled until pickup done
 
                 // Waybill info
                 waybillNumber: item.order.waybillNumber,

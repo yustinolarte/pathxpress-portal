@@ -110,13 +110,15 @@ export const driverRouter = router({
             zone: z.string().optional(),
             vehicleInfo: z.string().optional(),
             orderIds: z.array(z.number()).optional(),
+            stopMode: z.enum(['pickup_only', 'delivery_only', 'both']).default('both'),
         }))
         .mutation(async ({ input }) => {
             requireAdmin(input.token);
-            const { token, date, ...rest } = input;
+            const { token, date, stopMode, ...rest } = input;
             return driverAdmin.createDriverRoute({
                 ...rest,
                 date: new Date(date),
+                stopMode,
             });
         }),
 
@@ -147,10 +149,11 @@ export const driverRouter = router({
             token: z.string(),
             routeId: z.string(),
             orderIds: z.array(z.number()),
+            stopMode: z.enum(['pickup_only', 'delivery_only', 'both']).default('both'),
         }))
         .mutation(async ({ input }) => {
             requireAdmin(input.token);
-            return driverAdmin.addOrdersToRoute(input.routeId, input.orderIds);
+            return driverAdmin.addOrdersToRoute(input.routeId, input.orderIds, input.stopMode);
         }),
 
     getAvailableOrders: publicProcedure

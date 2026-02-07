@@ -35,6 +35,7 @@ export default function DriversSection() {
     const [selectedDriver, setSelectedDriver] = useState<any>(null);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
     const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
+    const [stopMode, setStopMode] = useState<'pickup_only' | 'delivery_only' | 'both'>('both');
 
     // Forms
     const [newDriver, setNewDriver] = useState({
@@ -230,6 +231,7 @@ export default function DriversSection() {
             token: token || '',
             routeId: selectedRouteId,
             orderIds: selectedOrderIds,
+            stopMode: stopMode,
         });
     };
 
@@ -938,50 +940,88 @@ export default function DriversSection() {
                         <DialogTitle>Add Orders to Route</DialogTitle>
                         <DialogDescription>Select orders to add to route {selectedRouteId}</DialogDescription>
                     </DialogHeader>
-                    <div className="py-4 max-h-[400px] overflow-y-auto">
-                        {availableOrders && availableOrders.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-10"></TableHead>
-                                        <TableHead>Waybill</TableHead>
-                                        <TableHead>Customer</TableHead>
-                                        <TableHead>City</TableHead>
-                                        <TableHead>Type</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {availableOrders.map((order: any) => (
-                                        <TableRow
-                                            key={order.id}
-                                            className="cursor-pointer hover:bg-muted/50"
-                                            onClick={() => toggleOrderSelection(order.id)}
-                                        >
-                                            <TableCell>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedOrderIds.includes(order.id)}
-                                                    onChange={() => toggleOrderSelection(order.id)}
-                                                    className="h-4 w-4 rounded border-gray-300"
-                                                />
-                                            </TableCell>
-                                            <TableCell className="font-mono">{order.waybillNumber}</TableCell>
-                                            <TableCell>{order.customerName}</TableCell>
-                                            <TableCell>{order.city}</TableCell>
-                                            <TableCell>
-                                                {order.codRequired ? (
-                                                    <Badge className="bg-orange-500/20 text-orange-400">COD {order.codAmount}</Badge>
-                                                ) : (
-                                                    <Badge className="bg-green-500/20 text-green-400">Prepaid</Badge>
-                                                )}
-                                            </TableCell>
+                    <div className="py-4 space-y-4">
+                        {/* Stop Mode Selector */}
+                        <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 border">
+                            <Label className="text-sm font-medium whitespace-nowrap">Stop Mode:</Label>
+                            <Select
+                                value={stopMode}
+                                onValueChange={(value: 'pickup_only' | 'delivery_only' | 'both') => setStopMode(value)}
+                            >
+                                <SelectTrigger className="w-[200px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="both">
+                                        <span className="flex items-center gap-2">
+                                            🔄 Pickup + Delivery
+                                        </span>
+                                    </SelectItem>
+                                    <SelectItem value="pickup_only">
+                                        <span className="flex items-center gap-2">
+                                            📦 Pickup Only
+                                        </span>
+                                    </SelectItem>
+                                    <SelectItem value="delivery_only">
+                                        <span className="flex items-center gap-2">
+                                            🚚 Delivery Only
+                                        </span>
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <span className="text-xs text-muted-foreground">
+                                {stopMode === 'both' && '(Creates 2 stops per order)'}
+                                {stopMode === 'pickup_only' && '(Pickup from shipper)'}
+                                {stopMode === 'delivery_only' && '(Deliver to customer)'}
+                            </span>
+                        </div>
+
+                        {/* Orders Table */}
+                        <div className="max-h-[350px] overflow-y-auto">
+                            {availableOrders && availableOrders.length > 0 ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-10"></TableHead>
+                                            <TableHead>Waybill</TableHead>
+                                            <TableHead>Customer</TableHead>
+                                            <TableHead>City</TableHead>
+                                            <TableHead>Type</TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        ) : (
-                            <p className="text-center py-8 text-muted-foreground">No available orders to add</p>
-                        )}
+                                    </TableHeader>
+                                    <TableBody>
+                                        {availableOrders.map((order: any) => (
+                                            <TableRow
+                                                key={order.id}
+                                                className="cursor-pointer hover:bg-muted/50"
+                                                onClick={() => toggleOrderSelection(order.id)}
+                                            >
+                                                <TableCell>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedOrderIds.includes(order.id)}
+                                                        onChange={() => toggleOrderSelection(order.id)}
+                                                        className="h-4 w-4 rounded border-gray-300"
+                                                    />
+                                                </TableCell>
+                                                <TableCell className="font-mono">{order.waybillNumber}</TableCell>
+                                                <TableCell>{order.customerName}</TableCell>
+                                                <TableCell>{order.city}</TableCell>
+                                                <TableCell>
+                                                    {order.codRequired ? (
+                                                        <Badge className="bg-orange-500/20 text-orange-400">COD {order.codAmount}</Badge>
+                                                    ) : (
+                                                        <Badge className="bg-green-500/20 text-green-400">Prepaid</Badge>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            ) : (
+                                <p className="text-center py-8 text-muted-foreground">No available orders to add</p>
+                            )}
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setAddOrdersDialogOpen(false)}>Cancel</Button>
