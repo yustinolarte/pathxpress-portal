@@ -34,6 +34,9 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust the first proxy (Railway/Load Balancer) to fix rate-limiting and IP detection
+  app.set("trust proxy", 1);
+
   // Security middleware
   app.use(
     helmet({
