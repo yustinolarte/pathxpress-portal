@@ -492,6 +492,144 @@ export async function getOrderByWaybill(waybillNumber: string): Promise<Order | 
   }
 }
 
+/**
+ * Update an existing order with validation
+ * - Blocks editing if order is already invoiced
+ * - Handles COD record creation/update/cancellation
+ */
+export interface OrderUpdate {
+  serviceType?: string;
+  weight?: string;
+  pieces?: number;
+  codRequired?: number; // 0 or 1
+  codAmount?: string;
+  codCurrency?: string;
+  customerName?: string;
+  customerPhone?: string;
+  address?: string;
+  city?: string;
+  specialInstructions?: string;
+  fitOnDelivery?: number;
+}
+
+export async function updateOrder(
+  orderId: number,
+  updates: OrderUpdate
+): Promise<{ success: boolean; order?: Order; error?: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+
+  try {
+    const { invoiceItems, codRecords } = await import("../drizzle/schema");
+    const { eq, and } = await import("drizzle-orm");
+
+    // 1. Check if order exists
+    const existingOrder = await getOrderById(orderId);
+    if (!existingOrder) {
+      return { success: false, error: "Order not found" };
+    }
+
+    // 2. Check if order is already invoiced
+    const invoicedItems = await db
+      .select()
+      .from(invoiceItems)
+      .where(eq(invoiceItems.shipmentId, orderId))
+      .limit(1);
+
+    if (invoicedItems.length > 0) {
+      return {
+        success: false,
+        error: "This order is already included in an invoice and cannot be edited. Please contact support if changes are needed."
+      };
+    }
+
+    // 3. Handle COD changes
+    const oldCodRequired = existingOrder.codRequired === 1;
+    const newCodRequired = updates.codRequired !== undefined ? updates.codRequired === 1 : oldCodRequired;
+
+    // Get existing COD record
+    const existingCodRecords = await db
+      .select()
+      .from(codRecords)
+      .where(eq(codRecords.shipmentId, orderId))
+      .limit(1);
+    const existingCodRecord = existingCodRecords[0];
+
+    // Case A: COD was enabled, now disabled -> Cancel COD record
+    if (oldCodRequired && !newCodRequired && existingCodRecord) {
+      // Only cancel if not already remitted
+      if (existingCodRecord.status === 'remitted') {
+        return {
+          success: false,
+          error: "Cannot disable COD: the amount has already been remitted to the client"
+        };
+      }
+      await db.update(codRecords)
+        .set({ status: 'cancelled' })
+        .where(eq(codRecords.id, existingCodRecord.id));
+    }
+
+    // Case B: COD was disabled, now enabled -> Create COD record
+    if (!oldCodRequired && newCodRequired) {
+      const codAmount = updates.codAmount || '0';
+      const codCurrency = updates.codCurrency || 'AED';
+
+      await db.insert(codRecords).values({
+        shipmentId: orderId,
+        codAmount,
+        codCurrency,
+        status: 'pending_collection',
+      });
+    }
+
+    // Case C: COD was enabled and stays enabled, but amount changed -> Update COD record
+    if (oldCodRequired && newCodRequired && existingCodRecord && updates.codAmount) {
+      // Only update if not already remitted
+      if (existingCodRecord.status === 'remitted') {
+        return {
+          success: false,
+          error: "Cannot modify COD amount: the amount has already been remitted to the client"
+        };
+      }
+      await db.update(codRecords)
+        .set({
+          codAmount: updates.codAmount,
+          codCurrency: updates.codCurrency || existingCodRecord.codCurrency
+        })
+        .where(eq(codRecords.id, existingCodRecord.id));
+    }
+
+    // 4. Build update object for orders table
+    const orderUpdates: Partial<InsertOrder> = {};
+
+    if (updates.serviceType !== undefined) orderUpdates.serviceType = updates.serviceType;
+    if (updates.weight !== undefined) orderUpdates.weight = updates.weight;
+    if (updates.pieces !== undefined) orderUpdates.pieces = updates.pieces;
+    if (updates.codRequired !== undefined) orderUpdates.codRequired = updates.codRequired;
+    if (updates.codAmount !== undefined) orderUpdates.codAmount = updates.codAmount;
+    if (updates.codCurrency !== undefined) orderUpdates.codCurrency = updates.codCurrency;
+    if (updates.customerName !== undefined) orderUpdates.customerName = updates.customerName;
+    if (updates.customerPhone !== undefined) orderUpdates.customerPhone = updates.customerPhone;
+    if (updates.address !== undefined) orderUpdates.address = updates.address;
+    if (updates.city !== undefined) orderUpdates.city = updates.city;
+    if (updates.specialInstructions !== undefined) orderUpdates.specialInstructions = updates.specialInstructions;
+    if (updates.fitOnDelivery !== undefined) orderUpdates.fitOnDelivery = updates.fitOnDelivery;
+
+    // 5. Update the order
+    if (Object.keys(orderUpdates).length > 0) {
+      await db.update(orders).set(orderUpdates).where(eq(orders.id, orderId));
+    }
+
+    // 6. Return updated order
+    const updatedOrder = await getOrderById(orderId);
+    return { success: true, order: updatedOrder! };
+
+  } catch (error) {
+    console.error("[Database] Failed to update order:", error);
+    return { success: false, error: "Failed to update order" };
+  }
+}
+
 export async function updateOrderStatus(id: number, status: string): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;

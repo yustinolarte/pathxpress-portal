@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -21,6 +21,7 @@ import AdminAnalytics from '@/components/AdminAnalytics';
 import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import DriversSection from '@/components/DriversSection';
 import AdminCreateOrderDialog from '@/components/AdminCreateOrderDialog';
+import EditOrderDialog from '@/components/EditOrderDialog';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -56,6 +57,8 @@ export default function AdminDashboard() {
   const [viewOrderDialogOpen, setViewOrderDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [selectedShipmentId, setSelectedShipmentId] = useState<number | null>(null);
+  const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false);
+  const [orderToEdit, setOrderToEdit] = useState<any>(null);
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
@@ -850,6 +853,17 @@ export default function AdminDashboard() {
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => {
+                                      setOrderToEdit(order);
+                                      setEditOrderDialogOpen(true);
+                                    }}
+                                    title="Edit Order"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
                                       setSelectedShipmentId(order.id);
                                       setTrackingDialogOpen(true);
                                     }}
@@ -1540,6 +1554,17 @@ export default function AdminDashboard() {
           token={token || ''}
           onSuccess={() => {
             setCreateOrderDialogOpen(false);
+            refetchOrders();
+          }}
+        />
+
+        {/* Edit Order Dialog */}
+        <EditOrderDialog
+          open={editOrderDialogOpen}
+          onOpenChange={setEditOrderDialogOpen}
+          order={orderToEdit}
+          token={token || ''}
+          onSuccess={() => {
             refetchOrders();
           }}
         />

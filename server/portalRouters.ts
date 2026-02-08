@@ -425,6 +425,45 @@ export const adminPortalRouter = router({
       }
     }),
 
+  // Update order (admin only) - Edit order details
+  updateOrder: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      orderId: z.number(),
+      updates: z.object({
+        serviceType: z.enum(['DOM', 'SDD']).optional(),
+        weight: z.string().optional(),
+        pieces: z.number().optional(),
+        codRequired: z.number().min(0).max(1).optional(),
+        codAmount: z.string().optional(),
+        codCurrency: z.string().optional(),
+        customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
+        address: z.string().optional(),
+        city: z.string().optional(),
+        specialInstructions: z.string().optional(),
+        fitOnDelivery: z.number().min(0).max(1).optional(),
+      }),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { updateOrder } = await import('./db');
+      const result = await updateOrder(input.orderId, input.updates);
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: result.error || 'Failed to update order'
+        });
+      }
+
+      return { success: true, order: result.order };
+    }),
+
   // Create return shipment (admin only)
   createReturn: publicProcedure
     .input(z.object({

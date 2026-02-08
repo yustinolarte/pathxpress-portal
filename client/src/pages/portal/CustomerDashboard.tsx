@@ -490,20 +490,26 @@ export default function CustomerDashboard() {
                     Create New Shipment
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto glass-strong">
-                  <DialogHeader>
-                    <DialogTitle>Create New Shipment</DialogTitle>
-                    <DialogDescription>
-                      Fill in the shipment details to create a new order
-                    </DialogDescription>
-                  </DialogHeader>
-                  <CreateShipmentForm
-                    token={token}
-                    onSuccess={() => {
-                      setCreateDialogOpen(false);
-                      refetch();
-                    }}
-                  />
+                <DialogContent className="glass-strong !w-[95vw] !max-w-[1200px] p-0 gap-0 border-white/10 max-h-[90vh] overflow-y-auto">
+                  <div className="w-full h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
+                  <div className="p-6">
+                    <DialogHeader className="mb-5">
+                      <DialogTitle className="text-xl font-bold flex items-center gap-3">
+                        <Package className="w-6 h-6 text-primary" />
+                        Create New Shipment
+                      </DialogTitle>
+                      <DialogDescription>
+                        Fill in the shipment details to create a new order
+                      </DialogDescription>
+                    </DialogHeader>
+                    <CreateShipmentForm
+                      token={token}
+                      onSuccess={() => {
+                        setCreateDialogOpen(false);
+                        refetch();
+                      }}
+                    />
+                  </div>
                 </DialogContent>
               </Dialog>
             </div>
@@ -1158,287 +1164,342 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
     });
   };
 
-  const applyPreset = (preset: 'small' | 'medium' | 'large') => {
+  const applyPreset = (preset: 'small' | 'medium' | 'large' | 'extra-large') => {
     if (preset === 'small') {
-      setFormData({ ...formData, weight: '0.5', length: '10', width: '10', height: '10' });
+      setFormData({ ...formData, weight: '0.5', length: '32', width: '24', height: '1' });
     } else if (preset === 'medium') {
-      setFormData({ ...formData, weight: '2.0', length: '30', width: '20', height: '10' });
+      setFormData({ ...formData, weight: '2.0', length: '23', width: '14', height: '4' });
     } else if (preset === 'large') {
-      setFormData({ ...formData, weight: '5.0', length: '40', width: '30', height: '20' });
+      setFormData({ ...formData, weight: '5.0', length: '35', width: '20', height: '15' });
+    } else if (preset === 'extra-large') {
+      setFormData({ ...formData, weight: '10.0', length: '75', width: '35', height: '35' });
     }
   };
 
   const canSaveShipper = formData.shipperName && formData.shipperAddress && formData.shipperCity && formData.shipperPhone;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* SECTION 1: SHIPPER */}
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
-        <div className="flex items-center justify-between border-b pb-2">
-          <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <LayoutDashboard className="h-5 w-5 text-primary" />
-            Shipper Details
-          </h3>
-          {savedShippers.length > 0 && (
-            <Select onValueChange={handleLoadShipper}>
-              <SelectTrigger className="w-[200px] h-8 text-xs">
-                <SelectValue placeholder="📋 Select saved shipper" />
-              </SelectTrigger>
-              <SelectContent>
-                {savedShippers.map((shipper: any) => (
-                  <SelectItem key={shipper.id} value={shipper.id.toString()}>
-                    {shipper.nickname}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* TWO COLUMN LAYOUT: SHIPPER + CONSIGNEE */}
+      <div className="grid grid-cols-2 gap-5">
+        {/* SECTION 1: SHIPPER */}
+        <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <LayoutDashboard className="h-4 w-4 text-blue-400" />
+              Shipper Details
+            </h3>
+            {savedShippers.length > 0 && (
+              <Select onValueChange={handleLoadShipper}>
+                <SelectTrigger className="w-[140px] h-7 text-xs bg-white/5 border-white/10">
+                  <SelectValue placeholder="📋 Load Saved" />
+                </SelectTrigger>
+                <SelectContent>
+                  {savedShippers.map((shipper: any) => (
+                    <SelectItem key={shipper.id} value={shipper.id.toString()}>
+                      {shipper.nickname}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
 
-        {/* Saved Shippers Management */}
-        {savedShippers.length > 0 && (
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground hover:text-primary transition-colors">
-              Select from saved shippers ({savedShippers.length})
-            </summary>
-            <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-2">
-              {savedShippers.map((shipper) => (
-                <div
-                  key={shipper.id}
-                  className="flex items-center justify-between p-2 bg-muted/30 rounded border border-transparent hover:border-primary hover:bg-primary/10 transition-colors cursor-pointer group"
-                  onClick={() => handleLoadShipper(shipper.id.toString())}
-                >
-                  <div className="flex-1">
-                    <p className="font-medium group-hover:text-primary transition-colors">{shipper.nickname}</p>
-                    <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">{shipper.shipperName} - {shipper.shipperCity}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-destructive hover:text-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteShipper(shipper.id);
-                    }}
+          {/* Saved Shippers Management */}
+          {savedShippers.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-primary transition-colors">
+                Select from saved shippers ({savedShippers.length})
+              </summary>
+              <div className="mt-2 space-y-1 max-h-32 overflow-y-auto pr-2">
+                {savedShippers.map((shipper) => (
+                  <div
+                    key={shipper.id}
+                    className="flex items-center justify-between p-2 bg-muted/30 rounded border border-transparent hover:border-primary hover:bg-primary/10 transition-colors cursor-pointer group"
+                    onClick={() => handleLoadShipper(shipper.id.toString())}
                   >
-                    <LogOut className="h-3 w-3" />
+                    <div className="flex-1">
+                      <p className="font-medium group-hover:text-primary transition-colors">{shipper.nickname}</p>
+                      <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">{shipper.shipperName} - {shipper.shipperCity}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive/80 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteShipper(shipper.id);
+                      }}
+                    >
+                      <LogOut className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Shipper Company *</Label>
+              <Input
+                value={formData.shipperName}
+                onChange={(e) => setFormData({ ...formData, shipperName: e.target.value })}
+                required
+                className="bg-white/5 border-white/10 h-9"
+                placeholder="Company Name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Shipper Phone *</Label>
+              <Input
+                value={formData.shipperPhone}
+                onChange={(e) => setFormData({ ...formData, shipperPhone: e.target.value })}
+                required
+                className="bg-white/5 border-white/10 h-9"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">City *</Label>
+              <Select
+                value={formData.shipperCity}
+                onValueChange={(val) => setFormData({ ...formData, shipperCity: val })}
+              >
+                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                  <SelectValue placeholder="Select City" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(city => (
+                    <SelectItem key={city} value={city}>{city}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Country *</Label>
+              <Select
+                value={formData.shipperCountry}
+                onValueChange={(val) => setFormData({ ...formData, shipperCountry: val })}
+              >
+                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                  <SelectValue placeholder="Select Country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman'].map(country => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs">Shipper Address *</Label>
+              <Input
+                value={formData.shipperAddress}
+                onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
+                required
+                className="bg-white/5 border-white/10 h-9"
+                placeholder="Building, Street, Area"
+              />
+            </div>
+          </div>
+
+          {/* Save Shipper Button - Now at the bottom of the section */}
+          <div className="pt-2 border-t flex justify-end">
+            <Dialog open={showSaveShipperDialog} onOpenChange={setShowSaveShipperDialog}>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canSaveShipper}
+                  className="gap-2"
+                  title={!canSaveShipper ? "Fill in shipper information first" : "Save this shipper for future use"}
+                >
+                  <Save className="h-4 w-4" />
+                  Save Shipper for Future Use
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="glass-strong">
+                <DialogHeader>
+                  <DialogTitle>Save Shipper Information</DialogTitle>
+                  <DialogDescription>
+                    Give this shipper a nickname to easily reuse this information later
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Nickname *</Label>
+                    <Input
+                      value={shipperNickname}
+                      onChange={(e) => setShipperNickname(e.target.value)}
+                      placeholder="e.g., Main Warehouse, Dubai Office"
+                    />
+                  </div>
+                  <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-3 rounded">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><span className="font-medium">Name:</span> {formData.shipperName}</div>
+                      <div><span className="font-medium">Phone:</span> {formData.shipperPhone}</div>
+                      <div className="col-span-2"><span className="font-medium">Address:</span> {formData.shipperAddress}, {formData.shipperCity}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setShowSaveShipperDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={handleSaveShipper}>
+                    Save
                   </Button>
                 </div>
-              ))}
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
+        {/* SECTION 2: CONSIGNEE */}
+        <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+          <div className="border-b border-white/10 pb-2">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Package className="h-4 w-4 text-green-400" />
+              Consignee (Receiver)
+            </h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Customer Name *</Label>
+              <Input
+                value={formData.customerName}
+                onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                required
+                className="bg-white/5 border-white/10 h-9"
+              />
             </div>
-          </details>
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Shipper Company *</Label>
-            <Input
-              value={formData.shipperName}
-              onChange={(e) => setFormData({ ...formData, shipperName: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-              placeholder="Company Name"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Shipper Phone *</Label>
-            <Input
-              value={formData.shipperPhone}
-              onChange={(e) => setFormData({ ...formData, shipperPhone: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>City *</Label>
-            <Select
-              value={formData.shipperCity}
-              onValueChange={(val) => setFormData({ ...formData, shipperCity: val })}
-            >
-              <SelectTrigger className="bg-background/50">
-                <SelectValue placeholder="Select City" />
-              </SelectTrigger>
-              <SelectContent>
-                {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(city => (
-                  <SelectItem key={city} value={city}>{city}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Country *</Label>
-            <Select
-              value={formData.shipperCountry}
-              onValueChange={(val) => setFormData({ ...formData, shipperCountry: val })}
-            >
-              <SelectTrigger className="bg-background/50">
-                <SelectValue placeholder="Select Country" />
-              </SelectTrigger>
-              <SelectContent>
-                {['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman'].map(country => (
-                  <SelectItem key={country} value={country}>{country}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="col-span-2 space-y-2">
-            <Label>Shipper Address *</Label>
-            <Input
-              value={formData.shipperAddress}
-              onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-              placeholder="Building, Street, Area"
-            />
-          </div>
-        </div>
-
-        {/* Save Shipper Button - Now at the bottom of the section */}
-        <div className="pt-2 border-t flex justify-end">
-          <Dialog open={showSaveShipperDialog} onOpenChange={setShowSaveShipperDialog}>
-            <DialogTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!canSaveShipper}
-                className="gap-2"
-                title={!canSaveShipper ? "Fill in shipper information first" : "Save this shipper for future use"}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Customer Phone *</Label>
+              <Input
+                value={formData.customerPhone}
+                onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                required
+                className="bg-white/5 border-white/10 h-9"
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-xs">Delivery Address *</Label>
+              <Input
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                required
+                className="bg-white/5 border-white/10 h-9"
+                placeholder="Building, Street, Area"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">City *</Label>
+              <Select
+                value={formData.city}
+                onValueChange={(val) => setFormData({ ...formData, city: val })}
               >
-                <Save className="h-4 w-4" />
-                Save Shipper for Future Use
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="glass-strong">
-              <DialogHeader>
-                <DialogTitle>Save Shipper Information</DialogTitle>
-                <DialogDescription>
-                  Give this shipper a nickname to easily reuse this information later
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Nickname *</Label>
-                  <Input
-                    value={shipperNickname}
-                    onChange={(e) => setShipperNickname(e.target.value)}
-                    placeholder="e.g., Main Warehouse, Dubai Office"
-                  />
-                </div>
-                <div className="text-sm text-muted-foreground space-y-1 bg-muted/50 p-3 rounded">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><span className="font-medium">Name:</span> {formData.shipperName}</div>
-                    <div><span className="font-medium">Phone:</span> {formData.shipperPhone}</div>
-                    <div className="col-span-2"><span className="font-medium">Address:</span> {formData.shipperAddress}, {formData.shipperCity}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setShowSaveShipperDialog(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={handleSaveShipper}>
-                  Save
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      {/* SECTION 2: CONSIGNEE */}
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
-        <div className="border-b pb-2">
-          <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <Package className="h-5 w-5 text-primary" />
-            Consignee (Receiver)
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Customer Name *</Label>
-            <Input
-              value={formData.customerName}
-              onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Customer Phone *</Label>
-            <Input
-              value={formData.customerPhone}
-              onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-            />
-          </div>
-          <div className="col-span-2 space-y-2">
-            <Label>Delivery Address *</Label>
-            <Input
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              required
-              className="bg-background/50 focus:bg-background transition-colors"
-              placeholder="Building, Street, Area"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>City *</Label>
-            <Select
-              value={formData.city}
-              onValueChange={(val) => setFormData({ ...formData, city: val })}
-            >
-              <SelectTrigger className="bg-background/50">
-                <SelectValue placeholder="Select City" />
-              </SelectTrigger>
-              <SelectContent>
-                {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(city => (
-                  <SelectItem key={city} value={city}>{city}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Country *</Label>
-            <Select value={formData.destinationCountry} onValueChange={(value) => setFormData({ ...formData, destinationCountry: value })}>
-              <SelectTrigger className="bg-background/50 focus:bg-background transition-colors">
-                <SelectValue placeholder="Select Country" />
-              </SelectTrigger>
-              <SelectContent>
-                {['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman'].map(country => (
-                  <SelectItem key={country} value={country}>{country}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                  <SelectValue placeholder="Select City" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(city => (
+                    <SelectItem key={city} value={city}>{city}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Country *</Label>
+              <Select value={formData.destinationCountry} onValueChange={(value) => setFormData({ ...formData, destinationCountry: value })}>
+                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                  <SelectValue placeholder="Select Country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['UAE', 'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman'].map(country => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </div>
 
       {/* SECTION 3: PACKAGE & SERVICE */}
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
-        <div className="border-b pb-2 flex justify-between items-center">
-          <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <Calculator className="h-5 w-5 text-primary" />
+      <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+        <div className="border-b border-white/10 pb-2">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Calculator className="h-4 w-4 text-purple-400" />
             Shipment Details
           </h3>
         </div>
 
         {/* Quick Presets */}
-        <div className="flex flex-wrap gap-2 mb-2 p-2 bg-muted/40 rounded-lg">
-          <span className="text-xs font-medium text-muted-foreground self-center mr-1">Quick Presets:</span>
-          <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500" onClick={() => applyPreset('small')}>
-            Small (0.5kg)
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500" onClick={() => applyPreset('medium')}>
-            Medium (2.0kg)
-          </Button>
-          <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-blue-500/20 hover:bg-blue-500/10 hover:text-blue-500" onClick={() => applyPreset('large')}>
-            Large (5.0kg)
-          </Button>
+        {/* NEW Quick Presets: 4 Minimalist Weight Cards with Dimensions */}
+        <div className="grid grid-cols-4 gap-3 mb-4">
+          {/* SMALL */}
+          <div
+            onClick={() => applyPreset('small')}
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+          >
+            <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Small</span>
+            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+              0.5 <span className="text-xs font-normal text-muted-foreground">kg</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">32×24×1 cm</span>
+            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+              <div className="h-full bg-blue-500 w-[10%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+            </div>
+          </div>
+
+          {/* MEDIUM */}
+          <div
+            onClick={() => applyPreset('medium')}
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+          >
+            <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Medium</span>
+            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+              2.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">23×14×4 cm</span>
+            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+              <div className="h-full bg-blue-500 w-[30%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+            </div>
+          </div>
+
+          {/* LARGE */}
+          <div
+            onClick={() => applyPreset('large')}
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+          >
+            <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Large</span>
+            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+              5.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">35×20×15 cm</span>
+            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+              <div className="h-full bg-blue-500 w-[60%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+            </div>
+          </div>
+
+          {/* EXTRA LARGE */}
+          <div
+            onClick={() => applyPreset('extra-large')}
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+          >
+            <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">XL</span>
+            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+              10.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">75×35×35 cm</span>
+            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+              <div className="h-full bg-blue-500 w-[100%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -1515,10 +1576,10 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       </div>
 
       {/* SECTION 4: PAYMENT */}
-      <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4">
-        <div className="border-b pb-2">
-          <h3 className="font-semibold flex items-center gap-2 text-lg">
-            <span className="h-5 w-5 text-green-600 font-bold text-sm flex items-center justify-center">AED</span>
+      <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
+        <div className="border-b border-white/10 pb-2">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-orange-400" />
             Payment (COD)
           </h3>
         </div>
@@ -1564,10 +1625,10 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
 
       {/* SECTION 5: FIT ON DELIVERY */}
       {clientSettings?.fodAllowed === 1 && (
-        <div className="rounded-lg border bg-card text-card-foreground shadow-sm p-4 space-y-4 border-purple-500/20">
-          <div className="border-b pb-2">
-            <h3 className="font-semibold flex items-center gap-2 text-lg">
-              <Package className="h-5 w-5 text-purple-500" />
+        <div className="p-4 rounded-lg bg-white/5 border border-purple-500/30 space-y-4">
+          <div className="border-b border-white/10 pb-2">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Package className="h-4 w-4 text-purple-400" />
               Fit on Delivery (FOD)
             </h3>
           </div>
