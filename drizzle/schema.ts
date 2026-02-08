@@ -183,6 +183,7 @@ export const orders = mysqlTable("orders", {
   height: decimal("height", { precision: 10, scale: 2 }),
   serviceType: varchar("serviceType", { length: 100 }).notNull(), // standard, express, same-day
   specialInstructions: text("specialInstructions"),
+  itemsDescription: text("itemsDescription"), // Product/item descriptions from Shopify for waybill display
 
   // COD information
   codRequired: int("codRequired").default(0).notNull(), // 0 = no, 1 = yes

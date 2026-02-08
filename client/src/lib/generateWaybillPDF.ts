@@ -36,6 +36,7 @@ interface ShipmentData {
   isReturn?: number; // 0 = normal shipment, 1 = return shipment
   originalOrderId?: number | null; // Reference to original order for returns
   fitOnDelivery?: number; // 0 = no, 1 = yes - Fit on Delivery service
+  itemsDescription?: string | null; // Product/item descriptions from Shopify
 }
 
 // City code mapping for UAE cities
@@ -370,6 +371,30 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
     pdf.text(instrLines.slice(0, 2), margin + 12, y + 4);
 
     y += boxHeight + 2;
+  }
+
+  // ===== ITEMS DESCRIPTION =====
+  if (shipment.itemsDescription && shipment.itemsDescription.trim()) {
+    // Calculate how many lines needed
+    const itemsMaxWidth = contentWidth - 15;
+    const itemsLines = pdf.splitTextToSize(shipment.itemsDescription, itemsMaxWidth);
+    const numItemLines = Math.min(itemsLines.length, 3); // Max 3 lines
+    const itemsBoxHeight = 6 + (numItemLines * 3.5);
+
+    pdf.setDrawColor(black);
+    pdf.setLineWidth(0.5);
+    pdf.rect(margin, y, contentWidth, itemsBoxHeight);
+
+    pdf.setFontSize(6);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('ITEMS:', margin + 2, y + 4);
+
+    pdf.setFontSize(7);
+    pdf.setFont('helvetica', 'normal');
+    // Display up to 3 lines of items
+    pdf.text(itemsLines.slice(0, 3), margin + 12, y + 4);
+
+    y += itemsBoxHeight + 2;
   }
 
   // ===== MAIN BARCODE (Large, High Quality) =====
