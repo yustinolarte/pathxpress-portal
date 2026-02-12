@@ -35,7 +35,7 @@ export default function DriversSection() {
     const [selectedDriver, setSelectedDriver] = useState<any>(null);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
     const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
-    const [stopMode, setStopMode] = useState<'pickup_only' | 'delivery_only' | 'both'>('both');
+    const [orderModes, setOrderModes] = useState<Record<number, 'pickup_only' | 'delivery_only' | 'both'>>({});
 
     // Forms
     const [newDriver, setNewDriver] = useState({
@@ -227,11 +227,16 @@ export default function DriversSection() {
             toast.error('Select at least one order');
             return;
         }
+
+        const ordersPayload = selectedOrderIds.map(id => ({
+            id,
+            mode: orderModes[id] || 'both'
+        }));
+
         addOrdersToRouteMutation.mutate({
             token: token || '',
             routeId: selectedRouteId,
-            orderIds: selectedOrderIds,
-            stopMode: stopMode,
+            orders: ordersPayload,
         });
     };
 
@@ -941,42 +946,6 @@ export default function DriversSection() {
                         <DialogDescription>Select orders to add to route {selectedRouteId}</DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-4">
-                        {/* Stop Mode Selector */}
-                        <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 border">
-                            <Label className="text-sm font-medium whitespace-nowrap">Stop Mode:</Label>
-                            <Select
-                                value={stopMode}
-                                onValueChange={(value: 'pickup_only' | 'delivery_only' | 'both') => setStopMode(value)}
-                            >
-                                <SelectTrigger className="w-[200px]">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="both">
-                                        <span className="flex items-center gap-2">
-                                            🔄 Pickup + Delivery
-                                        </span>
-                                    </SelectItem>
-                                    <SelectItem value="pickup_only">
-                                        <span className="flex items-center gap-2">
-                                            📦 Pickup Only
-                                        </span>
-                                    </SelectItem>
-                                    <SelectItem value="delivery_only">
-                                        <span className="flex items-center gap-2">
-                                            🚚 Delivery Only
-                                        </span>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <span className="text-xs text-muted-foreground">
-                                {stopMode === 'both' && '(Creates 2 stops per order)'}
-                                {stopMode === 'pickup_only' && '(Pickup from shipper)'}
-                                {stopMode === 'delivery_only' && '(Deliver to customer)'}
-                            </span>
-                        </div>
-
-                        {/* Orders Table */}
                         <div className="max-h-[350px] overflow-y-auto">
                             {availableOrders && availableOrders.length > 0 ? (
                                 <Table>
@@ -986,6 +955,7 @@ export default function DriversSection() {
                                             <TableHead>Waybill</TableHead>
                                             <TableHead>Customer</TableHead>
                                             <TableHead>City</TableHead>
+                                            <TableHead>Stop Mode</TableHead>
                                             <TableHead>Type</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1007,6 +977,21 @@ export default function DriversSection() {
                                                 <TableCell className="font-mono">{order.waybillNumber}</TableCell>
                                                 <TableCell>{order.customerName}</TableCell>
                                                 <TableCell>{order.city}</TableCell>
+                                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                                    <Select
+                                                        value={orderModes[order.id] || 'both'}
+                                                        onValueChange={(value: any) => setOrderModes(prev => ({ ...prev, [order.id]: value }))}
+                                                    >
+                                                        <SelectTrigger className="h-8 w-[160px]">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="both">🔄 Pickup + Delivery</SelectItem>
+                                                            <SelectItem value="pickup_only">📦 Pickup Only</SelectItem>
+                                                            <SelectItem value="delivery_only">🚚 Delivery Only</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </TableCell>
                                                 <TableCell>
                                                     {order.codRequired ? (
                                                         <Badge className="bg-orange-500/20 text-orange-400">COD {order.codAmount}</Badge>

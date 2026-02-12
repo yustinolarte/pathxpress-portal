@@ -306,7 +306,10 @@ export async function assignDriverToRoute(routeId: string, driverId: number | nu
     return { success: true };
 }
 
-export async function addOrdersToRoute(routeId: string, orderIds: number[], stopMode: 'pickup_only' | 'delivery_only' | 'both' = 'both') {
+export async function addOrdersToRoute(
+    routeId: string,
+    ordersList: { id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }[]
+) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
@@ -314,8 +317,12 @@ export async function addOrdersToRoute(routeId: string, orderIds: number[], stop
     const existing = await db.select().from(routeOrders).where(eq(routeOrders.routeId, routeId));
     let maxSeq = existing.length;
     let addedCount = 0;
+    let totalStopsCreated = 0;
 
-    for (const orderId of orderIds) {
+    for (const orderData of ordersList) {
+        const orderId = orderData.id;
+        const stopMode = orderData.mode;
+
         // Check if already in route (check if this order already has any stops in this route)
         const [existingStop] = await db
             .select()
@@ -337,6 +344,7 @@ export async function addOrdersToRoute(routeId: string, orderIds: number[], stop
                     type: 'pickup',
                     status: 'pending',
                 });
+                totalStopsCreated++;
             }
 
             if (stopMode === 'delivery_only' || stopMode === 'both') {
@@ -349,14 +357,15 @@ export async function addOrdersToRoute(routeId: string, orderIds: number[], stop
                     type: 'delivery',
                     status: 'pending',
                 });
+                totalStopsCreated++;
             }
 
             addedCount++;
-            console.log(`Order ${orderId}: stopMode="${stopMode}" -> created ${stopMode === 'both' ? 'pickup + delivery' : stopMode} stops`);
+            console.log(`Order ${orderId}: stopMode="${stopMode}" -> created stops`);
         }
     }
 
-    return { success: true, added: addedCount, stopsCreated: stopMode === 'both' ? addedCount * 2 : addedCount };
+    return { success: true, added: addedCount, stopsCreated: totalStopsCreated };
 }
 
 // ============ DELIVERIES ============

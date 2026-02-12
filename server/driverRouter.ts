@@ -148,12 +148,16 @@ export const driverRouter = router({
         .input(z.object({
             token: z.string(),
             routeId: z.string(),
-            orderIds: z.array(z.number()),
-            stopMode: z.enum(['pickup_only', 'delivery_only', 'both']).default('both'),
+            // New structure: array of objects with id and mode
+            orders: z.array(z.object({
+                id: z.number(),
+                mode: z.enum(['pickup_only', 'delivery_only', 'both'])
+            }))
         }))
         .mutation(async ({ input }) => {
             requireAdmin(input.token);
-            return driverAdmin.addOrdersToRoute(input.routeId, input.orderIds, input.stopMode);
+            // Pass the array of {id, mode} directly to the admin function
+            return driverAdmin.addOrdersToRoute(input.routeId, input.orders);
         }),
 
     getAvailableOrders: publicProcedure
