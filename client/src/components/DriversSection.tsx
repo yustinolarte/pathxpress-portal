@@ -1038,47 +1038,98 @@ export default function DriversSection() {
 
             {/* Route Details Dialog */}
             <Dialog open={routeDetailsDialogOpen} onOpenChange={setRouteDetailsDialogOpen}>
-                <DialogContent className="sm:max-w-[700px]">
-                    <DialogHeader>
-                        <DialogTitle>Route Details: {routeDetails?.id}</DialogTitle>
-                        <DialogDescription>
-                            {routeDetails?.driver?.fullName || 'Unassigned'} • {routeDetails?.zone || 'No zone'}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
+                <DialogContent className="glass-strong !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+                    {/* Decorative Top Line */}
+                    <div className="w-full h-1 bg-gradient-to-r from-indigo-600 to-purple-600" />
+
+                    <div className="p-6">
+                        {/* Header */}
+                        <DialogHeader className="mb-4">
+                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-indigo-500/20">
+                                    <MapPin className="w-6 h-6 text-indigo-400" />
+                                </div>
+                                Route: {routeDetails?.id}
+                            </DialogTitle>
+                            <DialogDescription className="mt-1">
+                                {routeDetails?.driver?.fullName || 'Unassigned'} • {routeDetails?.zone || 'No zone'} • {routeDetails?.deliveries?.length || 0} stops
+                            </DialogDescription>
+                        </DialogHeader>
+
                         <div className="flex justify-end mb-4">
-                            <Button onClick={() => setAddOrdersDialogOpen(true)}>
+                            <Button onClick={() => setAddOrdersDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
                                 <Plus className="mr-2 h-4 w-4" /> Add Orders
                             </Button>
                         </div>
-                        {routeDetails?.deliveries && routeDetails.deliveries.length > 0 ? (
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Waybill</TableHead>
-                                        <TableHead>Customer</TableHead>
-                                        <TableHead>City</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Delivered At</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {routeDetails.deliveries.map((delivery: any) => (
-                                        <TableRow key={delivery.id}>
-                                            <TableCell className="font-mono">{delivery.waybillNumber}</TableCell>
-                                            <TableCell>{delivery.customerName}</TableCell>
-                                            <TableCell>{delivery.city}</TableCell>
-                                            <TableCell>{getStatusBadge(delivery.status)}</TableCell>
-                                            <TableCell>
-                                                {delivery.deliveredAt ? new Date(delivery.deliveredAt).toLocaleString() : '-'}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        ) : (
-                            <p className="text-center py-8 text-muted-foreground">No deliveries in this route</p>
-                        )}
+
+                        <div className="max-h-[450px] overflow-y-auto">
+                            {routeDetails?.deliveries && routeDetails.deliveries.length > 0 ? (
+                                <div className="space-y-2">
+                                    {routeDetails.deliveries.map((delivery: any) => {
+                                        const isReturn = delivery.isReturn === 1 || delivery.orderType === 'return';
+                                        const isExchange = delivery.orderType === 'exchange';
+                                        return (
+                                            <div
+                                                key={delivery.id}
+                                                className="rounded-lg border bg-white/5 border-white/10 p-4"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        {/* Top: waybill + badges */}
+                                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                            <span className="font-mono font-medium text-sm">{delivery.waybillNumber}</span>
+                                                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
+                                                                <Building2 className="w-3 h-3 mr-1" />{delivery.companyName}
+                                                            </Badge>
+                                                            {isReturn && (
+                                                                <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
+                                                                    <RotateCcw className="w-3 h-3 mr-1" />Return
+                                                                </Badge>
+                                                            )}
+                                                            {isExchange && (
+                                                                <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
+                                                                    Exchange
+                                                                </Badge>
+                                                            )}
+                                                            {delivery.codRequired ? (
+                                                                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                                                                    <DollarSign className="w-3 h-3 mr-0.5" />COD {delivery.codAmount} AED
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepaid</Badge>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Customer */}
+                                                        <div className="flex items-center gap-2 text-sm mb-1">
+                                                            <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                                            <span className="font-medium">{delivery.customerName}</span>
+                                                            <span className="text-muted-foreground">•</span>
+                                                            <span className="text-muted-foreground truncate">{delivery.city}</span>
+                                                        </div>
+
+                                                        {/* Details row */}
+                                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                            <span>{delivery.pieces} pc{delivery.pieces > 1 ? 's' : ''} • {delivery.weight} kg</span>
+                                                            {delivery.deliveredAt && (
+                                                                <span>Delivered: {new Date(delivery.deliveredAt).toLocaleString()}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Status */}
+                                                    <div className="flex-shrink-0">
+                                                        {getStatusBadge(delivery.status)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-center py-8 text-muted-foreground">No deliveries in this route</p>
+                            )}
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

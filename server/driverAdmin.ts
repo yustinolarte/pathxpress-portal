@@ -231,6 +231,17 @@ export async function getRouteDetails(routeId: string) {
         .where(eq(routeOrders.routeId, routeId))
         .orderBy(routeOrders.sequence);
 
+    // Get company names for all client IDs
+    const clientIds = Array.from(new Set(routeOrdersList.map(item => item.order.clientId)));
+    let clientMap: Record<number, string> = {};
+    if (clientIds.length > 0) {
+        const clients = await db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
+            .from(clientAccounts).where(inArray(clientAccounts.id, clientIds));
+        for (const c of clients) {
+            clientMap[c.id] = c.companyName;
+        }
+    }
+
     const deliveries = routeOrdersList.map((item) => ({
         id: item.routeOrder.id,
         orderId: item.order.id,
@@ -243,6 +254,14 @@ export async function getRouteDetails(routeId: string) {
         proofPhotoUrl: item.routeOrder.proofPhotoUrl,
         notes: item.routeOrder.notes,
         deliveredAt: item.routeOrder.deliveredAt,
+        companyName: clientMap[item.order.clientId] || 'Unknown',
+        isReturn: item.order.isReturn,
+        orderType: item.order.orderType,
+        codRequired: item.order.codRequired,
+        codAmount: item.order.codAmount,
+        pieces: item.order.pieces,
+        weight: item.order.weight,
+        serviceType: item.order.serviceType,
     }));
 
     return {
