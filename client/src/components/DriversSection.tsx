@@ -15,10 +15,42 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { Textarea } from '@/components/ui/textarea';
 import {
     Users, Truck, Package, AlertTriangle, Plus, Eye, Edit, Trash2,
-    RefreshCw, MapPin, Clock, CheckCircle, XCircle, AlertCircle
+    RefreshCw, MapPin, Clock, CheckCircle, XCircle, AlertCircle,
+    Hash, Calendar, Building2, FileText, CheckCircle2, Loader2,
+    DollarSign, RotateCcw, Weight, Boxes
 } from 'lucide-react';
+
+// Dubai zone presets
+const ZONE_OPTIONS = [
+    { value: 'downtown_dubai', label: 'Downtown Dubai' },
+    { value: 'dubai_marina', label: 'Dubai Marina' },
+    { value: 'jbr', label: 'JBR' },
+    { value: 'business_bay', label: 'Business Bay' },
+    { value: 'jumeirah', label: 'Jumeirah' },
+    { value: 'deira', label: 'Deira' },
+    { value: 'bur_dubai', label: 'Bur Dubai' },
+    { value: 'al_quoz', label: 'Al Quoz' },
+    { value: 'jlt', label: 'JLT' },
+    { value: 'silicon_oasis', label: 'Silicon Oasis' },
+    { value: 'sports_city', label: 'Sports City' },
+    { value: 'motor_city', label: 'Motor City' },
+    { value: 'international_city', label: 'International City' },
+    { value: 'al_barsha', label: 'Al Barsha' },
+    { value: 'mirdif', label: 'Mirdif' },
+    { value: 'dubai_hills', label: 'Dubai Hills' },
+    { value: 'palm_jumeirah', label: 'Palm Jumeirah' },
+    { value: 'sharjah', label: 'Sharjah' },
+    { value: 'ajman', label: 'Ajman' },
+    { value: 'abu_dhabi', label: 'Abu Dhabi' },
+    { value: 'al_ain', label: 'Al Ain' },
+    { value: 'rak', label: 'Ras Al Khaimah' },
+    { value: 'fujairah', label: 'Fujairah' },
+    { value: 'uaq', label: 'Umm Al Quwain' },
+    { value: 'other', label: 'Other' },
+];
 
 export default function DriversSection() {
     const { token } = usePortalAuth();
@@ -55,6 +87,7 @@ export default function DriversSection() {
         driverId: '',
         zone: '',
         vehicleInfo: '',
+        notes: '',
     });
 
     // Queries
@@ -133,7 +166,7 @@ export default function DriversSection() {
         onSuccess: () => {
             toast.success('Route created successfully');
             setCreateRouteDialogOpen(false);
-            setNewRoute({ id: '', date: new Date().toISOString().split('T')[0], driverId: '', zone: '', vehicleInfo: '' });
+            setNewRoute({ id: '', date: new Date().toISOString().split('T')[0], driverId: '', zone: '', vehicleInfo: '', notes: '' });
             refetchRoutes();
             refetchStats();
         },
@@ -487,7 +520,9 @@ export default function DriversSection() {
                                             <TableHead>Date</TableHead>
                                             <TableHead>Driver</TableHead>
                                             <TableHead>Zone</TableHead>
-                                            <TableHead>Deliveries</TableHead>
+                                            <TableHead>Companies</TableHead>
+                                            <TableHead>Stops</TableHead>
+                                            <TableHead>Info</TableHead>
                                             <TableHead>Status</TableHead>
                                             <TableHead>Actions</TableHead>
                                         </TableRow>
@@ -500,9 +535,41 @@ export default function DriversSection() {
                                                 <TableCell>{route.driver?.fullName || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
                                                 <TableCell>{route.zone || '-'}</TableCell>
                                                 <TableCell>
-                                                    <span className="text-green-400">{route.deliveryStats?.delivered || 0}</span>
-                                                    <span className="text-muted-foreground">/</span>
-                                                    <span>{route.deliveryStats?.total || 0}</span>
+                                                    {route.companies && route.companies.length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {route.companies.map((c: string, i: number) => (
+                                                                <Badge key={i} variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
+                                                                    <Building2 className="w-3 h-3 mr-1" />{c}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                    ) : <span className="text-muted-foreground text-xs">-</span>}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-green-400 font-medium">{route.deliveryStats?.delivered || 0}</span>
+                                                        <span className="text-muted-foreground">/</span>
+                                                        <span className="font-medium">{route.deliveryStats?.total || 0}</span>
+                                                    </div>
+                                                    {route.totalPieces > 0 && (
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {route.totalPieces} pcs • {route.totalWeight} kg
+                                                        </span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {route.codTotal > 0 && (
+                                                            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                                                                <DollarSign className="w-3 h-3 mr-0.5" />{route.codTotal} AED
+                                                            </Badge>
+                                                        )}
+                                                        {route.returnCount > 0 && (
+                                                            <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
+                                                                <RotateCcw className="w-3 h-3 mr-0.5" />{route.returnCount} Return{route.returnCount > 1 ? 's' : ''}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>{getStatusBadge(route.status)}</TableCell>
                                                 <TableCell>
@@ -817,74 +884,167 @@ export default function DriversSection() {
 
             {/* Create Route Dialog */}
             <Dialog open={createRouteDialogOpen} onOpenChange={setCreateRouteDialogOpen}>
-                <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
-                        <DialogTitle>Create Route</DialogTitle>
-                        <DialogDescription>Create a new delivery route</DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-2 gap-4">
+                <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+                    {/* Decorative Top Line */}
+                    <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600" />
+
+                    <div className="p-6">
+                        {/* Header */}
+                        <DialogHeader className="mb-6">
+                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-blue-500/20">
+                                    <MapPin className="w-6 h-6 text-blue-400" />
+                                </div>
+                                Create Route
+                            </DialogTitle>
+                            <DialogDescription className="mt-1">
+                                Set up a new delivery route for a driver
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-6">
+                            {/* Route ID & Date */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Hash className="w-4 h-4 text-muted-foreground" />
+                                        Route ID *
+                                    </Label>
+                                    <Input
+                                        value={newRoute.id}
+                                        onChange={(e) => setNewRoute({ ...newRoute, id: e.target.value })}
+                                        placeholder="DXB-2025-001"
+                                        className="bg-white/5 border-white/10"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Unique identifier for this route</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                                        Date *
+                                    </Label>
+                                    <Input
+                                        type="date"
+                                        value={newRoute.date}
+                                        onChange={(e) => setNewRoute({ ...newRoute, date: e.target.value })}
+                                        className="bg-white/5 border-white/10"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Scheduled delivery date</p>
+                                </div>
+                            </div>
+
+                            {/* Assign Driver */}
                             <div className="space-y-2">
-                                <Label>Route ID *</Label>
-                                <Input
-                                    value={newRoute.id}
-                                    onChange={(e) => setNewRoute({ ...newRoute, id: e.target.value })}
-                                    placeholder="DXB-2025-001"
+                                <Label className="flex items-center gap-2">
+                                    <Users className="w-4 h-4 text-muted-foreground" />
+                                    Assign Driver
+                                </Label>
+                                <Select
+                                    value={newRoute.driverId}
+                                    onValueChange={(value) => setNewRoute({ ...newRoute, driverId: value })}
+                                >
+                                    <SelectTrigger className="bg-white/5 border-white/10">
+                                        <SelectValue placeholder="Select driver (optional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Unassigned</SelectItem>
+                                        {drivers?.filter((d: any) => d.status === 'active').map((driver: any) => (
+                                            <SelectItem key={driver.id} value={driver.id.toString()}>
+                                                <div className="flex items-center gap-2">
+                                                    <span>{driver.fullName}</span>
+                                                    <span className="text-muted-foreground">•</span>
+                                                    <span className="text-xs text-muted-foreground">{driver.vehicleNumber || 'No vehicle'}</span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Only active drivers are shown</p>
+                            </div>
+
+                            {/* Zone & Vehicle */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <MapPin className="w-4 h-4 text-muted-foreground" />
+                                        Zone
+                                    </Label>
+                                    <Select
+                                        value={newRoute.zone}
+                                        onValueChange={(value) => setNewRoute({ ...newRoute, zone: value === 'other' ? '' : ZONE_OPTIONS.find(z => z.value === value)?.label || value })}
+                                    >
+                                        <SelectTrigger className="bg-white/5 border-white/10">
+                                            <SelectValue placeholder="Select zone" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px]">
+                                            {ZONE_OPTIONS.map((zone) => (
+                                                <SelectItem key={zone.value} value={zone.value}>
+                                                    {zone.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {newRoute.zone === '' && (
+                                        <Input
+                                            value={newRoute.zone}
+                                            onChange={(e) => setNewRoute({ ...newRoute, zone: e.target.value })}
+                                            placeholder="Enter custom zone"
+                                            className="bg-white/5 border-white/10 mt-2"
+                                        />
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Truck className="w-4 h-4 text-muted-foreground" />
+                                        Vehicle Info
+                                    </Label>
+                                    <Input
+                                        value={newRoute.vehicleInfo}
+                                        onChange={(e) => setNewRoute({ ...newRoute, vehicleInfo: e.target.value })}
+                                        placeholder="White Van - DXB 12345"
+                                        className="bg-white/5 border-white/10"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Notes */}
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-muted-foreground" />
+                                    Notes
+                                </Label>
+                                <Textarea
+                                    value={newRoute.notes}
+                                    onChange={(e) => setNewRoute({ ...newRoute, notes: e.target.value })}
+                                    placeholder="Special instructions or notes for this route..."
+                                    rows={3}
+                                    className="bg-white/5 border-white/10 resize-none"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <Label>Date *</Label>
-                                <Input
-                                    type="date"
-                                    value={newRoute.date}
-                                    onChange={(e) => setNewRoute({ ...newRoute, date: e.target.value })}
-                                />
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Assign Driver</Label>
-                            <Select
-                                value={newRoute.driverId}
-                                onValueChange={(value) => setNewRoute({ ...newRoute, driverId: value })}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select driver (optional)" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Unassigned</SelectItem>
-                                    {drivers?.map((driver: any) => (
-                                        <SelectItem key={driver.id} value={driver.id.toString()}>
-                                            {driver.fullName} ({driver.vehicleNumber || 'No vehicle'})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Zone</Label>
-                                <Input
-                                    value={newRoute.zone}
-                                    onChange={(e) => setNewRoute({ ...newRoute, zone: e.target.value })}
-                                    placeholder="Downtown Dubai"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Vehicle Info</Label>
-                                <Input
-                                    value={newRoute.vehicleInfo}
-                                    onChange={(e) => setNewRoute({ ...newRoute, vehicleInfo: e.target.value })}
-                                    placeholder="White Van"
-                                />
-                            </div>
+
+                            {/* Footer */}
+                            <DialogFooter className="pt-4 border-t border-white/10">
+                                <Button type="button" variant="outline" onClick={() => setCreateRouteDialogOpen(false)}>Cancel</Button>
+                                <Button
+                                    onClick={handleCreateRoute}
+                                    disabled={createRouteMutation.isPending}
+                                    className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                    {createRouteMutation.isPending ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Creating...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                                            Create Route
+                                        </>
+                                    )}
+                                </Button>
+                            </DialogFooter>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setCreateRouteDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleCreateRoute} disabled={createRouteMutation.isPending}>
-                            {createRouteMutation.isPending ? 'Creating...' : 'Create Route'}
-                        </Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 

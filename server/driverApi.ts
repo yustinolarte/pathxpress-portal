@@ -574,7 +574,7 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             .limit(1);
 
         // Debugging logs
-        console.log(`[DriverAPI] Updating stop ${id}. Type: ${routeOrder.routeOrder.type}, isPickup: ${isPickup}, Status: ${statusLower}`);
+
 
         if (isPickup) {
             // PICKUP stop

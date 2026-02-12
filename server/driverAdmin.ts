@@ -5,7 +5,7 @@
 import bcrypt from 'bcryptjs';
 import { eq, and, desc, sql, gte, isNull, notInArray, or, inArray } from 'drizzle-orm';
 import { getDb } from './db';
-import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts } from '../drizzle/schema';
+import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, clientAccounts } from '../drizzle/schema';
 
 // ============ DASHBOARD STATS ============
 
@@ -156,6 +156,36 @@ export async function getAllDriverRoutes() {
 
             const deliveries = await db.select().from(routeOrders).where(eq(routeOrders.routeId, route.id));
             const delivered = deliveries.filter(d => d.status === 'delivered').length;
+            const pickupCount = deliveries.filter(d => d.type === 'pickup').length;
+            const deliveryCount = deliveries.filter(d => d.type === 'delivery').length;
+
+            // Get order details for enriched data (companies, COD, returns)
+            const orderIds = Array.from(new Set(deliveries.map(d => d.orderId)));
+            let companies: string[] = [];
+            let codTotal = 0;
+            let returnCount = 0;
+            let totalPieces = 0;
+            let totalWeight = 0;
+
+            if (orderIds.length > 0) {
+                const routeOrdersData = await db.select().from(orders).where(inArray(orders.id, orderIds));
+
+                // Get unique client IDs
+                const clientIds = Array.from(new Set(routeOrdersData.map(o => o.clientId)));
+                if (clientIds.length > 0) {
+                    const clients = await db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
+                        .from(clientAccounts).where(inArray(clientAccounts.id, clientIds));
+                    companies = clients.map(c => c.companyName);
+                }
+
+                // Aggregate COD, returns, pieces, weight
+                for (const o of routeOrdersData) {
+                    if (o.codRequired === 1 && o.codAmount) codTotal += parseFloat(o.codAmount) || 0;
+                    if (o.isReturn === 1 || o.orderType === 'return') returnCount++;
+                    totalPieces += o.pieces || 0;
+                    totalWeight += parseFloat(o.weight as string) || 0;
+                }
+            }
 
             return {
                 ...route,
@@ -163,7 +193,14 @@ export async function getAllDriverRoutes() {
                 deliveryStats: {
                     total: deliveries.length,
                     delivered,
+                    pickups: pickupCount,
+                    deliveries: deliveryCount,
                 },
+                companies,
+                codTotal,
+                returnCount,
+                totalPieces,
+                totalWeight: Math.round(totalWeight * 100) / 100,
             };
         })
     );
