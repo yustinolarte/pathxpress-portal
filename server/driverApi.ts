@@ -560,14 +560,27 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
         // Update the main order status based on stop type
         let orderStatus = routeOrder.order.status;
         let statusLabel = 'Updated';
+        const eventsToInsert: any[] = [];
+
+        // Default location
+        const locationCity = isPickup ? routeOrder.order.shipperCity : routeOrder.order.city;
+        const location = locationCity || 'Unknown';
+
+        // Get driver info for tracking event early
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.id, req.driverId!))
+            .limit(1);
+
+        // Debugging logs
+        console.log(`[DriverAPI] Updating stop ${id}. Type: ${routeOrder.routeOrder.type}, isPickup: ${isPickup}, Status: ${statusLower}`);
 
         if (isPickup) {
             // PICKUP stop
             if (statusLower === 'picked_up') {
-                orderStatus = 'picked_up';
-                statusLabel = 'Picked Up';
 
-                // Check if there's a delivery stop for this order - if so, mark order as out_for_delivery
+                // Check if there's a delivery stop for this order
                 const [deliveryStop] = await db
                     .select()
                     .from(routeOrders)
@@ -578,12 +591,32 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
                     ))
                     .limit(1);
 
+                console.log(`[DriverAPI] Delivery stop found? ${!!deliveryStop}`);
+
                 if (deliveryStop) {
-                    // Has delivery stop - mark as out_for_delivery
+                    // Has delivery stop -> "Picked Up" THEN "Out for Delivery"
+
+                    // 1. Queue "Picked Up" event (2 mins ago)
+                    eventsToInsert.push({
+                        shipmentId: routeOrder.order.id,
+                        eventDatetime: new Date(Date.now() - 120000), // 2 mins ago
+                        location: 'Driver App',
+                        statusCode: 'picked_up',
+                        statusLabel: 'Picked Up',
+                        description: 'Package picked up by driver',
+                        createdBy: 'driver',
+                    });
+
+                    // 2. Set final status to "Out for Delivery"
                     orderStatus = 'out_for_delivery';
                     statusLabel = 'Out for Delivery';
+                } else {
+                    // Pickup Only -> Just "Picked Up"
+                    orderStatus = 'picked_up';
+                    statusLabel = 'Picked Up';
                 }
             }
+            // Handle other pickup statuses if any (e.g. failed pickup)
         } else {
             // DELIVERY stop
             if (statusLower === 'delivered') {
@@ -604,7 +637,22 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             }
         }
 
-        // Update order
+        // Add the main event (reflecting the final status determined above)
+        // This covers "Out for Delivery" (in dual case) or "Picked Up" (in single case) or any Delivery status
+        eventsToInsert.push({
+            shipmentId: routeOrder.order.id,
+            eventDatetime: new Date(),
+            location: location,
+            statusCode: orderStatus,
+            statusLabel: statusLabel,
+            description: notes || `${statusLabel} by driver ${driver?.fullName || 'Unknown'}`,
+            podFileUrl: photoUrl || undefined,
+            createdBy: 'driver',
+        });
+
+        console.log(`[DriverAPI] Events to insert: ${JSON.stringify(eventsToInsert.map(e => ({ status: e.statusCode, time: e.eventDatetime })))}`);
+
+        // Update Order
         const orderUpdate: Record<string, unknown> = {
             status: orderStatus,
             lastStatusUpdate: new Date(),
@@ -622,25 +670,10 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             .set(orderUpdate)
             .where(eq(orders.id, routeOrder.order.id));
 
-        // Get driver info for tracking event
-        const [driver] = await db
-            .select()
-            .from(drivers)
-            .where(eq(drivers.id, req.driverId!))
-            .limit(1);
-
-        // Create tracking event
-        const location = isPickup ? routeOrder.order.shipperCity : routeOrder.order.city;
-        await db.insert(trackingEvents).values({
-            shipmentId: routeOrder.order.id,
-            eventDatetime: new Date(),
-            location: location || 'Unknown',
-            statusCode: orderStatus,
-            statusLabel: statusLabel,
-            description: notes || `${statusLabel} by driver ${driver?.fullName || 'Unknown'}`,
-            podFileUrl: photoUrl || undefined,
-            createdBy: 'driver',
-        });
+        // Insert all queued events
+        for (const event of eventsToInsert) {
+            await db.insert(trackingEvents).values(event);
+        }
 
         // Handle COD for delivered deliveries
         if (!isPickup && statusLower === 'delivered' && routeOrder.order.codRequired) {

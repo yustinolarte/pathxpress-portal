@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import {
   MapPin,
   Building2,
-  Warehouse,
   Truck,
   Clock,
   CheckCircle2,
@@ -22,7 +21,10 @@ import {
   Loader2,
   Calendar,
   FileText,
-  Link2
+  Link2,
+  Plane,
+  FileCheck,
+  Bike
 } from 'lucide-react';
 
 // Ubicaciones predefinidas de PathXpress - 7 Emiratos de UAE
@@ -35,17 +37,13 @@ const LOCATION_OPTIONS = [
   { value: 'pathxpress_hub_umm_al_quwain', label: 'PathXpress Hub - Umm Al Quwain', icon: Building2, group: 'hubs' },
   { value: 'pathxpress_hub_ras_al_khaimah', label: 'PathXpress Hub - Ras Al Khaimah', icon: Building2, group: 'hubs' },
   { value: 'pathxpress_hub_fujairah', label: 'PathXpress Hub - Fujairah', icon: Building2, group: 'hubs' },
-  // Sorting Centers - 7 Emirates
-  { value: 'sorting_center_dubai', label: 'Dubai Sorting Center', icon: Warehouse, group: 'sorting' },
-  { value: 'sorting_center_abudhabi', label: 'Abu Dhabi Sorting Center', icon: Warehouse, group: 'sorting' },
-  { value: 'sorting_center_sharjah', label: 'Sharjah Sorting Center', icon: Warehouse, group: 'sorting' },
-  { value: 'sorting_center_ajman', label: 'Ajman Sorting Center', icon: Warehouse, group: 'sorting' },
-  { value: 'sorting_center_umm_al_quwain', label: 'Umm Al Quwain Sorting Center', icon: Warehouse, group: 'sorting' },
-  { value: 'sorting_center_ras_al_khaimah', label: 'Ras Al Khaimah Sorting Center', icon: Warehouse, group: 'sorting' },
-  { value: 'sorting_center_fujairah', label: 'Fujairah Sorting Center', icon: Warehouse, group: 'sorting' },
-  // Warehouses
-  { value: 'warehouse_jebel_ali', label: 'Jebel Ali Warehouse', icon: Warehouse, group: 'warehouse' },
-  { value: 'warehouse_dip', label: 'DIP Warehouse', icon: Warehouse, group: 'warehouse' },
+
+  // International / Global
+  { value: 'international_hub', label: 'International Hub', icon: Building2, group: 'international' },
+  { value: 'dubai_airport', label: 'Dubai Airport', icon: Plane, group: 'international' },
+  { value: 'customs_clearance', label: 'Customs Clearance', icon: FileCheck, group: 'international' },
+  { value: 'local_courier', label: 'Local Courier Delivery', icon: Bike, group: 'international' },
+
   // Other locations
   { value: 'driver_vehicle', label: 'With Driver / In Vehicle', icon: Truck, group: 'other' },
   { value: 'customer_location', label: 'Customer Location', icon: MapPin, group: 'other' },
@@ -98,11 +96,13 @@ export default function AddTrackingEventDialog({
 }: AddTrackingEventDialogProps) {
   const [formData, setFormData] = useState({
     eventDatetime: getCurrentDatetime(),
-    locationKey: 'sorting_center_dubai',
+    locationKey: 'pathxpress_hub_dubai', // Updated default
     customLocation: '',
     statusCode: 'in_transit',
     statusLabel: 'IN TRANSIT',
     description: '',
+    courierName: '',
+    courierTracking: '',
   });
   const [podFileUrl, setPodFileUrl] = useState('');
 
@@ -120,20 +120,26 @@ export default function AddTrackingEventDialog({
       toast.success('Tracking event added successfully');
       onSuccess();
       onOpenChange(false);
-      setFormData({
-        eventDatetime: getCurrentDatetime(),
-        locationKey: 'sorting_center_dubai',
-        customLocation: '',
-        statusCode: 'in_transit',
-        statusLabel: 'IN TRANSIT',
-        description: '',
-      });
-      setPodFileUrl('');
+      resetForm();
     },
     onError: (error) => {
       toast.error(error.message || 'Failed to add tracking event');
     },
   });
+
+  const resetForm = () => {
+    setFormData({
+      eventDatetime: getCurrentDatetime(),
+      locationKey: 'pathxpress_hub_dubai',
+      customLocation: '',
+      statusCode: 'in_transit',
+      statusLabel: 'IN TRANSIT',
+      description: '',
+      courierName: '',
+      courierTracking: '',
+    });
+    setPodFileUrl('');
+  };
 
   const handleStatusChange = (value: string) => {
     const option = STATUS_OPTIONS.find(s => s.value === value);
@@ -149,6 +155,9 @@ export default function AddTrackingEventDialog({
       ...formData,
       locationKey: value,
       customLocation: value === 'other' ? formData.customLocation : '',
+      // Clear courier fields if switching away from local_courier
+      courierName: value === 'local_courier' ? formData.courierName : '',
+      courierTracking: value === 'local_courier' ? formData.courierTracking : '',
     });
   };
 
@@ -168,7 +177,22 @@ export default function AddTrackingEventDialog({
       return;
     }
 
+    if (formData.locationKey === 'local_courier' && (!formData.courierName.trim() || !formData.courierTracking.trim())) {
+      toast.error('Please specify Courier Name and Tracking Number');
+      return;
+    }
+
     const eventDatetimeWithOffset = `${formData.eventDatetime}:00+04:00`;
+
+    // Construct description
+    let finalDescription = formData.description;
+
+    if (formData.locationKey === 'local_courier') {
+      const courierInfo = `Handed over to ${formData.courierName}, Tracking: ${formData.courierTracking}`;
+      finalDescription = finalDescription
+        ? `${courierInfo}. ${finalDescription}`
+        : courierInfo;
+    }
 
     await addEventMutation.mutateAsync({
       token,
@@ -177,15 +201,13 @@ export default function AddTrackingEventDialog({
       location: getLocationLabel(),
       statusCode: formData.statusCode,
       statusLabel: formData.statusLabel,
-      description: formData.description,
+      description: finalDescription,
       podFileUrl: podFileUrl || undefined,
     });
   };
 
   const selectedLocation = LOCATION_OPTIONS.find(loc => loc.value === formData.locationKey);
   const LocationIcon = selectedLocation?.icon || MapPin;
-  const selectedStatus = STATUS_OPTIONS.find(s => s.value === formData.statusCode);
-  const StatusIcon = selectedStatus?.icon || Clock;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -289,10 +311,11 @@ export default function AddTrackingEventDialog({
                         </SelectItem>
                       );
                     })}
+
                     <div className="px-2 py-1.5 text-xs font-semibold text-primary border-t mt-1 pt-2">
-                      📦 Sorting Centers
+                      🌍 International / Global
                     </div>
-                    {LOCATION_OPTIONS.filter(loc => loc.group === 'sorting').map((location) => {
+                    {LOCATION_OPTIONS.filter(loc => loc.group === 'international').map((location) => {
                       const Icon = location.icon;
                       return (
                         <SelectItem key={location.value} value={location.value}>
@@ -303,20 +326,7 @@ export default function AddTrackingEventDialog({
                         </SelectItem>
                       );
                     })}
-                    <div className="px-2 py-1.5 text-xs font-semibold text-primary border-t mt-1 pt-2">
-                      🏭 Warehouses
-                    </div>
-                    {LOCATION_OPTIONS.filter(loc => loc.group === 'warehouse').map((location) => {
-                      const Icon = location.icon;
-                      return (
-                        <SelectItem key={location.value} value={location.value}>
-                          <div className="flex items-center gap-2">
-                            <Icon className="h-4 w-4" />
-                            {location.label}
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
+
                     <div className="px-2 py-1.5 text-xs font-semibold text-primary border-t mt-1 pt-2">
                       📍 Other Locations
                     </div>
@@ -350,6 +360,38 @@ export default function AddTrackingEventDialog({
                   required
                   className="bg-orange-500/5 border-orange-500/20"
                 />
+              </div>
+            )}
+
+            {/* Local Courier Fields */}
+            {formData.locationKey === 'local_courier' && (
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2 text-blue-400">
+                    <Truck className="w-4 h-4" />
+                    Courier Name *
+                  </Label>
+                  <Input
+                    placeholder="e.g. Aramex, DHL"
+                    value={formData.courierName}
+                    onChange={(e) => setFormData({ ...formData, courierName: e.target.value })}
+                    required
+                    className="bg-blue-500/5 border-blue-500/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2 text-blue-400">
+                    <FileText className="w-4 h-4" />
+                    Tracking Number *
+                  </Label>
+                  <Input
+                    placeholder="Enter tracking number"
+                    value={formData.courierTracking}
+                    onChange={(e) => setFormData({ ...formData, courierTracking: e.target.value })}
+                    required
+                    className="bg-blue-500/5 border-blue-500/20"
+                  />
+                </div>
               </div>
             )}
 
