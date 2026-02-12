@@ -533,15 +533,26 @@ export async function getAvailableOrders() {
     const assignedIds = assignedOrders.map(o => o.orderId);
 
     // Get orders that are out_for_delivery or pending_pickup but not yet assigned
-    const availableOrders = await db
+    const availableOrdersRaw = await db
         .select({
             id: orders.id,
             waybillNumber: orders.waybillNumber,
             customerName: orders.customerName,
+            customerPhone: orders.customerPhone,
+            address: orders.address,
             city: orders.city,
+            emirate: orders.emirate,
             status: orders.status,
             codRequired: orders.codRequired,
             codAmount: orders.codAmount,
+            serviceType: orders.serviceType,
+            pieces: orders.pieces,
+            weight: orders.weight,
+            isReturn: orders.isReturn,
+            orderType: orders.orderType,
+            shipperName: orders.shipperName,
+            clientId: orders.clientId,
+            specialInstructions: orders.specialInstructions,
         })
         .from(orders)
         .where(
@@ -560,5 +571,19 @@ export async function getAvailableOrders() {
         )
         .orderBy(desc(orders.createdAt));
 
-    return availableOrders;
+    // Get company names for all client IDs
+    const clientIds = Array.from(new Set(availableOrdersRaw.map(o => o.clientId)));
+    let clientMap: Record<number, string> = {};
+    if (clientIds.length > 0) {
+        const clients = await db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
+            .from(clientAccounts).where(inArray(clientAccounts.id, clientIds));
+        for (const c of clients) {
+            clientMap[c.id] = c.companyName;
+        }
+    }
+
+    return availableOrdersRaw.map(o => ({
+        ...o,
+        companyName: clientMap[o.clientId] || 'Unknown',
+    }));
 }

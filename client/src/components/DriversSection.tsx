@@ -520,7 +520,6 @@ export default function DriversSection() {
                                             <TableHead>Date</TableHead>
                                             <TableHead>Driver</TableHead>
                                             <TableHead>Zone</TableHead>
-                                            <TableHead>Companies</TableHead>
                                             <TableHead>Stops</TableHead>
                                             <TableHead>Info</TableHead>
                                             <TableHead>Status</TableHead>
@@ -534,17 +533,6 @@ export default function DriversSection() {
                                                 <TableCell>{new Date(route.date).toLocaleDateString()}</TableCell>
                                                 <TableCell>{route.driver?.fullName || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
                                                 <TableCell>{route.zone || '-'}</TableCell>
-                                                <TableCell>
-                                                    {route.companies && route.companies.length > 0 ? (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {route.companies.map((c: string, i: number) => (
-                                                                <Badge key={i} variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
-                                                                    <Building2 className="w-3 h-3 mr-1" />{c}
-                                                                </Badge>
-                                                            ))}
-                                                        </div>
-                                                    ) : <span className="text-muted-foreground text-xs">-</span>}
-                                                </TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
                                                         <span className="text-green-400 font-medium">{route.deliveryStats?.delivered || 0}</span>
@@ -1100,83 +1088,164 @@ export default function DriversSection() {
                 setAddOrdersDialogOpen(open);
                 if (!open) setSelectedOrderIds([]);
             }}>
-                <DialogContent className="sm:max-w-[600px]">
-                    <DialogHeader>
-                        <DialogTitle>Add Orders to Route</DialogTitle>
-                        <DialogDescription>Select orders to add to route {selectedRouteId}</DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4 space-y-4">
-                        <div className="max-h-[350px] overflow-y-auto">
+                <DialogContent className="glass-strong !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+                    {/* Decorative Top Line */}
+                    <div className="w-full h-1 bg-gradient-to-r from-emerald-600 to-teal-600" />
+
+                    <div className="p-6">
+                        {/* Header */}
+                        <DialogHeader className="mb-4">
+                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-emerald-500/20">
+                                    <Package className="w-6 h-6 text-emerald-400" />
+                                </div>
+                                Add Orders to Route
+                            </DialogTitle>
+                            <DialogDescription className="mt-1">
+                                Select orders to assign to route <span className="font-mono font-medium text-white">{selectedRouteId}</span>
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        {/* Selection summary */}
+                        {selectedOrderIds.length > 0 && (
+                            <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+                                <span className="text-sm text-emerald-400">
+                                    <CheckCircle2 className="w-4 h-4 inline mr-1" />
+                                    {selectedOrderIds.length} order{selectedOrderIds.length > 1 ? 's' : ''} selected
+                                </span>
+                            </div>
+                        )}
+
+                        <div className="max-h-[450px] overflow-y-auto">
                             {availableOrders && availableOrders.length > 0 ? (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead className="w-10"></TableHead>
-                                            <TableHead>Waybill</TableHead>
-                                            <TableHead>Customer</TableHead>
-                                            <TableHead>City</TableHead>
-                                            <TableHead>Stop Mode</TableHead>
-                                            <TableHead>Type</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {availableOrders.map((order: any) => (
-                                            <TableRow
+                                <div className="space-y-2">
+                                    {availableOrders.map((order: any) => {
+                                        const isSelected = selectedOrderIds.includes(order.id);
+                                        const isReturn = order.isReturn === 1 || order.orderType === 'return';
+                                        const isExchange = order.orderType === 'exchange';
+                                        return (
+                                            <div
                                                 key={order.id}
-                                                className="cursor-pointer hover:bg-muted/50"
                                                 onClick={() => toggleOrderSelection(order.id)}
+                                                className={`
+                                                    rounded-lg border p-4 cursor-pointer transition-all
+                                                    ${isSelected
+                                                        ? 'bg-emerald-500/10 border-emerald-500/30 ring-1 ring-emerald-500/30'
+                                                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                                                    }
+                                                `}
                                             >
-                                                <TableCell>
+                                                <div className="flex items-start gap-3">
+                                                    {/* Checkbox */}
                                                     <input
                                                         type="checkbox"
-                                                        checked={selectedOrderIds.includes(order.id)}
+                                                        checked={isSelected}
                                                         onChange={() => toggleOrderSelection(order.id)}
-                                                        className="h-4 w-4 rounded border-gray-300"
+                                                        className="h-4 w-4 mt-1 rounded border-gray-300"
                                                     />
-                                                </TableCell>
-                                                <TableCell className="font-mono">{order.waybillNumber}</TableCell>
-                                                <TableCell>{order.customerName}</TableCell>
-                                                <TableCell>{order.city}</TableCell>
-                                                <TableCell onClick={(e) => e.stopPropagation()}>
-                                                    <Select
-                                                        value={orderModes[order.id] || 'both'}
-                                                        onValueChange={(value: any) => setOrderModes(prev => ({ ...prev, [order.id]: value }))}
-                                                    >
-                                                        <SelectTrigger className="h-8 w-[160px]">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="both">🔄 Pickup + Delivery</SelectItem>
-                                                            <SelectItem value="pickup_only">📦 Pickup Only</SelectItem>
-                                                            <SelectItem value="delivery_only">🚚 Delivery Only</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {order.codRequired ? (
-                                                        <Badge className="bg-orange-500/20 text-orange-400">COD {order.codAmount}</Badge>
-                                                    ) : (
-                                                        <Badge className="bg-green-500/20 text-green-400">Prepaid</Badge>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
+
+                                                    {/* Main info */}
+                                                    <div className="flex-1 min-w-0">
+                                                        {/* Top row: waybill + badges */}
+                                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                            <span className="font-mono font-medium text-sm">{order.waybillNumber}</span>
+                                                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
+                                                                <Building2 className="w-3 h-3 mr-1" />{order.companyName}
+                                                            </Badge>
+                                                            {isReturn && (
+                                                                <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
+                                                                    <RotateCcw className="w-3 h-3 mr-1" />Return
+                                                                </Badge>
+                                                            )}
+                                                            {isExchange && (
+                                                                <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
+                                                                    <RefreshCw className="w-3 h-3 mr-1" />Exchange
+                                                                </Badge>
+                                                            )}
+                                                            {order.serviceType === 'same-day' && (
+                                                                <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-xs">
+                                                                    ⚡ Same Day
+                                                                </Badge>
+                                                            )}
+                                                            {order.serviceType === 'express' && (
+                                                                <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">
+                                                                    ⚡ Express
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Customer + Address */}
+                                                        <div className="flex items-center gap-2 text-sm mb-1">
+                                                            <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                                            <span className="font-medium">{order.customerName}</span>
+                                                            <span className="text-muted-foreground">•</span>
+                                                            <span className="text-muted-foreground truncate">{order.address}</span>
+                                                        </div>
+
+                                                        {/* City + details row */}
+                                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                            <span className="flex items-center gap-1">
+                                                                <MapPin className="w-3 h-3" />{order.city}{order.emirate ? `, ${order.emirate}` : ''}
+                                                            </span>
+                                                            <span>{order.pieces} pc{order.pieces > 1 ? 's' : ''} • {order.weight} kg</span>
+                                                            {order.codRequired ? (
+                                                                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                                                                    <DollarSign className="w-3 h-3 mr-0.5" />COD {order.codAmount} AED
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepaid</Badge>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Stop Mode selector */}
+                                                    <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+                                                        <Select
+                                                            value={orderModes[order.id] || 'both'}
+                                                            onValueChange={(value: any) => setOrderModes(prev => ({ ...prev, [order.id]: value }))}
+                                                        >
+                                                            <SelectTrigger className="h-8 w-[160px] bg-white/5 border-white/10 text-xs">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="both">🔄 Pickup + Delivery</SelectItem>
+                                                                <SelectItem value="pickup_only">📦 Pickup Only</SelectItem>
+                                                                <SelectItem value="delivery_only">🚚 Delivery Only</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             ) : (
                                 <p className="text-center py-8 text-muted-foreground">No available orders to add</p>
                             )}
                         </div>
+
+                        {/* Footer */}
+                        <DialogFooter className="pt-4 mt-4 border-t border-white/10">
+                            <Button type="button" variant="outline" onClick={() => setAddOrdersDialogOpen(false)}>Cancel</Button>
+                            <Button
+                                onClick={handleAddOrdersToRoute}
+                                disabled={selectedOrderIds.length === 0 || addOrdersToRouteMutation.isPending}
+                                className="bg-emerald-600 hover:bg-emerald-700"
+                            >
+                                {addOrdersToRouteMutation.isPending ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Adding...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                                        Add {selectedOrderIds.length} Order{selectedOrderIds.length !== 1 ? 's' : ''}
+                                    </>
+                                )}
+                            </Button>
+                        </DialogFooter>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setAddOrdersDialogOpen(false)}>Cancel</Button>
-                        <Button
-                            onClick={handleAddOrdersToRoute}
-                            disabled={selectedOrderIds.length === 0 || addOrdersToRouteMutation.isPending}
-                        >
-                            {addOrdersToRouteMutation.isPending ? 'Adding...' : `Add ${selectedOrderIds.length} Order(s)`}
-                        </Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
