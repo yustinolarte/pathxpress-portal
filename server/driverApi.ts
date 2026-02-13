@@ -495,7 +495,7 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
 router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { status, photoBase64, notes } = req.body;
+        const { status, photoBase64, notes, collectedAmount } = req.body;
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
@@ -543,6 +543,11 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             proofPhotoUrl: photoUrl,
         };
 
+        // Save collected amount if provided
+        if (collectedAmount) {
+            updateData.collectedAmount = collectedAmount.toString();
+        }
+
         // Set timestamp based on status
         if (statusLower === 'picked_up') {
             updateData.pickedUpAt = new Date();
@@ -573,9 +578,6 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             .where(eq(drivers.id, req.driverId!))
             .limit(1);
 
-        // Debugging logs
-
-
         if (isPickup) {
             // PICKUP stop
             if (statusLower === 'picked_up') {
@@ -590,8 +592,6 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
                         eq(routeOrders.type, 'delivery')
                     ))
                     .limit(1);
-
-                console.log(`[DriverAPI] Delivery stop found? ${!!deliveryStop}`);
 
                 if (deliveryStop) {
                     // Has delivery stop -> "Picked Up" THEN "Out for Delivery"
@@ -650,8 +650,6 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             createdBy: 'driver',
         });
 
-        console.log(`[DriverAPI] Events to insert: ${JSON.stringify(eventsToInsert.map(e => ({ status: e.statusCode, time: e.eventDatetime })))}`);
-
         // Update Order
         const orderUpdate: Record<string, unknown> = {
             status: orderStatus,
@@ -677,6 +675,9 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
 
         // Handle COD for delivered deliveries
         if (!isPickup && statusLower === 'delivered' && routeOrder.order.codRequired) {
+            // Use collectedAmount from request if available, otherwise fallback to expected amount
+            const finalCodAmount = collectedAmount?.toString() || routeOrder.order.codAmount || '0';
+
             const [existingCod] = await db
                 .select()
                 .from(codRecords)
@@ -686,12 +687,16 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             if (existingCod) {
                 await db
                     .update(codRecords)
-                    .set({ status: 'collected', collectedDate: new Date() })
+                    .set({
+                        status: 'collected',
+                        collectedDate: new Date(),
+                        codAmount: finalCodAmount
+                    })
                     .where(eq(codRecords.id, existingCod.id));
             } else {
                 await db.insert(codRecords).values({
                     shipmentId: routeOrder.order.id,
-                    codAmount: routeOrder.order.codAmount || '0',
+                    codAmount: finalCodAmount,
                     codCurrency: routeOrder.order.codCurrency || 'AED',
                     status: 'collected',
                     collectedDate: new Date(),
@@ -1036,6 +1041,86 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
         });
     } catch (error) {
         console.error('Pickup error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ WALLET / RECONCILIATION ============
+
+router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Get all routes for this driver
+        const routes = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.driverId, req.driverId!));
+
+        const routeIds = routes.map(r => r.id);
+
+        if (routeIds.length === 0) {
+            return res.json({
+                totalExpected: 0,
+                totalCollected: 0,
+                discrepancy: 0,
+                orders: []
+            });
+        }
+
+        // Get all COD deliveries for these routes (assuming today's route/shift context)
+        // We filter for "delivery" type stops that have codRequired
+        const allStops = await db
+            .select({
+                routeOrder: routeOrders,
+                order: orders
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.type, 'delivery')); // Only care about delivery stops for COD
+
+        // Filter valid stops for this driver's routes
+        const driverStops = allStops.filter(s => routeIds.includes(s.routeOrder.routeId));
+
+        // Filter for COD orders
+        const codStops = driverStops.filter(s => s.order.codRequired === 1);
+
+        let totalExpected = 0;
+        let totalCollected = 0;
+
+        const codOrders = codStops.map(s => {
+            const expected = parseFloat(s.order.codAmount || '0');
+            const collected = s.routeOrder.collectedAmount ? parseFloat(s.routeOrder.collectedAmount) : 0;
+            const status = s.routeOrder.status?.toLowerCase();
+            const isDelivered = status === 'delivered';
+
+            // Only count towards total if delivered
+            if (isDelivered) {
+                totalExpected += expected;
+                totalCollected += collected;
+            }
+
+            return {
+                id: s.order.id,
+                waybillNumber: s.order.waybillNumber,
+                customerName: s.order.customerName,
+                expectedAmount: expected,
+                collectedAmount: collected,
+                status: status, // delivered, returned, etc.
+                isDelivered
+            };
+        });
+
+        res.json({
+            totalExpected,
+            totalCollected,
+            discrepancy: totalCollected - totalExpected,
+            orders: codOrders
+        });
+
+    } catch (error) {
+        console.error('Get wallet summary error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

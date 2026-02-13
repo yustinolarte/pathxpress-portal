@@ -532,6 +532,7 @@ export const routeOrders = mysqlTable("routeOrders", {
   attemptedAt: timestamp("attemptedAt"),
   deliveredAt: timestamp("deliveredAt"),
   pickedUpAt: timestamp("pickedUpAt"), // For pickup stops
+  collectedAmount: varchar("collectedAmount", { length: 50 }), // Actual amount collected by driver
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
