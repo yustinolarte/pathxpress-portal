@@ -819,6 +819,11 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
     }
   }
 
+  // Use lastStatusUpdate (delivery/return date) instead of createdAt
+  // so shipments delivered after their creation period are still captured
+  const periodEndFullDay = new Date(periodEnd);
+  periodEndFullDay.setHours(23, 59, 59, 999);
+
   const shipmentsData = await db
     .select({
       order: orders,
@@ -828,8 +833,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
     .where(
       and(
         eq(orders.clientId, clientId),
-        gte(orders.createdAt, periodStart),
-        lte(orders.createdAt, periodEnd),
+        gte(orders.lastStatusUpdate, periodStart),
+        lte(orders.lastStatusUpdate, periodEndFullDay),
         inArray(orders.status, ['delivered', 'returned', 'exchange']),
         isNull(invoiceItems.id)
       )
@@ -855,17 +860,21 @@ export async function generateInvoiceForClient(
   const { invoiceItems, rateTiers } = await import("../drizzle/schema");
 
   if (shipmentIds && shipmentIds.length > 0) {
-    const { inArray } = await import("drizzle-orm");
-    shipments = await db
-      .select()
+    const { inArray, isNull } = await import("drizzle-orm");
+    // Also verify shipments are not already invoiced (double-invoice protection)
+    const results = await db
+      .select({ order: orders })
       .from(orders)
+      .leftJoin(invoiceItems, eq(orders.id, invoiceItems.shipmentId))
       .where(
         and(
           eq(orders.clientId, clientId),
           inArray(orders.id, shipmentIds),
-          inArray(orders.status, ['delivered', 'returned', 'exchange'])
+          inArray(orders.status, ['delivered', 'returned', 'exchange']),
+          isNull(invoiceItems.id)
         )
       );
+    shipments = results.map(r => r.order);
   } else {
     // If getting all billable, we can reuse getBillableShipments logic but we need raw orders
     const result = await getBillableShipments(clientId, periodStart, periodEnd);
@@ -944,7 +953,8 @@ export async function generateInvoiceForClient(
   // Create invoice items with correct rates
   for (const { shipment, shippingRate, fodFee } of shipmentRates) {
     const weight = parseFloat(shipment.weight || '0');
-    const serviceType = shipment.serviceType?.toUpperCase() === 'SDD' ? 'SDD' : 'DOM';
+    const svcUpper = shipment.serviceType?.toUpperCase() || 'DOM';
+    const serviceType = (svcUpper === 'SDD' || svcUpper === 'SAME DAY') ? 'SDD' : 'DOM';
 
     // Shipping Item
     await db.insert(invoiceItems).values({

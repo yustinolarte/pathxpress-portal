@@ -114,9 +114,12 @@ export default function BillingPanel() {
   }, [billableShipments]);
 
   const toggleShipmentSelection = (id: number) => {
-    setSelectedShipmentIds(prev =>
-      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
-    );
+    setSelectedShipmentIds(prev => {
+      const updated = prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id];
+      // Keep selectAll in sync
+      setSelectAll(billableShipments ? updated.length === billableShipments.length : false);
+      return updated;
+    });
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -472,7 +475,7 @@ export default function BillingPanel() {
                               {shipment.waybillNumber}
                             </label>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(shipment.createdAt).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
+                              {new Date(shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
                             </p>
                           </div>
 
