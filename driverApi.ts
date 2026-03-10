@@ -1,0 +1,1190 @@
+/**
+ * REST API endpoints for the Driver mobile app
+ * These endpoints are accessed via /api/driver/*
+ */
+import { Router, Request, Response, NextFunction } from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { eq, and, or } from 'drizzle-orm';
+import { getDb } from './db';
+import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
+import { uploadImageToCloudinary } from './cloudinary';
+
+const router = Router();
+
+// JWT Secret
+const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
+
+// Extend Request to include driver info
+interface DriverRequest extends Request {
+    driverId?: number;
+    driverUsername?: string;
+}
+
+// Auth middleware for driver routes
+const driverAuthMiddleware = async (req: DriverRequest, res: Response, next: NextFunction) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
+
+        const token = authHeader.substring(7);
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: number; username: string };
+
+        req.driverId = decoded.id;
+        req.driverUsername = decoded.username;
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+// ============ AUTH ============
+
+router.post('/auth/login', async (req: Request, res: Response) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
+
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.username, username))
+            .limit(1);
+
+        if (!driver) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const validPassword = await bcrypt.compare(password, driver.passwordHash);
+        if (!validPassword) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        if (driver.status !== 'active') {
+            return res.status(403).json({ error: 'Account is not active' });
+        }
+
+        const token = jwt.sign(
+            { id: driver.id, username: driver.username },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            token,
+            driver: {
+                id: driver.id,
+                username: driver.username,
+                fullName: driver.fullName,
+                email: driver.email,
+                phone: driver.phone,
+                vehicleNumber: driver.vehicleNumber,
+            },
+        });
+    } catch (error) {
+        console.error('Driver login error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ PROFILE ============
+
+router.get('/profile', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.id, req.driverId!))
+            .limit(1);
+
+        if (!driver) {
+            return res.status(404).json({ error: 'Driver not found' });
+        }
+
+        // Get delivery stats for this driver
+        const driverRoutesData = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.driverId, req.driverId!));
+
+        const routeIds = driverRoutesData.map(r => r.id);
+
+        let deliveryStats = {
+            total: 0,
+            delivered: 0,
+            pending: 0,
+            attempted: 0,
+        };
+
+        if (routeIds.length > 0) {
+            // Get all route orders for this driver's routes
+            const allDeliveries = await db
+                .select()
+                .from(routeOrders);
+
+            const driverDeliveries = allDeliveries.filter(d => routeIds.includes(d.routeId));
+
+            deliveryStats = {
+                total: driverDeliveries.length,
+                delivered: driverDeliveries.filter(d => d.status === 'delivered').length,
+                pending: driverDeliveries.filter(d => d.status === 'pending' || d.status === 'in_progress').length,
+                attempted: driverDeliveries.filter(d => d.status === 'attempted').length,
+            };
+        }
+
+        // Calculate metrics based on stats
+        const metrics = {
+            efficiency: deliveryStats.total > 0
+                ? `${Math.round((deliveryStats.delivered / deliveryStats.total) * 100)}%`
+                : '100%',
+            totalDeliveries: deliveryStats.delivered,
+            hoursWorked: 8, // Placeholder for now, could be calculated from shifts
+            deliveryStats // Include raw stats too just in case
+        };
+
+        // Remove password hash from response
+        const { passwordHash, ...driverData } = driver;
+
+        // Return structure expected by the mobile app: { driver: ..., metrics: ... }
+        res.json({
+            driver: driverData,
+            metrics
+        });
+    } catch (error) {
+        console.error('Get profile error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ ROUTES ============
+
+router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { routeId } = req.params;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Get the route
+        const [route] = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.id, routeId))
+            .limit(1);
+
+        if (!route) {
+            return res.status(404).json({ error: 'Route not found' });
+        }
+
+        // Check if route belongs to this driver or is unassigned
+        if (route.driverId !== null && route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'This route is assigned to another driver' });
+        }
+
+        // Get the stops (pickups and deliveries) for this route
+        const routeOrdersList = await db
+            .select({
+                routeOrder: routeOrders,
+                order: orders,
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.routeId, routeId))
+            .orderBy(routeOrders.sequence);
+
+        // First pass: collect pickup status by orderId
+        const pickupStatusByOrderId = new Map<number, string>();
+        routeOrdersList.forEach((item) => {
+            if (item.routeOrder.type === 'pickup') {
+                pickupStatusByOrderId.set(item.order.id, item.routeOrder.status || 'pending');
+            }
+        });
+
+        // Format stops for the app - include both pickup and delivery info
+        const stops = routeOrdersList.map((item) => {
+            const stopType = item.routeOrder.type || 'delivery';
+            const isPickup = stopType === 'pickup';
+
+            // Delivery stops are disabled until their corresponding pickup is completed
+            let isDisabled = false;
+            if (!isPickup) {
+                const pickupStatus = pickupStatusByOrderId.get(item.order.id);
+                // Delivery is disabled if there's a pickup for this order that isn't completed
+                if (pickupStatus && pickupStatus !== 'picked_up') {
+                    isDisabled = true;
+                }
+            }
+
+            return {
+                id: item.routeOrder.id,
+                orderId: item.order.id,
+                sequence: item.routeOrder.sequence,
+                stopType: stopType, // 'pickup' or 'delivery'
+                isDisabled: isDisabled, // NEW: delivery disabled until pickup done
+
+                // Waybill info
+                waybillNumber: item.order.waybillNumber,
+                packageRef: item.order.waybillNumber,
+                pieces: item.order.pieces,
+                weight: item.order.weight,
+                serviceType: item.order.serviceType,
+
+                // For PICKUP: show shipper info (where to collect)
+                // For DELIVERY: show customer info (where to deliver)
+                contactName: isPickup ? item.order.shipperName : item.order.customerName,
+                contactPhone: isPickup ? item.order.shipperPhone : item.order.customerPhone,
+                address: isPickup ? item.order.shipperAddress : item.order.address,
+                city: isPickup ? item.order.shipperCity : item.order.city,
+
+                // Keep full info for detail view
+                shipperName: item.order.shipperName,
+                shipperPhone: item.order.shipperPhone,
+                shipperAddress: item.order.shipperAddress,
+                shipperCity: item.order.shipperCity,
+                customerName: item.order.customerName,
+                customerPhone: item.order.customerPhone,
+                deliveryAddress: item.order.address,
+                deliveryCity: item.order.city,
+
+                // Coordinates (use shipper for pickup, customer for delivery)
+                latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
+                longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+
+                // COD info (only relevant for delivery)
+                codRequired: item.order.codRequired === 1,
+                codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+
+                // Status
+                status: item.routeOrder.status?.toUpperCase() || 'PENDING',
+                proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+                notes: item.routeOrder.notes,
+            };
+        });
+
+        // Calculate stats
+        const pickupCount = stops.filter(s => s.stopType === 'pickup').length;
+        const deliveryCount = stops.filter(s => s.stopType === 'delivery').length;
+        const completedCount = stops.filter(s =>
+            s.status === 'PICKED_UP' || s.status === 'DELIVERED'
+        ).length;
+
+        res.json({
+            ...route,
+            status: route.status?.toUpperCase() || 'PENDING',
+            stops, // New unified list
+            deliveries: stops, // Keep for backward compatibility
+            stats: {
+                total: stops.length,
+                completed: completedCount,
+                pickups: pickupCount,
+                deliveries: deliveryCount,
+            }
+        });
+    } catch (error) {
+        console.error('Get route error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { routeId } = req.params;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const [route] = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.id, routeId))
+            .limit(1);
+
+        if (!route) {
+            return res.status(404).json({ error: 'Route not found' });
+        }
+
+        if (route.status === 'completed') {
+            return res.status(400).json({ error: 'This route is already completed' });
+        }
+
+        if (route.driverId !== null && route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'This route is already assigned to another driver' });
+        }
+
+        // Claim the route if not already claimed by this driver
+        if (route.driverId !== req.driverId) {
+            await db
+                .update(driverRoutes)
+                .set({ driverId: req.driverId, status: 'in_progress' })
+                .where(eq(driverRoutes.id, routeId));
+        }
+        
+        // --- NEW FIX: Auto set to in_progress (Out for Delivery) ---
+        // Change all pending/picked_up stops to in_progress
+        await db
+            .update(routeOrders)
+            .set({ status: 'in_progress' })
+            .where(
+                and(
+                    eq(routeOrders.routeId, routeId),
+                    or(
+                        eq(routeOrders.status, 'pending'),
+                        eq(routeOrders.status, 'picked_up')
+                    )
+                )
+            );
+
+        // Get updated route
+        const [updatedRoute] = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.id, routeId))
+            .limit(1);
+
+        // Get the stops (pickups and deliveries) for this route - same format as GET route
+        const routeOrdersList = await db
+            .select({
+                routeOrder: routeOrders,
+                order: orders,
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.routeId, routeId))
+            .orderBy(routeOrders.sequence);
+
+        // Format stops for the app - same as GET route
+        const stops = routeOrdersList.map((item) => {
+            const stopType = item.routeOrder.type || 'delivery';
+            const isPickup = stopType === 'pickup';
+
+            return {
+                id: item.routeOrder.id,
+                orderId: item.order.id,
+                sequence: item.routeOrder.sequence,
+                stopType: stopType,
+                waybillNumber: item.order.waybillNumber,
+                packageRef: item.order.waybillNumber,
+                pieces: item.order.pieces,
+                weight: item.order.weight,
+                serviceType: item.order.serviceType,
+                contactName: isPickup ? item.order.shipperName : item.order.customerName,
+                contactPhone: isPickup ? item.order.shipperPhone : item.order.customerPhone,
+                address: isPickup ? item.order.shipperAddress : item.order.address,
+                city: isPickup ? item.order.shipperCity : item.order.city,
+                shipperName: item.order.shipperName,
+                shipperPhone: item.order.shipperPhone,
+                shipperAddress: item.order.shipperAddress,
+                shipperCity: item.order.shipperCity,
+                customerName: item.order.customerName,
+                customerPhone: item.order.customerPhone,
+                deliveryAddress: item.order.address,
+                deliveryCity: item.order.city,
+                latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
+                longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+                codRequired: item.order.codRequired === 1,
+                codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+                status: item.routeOrder.status?.toUpperCase() || 'PENDING',
+                proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+                notes: item.routeOrder.notes,
+            };
+        });
+
+        const pickupCount = stops.filter(s => s.stopType === 'pickup').length;
+        const deliveryCount = stops.filter(s => s.stopType === 'delivery').length;
+        const completedCount = stops.filter(s =>
+            s.status === 'PICKED_UP' || s.status === 'DELIVERED'
+        ).length;
+
+        res.json({
+            ...updatedRoute,
+            status: updatedRoute?.status?.toUpperCase() || 'PENDING',
+            stops,
+            deliveries: stops, // backward compatibility
+            stats: {
+                total: stops.length,
+                completed: completedCount,
+                pickups: pickupCount,
+                deliveries: deliveryCount,
+            }
+        });
+    } catch (error) {
+        console.error('Claim route error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { routeId } = req.params;
+        const { status } = req.body;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const [route] = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.id, routeId))
+            .limit(1);
+
+        if (!route) {
+            return res.status(404).json({ error: 'Route not found' });
+        }
+
+        if (route.driverId !== null && route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const statusLower = status.toLowerCase();
+        await db
+            .update(driverRoutes)
+            .set({ status: statusLower as typeof route.status })
+            .where(eq(driverRoutes.id, routeId));
+
+        // When route changes to in_progress, mark delivery-only orders as out_for_delivery
+        if (statusLower === 'in_progress') {
+            // Get all stops for this route
+            const allStops = await db
+                .select()
+                .from(routeOrders)
+                .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+                .where(eq(routeOrders.routeId, routeId));
+
+            // Group by orderId to find which orders only have delivery (no pickup)
+            const orderStops = new Map<number, { hasPickup: boolean; hasDelivery: boolean }>();
+            allStops.forEach(stop => {
+                const orderId = stop.orders.id;
+                if (!orderStops.has(orderId)) {
+                    orderStops.set(orderId, { hasPickup: false, hasDelivery: false });
+                }
+                const entry = orderStops.get(orderId)!;
+                if (stop.routeOrders.type === 'pickup') entry.hasPickup = true;
+                if (stop.routeOrders.type === 'delivery') entry.hasDelivery = true;
+            });
+
+            // Mark delivery-only orders as out_for_delivery
+            const entries = Array.from(orderStops.entries());
+            for (const [orderId, stops] of entries) {
+                if (!stops.hasPickup && stops.hasDelivery) {
+                    // This order only has delivery stop - mark as out_for_delivery
+                    await db
+                        .update(orders)
+                        .set({
+                            status: 'out_for_delivery',
+                            lastStatusUpdate: new Date()
+                        })
+                        .where(eq(orders.id, orderId));
+
+                    // Create tracking event
+                    await db.insert(trackingEvents).values({
+                        shipmentId: orderId,
+                        eventDatetime: new Date(),
+                        location: 'Driver Route',
+                        statusCode: 'out_for_delivery',
+                        statusLabel: 'Out for Delivery',
+                        description: 'Package is out for delivery',
+                        createdBy: 'driver',
+                    });
+                }
+            }
+        }
+
+        res.json({ message: 'Route status updated' });
+    } catch (error) {
+        console.error('Update route status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ STOPS (Pickups & Deliveries) ============
+
+router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const barcode = req.query.barcode as string;
+        if (!barcode) return res.status(400).json({ error: 'Barcode is required' });
+
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // A package in the portal is in the `orders` table
+        // Find by waybillNumber
+        const [order] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
+
+        if (!order) return res.status(404).json({ error: 'Package not found in system!' });
+
+        // Check if assigned to another driver via a routeOrder stop
+        const [routeOrder] = await db.select().from(routeOrders)
+            .where(eq(routeOrders.orderId, order.id))
+            .limit(1);
+
+        let routeId = null;
+        if (routeOrder) {
+            routeId = routeOrder.routeId;
+            const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
+            if (route && route.driverId !== null && route.driverId !== req.driverId) {
+                return res.status(403).json({ error: 'Assigned to another driver!' });
+            }
+        }
+
+        // Return formatted package matching the driver app expectations
+        res.json({
+            id: routeOrder ? routeOrder.id : order.id,
+            packageRef: order.waybillNumber,
+            status: routeOrder ? routeOrder.status : order.status,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            address: order.address,
+            codAmount: order.codAmount ? parseFloat(order.codAmount) : 0,
+            type: order.codRequired === 1 ? 'COD' : 'PREPAID',
+            weight: order.weight,
+            routeId: routeId
+        });
+    } catch (error) {
+        console.error('Lookup stop error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status, photoBase64, notes, collectedAmount } = req.body;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Get the route order (stop)
+        const [routeOrder] = await db
+            .select({
+                routeOrder: routeOrders,
+                route: driverRoutes,
+                order: orders,
+            })
+            .from(routeOrders)
+            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.id, parseInt(id)))
+            .limit(1);
+
+        if (!routeOrder) {
+            return res.status(404).json({ error: 'Stop not found' });
+        }
+
+        // Check driver access
+        if (routeOrder.route.driverId !== null && routeOrder.route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const stopType = routeOrder.routeOrder.type || 'delivery';
+        const isPickup = stopType === 'pickup';
+        const statusLower = status.toLowerCase();
+
+        let photoUrl: string | null = routeOrder.routeOrder.proofPhotoUrl;
+
+        // Upload photo if provided
+        if (photoBase64) {
+            try {
+                photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
+            } catch (err) {
+                console.error('Error uploading to Cloudinary:', err);
+            }
+        }
+
+        // Prepare update data based on stop type
+        const updateData: Record<string, unknown> = {
+            status: statusLower,
+            notes: notes || routeOrder.routeOrder.notes,
+            proofPhotoUrl: photoUrl,
+        };
+
+        // Save collected amount if provided
+        if (collectedAmount) {
+            updateData.collectedAmount = collectedAmount.toString();
+        }
+
+        // Set timestamp based on status
+        if (statusLower === 'picked_up') {
+            updateData.pickedUpAt = new Date();
+        } else if (statusLower === 'delivered') {
+            updateData.deliveredAt = new Date();
+        } else if (statusLower === 'attempted') {
+            updateData.attemptedAt = new Date();
+        }
+
+        await db
+            .update(routeOrders)
+            .set(updateData)
+            .where(eq(routeOrders.id, parseInt(id)));
+
+        // Update the main order status based on stop type
+        let orderStatus = routeOrder.order.status;
+        let statusLabel = 'Updated';
+        const eventsToInsert: any[] = [];
+
+        // Default location
+        const locationCity = isPickup ? routeOrder.order.shipperCity : routeOrder.order.city;
+        const location = locationCity || 'Unknown';
+
+        // Get driver info for tracking event early
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.id, req.driverId!))
+            .limit(1);
+
+        if (isPickup) {
+            // PICKUP stop
+            if (statusLower === 'picked_up') {
+
+                // Check if there's a delivery stop for this order
+                const [deliveryStop] = await db
+                    .select()
+                    .from(routeOrders)
+                    .where(and(
+                        eq(routeOrders.routeId, routeOrder.routeOrder.routeId),
+                        eq(routeOrders.orderId, routeOrder.order.id),
+                        eq(routeOrders.type, 'delivery')
+                    ))
+                    .limit(1);
+
+                if (deliveryStop) {
+                    // Has delivery stop -> "Picked Up" THEN "Out for Delivery"
+
+                    // 1. Queue "Picked Up" event (2 mins ago)
+                    eventsToInsert.push({
+                        shipmentId: routeOrder.order.id,
+                        eventDatetime: new Date(Date.now() - 120000), // 2 mins ago
+                        location: 'Driver App',
+                        statusCode: 'picked_up',
+                        statusLabel: 'Picked Up',
+                        description: 'Package picked up by driver',
+                        createdBy: 'driver',
+                    });
+
+                    // 2. Set final status to "Out for Delivery"
+                    orderStatus = 'out_for_delivery';
+                    statusLabel = 'Out for Delivery';
+                } else {
+                    // Pickup Only -> Just "Picked Up"
+                    orderStatus = 'picked_up';
+                    statusLabel = 'Picked Up';
+                }
+            }
+            // Handle other pickup statuses if any (e.g. failed pickup)
+        } else {
+            // DELIVERY stop
+            if (statusLower === 'delivered') {
+                orderStatus = 'delivered';
+                statusLabel = 'Delivered';
+            } else if (statusLower === 'attempted') {
+                orderStatus = 'delivery_attempted';
+                statusLabel = 'Delivery Attempted';
+            } else if (statusLower === 'returned') {
+                orderStatus = 'returned';
+                statusLabel = 'Returned';
+            } else if (statusLower === 'failed') {
+                orderStatus = 'failed_delivery';
+                statusLabel = 'Failed Delivery';
+            } else if (statusLower === 'on_hold') {
+                orderStatus = 'on_hold';
+                statusLabel = 'On Hold';
+            }
+        }
+
+        // Add the main event (reflecting the final status determined above)
+        // This covers "Out for Delivery" (in dual case) or "Picked Up" (in single case) or any Delivery status
+        eventsToInsert.push({
+            shipmentId: routeOrder.order.id,
+            eventDatetime: new Date(),
+            location: location,
+            statusCode: orderStatus,
+            statusLabel: statusLabel,
+            description: notes || `${statusLabel} by driver ${driver?.fullName || 'Unknown'}`,
+            podFileUrl: photoUrl || undefined,
+            createdBy: 'driver',
+        });
+
+        // Update Order
+        const orderUpdate: Record<string, unknown> = {
+            status: orderStatus,
+            lastStatusUpdate: new Date(),
+        };
+
+        if (isPickup && statusLower === 'picked_up') {
+            orderUpdate.pickupDate = new Date();
+            orderUpdate.pickupDriverId = req.driverId;
+        } else if (!isPickup && statusLower === 'delivered') {
+            orderUpdate.deliveryDateReal = new Date();
+        }
+
+        await db
+            .update(orders)
+            .set(orderUpdate)
+            .where(eq(orders.id, routeOrder.order.id));
+
+        // Insert all queued events
+        for (const event of eventsToInsert) {
+            await db.insert(trackingEvents).values(event);
+        }
+
+        // Handle COD for delivered deliveries
+        if (!isPickup && statusLower === 'delivered' && routeOrder.order.codRequired) {
+            // Use collectedAmount from request if available, otherwise fallback to expected amount
+            const finalCodAmount = collectedAmount?.toString() || routeOrder.order.codAmount || '0';
+
+            const [existingCod] = await db
+                .select()
+                .from(codRecords)
+                .where(eq(codRecords.shipmentId, routeOrder.order.id))
+                .limit(1);
+
+            if (existingCod) {
+                await db
+                    .update(codRecords)
+                    .set({
+                        status: 'collected',
+                        collectedDate: new Date(),
+                        codAmount: finalCodAmount
+                    })
+                    .where(eq(codRecords.id, existingCod.id));
+            } else {
+                await db.insert(codRecords).values({
+                    shipmentId: routeOrder.order.id,
+                    codAmount: finalCodAmount,
+                    codCurrency: routeOrder.order.codCurrency || 'AED',
+                    status: 'collected',
+                    collectedDate: new Date(),
+                });
+            }
+        }
+
+        res.json({
+            message: isPickup ? 'Pickup completed' : 'Delivery updated',
+            stopType,
+            status: statusLower,
+        });
+    } catch (error) {
+        console.error('Update stop error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Keep old endpoint for backward compatibility
+router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    // Forward to new stops endpoint
+    req.params.id = req.params.id;
+    try {
+        const { id } = req.params;
+        const { status, photoBase64, notes } = req.body;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Get the route order
+        const [routeOrder] = await db
+            .select({
+                routeOrder: routeOrders,
+                route: driverRoutes,
+                order: orders,
+            })
+            .from(routeOrders)
+            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.id, parseInt(id)))
+            .limit(1);
+
+        if (!routeOrder) {
+            return res.status(404).json({ error: 'Delivery not found' });
+        }
+
+        // Check driver access
+        if (routeOrder.route.driverId !== null && routeOrder.route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        let photoUrl: string | null = routeOrder.routeOrder.proofPhotoUrl;
+
+        // Upload photo if provided
+        if (photoBase64) {
+            try {
+                photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
+            } catch (err) {
+                console.error('Error uploading to Cloudinary:', err);
+            }
+        }
+
+        const statusLower = status.toLowerCase();
+        const updateData: Record<string, unknown> = {
+            status: statusLower,
+            notes: notes || routeOrder.routeOrder.notes,
+            proofPhotoUrl: photoUrl,
+        };
+
+        if (statusLower === 'delivered') {
+            updateData.deliveredAt = new Date();
+        } else if (statusLower === 'attempted') {
+            updateData.attemptedAt = new Date();
+        }
+
+        await db
+            .update(routeOrders)
+            .set(updateData)
+            .where(eq(routeOrders.id, parseInt(id)));
+
+        // Update main order status
+        let orderStatus = routeOrder.order.status;
+        if (statusLower === 'delivered') {
+            orderStatus = 'delivered';
+        } else if (statusLower === 'attempted') {
+            orderStatus = 'delivery_attempted';
+        } else if (statusLower === 'returned') {
+            orderStatus = 'returned';
+        }
+
+        await db
+            .update(orders)
+            .set({
+                status: orderStatus,
+                lastStatusUpdate: new Date(),
+                deliveryDateReal: statusLower === 'delivered' ? new Date() : undefined,
+            })
+            .where(eq(orders.id, routeOrder.order.id));
+
+        // Create tracking event
+        await db.insert(trackingEvents).values({
+            shipmentId: routeOrder.order.id,
+            eventDatetime: new Date(),
+            location: routeOrder.order.city || 'Unknown',
+            statusCode: orderStatus,
+            statusLabel: statusLower === 'delivered' ? 'Delivered' :
+                statusLower === 'attempted' ? 'Delivery Attempted' :
+                    statusLower === 'returned' ? 'Returned' : 'Updated',
+            description: notes || `Status updated by driver`,
+            podFileUrl: photoUrl || undefined,
+            createdBy: 'driver',
+        });
+
+        // Handle COD
+        if (statusLower === 'delivered' && routeOrder.order.codRequired) {
+            const [existingCod] = await db
+                .select()
+                .from(codRecords)
+                .where(eq(codRecords.shipmentId, routeOrder.order.id))
+                .limit(1);
+
+            if (existingCod) {
+                await db
+                    .update(codRecords)
+                    .set({ status: 'collected', collectedDate: new Date() })
+                    .where(eq(codRecords.id, existingCod.id));
+            } else {
+                await db.insert(codRecords).values({
+                    shipmentId: routeOrder.order.id,
+                    codAmount: routeOrder.order.codAmount || '0',
+                    codCurrency: routeOrder.order.codCurrency || 'AED',
+                    status: 'collected',
+                    collectedDate: new Date(),
+                });
+            }
+        }
+
+        res.json({ message: 'Delivery updated successfully' });
+    } catch (error) {
+        console.error('Update delivery error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ REPORTS ============
+
+router.post('/reports', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { issueType, notes, photo, location } = req.body;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        if (!issueType) {
+            return res.status(400).json({ error: 'Issue type is required' });
+        }
+
+        let photoUrl: string | null = null;
+        if (photo) {
+            photoUrl = await uploadImageToCloudinary(photo, 'pathxpress/reports');
+        }
+
+        const [report] = await db
+            .insert(driverReports)
+            .values({
+                driverId: req.driverId!,
+                issueType,
+                description: notes,
+                photoUrl,
+                latitude: location?.latitude?.toString(),
+                longitude: location?.longitude?.toString(),
+                accuracy: location?.accuracy?.toString(),
+            })
+            .$returningId();
+
+        res.status(201).json({
+            message: 'Report created successfully',
+            reportId: report.id,
+        });
+    } catch (error) {
+        console.error('Create report error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ SHIFTS ============
+
+router.post('/shifts/start', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Check for active shift
+        const activeShifts = await db
+            .select()
+            .from(driverShifts)
+            .where(and(
+                eq(driverShifts.driverId, req.driverId!),
+                eq(driverShifts.endTime, null as unknown as Date)
+            ))
+            .limit(1);
+
+        if (activeShifts.length > 0) {
+            return res.json(activeShifts[0]);
+        }
+
+        const [newShift] = await db
+            .insert(driverShifts)
+            .values({
+                driverId: req.driverId!,
+                startTime: new Date(),
+            })
+            .$returningId();
+
+        res.json({ id: newShift.id, startTime: new Date() });
+    } catch (error) {
+        console.error('Start shift error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/shifts/end', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const activeShifts = await db
+            .select()
+            .from(driverShifts)
+            .where(and(
+                eq(driverShifts.driverId, req.driverId!),
+                eq(driverShifts.endTime, null as unknown as Date)
+            ))
+            .limit(1);
+
+        if (activeShifts.length === 0) {
+            return res.status(404).json({ error: 'No active shift found' });
+        }
+
+        await db
+            .update(driverShifts)
+            .set({ endTime: new Date() })
+            .where(eq(driverShifts.id, activeShifts[0].id));
+
+        res.json({ message: 'Shift ended successfully' });
+    } catch (error) {
+        console.error('End shift error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.get('/shifts/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const activeShifts = await db
+            .select()
+            .from(driverShifts)
+            .where(and(
+                eq(driverShifts.driverId, req.driverId!),
+                eq(driverShifts.endTime, null as unknown as Date)
+            ))
+            .limit(1);
+
+        res.json({
+            isOnDuty: activeShifts.length > 0,
+            shift: activeShifts[0] || null,
+        });
+    } catch (error) {
+        console.error('Get shift status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ PICKUPS ============
+
+// Scan and mark a waybill as picked up (direct flow - no assignment required)
+router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { waybillNumber } = req.params;
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Find the order by waybill number
+        const [order] = await db
+            .select()
+            .from(orders)
+            .where(eq(orders.waybillNumber, waybillNumber))
+            .limit(1);
+
+        if (!order) {
+            return res.status(404).json({ error: 'Waybill not found' });
+        }
+
+        // Verify order is in pending_pickup status
+        if (order.status !== 'pending_pickup') {
+            return res.status(400).json({
+                error: `Cannot pickup: order status is "${order.status}"`,
+                currentStatus: order.status
+            });
+        }
+
+        // Get driver info for the tracking event
+        const [driver] = await db
+            .select()
+            .from(drivers)
+            .where(eq(drivers.id, req.driverId!))
+            .limit(1);
+
+        // Update order status to picked_up
+        await db
+            .update(orders)
+            .set({
+                status: 'picked_up',
+                pickupDate: new Date(),
+                lastStatusUpdate: new Date(),
+                pickupDriverId: req.driverId, // Record which driver picked it up
+            })
+            .where(eq(orders.id, order.id));
+
+        // Create tracking event with driver info
+        await db.insert(trackingEvents).values({
+            shipmentId: order.id,
+            eventDatetime: new Date(),
+            location: order.shipperCity || 'Pickup Location',
+            statusCode: 'picked_up',
+            statusLabel: 'Picked Up',
+            description: `Package picked up by driver ${driver?.fullName || 'Unknown'}`,
+            createdBy: 'driver',
+        });
+
+        // Return order details for confirmation
+        res.json({
+            success: true,
+            message: 'Package marked as picked up',
+            waybillNumber,
+            orderId: order.id,
+            status: 'picked_up',
+            shipperName: order.shipperName,
+            customerName: order.customerName,
+            pieces: order.pieces,
+            weight: order.weight,
+        });
+    } catch (error) {
+        console.error('Pickup error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ WALLET / RECONCILIATION ============
+
+router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Get all routes for this driver
+        const routes = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.driverId, req.driverId!));
+
+        const routeIds = routes.map(r => r.id);
+
+        if (routeIds.length === 0) {
+            return res.json({
+                totalExpected: 0,
+                totalCollected: 0,
+                discrepancy: 0,
+                orders: []
+            });
+        }
+
+        // Get all COD deliveries for these routes (assuming today's route/shift context)
+        // We filter for "delivery" type stops that have codRequired
+        const allStops = await db
+            .select({
+                routeOrder: routeOrders,
+                order: orders
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.type, 'delivery')); // Only care about delivery stops for COD
+
+        // Filter valid stops for this driver's routes
+        const driverStops = allStops.filter(s => routeIds.includes(s.routeOrder.routeId));
+
+        // Filter for COD orders
+        const codStops = driverStops.filter(s => s.order.codRequired === 1);
+
+        let totalExpected = 0;
+        let totalCollected = 0;
+
+        const codOrders = codStops.map(s => {
+            const expected = parseFloat(s.order.codAmount || '0');
+            const collected = s.routeOrder.collectedAmount ? parseFloat(s.routeOrder.collectedAmount) : 0;
+            const status = s.routeOrder.status?.toLowerCase();
+            const isDelivered = status === 'delivered';
+
+            // Only count towards total if delivered
+            if (isDelivered) {
+                totalExpected += expected;
+                totalCollected += collected;
+            }
+
+            return {
+                id: s.order.id,
+                waybillNumber: s.order.waybillNumber,
+                customerName: s.order.customerName,
+                expectedAmount: expected,
+                collectedAmount: collected,
+                status: status, // delivered, returned, etc.
+                isDelivered
+            };
+        });
+
+        res.json({
+            totalExpected,
+            totalCollected,
+            discrepancy: totalCollected - totalExpected,
+            orders: codOrders
+        });
+
+    } catch (error) {
+        console.error('Get wallet summary error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+export default router;
