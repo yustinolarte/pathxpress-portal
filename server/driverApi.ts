@@ -5,7 +5,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
@@ -327,6 +327,21 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 .set({ driverId: req.driverId, status: 'in_progress' })
                 .where(eq(driverRoutes.id, routeId));
         }
+        
+        // --- NEW FIX: Auto set to in_progress (Out for Delivery) ---
+        // Change all pending/picked_up stops to in_progress
+        await db
+            .update(routeOrders)
+            .set({ status: 'in_progress' })
+            .where(
+                and(
+                    eq(routeOrders.routeId, routeId),
+                    or(
+                        eq(routeOrders.status, 'pending'),
+                        eq(routeOrders.status, 'picked_up')
+                    )
+                )
+            );
 
         // Get updated route
         const [updatedRoute] = await db
@@ -491,6 +506,62 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
 });
 
 // ============ STOPS (Pickups & Deliveries) ============
+
+router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const barcode = req.query.barcode as string;
+        if (!barcode) return res.status(400).json({ error: 'Barcode is required' });
+
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        // Search by waybillNumber first, then by trackingNumber
+        // (shipping labels can encode either field as the barcode)
+        let order: typeof orders.$inferSelect | undefined;
+
+        const [byWaybill] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
+        if (byWaybill) {
+            order = byWaybill;
+        } else {
+            // Fallback: search by trackingNumber
+            const [byTracking] = await db.select().from(orders).where(eq(orders.trackingNumber, barcode)).limit(1);
+            if (byTracking) order = byTracking;
+        }
+
+        if (!order) return res.status(404).json({ error: 'Package not found in system!' });
+
+        // Check if assigned to another driver via a routeOrder stop
+        const [routeOrder] = await db.select().from(routeOrders)
+            .where(eq(routeOrders.orderId, order.id))
+            .limit(1);
+
+        let routeId = null;
+        if (routeOrder) {
+            routeId = routeOrder.routeId;
+            const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
+            if (route && route.driverId !== null && route.driverId !== req.driverId) {
+                return res.status(403).json({ error: 'Assigned to another driver!' });
+            }
+        }
+
+        // Return formatted package matching the driver app expectations
+        res.json({
+            id: routeOrder ? routeOrder.id : order.id,
+            packageRef: order.waybillNumber || order.trackingNumber,
+            status: routeOrder ? routeOrder.status : order.status,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            address: order.address,
+            codAmount: order.codAmount ? parseFloat(order.codAmount) : 0,
+            type: order.codRequired === 1 ? 'COD' : 'PREPAID',
+            weight: order.weight,
+            routeId: routeId
+        });
+    } catch (error) {
+        console.error('Lookup stop error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
