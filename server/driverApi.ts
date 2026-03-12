@@ -1050,15 +1050,36 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Find the order by waybill number
+        // Find the order by waybill first, then tracking number.
+        // This matches the /stops/lookup behavior and avoids false negatives when labels encode tracking.
         const [order] = await db
             .select()
             .from(orders)
-            .where(eq(orders.waybillNumber, waybillNumber))
+            .where(
+                or(
+                    eq(orders.waybillNumber, waybillNumber),
+                    eq(orders.trackingNumber, waybillNumber)
+                )
+            )
             .limit(1);
 
         if (!order) {
             return res.status(404).json({ error: 'Waybill not found' });
+        }
+
+        // Idempotent response: if already picked up, return success without duplicating tracking events.
+        if (order.status === 'picked_up') {
+            return res.json({
+                success: true,
+                message: 'Package already marked as picked up',
+                waybillNumber,
+                orderId: order.id,
+                status: 'picked_up',
+                shipperName: order.shipperName,
+                customerName: order.customerName,
+                pieces: order.pieces,
+                weight: order.weight,
+            });
         }
 
         // Verify order is in pending_pickup status
