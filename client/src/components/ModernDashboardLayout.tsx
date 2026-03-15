@@ -201,7 +201,7 @@ export default function ModernDashboardLayout({
 
     return (
         <ThemeProvider defaultTheme="dark" switchable storageKey="portal-theme" targetRef={portalRef}>
-        <div ref={portalRef} className="flex h-screen overflow-hidden bg-background">
+        <div ref={portalRef} className="flex h-screen overflow-hidden bg-background text-foreground">
             {/* Sidebar */}
             <aside className={`${isCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 flex-shrink-0 border-r border-primary/10 bg-card flex flex-col justify-between p-4 overflow-y-auto`}>
                 <div className="space-y-8">

@@ -610,8 +610,8 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                                 <div className="p-4 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
                                     <p className="text-sm font-medium text-cyan-400 mb-2">Return Shipment:</p>
                                     <div className="text-sm space-y-1">
-                                        <p><Package className="inline h-4 w-4 mr-1 text-cyan-500" /> From: <strong className="text-white">{foundOrder.customerName}</strong> ({foundOrder.city})</p>
-                                        <p><Package className="inline h-4 w-4 mr-1 text-cyan-500" /> To: <strong className="text-white">{foundOrder.shipperName}</strong> ({foundOrder.shipperCity})</p>
+                                        <p><Package className="inline h-4 w-4 mr-1 text-cyan-500" /> From: <strong className="text-foreground">{foundOrder.customerName}</strong> ({foundOrder.city})</p>
+                                        <p><Package className="inline h-4 w-4 mr-1 text-cyan-500" /> To: <strong className="text-foreground">{foundOrder.shipperName}</strong> ({foundOrder.shipperCity})</p>
                                     </div>
                                 </div>
 
@@ -668,7 +668,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                                                         min="0.1"
                                                         value={exchangeForm.weight}
                                                         onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })}
-                                                        className="bg-white/5 border-white/10 text-white"
+                                                        className="bg-white/5 border-white/10"
                                                     />
                                                 </div>
                                             </div>
@@ -1099,7 +1099,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                                     onChange={(e) => setEditCodForm({ ...editCodForm, codRequired: e.target.checked ? 1 : 0 })}
                                     className="rounded bg-white/5 border-white/10"
                                 />
-                                <Label htmlFor="edit-cod-toggle" className="cursor-pointer text-white">Enable COD</Label>
+                                <Label htmlFor="edit-cod-toggle" className="cursor-pointer text-foreground">Enable COD</Label>
                             </div>
 
                             {editCodForm.codRequired === 1 && (
@@ -1113,7 +1113,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                                             value={editCodForm.codAmount}
                                             onChange={(e) => setEditCodForm({ ...editCodForm, codAmount: e.target.value })}
                                             placeholder="0.00"
-                                            className="bg-white/5 border-white/10 font-mono text-white"
+                                            className="bg-white/5 border-white/10 font-mono"
                                         />
                                     </div>
                                     <div>
@@ -1122,7 +1122,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                                             value={editCodForm.codCurrency}
                                             onValueChange={(value) => setEditCodForm({ ...editCodForm, codCurrency: value })}
                                         >
-                                            <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                                            <SelectTrigger className="bg-white/5 border-white/10">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>

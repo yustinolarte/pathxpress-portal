@@ -86,6 +86,7 @@ export default function CustomerDashboard() {
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [selectedIntlOrderIds, setSelectedIntlOrderIds] = useState<number[]>([]);
+  const [chartPeriod, setChartPeriod] = useState<7 | 30>(7);
 
   const { data: trackingData, error: trackingError } = trpc.portal.publicTracking.track.useQuery(
     { waybillNumber: searchedWaybill },
@@ -439,6 +440,63 @@ export default function CustomerDashboard() {
     { enabled: !!token }
   );
 
+  // Derived metrics computed from orders data
+  const _now = new Date();
+  const _thisMonthStart = new Date(_now.getFullYear(), _now.getMonth(), 1);
+  const _lastMonthStart = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
+  const _lastMonthEnd = new Date(_now.getFullYear(), _now.getMonth(), 0, 23, 59, 59);
+
+  const _shipmentsThisMonth = orders?.filter((o: any) => new Date(o.createdAt) >= _thisMonthStart).length || 0;
+  const _shipmentsLastMonth = orders?.filter((o: any) => {
+    const d = new Date(o.createdAt);
+    return d >= _lastMonthStart && d <= _lastMonthEnd;
+  }).length || 0;
+  const monthlyChangePct = _shipmentsLastMonth > 0
+    ? Math.round(((_shipmentsThisMonth - _shipmentsLastMonth) / _shipmentsLastMonth) * 100)
+    : _shipmentsThisMonth > 0 ? 100 : 0;
+  const shipmentsBarWidth = _shipmentsLastMonth > 0
+    ? Math.min(Math.round((_shipmentsThisMonth / _shipmentsLastMonth) * 100), 100)
+    : _shipmentsThisMonth > 0 ? 100 : 0;
+
+  const _deliveredThisMonth = orders?.filter((o: any) =>
+    o.status === 'delivered' && o.deliveryDateReal && o.deliveryDateEstimated &&
+    new Date(o.deliveryDateReal) >= _thisMonthStart
+  ) || [];
+  const _deliveredLastMonth = orders?.filter((o: any) =>
+    o.status === 'delivered' && o.deliveryDateReal && o.deliveryDateEstimated &&
+    new Date(o.deliveryDateReal) >= _lastMonthStart && new Date(o.deliveryDateReal) <= _lastMonthEnd
+  ) || [];
+  const _onTimeThisMonth = _deliveredThisMonth.filter((o: any) =>
+    new Date(o.deliveryDateReal) <= new Date(o.deliveryDateEstimated)
+  ).length;
+  const _onTimeLastMonth = _deliveredLastMonth.filter((o: any) =>
+    new Date(o.deliveryDateReal) <= new Date(o.deliveryDateEstimated)
+  ).length;
+  const _onTimeRateThisMonth = _deliveredThisMonth.length > 0
+    ? Math.round((_onTimeThisMonth / _deliveredThisMonth.length) * 100) : null;
+  const _onTimeRateLastMonth = _deliveredLastMonth.length > 0
+    ? Math.round((_onTimeLastMonth / _deliveredLastMonth.length) * 100) : null;
+  const onTimeChangePct = _onTimeRateThisMonth !== null && _onTimeRateLastMonth !== null
+    ? _onTimeRateThisMonth - _onTimeRateLastMonth : null;
+
+  const _codOrders = orders?.filter((o: any) => o.codRequired === 1) || [];
+  const _pendingCODOrders = _codOrders.filter((o: any) => o.status !== 'delivered' && o.status !== 'canceled');
+  const codBarWidth = _codOrders.length > 0
+    ? Math.round((_pendingCODOrders.length / _codOrders.length) * 100) : 0;
+
+  const chartDays = chartPeriod === 7 ? 7 : 30;
+  const chartData = Array.from({ length: chartDays }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (chartDays - 1 - i));
+    const dayStr = date.toISOString().split('T')[0];
+    const count = orders?.filter((o: any) => new Date(o.createdAt).toISOString().split('T')[0] === dayStr).length || 0;
+    const label = chartPeriod === 7
+      ? date.toLocaleDateString('en', { weekday: 'short' })
+      : date.getDate().toString();
+    return { label, count };
+  });
+  const chartMax = Math.max(...chartData.map(d => d.count), 1);
+
   const handleLogout = () => {
     logout();
     toast.success('Logged out successfully');
@@ -507,15 +565,15 @@ export default function CustomerDashboard() {
                       <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
                         <span className="material-symbols-outlined">inventory_2</span>
                       </div>
-                      <span className="text-xs font-bold text-green-500 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">trending_up</span>
-                        +12%
+                      <span className={`text-xs font-bold flex items-center gap-1 ${monthlyChangePct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        <span className="material-symbols-outlined text-xs">{monthlyChangePct >= 0 ? 'trending_up' : 'trending_down'}</span>
+                        {monthlyChangePct >= 0 ? '+' : ''}{monthlyChangePct}% vs last month
                       </span>
                     </div>
                     <p className="text-muted-foreground text-sm font-medium">Shipments This Month</p>
                     <h3 className="text-2xl font-bold mt-1">{metrics?.totalShipmentsThisMonth || 0}</h3>
                     <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                      <div className="h-full bg-primary rounded-full" style={{ width: '75%' }}></div>
+                      <div className="h-full bg-primary rounded-full" style={{ width: `${shipmentsBarWidth}%` }}></div>
                     </div>
                   </div>
 
@@ -525,10 +583,14 @@ export default function CustomerDashboard() {
                       <div className="p-2.5 bg-green-500/10 rounded-lg text-green-500">
                         <span className="material-symbols-outlined">verified</span>
                       </div>
-                      <span className="text-xs font-bold text-green-500 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">trending_up</span>
-                        +0.5%
-                      </span>
+                      {onTimeChangePct !== null ? (
+                        <span className={`text-xs font-bold flex items-center gap-1 ${onTimeChangePct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          <span className="material-symbols-outlined text-xs">{onTimeChangePct >= 0 ? 'trending_up' : 'trending_down'}</span>
+                          {onTimeChangePct >= 0 ? '+' : ''}{onTimeChangePct}% vs last month
+                        </span>
+                      ) : (
+                        <span className="text-xs font-bold text-muted-foreground">No prev. data</span>
+                      )}
                     </div>
                     <p className="text-muted-foreground text-sm font-medium">On-Time Delivery</p>
                     <h3 className="text-2xl font-bold mt-1">{metrics?.onTimePercentage || 0}%</h3>
@@ -543,15 +605,14 @@ export default function CustomerDashboard() {
                       <div className="p-2.5 bg-amber-500/10 rounded-lg text-amber-500">
                         <span className="material-symbols-outlined">payments</span>
                       </div>
-                      <span className="text-xs font-bold text-red-500 flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">trending_down</span>
-                        -3%
+                      <span className="text-xs font-bold text-muted-foreground">
+                        {_codOrders.length > 0 ? `${_pendingCODOrders.length}/${_codOrders.length} orders` : 'No COD orders'}
                       </span>
                     </div>
                     <p className="text-muted-foreground text-sm font-medium">Pending COD (AED)</p>
                     <h3 className="text-2xl font-bold mt-1">{metrics?.totalPendingCOD || '0.00'}</h3>
                     <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                      <div className="h-full bg-amber-500 rounded-full" style={{ width: '45%' }}></div>
+                      <div className="h-full bg-amber-500 rounded-full" style={{ width: `${codBarWidth}%` }}></div>
                     </div>
                   </div>
                 </div>
@@ -563,28 +624,33 @@ export default function CustomerDashboard() {
                       <div className="flex items-center justify-between mb-8">
                         <div>
                           <h2 className="text-lg font-bold text-foreground">Shipping Performance</h2>
-                          <p className="text-sm text-muted-foreground">Daily shipment volume for current week</p>
+                          <p className="text-sm text-muted-foreground">Daily shipment volume — last {chartPeriod} days</p>
                         </div>
-                        <select className="text-sm bg-background border border-primary/10 rounded-lg focus:ring-primary/20 text-foreground">
-                          <option>Last 7 Days</option>
-                          <option>Last 30 Days</option>
+                        <select
+                          className="text-sm bg-background border border-primary/10 rounded-lg focus:ring-primary/20 text-foreground px-2 py-1"
+                          value={chartPeriod}
+                          onChange={(e) => setChartPeriod(Number(e.target.value) as 7 | 30)}
+                        >
+                          <option value={7}>Last 7 Days</option>
+                          <option value={30}>Last 30 Days</option>
                         </select>
                       </div>
-                      <div className="flex items-end justify-between h-64 gap-4 px-2">
-                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => {
-                          const height = [40, 65, 85, 50, 95, 30, 20][i];
-                          const value = Math.round((height / 100) * (metrics?.totalShipmentsThisMonth || 100) / 4);
+                      <div className="flex items-end justify-between h-64 gap-1 px-2">
+                        {chartData.map((item, i) => {
+                          const heightPct = chartMax > 0 ? Math.max((item.count / chartMax) * 100, item.count > 0 ? 4 : 0) : 0;
                           return (
-                            <div key={day} className="flex-1 flex flex-col items-center gap-2 group">
+                            <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
                               <div
                                 className="w-full bg-primary/20 rounded-t-lg relative group-hover:bg-primary transition-colors"
-                                style={{ height: `${height}%` }}
+                                style={{ height: `${heightPct}%` }}
                               >
                                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-sm border border-primary/10">
-                                  {value}
+                                  {item.count} shipments
                                 </div>
                               </div>
-                              <span className="text-xs font-medium text-muted-foreground">{day}</span>
+                              {(chartPeriod === 7 || i % 5 === 0 || i === chartData.length - 1) && (
+                                <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                              )}
                             </div>
                           );
                         })}
@@ -622,7 +688,7 @@ export default function CustomerDashboard() {
                         <button className="text-primary text-xs font-bold hover:underline" onClick={() => setActiveTab('orders')}>View All</button>
                       </div>
                       <div className="space-y-6">
-                        {orders?.slice(0, 4).map((order) => (
+                        {filteredOrders?.slice(0, 4).map((order) => (
                           <div key={order.id} className="flex gap-4">
                             <div className="relative flex flex-col items-center">
                               <div className={`size-10 rounded-full flex items-center justify-center border ${order.status === 'delivered' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
@@ -656,7 +722,7 @@ export default function CustomerDashboard() {
                             </div>
                           </div>
                         ))}
-                        {(!orders || orders.length === 0) && (
+                        {(!filteredOrders || filteredOrders.length === 0) && (
                           <div className="text-sm text-muted-foreground text-center py-4">No recent shipments found.</div>
                         )}
                       </div>
@@ -688,7 +754,7 @@ export default function CustomerDashboard() {
                       Create New Shipment
                     </button>
                   </DialogTrigger>
-                  <DialogContent className="glass-strong !w-[95vw] !max-w-[1200px] p-0 gap-0 border-white/10 max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="glass-strong !w-[95vw] !max-w-[1200px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto">
                     <div className="w-full h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
                     <div className="p-6">
                       <DialogHeader className="mb-5">
@@ -721,14 +787,14 @@ export default function CustomerDashboard() {
                   <div className="flex items-center gap-2">
                     <Input
                       type="date"
-                      className="w-[140px] h-9 bg-white/5 border-white/10 rounded-lg text-sm text-foreground"
+                      className="w-[140px] h-9 bg-background border-border rounded-lg text-sm text-foreground"
                       value={filterDateFrom}
                       onChange={(e) => setFilterDateFrom(e.target.value)}
                     />
                     <span className="text-muted-foreground text-sm">to</span>
                     <Input
                       type="date"
-                      className="w-[140px] h-9 bg-white/5 border-white/10 rounded-lg text-sm text-foreground"
+                      className="w-[140px] h-9 bg-background border-border rounded-lg text-sm text-foreground"
                       value={filterDateTo}
                       onChange={(e) => setFilterDateTo(e.target.value)}
                     />
@@ -740,7 +806,7 @@ export default function CustomerDashboard() {
                   <div className="relative">
                     <button
                       onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
-                      className="w-[200px] h-9 border border-white/10 rounded-lg bg-white/5 font-medium text-foreground text-sm px-3 flex items-center justify-between hover:bg-white/10 transition-colors"
+                      className="w-[200px] h-9 border border-border rounded-lg bg-background font-medium text-foreground text-sm px-3 flex items-center justify-between hover:bg-muted/50 transition-colors"
                     >
                       <span className="truncate">
                         {filterStatus.length === 0
@@ -752,7 +818,7 @@ export default function CustomerDashboard() {
                     {statusDropdownOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setStatusDropdownOpen(false)} />
-                        <div className="absolute top-full left-0 mt-1 w-[220px] z-50 bg-card border border-white/10 rounded-lg shadow-xl p-2 space-y-0.5" style={{ backdropFilter: 'blur(20px)' }}>
+                        <div className="absolute top-full left-0 mt-1 w-[220px] z-50 bg-card border border-border rounded-lg shadow-xl p-2 space-y-0.5" style={{ backdropFilter: 'blur(20px)' }}>
                           {[
                             { value: 'pending_pickup', label: 'Pending Pickup' },
                             { value: 'picked_up', label: 'Picked Up' },
@@ -764,7 +830,7 @@ export default function CustomerDashboard() {
                           ].map((status) => (
                             <label
                               key={status.value}
-                              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-white/5 cursor-pointer transition-colors"
+                              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
                             >
                               <Checkbox
                                 checked={filterStatus.includes(status.value)}
@@ -775,10 +841,10 @@ export default function CustomerDashboard() {
                           ))}
                           {filterStatus.length > 0 && (
                             <>
-                              <div className="h-px bg-white/10 my-1" />
+                              <div className="h-px bg-border my-1" />
                               <button
                                 onClick={() => setFilterStatus([])}
-                                className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 px-2.5 text-left hover:bg-white/5 rounded-md transition-colors"
+                                className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 px-2.5 text-left hover:bg-muted/50 rounded-md transition-colors"
                               >
                                 Clear all
                               </button>
@@ -835,7 +901,7 @@ export default function CustomerDashboard() {
                       </TableHeader>
                       <TableBody>
                         {filteredOrders.map((order) => (
-                          <TableRow key={order.id} className="cursor-pointer hover:bg-white/5 border-b border-primary/10 transition-colors group">
+                          <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30 border-b border-primary/10 transition-colors group">
                             <TableCell>
                               <Checkbox
                                 checked={selectedOrderIds.includes(order.id)}
@@ -994,7 +1060,7 @@ export default function CustomerDashboard() {
             {trackingData && (
               <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                 {/* Status Header */}
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 rounded-2xl bg-white/5 border border-white/10">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 rounded-2xl bg-card border border-border">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-1">
                       <Package className="w-4 h-4 text-primary" /> Waybill Number
@@ -1012,28 +1078,28 @@ export default function CustomerDashboard() {
 
                 {/* Details Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                  <div className="p-4 rounded-xl bg-card border border-border hover:bg-muted/50 transition-colors group">
                     <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                       <Truck className="w-4 h-4" />
                       <span className="text-xs uppercase font-bold">Service</span>
                     </div>
                     <p className="text-xl font-semibold">{trackingData.order.serviceType}</p>
                   </div>
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                  <div className="p-4 rounded-xl bg-card border border-border hover:bg-muted/50 transition-colors group">
                     <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                       <Package className="w-4 h-4" />
                       <span className="text-xs uppercase font-bold">Pieces</span>
                     </div>
                     <p className="text-xl font-semibold">{trackingData.order.pieces || 1}</p>
                   </div>
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                  <div className="p-4 rounded-xl bg-card border border-border hover:bg-muted/50 transition-colors group">
                     <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                       <Scale className="w-4 h-4" />
                       <span className="text-xs uppercase font-bold">Weight</span>
                     </div>
                     <p className="text-xl font-semibold">{trackingData.order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
                   </div>
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                  <div className="p-4 rounded-xl bg-card border border-border hover:bg-muted/50 transition-colors group">
                     <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                       <CreditCard className="w-4 h-4" />
                       <span className="text-xs uppercase font-bold">COD Amount</span>
@@ -1045,7 +1111,7 @@ export default function CustomerDashboard() {
                 </div>
 
                 {/* Addresses */}
-                <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-white/5 border border-white/10">
+                <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-card border border-border">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
@@ -1067,7 +1133,7 @@ export default function CustomerDashboard() {
                 </div>
 
                 {/* Timeline */}
-                <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
+                <div className="p-6 rounded-2xl bg-card border border-border">
                   <h4 className="text-lg font-bold flex items-center gap-2 mb-6 text-foreground">
                     <Calendar className="w-5 h-5 text-primary" /> Tracking History
                   </h4>
@@ -1080,10 +1146,10 @@ export default function CustomerDashboard() {
                           {i === 0 ? <Truck className="w-4 h-4 text-primary-foreground" /> : <div className="w-3 h-3 rounded-full bg-muted-foreground/50" />}
                         </div>
 
-                        <div className="p-4 rounded-xl border border-transparent hover:bg-white/5 hover:border-white/5 transition-all">
+                        <div className="p-4 rounded-xl border border-transparent hover:bg-muted/30 hover:border-white/5 transition-all">
                           <div className="flex flex-col md:flex-row justify-between md:items-center gap-1 mb-2">
                             <p className={`font-bold text-lg ${i === 0 ? 'text-primary' : 'text-foreground/90'}`}>{event.statusLabel}</p>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-white/5 px-2 py-1 rounded w-fit">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/30 px-2 py-1 rounded w-fit">
                               <Calendar className="w-3 h-3" />
                               {new Date(event.eventDatetime).toLocaleString()}
                             </div>
@@ -1096,7 +1162,7 @@ export default function CustomerDashboard() {
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3 text-green-500" /> Proof of Delivery
                               </p>
-                              <div className="relative group/image overflow-hidden rounded-lg border border-white/10 max-w-[240px]">
+                              <div className="relative group/image overflow-hidden rounded-lg border border-border max-w-[240px]">
                                 <img
                                   src={event.podFileUrl}
                                   alt="POD"
@@ -1445,7 +1511,7 @@ export default function CustomerDashboard() {
                   </a>
                 </div>
 
-                <div className="mt-12 text-left pt-8 border-t border-white/10">
+                <div className="mt-12 text-left pt-8 border-t border-border">
                   <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-400" /> Rate Calculator</h3>
                   <p className="text-sm text-muted-foreground mb-4">You can still check international rates and services using our calculator:</p>
                   <InternationalRateCalculator />
@@ -1457,7 +1523,7 @@ export default function CustomerDashboard() {
       </div>
       {/* Tracking Dialog */}
       <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
-        <DialogContent className="glass-strong border-white/10 sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="glass-strong border-border sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Shipment Tracking</DialogTitle>
             <DialogDescription>
@@ -1761,15 +1827,15 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       {/* TWO COLUMN LAYOUT: SHIPPER + CONSIGNEE */}
       <div className="grid grid-cols-2 gap-5">
         {/* SECTION 1: SHIPPER */}
-        <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
-          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+        <div className="p-4 rounded-lg bg-card border border-border space-y-4">
+          <div className="flex items-center justify-between border-b border-border pb-2">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <LayoutDashboard className="h-4 w-4 text-blue-400" />
               Shipper Details
             </h3>
             {savedShippers.length > 0 && (
               <Select onValueChange={handleLoadShipper}>
-                <SelectTrigger className="w-[140px] h-7 text-xs bg-white/5 border-white/10">
+                <SelectTrigger className="w-[140px] h-7 text-xs bg-background border-border">
                   <SelectValue placeholder="📋 Load Saved" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1825,7 +1891,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.shipperName}
                 onChange={(e) => setFormData({ ...formData, shipperName: e.target.value })}
                 required
-                className="bg-white/5 border-white/10 h-9"
+                className="bg-background border-border h-9"
                 placeholder="Company Name"
               />
             </div>
@@ -1835,7 +1901,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.shipperPhone}
                 onChange={(e) => setFormData({ ...formData, shipperPhone: e.target.value })}
                 required
-                className="bg-white/5 border-white/10 h-9"
+                className="bg-background border-border h-9"
               />
             </div>
 
@@ -1845,7 +1911,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.shipperCity}
                 onValueChange={(val) => setFormData({ ...formData, shipperCity: val })}
               >
-                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                <SelectTrigger className="bg-background border-border h-9">
                   <SelectValue placeholder="Select City" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1861,7 +1927,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.shipperCountry}
                 onValueChange={(val) => setFormData({ ...formData, shipperCountry: val })}
               >
-                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                <SelectTrigger className="bg-background border-border h-9">
                   <SelectValue placeholder="Select Country" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1878,7 +1944,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.shipperAddress}
                 onChange={(e) => setFormData({ ...formData, shipperAddress: e.target.value })}
                 required
-                className="bg-white/5 border-white/10 h-9"
+                className="bg-background border-border h-9"
                 placeholder="Building, Street, Area"
               />
             </div>
@@ -1900,7 +1966,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                   Save Shipper for Future Use
                 </Button>
               </DialogTrigger>
-              <DialogContent className="glass-strong border-white/10 sm:max-w-md">
+              <DialogContent className="glass-strong border-border sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>Save Shipper Information</DialogTitle>
                   <DialogDescription>
@@ -1938,8 +2004,8 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         </div>
 
         {/* SECTION 2: CONSIGNEE */}
-        <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
-          <div className="border-b border-white/10 pb-2">
+        <div className="p-4 rounded-lg bg-card border border-border space-y-4">
+          <div className="border-b border-border pb-2">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Package className="h-4 w-4 text-green-400" />
               Consignee (Receiver)
@@ -1952,7 +2018,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.customerName}
                 onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                 required
-                className="bg-white/5 border-white/10 h-9"
+                className="bg-background border-border h-9"
               />
             </div>
             <div className="space-y-1.5">
@@ -1961,7 +2027,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.customerPhone}
                 onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                 required
-                className="bg-white/5 border-white/10 h-9"
+                className="bg-background border-border h-9"
               />
             </div>
             <div className="col-span-2 space-y-1.5">
@@ -1970,7 +2036,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 required
-                className="bg-white/5 border-white/10 h-9"
+                className="bg-background border-border h-9"
                 placeholder="Building, Street, Area"
               />
             </div>
@@ -1980,7 +2046,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
                 value={formData.city}
                 onValueChange={(val) => setFormData({ ...formData, city: val })}
               >
-                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                <SelectTrigger className="bg-background border-border h-9">
                   <SelectValue placeholder="Select City" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1993,7 +2059,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             <div className="space-y-1.5">
               <Label className="text-xs">Country *</Label>
               <Select value={formData.destinationCountry} onValueChange={(value) => setFormData({ ...formData, destinationCountry: value })}>
-                <SelectTrigger className="bg-white/5 border-white/10 h-9">
+                <SelectTrigger className="bg-background border-border h-9">
                   <SelectValue placeholder="Select Country" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2008,8 +2074,8 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       </div>
 
       {/* SECTION 3: PACKAGE & SERVICE */}
-      <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
-        <div className="border-b border-white/10 pb-2">
+      <div className="p-4 rounded-lg bg-card border border-border space-y-4">
+        <div className="border-b border-border pb-2">
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <Calculator className="h-4 w-4 text-purple-400" />
             Shipment Details
@@ -2022,14 +2088,14 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           {/* SMALL */}
           <div
             onClick={() => applyPreset('small')}
-            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-border bg-card p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Small</span>
             <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               0.5 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">32×24×1 cm</span>
-            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+            <div className="absolute bottom-0 left-0 h-1 bg-muted/30 w-full">
               <div className="h-full bg-blue-500 w-[10%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
             </div>
           </div>
@@ -2037,14 +2103,14 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           {/* MEDIUM */}
           <div
             onClick={() => applyPreset('medium')}
-            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-border bg-card p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Medium</span>
             <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               2.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">23×14×4 cm</span>
-            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+            <div className="absolute bottom-0 left-0 h-1 bg-muted/30 w-full">
               <div className="h-full bg-blue-500 w-[30%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
             </div>
           </div>
@@ -2052,14 +2118,14 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           {/* LARGE */}
           <div
             onClick={() => applyPreset('large')}
-            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-border bg-card p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Large</span>
             <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               5.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">35×20×15 cm</span>
-            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+            <div className="absolute bottom-0 left-0 h-1 bg-muted/30 w-full">
               <div className="h-full bg-blue-500 w-[60%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
             </div>
           </div>
@@ -2067,14 +2133,14 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
           {/* EXTRA LARGE */}
           <div
             onClick={() => applyPreset('extra-large')}
-            className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
+            className="cursor-pointer group relative overflow-hidden rounded-xl border border-border bg-card p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">XL</span>
             <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               10.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">75×35×35 cm</span>
-            <div className="absolute bottom-0 left-0 h-1 bg-white/5 w-full">
+            <div className="absolute bottom-0 left-0 h-1 bg-muted/30 w-full">
               <div className="h-full bg-blue-500 w-[100%] group-hover:bg-blue-400 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
             </div>
           </div>
@@ -2157,8 +2223,8 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       </div>
 
       {/* SECTION 4: PAYMENT */}
-      <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
-        <div className="border-b border-white/10 pb-2">
+      <div className="p-4 rounded-lg bg-card border border-border space-y-4">
+        <div className="border-b border-border pb-2">
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-orange-400" />
             Payment (COD)
@@ -2207,8 +2273,8 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       {/* SECTION 5: FIT ON DELIVERY */}
       {
         clientSettings?.fodAllowed === 1 && (
-          <div className="p-4 rounded-lg bg-white/5 border border-purple-500/30 space-y-4">
-            <div className="border-b border-white/10 pb-2">
+          <div className="p-4 rounded-lg bg-card border border-purple-500/30 space-y-4">
+            <div className="border-b border-border pb-2">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <Package className="h-4 w-4 text-purple-400" />
                 Fit on Delivery (FOD)

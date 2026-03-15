@@ -37,18 +37,40 @@ export function ThemeProvider({
     const el = targetRef?.current ?? document.documentElement;
     const isScoped = !!targetRef?.current;
 
-    if (theme === "dark") {
-      el.classList.add("dark");
-      if (isScoped) el.classList.remove("light");
+    if (isScoped) {
+      // Scoped portal: manages both the portal div and document.documentElement
+      // so Radix portals (appended to body, outside the portal div) also get the right theme.
+      if (theme === "dark") {
+        el.classList.add("dark");
+        el.classList.remove("light");
+        document.documentElement.classList.remove("light");
+        document.documentElement.classList.add("dark");
+      } else {
+        el.classList.remove("dark");
+        el.classList.add("light");
+        document.documentElement.classList.remove("dark");
+        document.documentElement.classList.add("light");
+      }
     } else {
-      el.classList.remove("dark");
-      // When scoped (portal div), add .light to override html.dark CSS variables
-      if (isScoped) el.classList.add("light");
+      // Global provider: manages document.documentElement, but yields to scoped portal if active
+      if (theme === "dark" && !document.documentElement.classList.contains("light")) {
+        el.classList.add("dark");
+      } else if (theme !== "dark") {
+        el.classList.remove("dark");
+      }
     }
 
     if (switchable) {
       localStorage.setItem(storageKey, theme);
     }
+
+    return () => {
+      if (isScoped) {
+        // On unmount, restore html to dark (global ThemeProvider won't re-run its effect)
+        document.documentElement.classList.remove("light");
+        document.documentElement.classList.add("dark");
+      }
+    };
   }, [theme, switchable, storageKey, targetRef]);
 
   const toggleTheme = switchable

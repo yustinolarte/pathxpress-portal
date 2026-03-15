@@ -389,7 +389,7 @@ export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: {
                                             {getServiceIcon(q.serviceKey)}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="font-semibold text-sm text-white truncate">{q.displayName}</h4>
+                                            <h4 className="font-semibold text-sm text-foreground truncate">{q.displayName}</h4>
                                             <p className="text-xs text-muted-foreground mt-0.5">
                                                 {q.bracketUsed.value} {q.bracketUsed.unit}
                                             </p>
@@ -404,7 +404,7 @@ export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: {
                                                 <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px] ml-auto">-{q.discountPercent}%</Badge>
                                             </div>
                                         ) : (
-                                            <span className="text-lg font-bold text-white">{q.total.toFixed(2)}</span>
+                                            <span className="text-lg font-bold text-foreground">{q.total.toFixed(2)}</span>
                                         )}
                                         <span className="text-xs text-muted-foreground ml-1">{q.currency}</span>
                                     </div>
