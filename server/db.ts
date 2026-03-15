@@ -1,15 +1,25 @@
 import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2";
 import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
+// Uses a connection pool so Railway doesn't kill stale idle connections (ETIMEDOUT).
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const pool = mysql.createPool({
+        uri: process.env.DATABASE_URL,
+        waitForConnections: true,
+        connectionLimit: 5,
+        queueLimit: 0,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000, // 10s keepalive
+      });
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -690,38 +700,38 @@ export async function getTrackingEventsByShipmentId(shipmentId: number) {
 
 /**
  * Generate next waybill number
- * Format: PX + YEAR + 5-digit incremental (e.g., PX202500001)
+ * Format: PX + YEAR + 5-digit incremental (e.g., PX202500001) or PXI... for international
  */
-export async function generateWaybillNumber(): Promise<string> {
+export async function generateWaybillNumber(isInternational = false): Promise<string> {
   const db = await getDb();
-  if (!db) return `PX${new Date().getFullYear()}00001`;
+  const year = new Date().getFullYear();
+  const basePrefix = isInternational ? `PXI` : `PX`;
+  const fullPrefix = `${basePrefix}${year}`;
+
+  if (!db) return `${fullPrefix}00001`;
 
   try {
-    const year = new Date().getFullYear();
-    const prefix = `PX${year}`;
-
     // Get all waybill numbers for this year and find the highest
     const allOrders = await db
       .select({ waybillNumber: orders.waybillNumber })
       .from(orders)
-      .where(sql`${orders.waybillNumber} LIKE ${prefix + '%'}`)
+      .where(sql`${orders.waybillNumber} LIKE ${fullPrefix + '%'}`)
       .orderBy(desc(orders.waybillNumber))
       .limit(1);
 
     if (allOrders.length === 0) {
-      return `${prefix}00001`;
+      return `${fullPrefix}00001`;
     }
 
     // Extract the number and increment
-    const lastNumber = parseInt(allOrders[0].waybillNumber.slice(-5));
+    const lastNumber = parseInt(allOrders[0].waybillNumber.slice(fullPrefix.length));
     const nextNumber = (lastNumber + 1).toString().padStart(5, '0');
-    return `${prefix}${nextNumber}`;
+    return `${fullPrefix}${nextNumber}`;
   } catch (error) {
     console.error("[Database] Failed to generate waybill number:", error);
     // Fallback: use timestamp to ensure uniqueness
-    const year = new Date().getFullYear();
     const timestamp = Date.now().toString().slice(-5);
-    return `PX${year}${timestamp}`;
+    return `${fullPrefix}${timestamp}`;
   }
 }
 
@@ -753,8 +763,19 @@ export const calculateRate = (client: any, shipment: any, domTier: any, sddTier:
   let perKgRate = 0;
 
   // Priority 1: Custom rates
-  if (serviceType === 'SDD' || serviceType === 'SAME DAY') {
-    if (client.customSddBaseRate && client.customSddPerKg) {
+  if (serviceType === 'BULLET') {
+    if (client.customBulletBaseRate && client.customBulletPerKg &&
+      client.customBulletBaseRate.trim() !== '' && client.customBulletPerKg.trim() !== '') {
+      baseRate = parseFloat(client.customBulletBaseRate);
+      perKgRate = parseFloat(client.customBulletPerKg);
+    } else {
+      // Default BULLET rates
+      baseRate = 50;
+      perKgRate = 5;
+    }
+  } else if (serviceType === 'SDD' || serviceType === 'SAME DAY') {
+    if (client.customSddBaseRate && client.customSddPerKg &&
+      client.customSddBaseRate.trim() !== '' && client.customSddPerKg.trim() !== '') {
       baseRate = parseFloat(client.customSddBaseRate);
       perKgRate = parseFloat(client.customSddPerKg);
     } else if (sddTier) {
@@ -767,7 +788,8 @@ export const calculateRate = (client: any, shipment: any, domTier: any, sddTier:
     }
   } else {
     // DOM
-    if (client.customDomBaseRate && client.customDomPerKg) {
+    if (client.customDomBaseRate && client.customDomPerKg &&
+      client.customDomBaseRate.trim() !== '' && client.customDomPerKg.trim() !== '') {
       baseRate = parseFloat(client.customDomBaseRate);
       perKgRate = parseFloat(client.customDomPerKg);
     } else if (domTier) {
@@ -954,13 +976,18 @@ export async function generateInvoiceForClient(
   for (const { shipment, shippingRate, fodFee } of shipmentRates) {
     const weight = parseFloat(shipment.weight || '0');
     const svcUpper = shipment.serviceType?.toUpperCase() || 'DOM';
-    const serviceType = (svcUpper === 'SDD' || svcUpper === 'SAME DAY') ? 'SDD' : 'DOM';
+    let serviceLabel = 'DOM';
+    if (svcUpper === 'SDD' || svcUpper === 'SAME DAY') {
+      serviceLabel = 'SDD';
+    } else if (svcUpper === 'BULLET') {
+      serviceLabel = 'BULLET';
+    }
 
     // Shipping Item
     await db.insert(invoiceItems).values({
       invoiceId: invoice.insertId,
       shipmentId: shipment.id,
-      description: `${shipment.waybillNumber} - ${serviceType} - ${weight}kg - ${shipment.city}`,
+      description: `${shipment.waybillNumber} - ${serviceLabel} - ${weight}kg - ${shipment.city}`,
       quantity: 1,
       unitPrice: shippingRate.toFixed(2),
       total: shippingRate.toFixed(2),
@@ -1419,7 +1446,7 @@ export async function getMonthlyShipmentCount(clientId: number): Promise<number>
  */
 export async function calculateShipmentRate(params: {
   clientId: number;
-  serviceType: "DOM" | "SDD";
+  serviceType: "DOM" | "SDD" | "BULLET";
   weight: number; // in kg
   length?: number; // cm
   width?: number; // cm
@@ -1444,8 +1471,24 @@ export async function calculateShipmentRate(params: {
   // PRIORITY 1: Check for custom rates first
   if (client) {
     const isDOM = params.serviceType === "DOM";
-    const customBaseRate = isDOM ? client.customDomBaseRate : client.customSddBaseRate;
-    const customPerKg = isDOM ? client.customDomPerKg : client.customSddPerKg;
+    const isBullet = params.serviceType === "BULLET";
+
+    let customBaseRate = null;
+    let customPerKg = null;
+
+    if (isBullet) {
+      customBaseRate = client.customBulletBaseRate;
+      customPerKg = client.customBulletPerKg;
+
+      // Fallback to default bullet rates if not explicitly set but service is used
+      if (!customBaseRate || !customPerKg) {
+        customBaseRate = "50";
+        customPerKg = "5";
+      }
+    } else {
+      customBaseRate = isDOM ? client.customDomBaseRate : client.customSddBaseRate;
+      customPerKg = isDOM ? client.customDomPerKg : client.customSddPerKg;
+    }
 
     if (customBaseRate) {
       const baseRate = parseFloat(customBaseRate);
@@ -1492,7 +1535,7 @@ export async function calculateShipmentRate(params: {
       .where(
         and(
           eq(rateTiers.id, client.manualRateTierId),
-          eq(rateTiers.serviceType, params.serviceType),
+          eq(rateTiers.serviceType, params.serviceType as "DOM" | "SDD"),
           eq(rateTiers.isActive, 1)
         )
       )
@@ -1514,7 +1557,7 @@ export async function calculateShipmentRate(params: {
       .from(rateTiers)
       .where(
         and(
-          eq(rateTiers.serviceType, params.serviceType),
+          eq(rateTiers.serviceType, params.serviceType as "DOM" | "SDD"),
           eq(rateTiers.isActive, 1),
           gte(rateTiers.minVolume, 0)
         )
