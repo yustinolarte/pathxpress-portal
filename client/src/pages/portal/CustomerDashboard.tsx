@@ -75,7 +75,8 @@ export default function CustomerDashboard() {
   const [createIntlDialogOpen, setCreateIntlDialogOpen] = useState(false);
   const [trackingWaybill, setTrackingWaybill] = useState('');
   const [searchedWaybill, setSearchedWaybill] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string[]>([]);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [intlFilterStatus, setIntlFilterStatus] = useState<string>('all');
@@ -130,13 +131,13 @@ export default function CustomerDashboard() {
     { enabled: !!token }
   );
 
-  // Filtered orders based on status and date
+  // Filtered orders based on status and date, sorted newest first
   const filteredOrders = orders?.filter((order: any) => {
     let matchesStatus = true;
     let matchesDate = true;
 
-    if (filterStatus !== 'all') {
-      matchesStatus = order.status === filterStatus;
+    if (filterStatus.length > 0) {
+      matchesStatus = filterStatus.includes(order.status);
     }
 
     if (filterDateFrom && filterDateTo) {
@@ -151,7 +152,15 @@ export default function CustomerDashboard() {
     }
 
     return matchesStatus && matchesDate;
-  });
+  })?.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const toggleStatusFilter = (status: string) => {
+    setFilterStatus(prev =>
+      prev.includes(status)
+        ? prev.filter(s => s !== status)
+        : [...prev, status]
+    );
+  };
 
   const filteredIntlOrders = intlOrders?.filter((order: any) => {
     let matchesStatus = true;
@@ -726,23 +735,59 @@ export default function CustomerDashboard() {
                   </div>
                 </div>
                 <div className="hidden md:block h-8 w-[1px] bg-border"></div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 relative">
                   <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-[180px] h-9 border-white/10 rounded-lg bg-white/5 font-medium text-foreground">
-                      <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent className="border-white/10 bg-card glass-strong">
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="pending_pickup">Pending Pickup</SelectItem>
-                      <SelectItem value="picked_up">Picked Up</SelectItem>
-                      <SelectItem value="in_transit">In Transit</SelectItem>
-                      <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
-                      <SelectItem value="delivered">Delivered</SelectItem>
-                      <SelectItem value="failed_delivery">Failed / Returned</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="relative">
+                    <button
+                      onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                      className="w-[200px] h-9 border border-white/10 rounded-lg bg-white/5 font-medium text-foreground text-sm px-3 flex items-center justify-between hover:bg-white/10 transition-colors"
+                    >
+                      <span className="truncate">
+                        {filterStatus.length === 0
+                          ? 'All Status'
+                          : `${filterStatus.length} selected`}
+                      </span>
+                      <span className="material-symbols-outlined text-sm text-muted-foreground">expand_more</span>
+                    </button>
+                    {statusDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setStatusDropdownOpen(false)} />
+                        <div className="absolute top-full left-0 mt-1 w-[220px] z-50 bg-card border border-white/10 rounded-lg shadow-xl p-2 space-y-0.5" style={{ backdropFilter: 'blur(20px)' }}>
+                          {[
+                            { value: 'pending_pickup', label: 'Pending Pickup' },
+                            { value: 'picked_up', label: 'Picked Up' },
+                            { value: 'in_transit', label: 'In Transit' },
+                            { value: 'out_for_delivery', label: 'Out for Delivery' },
+                            { value: 'delivered', label: 'Delivered' },
+                            { value: 'failed_delivery', label: 'Failed / Returned' },
+                            { value: 'cancelled', label: 'Cancelled' },
+                          ].map((status) => (
+                            <label
+                              key={status.value}
+                              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-white/5 cursor-pointer transition-colors"
+                            >
+                              <Checkbox
+                                checked={filterStatus.includes(status.value)}
+                                onCheckedChange={() => toggleStatusFilter(status.value)}
+                              />
+                              <span className="text-sm text-foreground">{status.label}</span>
+                            </label>
+                          ))}
+                          {filterStatus.length > 0 && (
+                            <>
+                              <div className="h-px bg-white/10 my-1" />
+                              <button
+                                onClick={() => setFilterStatus([])}
+                                className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 px-2.5 text-left hover:bg-white/5 rounded-md transition-colors"
+                              >
+                                Clear all
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 mt-2 sm:mt-0">
