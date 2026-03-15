@@ -35,10 +35,15 @@ export function ThemeProvider({
 
   useEffect(() => {
     const el = targetRef?.current ?? document.documentElement;
+    const isScoped = !!targetRef?.current;
+
     if (theme === "dark") {
       el.classList.add("dark");
+      if (isScoped) el.classList.remove("light");
     } else {
       el.classList.remove("dark");
+      // When scoped (portal div), add .light to override html.dark CSS variables
+      if (isScoped) el.classList.add("light");
     }
 
     if (switchable) {
