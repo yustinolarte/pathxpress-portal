@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2, Key, FileText, LogOut, Plus } from "lucide-react";
+import NotificationBell from "./NotificationBell";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { useLocation } from "wouter";
 
@@ -296,10 +297,9 @@ export default function ModernDashboardLayout({
                         />
                     </div>
                     <div className="flex items-center gap-4">
-                        <button className="p-2.5 rounded-xl bg-background text-muted-foreground hover:text-primary transition-colors relative border border-primary/10 hover:border-primary/30">
-                            <span className="material-symbols-outlined">notifications</span>
-                            <span className="absolute top-2.5 right-2.5 size-2 bg-destructive rounded-full border-2 border-background"></span>
-                        </button>
+                        {isCustomer && token && (
+                            <NotificationBell token={token} />
+                        )}
                         <div className="h-8 w-[1px] bg-border mx-2"></div>
                         <div className="text-right hidden sm:block">
                             <p className="text-xs font-medium text-muted-foreground">System Status</p>

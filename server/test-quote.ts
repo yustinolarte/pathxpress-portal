@@ -1,11 +1,11 @@
 import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import mysql from "mysql2";
 import { quote, loadRatesFromDB, QuoteInput } from "./internationalRateEngine";
 import * as dotenv from "dotenv";
 dotenv.config();
 
 async function run() {
-    const connection = await mysql.createConnection(process.env.DATABASE_URL!);
+    const connection = mysql.createPool(process.env.DATABASE_URL!);
     const db = drizzle(connection);
 
     console.log("Loading rates from DB...");

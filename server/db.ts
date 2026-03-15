@@ -1783,3 +1783,32 @@ export async function deleteSavedShipper(id: number, clientId: number) {
     throw error;
   }
 }
+
+/**
+ * Creates an in-app notification for a client.
+ * Call this from any router/mutation to send a notification to a customer.
+ *
+ * @param clientId - The clientAccounts.id of the recipient
+ * @param type     - Notification category: ORDER_UPDATE | INVOICE_GENERATED | COD_UPDATE | SYSTEM
+ * @param title    - Short heading (max 255 chars)
+ * @param message  - Body text
+ * @param link     - Optional, tab name to navigate to (e.g. "invoices", "cod", "orders")
+ */
+export async function createNotification(
+  clientId: number,
+  type: 'ORDER_UPDATE' | 'INVOICE_GENERATED' | 'COD_UPDATE' | 'SYSTEM',
+  title: string,
+  message: string,
+  link?: string
+): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    const { notifications } = await import('../drizzle/schema');
+    await db.insert(notifications).values({ clientId, type, title, message, link: link ?? null });
+  } catch (err) {
+    // Never crash the main flow because of a notification failure
+    console.warn('[Notification] Failed to create notification:', err);
+  }
+}
+

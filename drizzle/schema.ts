@@ -429,7 +429,7 @@ export type InsertAuditLog = typeof auditLogs.$inferInsert;
  */
 export const rateTiers = mysqlTable("rateTiers", {
   id: int("id").autoincrement().primaryKey(),
-  serviceType: mysqlEnum("serviceType", ["DOM", "SDD"]).notNull(), // DOM = Domestic Express, SDD = Same Day
+  serviceType: mysqlEnum("serviceType", ["DOM", "SDD", "BULLET"]).notNull(), // DOM = Domestic Express, SDD = Same Day, BULLET = Bullet delivery
   minVolume: int("minVolume").notNull(), // Minimum monthly shipments
   maxVolume: int("maxVolume"), // Maximum monthly shipments (null = unlimited)
   baseRate: varchar("baseRate", { length: 20 }).notNull(), // Base rate for 0-5kg
@@ -630,3 +630,22 @@ export const internationalCountryMaps = mysqlTable("internationalCountryMaps", {
 
 export type InternationalCountryMap = typeof internationalCountryMaps.$inferSelect;
 export type InsertInternationalCountryMap = typeof internationalCountryMaps.$inferInsert;
+
+// ==================== NOTIFICATIONS ====================
+
+/**
+ * Notifications table for in-app notifications shown to portal users
+ */
+export const notifications = mysqlTable("notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull(), // Foreign key to clientAccounts
+  type: varchar("type", { length: 50 }).notNull(), // ORDER_UPDATE, INVOICE_GENERATED, COD_UPDATE, SYSTEM
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  link: varchar("link", { length: 255 }), // Optional deep link (e.g., "orders" or "invoices")
+  isRead: int("isRead").default(0).notNull(), // 0 = unread, 1 = read
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;

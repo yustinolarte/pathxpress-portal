@@ -49,6 +49,7 @@ import {
   calculateShipmentRate,
   calculateCODFee,
   getAllRateTiers,
+  createNotification,
 } from './db';
 import { driverRouter } from './driverRouter';
 
@@ -482,6 +483,26 @@ export const adminPortalRouter = router({
           message: result.error || 'Failed to update order'
         });
       }
+
+      // Notify client for business-impacting changes: service type, COD, or FOD edits
+      try {
+        const changed: string[] = [];
+        if (input.updates.serviceType) changed.push(`Service: ${input.updates.serviceType}`);
+        if (input.updates.codRequired !== undefined || input.updates.codAmount)
+          changed.push(`COD: ${input.updates.codRequired === 0 ? 'Removed' : `${input.updates.codAmount || ''} ${input.updates.codCurrency || 'AED'}`}`);
+        if (input.updates.fitOnDelivery !== undefined)
+          changed.push(`FOD: ${input.updates.fitOnDelivery === 1 ? 'Enabled' : 'Disabled'}`);
+
+        if (changed.length > 0 && result.order?.clientId) {
+          await createNotification(
+            result.order.clientId,
+            'ORDER_UPDATE',
+            'Order Updated',
+            `Your order ${result.order.waybillNumber} was updated by operations: ${changed.join(', ')}.`,
+            'orders'
+          );
+        }
+      } catch (_) { /* never block the order update */ }
 
       return { success: true, order: result.order };
     }),
@@ -2496,6 +2517,19 @@ export const billingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'No shipments found for this period' });
       }
 
+      // Notify the client that their invoice is ready
+      try {
+        const from = new Date(input.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        const to = new Date(input.periodEnd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        await createNotification(
+          input.clientId,
+          'INVOICE_GENERATED',
+          'New Invoice Available',
+          `Your invoice for the period ${from} – ${to} has been generated and is ready for review.`,
+          'invoices'
+        );
+      } catch (_) { /* notification errors must never break invoicing */ }
+
       return { invoiceId };
     }),
 
@@ -2941,6 +2975,22 @@ const codRouter = router({
 
       const processedDate = input.status === 'processed' || input.status === 'completed' ? new Date() : undefined;
       await updateRemittanceStatus(input.remittanceId, input.status, processedDate);
+
+      // Notify client when a remittance has been completed (money paid)
+      if (input.status === 'completed') {
+        try {
+          const rem = await getRemittanceById(input.remittanceId);
+          if (rem) {
+            await createNotification(
+              rem.clientId,
+              'COD_UPDATE',
+              'COD Remittance Paid',
+              `Remittance ${rem.remittanceNumber} for ${rem.totalAmount} ${rem.currency} has been marked as completed and transferred to your account.`,
+              'cod'
+            );
+          }
+        } catch (_) { /* never break the main flow */ }
+      }
 
       return { success: true };
     }),
@@ -3419,6 +3469,99 @@ const internationalRatesRouter = router({
 });
 
 
+// ==================== NOTIFICATIONS ROUTER ====================
+
+const notificationsRouter = router({
+  // Get unread notification count (for the bell badge)
+  getUnreadCount: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || !payload.clientId) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Customer access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { notifications } = await import('../drizzle/schema');
+      const { eq, and, sql } = await import('drizzle-orm');
+      const db = await getDb();
+      if (!db) return { count: 0 };
+
+      const result = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(notifications)
+        .where(and(
+          eq(notifications.clientId, payload.clientId),
+          eq(notifications.isRead, 0)
+        ));
+
+      return { count: Number(result[0]?.count || 0) };
+    }),
+
+  // List notifications (most recent first)
+  list: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      limit: z.number().min(1).max(50).default(20),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || !payload.clientId) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Customer access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { notifications } = await import('../drizzle/schema');
+      const { eq, desc } = await import('drizzle-orm');
+      const db = await getDb();
+      if (!db) return [];
+
+      return await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.clientId, payload.clientId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(input.limit);
+    }),
+
+  // Mark notification(s) as read
+  markAsRead: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      notificationId: z.number().optional(), // If omitted, marks ALL as read
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || !payload.clientId) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Customer access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { notifications } = await import('../drizzle/schema');
+      const { eq, and } = await import('drizzle-orm');
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      if (input.notificationId) {
+        // Mark single as read (only if it belongs to this client)
+        await db.update(notifications)
+          .set({ isRead: 1 })
+          .where(and(
+            eq(notifications.id, input.notificationId),
+            eq(notifications.clientId, payload.clientId)
+          ));
+      } else {
+        // Mark all as read for this client
+        await db.update(notifications)
+          .set({ isRead: 1 })
+          .where(eq(notifications.clientId, payload.clientId));
+      }
+
+      return { success: true };
+    }),
+});
+
+
 export const portalRouter = router({
   auth: portalAuthRouter,
   admin: adminPortalRouter,
@@ -3431,4 +3574,5 @@ export const portalRouter = router({
   tracking: trackingRouter,
   drivers: driverRouter,
   internationalRates: internationalRatesRouter,
+  notifications: notificationsRouter,
 });
