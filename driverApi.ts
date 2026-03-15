@@ -515,18 +515,9 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Search by waybillNumber first, then by trackingNumber
-        // (shipping labels can encode either field as the barcode)
-        let order: typeof orders.$inferSelect | undefined;
-
-        const [byWaybill] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
-        if (byWaybill) {
-            order = byWaybill;
-        } else {
-            // Fallback: search by trackingNumber
-            const [byTracking] = await db.select().from(orders).where(eq(orders.trackingNumber, barcode)).limit(1);
-            if (byTracking) order = byTracking;
-        }
+        // A package in the portal is in the `orders` table
+        // Find by waybillNumber
+        const [order] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
 
         if (!order) return res.status(404).json({ error: 'Package not found in system!' });
 
@@ -547,7 +538,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         // Return formatted package matching the driver app expectations
         res.json({
             id: routeOrder ? routeOrder.id : order.id,
-            packageRef: order.waybillNumber || order.trackingNumber,
+            packageRef: order.waybillNumber,
             status: routeOrder ? routeOrder.status : order.status,
             customerName: order.customerName,
             customerPhone: order.customerPhone,
@@ -1050,36 +1041,15 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Find the order by waybill first, then tracking number.
-        // This matches the /stops/lookup behavior and avoids false negatives when labels encode tracking.
+        // Find the order by waybill number
         const [order] = await db
             .select()
             .from(orders)
-            .where(
-                or(
-                    eq(orders.waybillNumber, waybillNumber),
-                    eq(orders.trackingNumber, waybillNumber)
-                )
-            )
+            .where(eq(orders.waybillNumber, waybillNumber))
             .limit(1);
 
         if (!order) {
             return res.status(404).json({ error: 'Waybill not found' });
-        }
-
-        // Idempotent response: if already picked up, return success without duplicating tracking events.
-        if (order.status === 'picked_up') {
-            return res.json({
-                success: true,
-                message: 'Package already marked as picked up',
-                waybillNumber,
-                orderId: order.id,
-                status: 'picked_up',
-                shipperName: order.shipperName,
-                customerName: order.customerName,
-                pieces: order.pieces,
-                weight: order.weight,
-            });
         }
 
         // Verify order is in pending_pickup status
