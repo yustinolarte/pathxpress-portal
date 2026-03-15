@@ -91,7 +91,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, token, onSu
             {/* COL 1: Shipment + COD */}
             <div className="space-y-4">
               <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-                <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                   <Truck className="w-4 h-4 text-blue-400" /> Shipment
                 </h3>
                 <div className="space-y-4">
@@ -121,7 +121,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, token, onSu
 
               <div className={`p-4 rounded-lg border ${formData.codRequired === 1 ? 'bg-orange-500/10 border-orange-500/20' : 'bg-white/5 border-white/10'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2"><CreditCard className="w-4 h-4 text-orange-400" /> Cash on Delivery</h3>
+                  <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><CreditCard className="w-4 h-4 text-orange-400" /> Cash on Delivery</h3>
                   <Switch checked={formData.codRequired === 1} onCheckedChange={(checked) => setFormData({ ...formData, codRequired: checked ? 1 : 0 })} />
                 </div>
                 {formData.codRequired === 1 && (
@@ -153,7 +153,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, token, onSu
 
             {/* COL 2: Delivery */}
             <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-green-400" /> Delivery Information
               </h3>
               <div className="space-y-4">
@@ -180,7 +180,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, token, onSu
 
             {/* COL 3: Special */}
             <div className="p-4 rounded-lg bg-white/5 border border-white/10">
-              <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-purple-400" /> Special Options
               </h3>
               <div className="space-y-4">

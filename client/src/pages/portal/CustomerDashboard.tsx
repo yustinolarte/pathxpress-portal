@@ -999,7 +999,7 @@ export default function CustomerDashboard() {
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-2 mb-1">
                       <Package className="w-4 h-4 text-primary" /> Waybill Number
                     </p>
-                    <h3 className="text-4xl font-mono font-bold text-white tracking-tight">{trackingData.order.waybillNumber}</h3>
+                    <h3 className="text-4xl font-mono font-bold text-foreground tracking-tight">{trackingData.order.waybillNumber}</h3>
                   </div>
                   <div className={`px-5 py-2.5 rounded-full border ${trackingData.order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
                     trackingData.order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
@@ -1053,7 +1053,7 @@ export default function CustomerDashboard() {
                       </div>
                       <span className="text-sm font-bold uppercase tracking-wider">Origin</span>
                     </div>
-                    <p className="pl-8 text-lg font-medium text-white/90">{trackingData.order.shipperCity}, {trackingData.order.shipperCountry}</p>
+                    <p className="pl-8 text-lg font-medium text-foreground/90">{trackingData.order.shipperCity}, {trackingData.order.shipperCountry}</p>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-primary">
@@ -1062,13 +1062,13 @@ export default function CustomerDashboard() {
                       </div>
                       <span className="text-sm font-bold uppercase tracking-wider">Destination</span>
                     </div>
-                    <p className="pl-8 text-lg font-medium text-white">{trackingData.order.city}, {trackingData.order.destinationCountry}</p>
+                    <p className="pl-8 text-lg font-medium text-foreground">{trackingData.order.city}, {trackingData.order.destinationCountry}</p>
                   </div>
                 </div>
 
                 {/* Timeline */}
                 <div className="p-6 rounded-2xl bg-white/5 border border-white/10">
-                  <h4 className="text-lg font-bold flex items-center gap-2 mb-6 text-white">
+                  <h4 className="text-lg font-bold flex items-center gap-2 mb-6 text-foreground">
                     <Calendar className="w-5 h-5 text-primary" /> Tracking History
                   </h4>
                   <div className="relative space-y-0">
@@ -1082,7 +1082,7 @@ export default function CustomerDashboard() {
 
                         <div className="p-4 rounded-xl border border-transparent hover:bg-white/5 hover:border-white/5 transition-all">
                           <div className="flex flex-col md:flex-row justify-between md:items-center gap-1 mb-2">
-                            <p className={`font-bold text-lg ${i === 0 ? 'text-primary' : 'text-white/90'}`}>{event.statusLabel}</p>
+                            <p className={`font-bold text-lg ${i === 0 ? 'text-primary' : 'text-foreground/90'}`}>{event.statusLabel}</p>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-white/5 px-2 py-1 rounded w-fit">
                               <Calendar className="w-3 h-3" />
                               {new Date(event.eventDatetime).toLocaleString()}
@@ -1423,7 +1423,7 @@ export default function CustomerDashboard() {
                     ) : (
                       <div className="text-center py-12 flex flex-col items-center justify-center">
                         <Globe className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                        <h3 className="text-lg font-medium text-white mb-2">No International Shipments</h3>
+                        <h3 className="text-lg font-medium text-foreground mb-2">No International Shipments</h3>
                         <p className="text-muted-foreground max-w-sm">
                           You haven't created any international shipments yet. Click the button above to get started.
                         </p>
@@ -1435,18 +1435,18 @@ export default function CustomerDashboard() {
             ) : (
               <div className="border border-yellow-500/30 bg-yellow-500/10 rounded-lg p-8 text-center max-w-2xl mx-auto mt-10">
                 <Globe className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-white mb-2">International Shipping</h2>
+                <h2 className="text-2xl font-bold text-foreground mb-2">International Shipping</h2>
                 <p className="text-muted-foreground mb-6">
                   International shipping allows you to send packages globally from the UAE. This feature requires account activation and specific pricing agreements.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                  <a href="mailto:support@pathxpress.com" className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded-md font-medium transition-colors">
+                  <a href="mailto:support@pathxpress.net" className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded-md font-medium transition-colors">
                     Contact Sales to Enable
                   </a>
                 </div>
 
                 <div className="mt-12 text-left pt-8 border-t border-white/10">
-                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-400" /> Rate Calculator</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-400" /> Rate Calculator</h3>
                   <p className="text-sm text-muted-foreground mb-4">You can still check international rates and services using our calculator:</p>
                   <InternationalRateCalculator />
                 </div>
@@ -1763,7 +1763,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         {/* SECTION 1: SHIPPER */}
         <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
           <div className="flex items-center justify-between border-b border-white/10 pb-2">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <LayoutDashboard className="h-4 w-4 text-blue-400" />
               Shipper Details
             </h3>
@@ -1940,7 +1940,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         {/* SECTION 2: CONSIGNEE */}
         <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
           <div className="border-b border-white/10 pb-2">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Package className="h-4 w-4 text-green-400" />
               Consignee (Receiver)
             </h3>
@@ -2010,7 +2010,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       {/* SECTION 3: PACKAGE & SERVICE */}
       <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
         <div className="border-b border-white/10 pb-2">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <Calculator className="h-4 w-4 text-purple-400" />
             Shipment Details
           </h3>
@@ -2025,7 +2025,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Small</span>
-            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+            <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               0.5 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">32×24×1 cm</span>
@@ -2040,7 +2040,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Medium</span>
-            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+            <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               2.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">23×14×4 cm</span>
@@ -2055,7 +2055,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">Large</span>
-            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+            <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               5.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">35×20×15 cm</span>
@@ -2070,7 +2070,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
             className="cursor-pointer group relative overflow-hidden rounded-xl border border-white/10 bg-white/5 p-3 hover:border-blue-500/50 hover:bg-blue-500/10 transition-all text-center flex flex-col items-center justify-center min-h-[90px]"
           >
             <span className="block text-[10px] uppercase tracking-widest text-muted-foreground font-medium mb-1 group-hover:text-blue-400">XL</span>
-            <div className="text-xl font-bold text-white group-hover:text-blue-400 transition-colors leading-none mb-1">
+            <div className="text-xl font-bold text-foreground group-hover:text-blue-400 transition-colors leading-none mb-1">
               10.0 <span className="text-xs font-normal text-muted-foreground">kg</span>
             </div>
             <span className="text-[10px] text-muted-foreground group-hover:text-blue-300/70 transition-colors font-mono">75×35×35 cm</span>
@@ -2159,7 +2159,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
       {/* SECTION 4: PAYMENT */}
       <div className="p-4 rounded-lg bg-white/5 border border-white/10 space-y-4">
         <div className="border-b border-white/10 pb-2">
-          <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
             <CreditCard className="h-4 w-4 text-orange-400" />
             Payment (COD)
           </h3>
@@ -2209,7 +2209,7 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         clientSettings?.fodAllowed === 1 && (
           <div className="p-4 rounded-lg bg-white/5 border border-purple-500/30 space-y-4">
             <div className="border-b border-white/10 pb-2">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <Package className="h-4 w-4 text-purple-400" />
                 Fit on Delivery (FOD)
               </h3>

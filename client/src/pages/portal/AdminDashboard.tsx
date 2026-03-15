@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -110,6 +110,10 @@ export default function AdminDashboard() {
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [selectedClientForPassword, setSelectedClientForPassword] = useState<any>(null);
   const [newPassword, setNewPassword] = useState('');
+
+  // Client 360 Panel State
+  const [client360Id, setClient360Id] = useState<number | null>(null);
+  const [alertsExpanded, setAlertsExpanded] = useState(false);
 
   const deleteClientMutation = trpc.portal.admin.deleteClient.useMutation({
     onSuccess: () => {
@@ -227,6 +231,16 @@ export default function AdminDashboard() {
   const { data: rateTiers } = trpc.portal.rates.listTiers.useQuery(
     { token: token || '' },
     { enabled: !!token }
+  );
+
+  const { data: clientAlerts } = trpc.portal.admin.getClientAlerts.useQuery(
+    { token: token || '' },
+    { enabled: !!token && activeTab === 'clients', refetchInterval: 120000 }
+  );
+
+  const { data: client360Data, isLoading: client360Loading } = trpc.portal.admin.getClient360.useQuery(
+    { token: token || '', clientId: client360Id! },
+    { enabled: !!token && client360Id !== null }
   );
 
   const updateTierMutation = trpc.portal.clients.updateTier.useMutation();
@@ -529,133 +543,433 @@ export default function AdminDashboard() {
 
           {/* Clients Tab */}
           <TabsContent value="clients" className="space-y-4">
-            <Card className="glass-strong border-blue-500/20">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Client Accounts</CardTitle>
-                  <CardDescription>Manage all registered client accounts</CardDescription>
-                </div>
-                <Button onClick={() => setCreateClientDialogOpen(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Client
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {clientsLoading ? (
-                  <p className="text-center py-8 text-muted-foreground">Loading clients...</p>
-                ) : clients && clients.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Company Name</TableHead>
-                          <TableHead>Contact</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Country</TableHead>
-                          <TableHead>Rate Tier</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>COD Allowed</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {clients.map((client) => (
-                          <TableRow key={client.id}>
-                            <TableCell className="font-medium">{client.companyName}</TableCell>
-                            <TableCell>{client.contactName}</TableCell>
-                            <TableCell>{client.billingEmail}</TableCell>
-                            <TableCell>{client.country}</TableCell>
-                            <TableCell>
-                              {client.customDomBaseRate || client.customSddBaseRate ? (
-                                <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30">
-                                  ✨ Custom
-                                </Badge>
-                              ) : client.manualRateTierId ? (
-                                <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                                  Manual Tier
-                                </Badge>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">Auto (Volume)</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
-                                {client.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{client.codAllowed ? 'Yes' : 'No'}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-1 flex-wrap">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditingClient(client);
-                                    setEditClientDialogOpen(true);
-                                  }}
-                                  title="Edit Settings"
-                                >
-                                  <LayoutDashboard className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedClientForNotes(client);
-                                    setClientNotes(client.notes || '');
-                                    setNotesDialogOpen(true);
-                                  }}
-                                  title="Client Notes"
-                                  className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
-                                >
-                                  <StickyNote className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedClientForUser(client);
-                                    setNewUser({ ...newUser, email: client.billingEmail }); // Pre-fill email
-                                    setCreateUserDialogOpen(true);
-                                  }}
-                                  title="Create Login User"
-                                >
-                                  <Users className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedClientForPassword(client);
-                                    setNewPassword('');
-                                    setPasswordDialogOpen(true);
-                                  }}
-                                  title="Change Password"
-                                  className="text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
-                                >
-                                  <Key className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                  onClick={() => handleDeleteClient(client.id)}
-                                  title="Delete Client"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
+
+            {/* Alert Panels */}
+            {clientAlerts && (clientAlerts.overdueClients.length > 0 || clientAlerts.inactiveClients.length > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Overdue Invoices Alert */}
+                {clientAlerts.overdueClients.length > 0 && (
+                  <Card className="glass-strong border-red-500/30 bg-red-500/5">
+                    <CardHeader className="pb-2">
+                      <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setAlertsExpanded(prev => !prev)}
+                      >
+                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-red-400">
+                          <AlertTriangle className="h-4 w-4" />
+                          {clientAlerts.overdueClients.length} client(s) with overdue invoices
+                        </CardTitle>
+                        {alertsExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      </div>
+                    </CardHeader>
+                    {alertsExpanded && (
+                      <CardContent className="pt-0">
+                        <div className="space-y-2 mt-2">
+                          {clientAlerts.overdueClients.map(c => (
+                            <div key={c.clientId} className="flex items-center justify-between text-sm">
+                              <span className="font-medium">{c.companyName}</span>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="text-xs">{c.invoiceCount} inv</Badge>
+                                <span className="text-red-400 font-mono">
+                                  AED {c.overdueBalance.toLocaleString('en-AE', { maximumFractionDigits: 0 })}
+                                </span>
                               </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <p className="text-center py-8 text-muted-foreground">No clients found</p>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
                 )}
-              </CardContent>
-            </Card>
+
+                {/* Inactive Clients Alert */}
+                {clientAlerts.inactiveClients.length > 0 && (
+                  <Card className="glass-strong border-yellow-500/30 bg-yellow-500/5">
+                    <CardHeader className="pb-2">
+                      <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setAlertsExpanded(prev => !prev)}
+                      >
+                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-yellow-400">
+                          <Clock className="h-4 w-4" />
+                          {clientAlerts.inactiveClients.length} client(s) inactive 30+ days
+                        </CardTitle>
+                        {alertsExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      </div>
+                    </CardHeader>
+                    {alertsExpanded && (
+                      <CardContent className="pt-0">
+                        <div className="space-y-2 mt-2">
+                          {clientAlerts.inactiveClients.map(c => (
+                            <div key={c.clientId} className="flex items-center justify-between text-sm">
+                              <span className="font-medium">{c.companyName}</span>
+                              <span className="text-yellow-400 text-xs">{c.daysSinceLastOrder} days ago</span>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              {/* Clients Table */}
+              <Card className={`glass-strong border-blue-500/20 ${client360Id ? 'flex-1 min-w-0' : 'w-full'}`}>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Client Accounts</CardTitle>
+                    <CardDescription>Manage all registered client accounts</CardDescription>
+                  </div>
+                  <Button onClick={() => setCreateClientDialogOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Client
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {clientsLoading ? (
+                    <p className="text-center py-8 text-muted-foreground">Loading clients...</p>
+                  ) : clients && clients.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Company Name</TableHead>
+                            <TableHead>Contact</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Country</TableHead>
+                            <TableHead>Segment</TableHead>
+                            <TableHead>Rate Tier</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>COD</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {clients.map((client) => {
+                            const isOverdue = clientAlerts?.overdueClients.some(c => c.clientId === client.id);
+                            const inactiveAlert = clientAlerts?.inactiveClients.find(c => c.clientId === client.id);
+                            const isSelected = client360Id === client.id;
+                            return (
+                              <TableRow
+                                key={client.id}
+                                className={isSelected ? 'bg-blue-500/10 border-blue-500/30' : ''}
+                              >
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      className="text-left hover:text-blue-400 transition-colors"
+                                      onClick={() => setClient360Id(isSelected ? null : client.id)}
+                                    >
+                                      {client.companyName}
+                                    </button>
+                                    {isOverdue && (
+                                      <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" aria-label="Has overdue invoices" />
+                                    )}
+                                    {inactiveAlert && (
+                                      <Clock className="h-3.5 w-3.5 text-yellow-400 shrink-0" aria-label={`Inactive for ${inactiveAlert.daysSinceLastOrder} days`} />
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{client.contactName}</TableCell>
+                                <TableCell className="text-xs">{client.billingEmail}</TableCell>
+                                <TableCell>{client.country}</TableCell>
+                                <TableCell>
+                                  {/* Segment badge — placeholder, real data comes from client360 */}
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs cursor-pointer"
+                                    onClick={() => setClient360Id(isSelected ? null : client.id)}
+                                    title="Click to see Client 360"
+                                  >
+                                    360 View
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {client.customDomBaseRate || client.customSddBaseRate ? (
+                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30">
+                                      ✨ Custom
+                                    </Badge>
+                                  ) : client.manualRateTierId ? (
+                                    <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
+                                      Manual Tier
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">Auto</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
+                                    {client.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>{client.codAllowed ? 'Yes' : 'No'}</TableCell>
+                                <TableCell>
+                                  <div className="flex gap-1 flex-wrap">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setEditingClient(client);
+                                        setEditClientDialogOpen(true);
+                                      }}
+                                      title="Edit Settings"
+                                    >
+                                      <LayoutDashboard className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedClientForNotes(client);
+                                        setClientNotes(client.notes || '');
+                                        setNotesDialogOpen(true);
+                                      }}
+                                      title="Client Notes"
+                                      className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+                                    >
+                                      <StickyNote className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedClientForUser(client);
+                                        setNewUser({ ...newUser, email: client.billingEmail });
+                                        setCreateUserDialogOpen(true);
+                                      }}
+                                      title="Create Login User"
+                                    >
+                                      <Users className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedClientForPassword(client);
+                                        setNewPassword('');
+                                        setPasswordDialogOpen(true);
+                                      }}
+                                      title="Change Password"
+                                      className="text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+                                    >
+                                      <Key className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                      onClick={() => handleDeleteClient(client.id)}
+                                      title="Delete Client"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <p className="text-center py-8 text-muted-foreground">No clients found</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Client 360 Side Panel */}
+              {client360Id !== null && (
+                <div className="w-80 shrink-0">
+                  <Card className="glass-strong border-blue-500/30 sticky top-4">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-base">
+                            {clients?.find(c => c.id === client360Id)?.companyName || 'Client'}
+                          </CardTitle>
+                          <CardDescription className="mt-0.5">360° View</CardDescription>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => setClient360Id(null)}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {client360Loading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <span className="text-sm text-muted-foreground">Loading...</span>
+                        </div>
+                      ) : client360Data ? (
+                        <>
+                          {/* Segment Badge */}
+                          <div className="flex items-center gap-2">
+                            {client360Data.clientSegment === 'gold' && (
+                              <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/40">Gold Client</Badge>
+                            )}
+                            {client360Data.clientSegment === 'silver' && (
+                              <Badge className="bg-slate-400/20 text-slate-300 border-slate-400/40">Silver Client</Badge>
+                            )}
+                            {client360Data.clientSegment === 'bronze' && (
+                              <Badge className="bg-orange-700/20 text-orange-400 border-orange-700/40">Bronze Client</Badge>
+                            )}
+                            {client360Data.clientSegment === 'new' && (
+                              <Badge variant="outline">New Client</Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">{client360Data.currentRateTier}</span>
+                          </div>
+
+                          {/* Shipments */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-lg bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">This Month</p>
+                              <p className="text-2xl font-bold text-blue-400">{client360Data.shipmentsThisMonth}</p>
+                              <p className="text-xs text-muted-foreground">vs {client360Data.shipmentsLastMonth} last</p>
+                            </div>
+                            <div className="rounded-lg bg-muted/40 p-3">
+                              <p className="text-xs text-muted-foreground">Last Active</p>
+                              <p className="text-2xl font-bold">
+                                {client360Data.daysSinceLastOrder !== null ? client360Data.daysSinceLastOrder : '—'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">days ago</p>
+                            </div>
+                          </div>
+
+                          {/* Financial */}
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Financial</p>
+                            <div className="flex justify-between text-sm">
+                              <span>Pending Invoices</span>
+                              <span className={client360Data.pendingInvoicesBalance > 0 ? 'text-yellow-400 font-mono' : 'text-muted-foreground'}>
+                                {client360Data.pendingInvoicesBalance > 0
+                                  ? `AED ${client360Data.pendingInvoicesBalance.toLocaleString('en-AE', { maximumFractionDigits: 0 })}`
+                                  : '—'}
+                              </span>
+                            </div>
+                            {client360Data.overdueInvoicesBalance > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span>Overdue</span>
+                                <span className="text-red-400 font-mono">
+                                  AED {client360Data.overdueInvoicesBalance.toLocaleString('en-AE', { maximumFractionDigits: 0 })}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex justify-between text-sm">
+                              <span>Pending COD</span>
+                              <span className={client360Data.pendingCODAmount > 0 ? 'text-orange-400 font-mono' : 'text-muted-foreground'}>
+                                {client360Data.pendingCODAmount > 0
+                                  ? `AED ${client360Data.pendingCODAmount.toLocaleString('en-AE', { maximumFractionDigits: 0 })}`
+                                  : '—'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Monthly Trend (mini bar chart) */}
+                          {client360Data.monthlyShipmentTrend.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">6-Month Trend</p>
+                              <div className="flex items-end gap-1 h-12">
+                                {(() => {
+                                  const maxVal = Math.max(...client360Data.monthlyShipmentTrend.map(m => m.count), 1);
+                                  return client360Data.monthlyShipmentTrend.map((m, i) => (
+                                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${m.month}: ${m.count}`}>
+                                      <div
+                                        className="w-full bg-blue-500/60 rounded-sm"
+                                        style={{ height: `${(m.count / maxVal) * 44}px` }}
+                                      />
+                                    </div>
+                                  ));
+                                })()}
+                              </div>
+                              <div className="flex justify-between mt-1">
+                                <span className="text-xs text-muted-foreground">
+                                  {client360Data.monthlyShipmentTrend[0]?.month?.slice(5)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {client360Data.monthlyShipmentTrend[client360Data.monthlyShipmentTrend.length - 1]?.month?.slice(5)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Recent Orders */}
+                          {client360Data.recentOrders.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Recent Shipments</p>
+                              <div className="space-y-1">
+                                {client360Data.recentOrders.map((o, i) => (
+                                  <div key={i} className="flex items-center justify-between text-xs">
+                                    <span className="font-mono text-muted-foreground">{o.waybillNumber}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-muted-foreground">{o.city}</span>
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs py-0 px-1"
+                                        style={{
+                                          borderColor: o.status === 'delivered' ? '#10b981' : o.status === 'returned' ? '#6b7280' : '#f59e0b',
+                                          color: o.status === 'delivered' ? '#10b981' : o.status === 'returned' ? '#6b7280' : '#f59e0b',
+                                        }}
+                                      >
+                                        {o.status.replace(/_/g, ' ')}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-col gap-2 pt-2 border-t border-border">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full justify-start text-xs"
+                              onClick={() => {
+                                setOrderFilterClientId(client360Id.toString());
+                                setActiveTab('orders');
+                                setClient360Id(null);
+                              }}
+                            >
+                              <Package className="h-3.5 w-3.5 mr-2" />
+                              View Orders
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full justify-start text-xs"
+                              onClick={() => {
+                                setActiveTab('billing');
+                                setClient360Id(null);
+                              }}
+                            >
+                              <DollarSign className="h-3.5 w-3.5 mr-2" />
+                              View Invoices
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full justify-start text-xs"
+                              onClick={() => {
+                                const client = clients?.find(c => c.id === client360Id);
+                                if (client) {
+                                  setEditingClient(client);
+                                  setEditClientDialogOpen(true);
+                                }
+                              }}
+                            >
+                              <LayoutDashboard className="h-3.5 w-3.5 mr-2" />
+                              Edit Client
+                            </Button>
+                          </div>
+                        </>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* Orders Tab */}

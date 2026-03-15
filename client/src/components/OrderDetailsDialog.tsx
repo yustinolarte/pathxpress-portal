@@ -49,7 +49,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                 <Package className="w-4 h-4 text-primary" /> Waybill Number
                             </p>
-                            <h2 className="text-4xl font-mono font-bold tracking-tight text-white">
+                            <h2 className="text-4xl font-mono font-bold tracking-tight text-foreground">
                                 {order.waybillNumber}
                             </h2>
                             <p className="text-sm text-muted-foreground">
@@ -131,8 +131,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                     </div>
                                     <div className="pl-10 space-y-3">
                                         <div>
-                                            <p className="text-lg font-semibold text-white">{order.shipperName}</p>
-                                            <p className="text-white/90 leading-relaxed">{order.shipperAddress}</p>
+                                            <p className="text-lg font-semibold text-foreground">{order.shipperName}</p>
+                                            <p className="text-foreground/90 leading-relaxed">{order.shipperAddress}</p>
                                             <p className="text-muted-foreground">{order.shipperCity}, {order.shipperCountry}</p>
                                             <div className="flex items-center gap-2 mt-2">
                                                 <Badge variant="secondary" className="font-mono bg-white/10 hover:bg-white/20">{order.shipperPhone}</Badge>
@@ -152,7 +152,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                                 <p className="text-xs text-blue-400 font-medium flex items-center gap-1.5 mb-1">
                                                     <FileText className="w-3 h-3" /> Special Instructions
                                                 </p>
-                                                <p className="text-sm text-white/90">{order.specialInstructions}</p>
+                                                <p className="text-sm text-foreground/90">{order.specialInstructions}</p>
                                             </div>
                                         )}
 
@@ -162,7 +162,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                                 <p className="text-xs text-amber-500 font-medium flex items-center gap-1.5 mb-1">
                                                     <AlertCircle className="w-3 h-3" /> Account Note
                                                 </p>
-                                                <p className="text-sm text-white/90">{clients.find(c => c.id === order.clientId)?.notes}</p>
+                                                <p className="text-sm text-foreground/90">{clients.find(c => c.id === order.clientId)?.notes}</p>
                                             </div>
                                         )}
                                     </div>
@@ -178,8 +178,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                         <span className="text-sm font-bold uppercase tracking-wider">Deliver To</span>
                                     </div>
                                     <div className="pl-10 space-y-1">
-                                        <p className="text-lg font-semibold text-white">{order.customerName}</p>
-                                        <p className="text-lg text-white/90 leading-relaxed font-medium">{order.address}</p>
+                                        <p className="text-lg font-semibold text-foreground">{order.customerName}</p>
+                                        <p className="text-lg text-foreground/90 leading-relaxed font-medium">{order.address}</p>
                                         <p className="text-muted-foreground">{order.city}, {order.destinationCountry}</p>
                                         <div className="flex items-center gap-2 mt-3">
                                             <Badge variant="secondary" className="font-mono bg-white/10 hover:bg-white/20">{order.customerPhone}</Badge>
@@ -193,7 +193,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                         {/* Timeline Column */}
                         <div className="lg:col-span-1">
                             <div className="rounded-2xl bg-white/5 border border-white/10 p-6 h-full">
-                                <h3 className="text-lg font-bold flex items-center gap-2 mb-6 text-white">
+                                <h3 className="text-lg font-bold flex items-center gap-2 mb-6 text-foreground">
                                     <Calendar className="w-5 h-5 text-primary" /> Tracking History
                                 </h3>
 
@@ -214,7 +214,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
                                                 <div className="space-y-1">
                                                     <div className="flex justify-between items-start">
-                                                        <p className={`font-bold ${index === 0 ? 'text-primary' : 'text-white/80'}`}>{event.statusLabel}</p>
+                                                        <p className={`font-bold ${index === 0 ? 'text-primary' : 'text-foreground/80'}`}>{event.statusLabel}</p>
                                                         <span className="text-[10px] text-muted-foreground bg-white/5 px-1.5 py-0.5 rounded">
                                                             {new Date(event.eventDatetime).toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>

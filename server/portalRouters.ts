@@ -637,8 +637,8 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
       }
 
-      const { orders } = await import('../drizzle/schema');
-      const { sql, gte, and, eq } = await import('drizzle-orm');
+      const { orders, invoices, codRecords, trackingEvents } = await import('../drizzle/schema');
+      const { sql, gte, lte, and, eq, inArray } = await import('drizzle-orm');
 
       // Get today and date ranges
       const now = new Date();
@@ -738,6 +738,89 @@ export const adminPortalRouter = router({
         .from(orders)
         .where(gte(orders.createdAt, startOfToday));
 
+      // 10. First Attempt Delivery Rate (FADR)
+      // Total delivered orders
+      const deliveredOrders = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.status, 'delivered'));
+
+      const totalDelivered = deliveredOrders.length;
+
+      // Delivered orders that had at least one 'attempted_delivery' or 'failed_delivery' tracking event
+      let failedFirstAttempt = 0;
+      if (totalDelivered > 0) {
+        const deliveredIds = deliveredOrders.map(o => o.id);
+        const withAttempts = await db
+          .select({ shipmentId: trackingEvents.shipmentId })
+          .from(trackingEvents)
+          .where(and(
+            inArray(trackingEvents.shipmentId, deliveredIds),
+            inArray(trackingEvents.statusCode, ['attempted_delivery', 'failed_delivery', 'attempted'])
+          ))
+          .groupBy(trackingEvents.shipmentId);
+        failedFirstAttempt = withAttempts.length;
+      }
+      const firstAttemptDeliveryRate = totalDelivered > 0
+        ? Math.round(((totalDelivered - failedFirstAttempt) / totalDelivered) * 100)
+        : null;
+
+      // 11. Return Rate
+      const returnedCount = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(eq(orders.status, 'returned'));
+      const totalReturnOrDeliv = totalDelivered + Number(returnedCount[0]?.count || 0);
+      const returnRate = totalReturnOrDeliv > 0
+        ? Math.round((Number(returnedCount[0]?.count || 0) / totalReturnOrDeliv) * 100)
+        : null;
+
+      // 12. Total Accounts Receivable (unpaid invoices balance)
+      const arResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(balance AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(inArray(invoices.status, ['pending', 'overdue']));
+      const totalAccountsReceivable = parseFloat(arResult[0]?.total || '0');
+
+      const overdueResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(balance AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(eq(invoices.status, 'overdue'));
+      const overdueAmount = parseFloat(overdueResult[0]?.total || '0');
+
+      // 13. Revenue this month and last month (from paid + pending invoices)
+      const revenueThisMonthResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(total AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(gte(invoices.issueDate, startOfMonth));
+      const revenueThisMonth = parseFloat(revenueThisMonthResult[0]?.total || '0');
+
+      const revenueLastMonthResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(total AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(and(
+          gte(invoices.issueDate, startOfLastMonth),
+          lte(invoices.issueDate, endOfLastMonth)
+        ));
+      const revenueLastMonth = parseFloat(revenueLastMonthResult[0]?.total || '0');
+
+      // 14. Shipments per day with orders for drill-down (date → waybill list)
+      const shipmentsPerDayDetailed = await db
+        .select({
+          date: sql<string>`DATE(${orders.createdAt})`,
+          waybillNumber: orders.waybillNumber,
+        })
+        .from(orders)
+        .where(gte(orders.createdAt, last30Days))
+        .orderBy(sql`DATE(${orders.createdAt})`);
+
+      // Build a map of date -> waybillNumbers for drill-down
+      const drillDownMap: Record<string, string[]> = {};
+      for (const row of shipmentsPerDayDetailed) {
+        if (!drillDownMap[row.date]) drillDownMap[row.date] = [];
+        drillDownMap[row.date].push(row.waybillNumber);
+      }
+
       // Calculate month-over-month growth
       const currentMonthCount = Number(shipmentsThisMonth[0]?.count || 0);
       const lastMonthCount = Number(shipmentsLastMonth[0]?.count || 0);
@@ -751,9 +834,17 @@ export const adminPortalRouter = router({
         shipmentsThisMonth: currentMonthCount,
         shipmentsLastMonth: lastMonthCount,
         growthPercentage,
+        // New KPIs
+        firstAttemptDeliveryRate,
+        returnRate,
+        totalAccountsReceivable,
+        overdueAmount,
+        revenueThisMonth,
+        revenueLastMonth,
         shipmentsPerDay: shipmentsPerDay.map(d => ({
           date: d.date,
           count: Number(d.count),
+          waybills: drillDownMap[d.date] || [],
         })),
         monthlyComparison: monthlyComparison.map(m => ({
           month: m.month,
@@ -772,6 +863,320 @@ export const adminPortalRouter = router({
           status: s.status,
           count: Number(s.count),
         })),
+      };
+    }),
+
+  // Revenue Analytics (for Revenue Dashboard)
+  getRevenueAnalytics: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      const { invoices, invoiceItems, orders, clientAccounts } = await import('../drizzle/schema');
+      const { sql, gte, eq, inArray } = await import('drizzle-orm');
+
+      const now = new Date();
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+      // 1. Monthly revenue (last 6 months)
+      const monthlyRevenue = await db
+        .select({
+          month: sql<string>`DATE_FORMAT(${invoices.issueDate}, '%Y-%m')`,
+          revenue: sql<string>`COALESCE(SUM(CAST(${invoices.total} AS DECIMAL(12,2))), 0)`,
+          invoiceCount: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(invoices)
+        .where(gte(invoices.issueDate, sixMonthsAgo))
+        .groupBy(sql`DATE_FORMAT(${invoices.issueDate}, '%Y-%m')`)
+        .orderBy(sql`DATE_FORMAT(${invoices.issueDate}, '%Y-%m')`);
+
+      // 2. Revenue by service type (from invoice items → orders)
+      const revenueByService = await db
+        .select({
+          service: orders.serviceType,
+          amount: sql<string>`COALESCE(SUM(CAST(${invoiceItems.total} AS DECIMAL(12,2))), 0)`,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(invoiceItems)
+        .innerJoin(orders, eq(invoiceItems.shipmentId, orders.id))
+        .groupBy(orders.serviceType)
+        .orderBy(sql`SUM(CAST(${invoiceItems.total} AS DECIMAL(12,2))) DESC`);
+
+      // 3. Top 10 clients by invoice total
+      const topClients = await db
+        .select({
+          companyName: clientAccounts.companyName,
+          clientId: invoices.clientId,
+          totalRevenue: sql<string>`COALESCE(SUM(CAST(${invoices.total} AS DECIMAL(12,2))), 0)`,
+          invoiceCount: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(invoices)
+        .innerJoin(clientAccounts, eq(invoices.clientId, clientAccounts.id))
+        .groupBy(invoices.clientId, clientAccounts.companyName)
+        .orderBy(sql`SUM(CAST(${invoices.total} AS DECIMAL(12,2))) DESC`)
+        .limit(10);
+
+      // 4. AR totals
+      const arResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(inArray(invoices.status, ['pending', 'overdue']));
+
+      const overdueResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(eq(invoices.status, 'overdue'));
+
+      return {
+        monthlyRevenue: monthlyRevenue.map(r => ({
+          month: r.month,
+          revenue: parseFloat(r.revenue),
+          invoiceCount: Number(r.invoiceCount),
+        })),
+        revenueByService: revenueByService.map(r => ({
+          service: r.service || 'standard',
+          amount: parseFloat(r.amount),
+          count: Number(r.count),
+        })),
+        topClients: topClients.map(c => ({
+          companyName: c.companyName,
+          clientId: c.clientId,
+          totalRevenue: parseFloat(c.totalRevenue),
+          invoiceCount: Number(c.invoiceCount),
+        })),
+        totalAR: parseFloat(arResult[0]?.total || '0'),
+        overdueAmount: parseFloat(overdueResult[0]?.total || '0'),
+      };
+    }),
+
+  // Client 360 View
+  getClient360: publicProcedure
+    .input(z.object({ token: z.string(), clientId: z.number() }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      const { orders, invoices, codRecords, clientAccounts, rateTiers } = await import('../drizzle/schema');
+      const { sql, gte, lte, eq, and, inArray, desc } = await import('drizzle-orm');
+
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+      // 1. Shipments this month
+      const thisMonthResult = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(and(eq(orders.clientId, input.clientId), gte(orders.createdAt, startOfMonth)));
+
+      // 2. Shipments last month
+      const lastMonthResult = await db
+        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+        .from(orders)
+        .where(and(
+          eq(orders.clientId, input.clientId),
+          gte(orders.createdAt, startOfLastMonth),
+          lte(orders.createdAt, endOfLastMonth)
+        ));
+
+      // 3. Pending invoices balance
+      const pendingInvResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(and(eq(invoices.clientId, input.clientId), eq(invoices.status, 'pending')));
+
+      // 4. Overdue invoices balance
+      const overdueInvResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)` })
+        .from(invoices)
+        .where(and(eq(invoices.clientId, input.clientId), eq(invoices.status, 'overdue')));
+
+      // 5. Pending COD amount — join codRecords to orders filtered by clientId
+      const pendingCODResult = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(12,2))), 0)` })
+        .from(codRecords)
+        .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
+        .where(and(
+          eq(orders.clientId, input.clientId),
+          inArray(codRecords.status, ['pending_collection', 'collected'])
+        ));
+
+      // 6. Days since last order
+      const lastOrderResult = await db
+        .select({ createdAt: orders.createdAt })
+        .from(orders)
+        .where(eq(orders.clientId, input.clientId))
+        .orderBy(desc(orders.createdAt))
+        .limit(1);
+
+      let daysSinceLastOrder: number | null = null;
+      if (lastOrderResult[0]) {
+        const diffMs = now.getTime() - new Date(lastOrderResult[0].createdAt).getTime();
+        daysSinceLastOrder = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      }
+
+      // 7. Client segment based on this month's volume
+      const shipmentsThisMonth = Number(thisMonthResult[0]?.count || 0);
+      let clientSegment: 'gold' | 'silver' | 'bronze' | 'new';
+      if (shipmentsThisMonth >= 200) clientSegment = 'gold';
+      else if (shipmentsThisMonth >= 50) clientSegment = 'silver';
+      else if (shipmentsThisMonth >= 10) clientSegment = 'bronze';
+      else clientSegment = 'new';
+
+      // 8. Recent 5 orders
+      const recentOrders = await db
+        .select({
+          waybillNumber: orders.waybillNumber,
+          status: orders.status,
+          city: orders.city,
+          createdAt: orders.createdAt,
+        })
+        .from(orders)
+        .where(eq(orders.clientId, input.clientId))
+        .orderBy(desc(orders.createdAt))
+        .limit(5);
+
+      // 9. Monthly shipment trend (last 6 months)
+      const monthlyTrend = await db
+        .select({
+          month: sql<string>`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`,
+          count: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(and(eq(orders.clientId, input.clientId), gte(orders.createdAt, sixMonthsAgo)))
+        .groupBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`)
+        .orderBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`);
+
+      // 10. Get client rate tier name
+      const clientData = await db
+        .select({ manualRateTierId: clientAccounts.manualRateTierId, customDomBaseRate: clientAccounts.customDomBaseRate })
+        .from(clientAccounts)
+        .where(eq(clientAccounts.id, input.clientId))
+        .limit(1);
+
+      let currentRateTier = 'Auto (Volume)';
+      if (clientData[0]?.customDomBaseRate) {
+        currentRateTier = 'Custom Rates';
+      } else if (clientData[0]?.manualRateTierId) {
+        const tierData = await db
+          .select({ serviceType: rateTiers.serviceType, minVolume: rateTiers.minVolume })
+          .from(rateTiers)
+          .where(eq(rateTiers.id, clientData[0].manualRateTierId))
+          .limit(1);
+        if (tierData[0]) {
+          currentRateTier = `${tierData[0].serviceType} - ${tierData[0].minVolume}+ /mo`;
+        }
+      }
+
+      return {
+        shipmentsThisMonth,
+        shipmentsLastMonth: Number(lastMonthResult[0]?.count || 0),
+        pendingInvoicesBalance: parseFloat(pendingInvResult[0]?.total || '0'),
+        overdueInvoicesBalance: parseFloat(overdueInvResult[0]?.total || '0'),
+        pendingCODAmount: parseFloat(pendingCODResult[0]?.total || '0'),
+        currentRateTier,
+        daysSinceLastOrder,
+        clientSegment,
+        recentOrders: recentOrders.map(o => ({
+          waybillNumber: o.waybillNumber,
+          status: o.status,
+          city: o.city,
+          createdAt: o.createdAt,
+        })),
+        monthlyShipmentTrend: monthlyTrend.map(m => ({
+          month: m.month,
+          count: Number(m.count),
+        })),
+      };
+    }),
+
+  // Client alerts — for alert panel in admin dashboard
+  getClientAlerts: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      const { invoices, orders, clientAccounts } = await import('../drizzle/schema');
+      const { sql, eq, inArray, gte, desc } = await import('drizzle-orm');
+
+      // 1. Clients with overdue invoices
+      const overdueClients = await db
+        .select({
+          clientId: invoices.clientId,
+          companyName: clientAccounts.companyName,
+          overdueBalance: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)`,
+          invoiceCount: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(invoices)
+        .innerJoin(clientAccounts, eq(invoices.clientId, clientAccounts.id))
+        .where(eq(invoices.status, 'overdue'))
+        .groupBy(invoices.clientId, clientAccounts.companyName)
+        .orderBy(sql`SUM(CAST(${invoices.balance} AS DECIMAL(12,2))) DESC`);
+
+      // 2. Clients inactive for 30+ days (no orders in last 30 days, but have orders overall)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Get all active clients
+      const activeClients = await db
+        .select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
+        .from(clientAccounts)
+        .where(eq(clientAccounts.status, 'active'));
+
+      // Get clients with recent activity
+      const recentlyActiveClientIds = await db
+        .select({ clientId: orders.clientId })
+        .from(orders)
+        .where(gte(orders.createdAt, thirtyDaysAgo))
+        .groupBy(orders.clientId);
+
+      const recentIds = new Set(recentlyActiveClientIds.map(r => r.clientId));
+
+      // Get last order date for inactive clients
+      const inactiveClients: Array<{ clientId: number; companyName: string; daysSinceLastOrder: number }> = [];
+      for (const client of activeClients) {
+        if (!recentIds.has(client.id)) {
+          const lastOrder = await db
+            .select({ createdAt: orders.createdAt })
+            .from(orders)
+            .where(eq(orders.clientId, client.id))
+            .orderBy(desc(orders.createdAt))
+            .limit(1);
+          if (lastOrder[0]) {
+            const diffMs = Date.now() - new Date(lastOrder[0].createdAt).getTime();
+            const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            inactiveClients.push({ clientId: client.id, companyName: client.companyName, daysSinceLastOrder: days });
+          }
+        }
+      }
+
+      return {
+        overdueClients: overdueClients.map(c => ({
+          clientId: c.clientId,
+          companyName: c.companyName,
+          overdueBalance: parseFloat(c.overdueBalance),
+          invoiceCount: Number(c.invoiceCount),
+        })),
+        inactiveClients: inactiveClients.sort((a, b) => b.daysSinceLastOrder - a.daysSinceLastOrder).slice(0, 10),
       };
     }),
 
