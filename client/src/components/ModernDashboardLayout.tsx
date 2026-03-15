@@ -19,13 +19,26 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { APP_TITLE, getLoginUrl } from "@/const";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Key, FileText, LogOut, Plus } from "lucide-react";
+import { Loader2, Key, FileText, LogOut, Plus, Sun, Moon } from "lucide-react";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { useLocation } from "wouter";
+
+function ThemeToggleItem() {
+    const { theme, toggleTheme } = useTheme();
+    return (
+        <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer hover:bg-primary/10">
+            {theme === "dark"
+                ? <Sun className="mr-2 h-4 w-4" />
+                : <Moon className="mr-2 h-4 w-4" />}
+            <span>{theme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+        </DropdownMenuItem>
+    );
+}
 
 export interface ModernMenuItem {
     icon: string;
@@ -57,6 +70,7 @@ export default function ModernDashboardLayout({
     onCreateShipment,
 }: ModernDashboardLayoutProps) {
     const [, setLocation] = useLocation();
+    const portalRef = useRef<HTMLDivElement>(null);
 
     // Sidebar collapse state
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -186,7 +200,8 @@ export default function ModernDashboardLayout({
     }
 
     return (
-        <div className="flex h-screen overflow-hidden bg-background">
+        <ThemeProvider defaultTheme="dark" switchable storageKey="portal-theme" targetRef={portalRef}>
+        <div ref={portalRef} className="flex h-screen overflow-hidden bg-background">
             {/* Sidebar */}
             <aside className={`${isCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 flex-shrink-0 border-r border-primary/10 bg-card flex flex-col justify-between p-4 overflow-y-auto`}>
                 <div className="space-y-8">
@@ -271,6 +286,7 @@ export default function ModernDashboardLayout({
                                 <Key className="mr-2 h-4 w-4" />
                                 <span>Change Password</span>
                             </DropdownMenuItem>
+                            <ThemeToggleItem />
                             <DropdownMenuSeparator className="bg-primary/10" />
                             <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10">
                                 <LogOut className="mr-2 h-4 w-4" />
@@ -431,5 +447,6 @@ export default function ModernDashboardLayout({
                 </Dialog>
             )}
         </div>
+        </ThemeProvider>
     );
 }

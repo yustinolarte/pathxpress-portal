@@ -4,26 +4,29 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Download, CheckCircle, Clock, AlertCircle, Eye } from 'lucide-react';
+import { FileText, Download, CheckCircle, Clock, AlertCircle, Eye, Search } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 
 export default function CustomerInvoices() {
   const { token } = usePortalAuth();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Download invoice PDF handler
   const handleDownloadPDF = async (invoice: any) => {
     try {
       if (!token) return;
 
-      // Fetch invoice details
       const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
       const result = await response.json();
 
@@ -34,7 +37,6 @@ export default function CustomerInvoices() {
 
       const details = result.result.data.json;
 
-      // Prepare invoice data for PDF
       const invoiceData = {
         id: details.invoice.id,
         invoiceNumber: details.invoice.invoiceNumber,
@@ -72,7 +74,6 @@ export default function CustomerInvoices() {
     }
   };
 
-  // Get customer's invoices
   const { data: invoices, isLoading } = trpc.portal.billing.getMyInvoices.useQuery(
     { token: token || '' },
     { enabled: !!token }
@@ -80,9 +81,25 @@ export default function CustomerInvoices() {
 
   const filteredInvoices = useMemo(() => {
     if (!invoices) return [];
-    if (filterStatus === 'all') return invoices;
-    return invoices.filter(inv => inv.status === filterStatus);
-  }, [invoices, filterStatus]);
+    return invoices.filter(inv => {
+      if (filterStatus !== 'all' && inv.status !== filterStatus) return false;
+      if (searchQuery && !inv.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (dateFrom) {
+        const issueDate = new Date(inv.issueDate);
+        if (issueDate < new Date(dateFrom)) return false;
+      }
+      if (dateTo) {
+        const issueDate = new Date(inv.issueDate);
+        if (issueDate > new Date(dateTo + 'T23:59:59')) return false;
+      }
+      return true;
+    });
+  }, [invoices, filterStatus, searchQuery, dateFrom, dateTo]);
+
+  const getBalance = (inv: any) => {
+    if (inv.status === 'paid') return 0;
+    return parseFloat(inv.total);
+  };
 
   const handleExportExcel = () => {
     if (!filteredInvoices || filteredInvoices.length === 0) {
@@ -97,6 +114,7 @@ export default function CustomerInvoices() {
       'Issue Date': new Date(inv.issueDate).toLocaleDateString(),
       'Due Date': new Date(inv.dueDate).toLocaleDateString(),
       'Amount': parseFloat(inv.total).toFixed(2),
+      'Balance': getBalance(inv).toFixed(2),
       'Currency': inv.currency,
       'Status': inv.status.toUpperCase(),
       'Adjusted': inv.isAdjusted === 1 ? 'Yes' : 'No'
@@ -105,16 +123,12 @@ export default function CustomerInvoices() {
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Invoices');
-
-    // Auto-size columns
     const wscols = Object.keys(data[0] || {}).map(() => ({ wch: 15 }));
     worksheet['!cols'] = wscols;
-
     XLSX.writeFile(workbook, `Invoices_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success('Invoices exported to Excel');
   };
 
-  // Get invoice details when selected
   const { data: invoiceDetails } = trpc.portal.billing.getInvoiceDetails.useQuery(
     { token: token || '', invoiceId: selectedInvoiceId || 0 },
     { enabled: !!token && !!selectedInvoiceId }
@@ -137,9 +151,13 @@ export default function CustomerInvoices() {
     return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const formatCurrency = (amount: string, currency: string = 'AED') => {
-    return `${currency} ${parseFloat(amount).toFixed(2)}`;
+  const formatCurrency = (amount: string | number, currency: string = 'AED') => {
+    return `${currency} ${parseFloat(String(amount)).toFixed(2)}`;
   };
+
+  // Summary stats
+  const totalOutstanding = invoices?.filter(i => i.status !== 'paid').reduce((s, i) => s + parseFloat(i.total), 0) ?? 0;
+  const totalOverdue = invoices?.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.total), 0) ?? 0;
 
   if (isLoading) {
     return <div className="text-center py-8">Loading invoices...</div>;
@@ -156,7 +174,7 @@ export default function CustomerInvoices() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-card rounded-xl p-6 border border-border hover:border-blue-500/50 transition-colors shadow-sm">
           <p className="text-sm font-semibold text-muted-foreground mb-2">Total Invoices</p>
           <div className="text-3xl font-black text-foreground">{invoices?.length || 0}</div>
@@ -169,15 +187,17 @@ export default function CustomerInvoices() {
           </div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-border hover:border-red-500/50 transition-colors shadow-sm">
+        <div className="bg-card rounded-xl p-6 border border-border hover:border-yellow-500/50 transition-colors shadow-sm">
           <p className="text-sm font-semibold text-muted-foreground mb-2">Outstanding</p>
+          <div className="text-3xl font-black text-yellow-600 dark:text-yellow-400">
+            {formatCurrency(totalOutstanding.toString())}
+          </div>
+        </div>
+
+        <div className="bg-card rounded-xl p-6 border border-red-500/20 hover:border-red-500/50 transition-colors shadow-sm">
+          <p className="text-sm font-semibold text-muted-foreground mb-2">Overdue Balance</p>
           <div className="text-3xl font-black text-red-600 dark:text-red-400">
-            {formatCurrency(
-              invoices
-                ?.filter(i => i.status !== 'paid')
-                .reduce((sum, i) => sum + parseFloat(i.total), 0)
-                .toString() || '0'
-            )}
+            {formatCurrency(totalOverdue.toString())}
           </div>
         </div>
       </div>
@@ -195,9 +215,25 @@ export default function CustomerInvoices() {
         </div>
 
         <div className="p-6">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-[240px]">
-              <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Filter Status</Label>
+          {/* Filters */}
+          <div className="flex flex-wrap items-end gap-4 mb-6">
+            {/* Search */}
+            <div className="w-[200px]">
+              <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Invoice #</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="pl-9 bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+
+            {/* Status */}
+            <div className="w-[180px]">
+              <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Status</Label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-full bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20">
                   <SelectValue placeholder="All Status" />
@@ -210,6 +246,38 @@ export default function CustomerInvoices() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Date From */}
+            <div className="w-[160px]">
+              <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">From</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+
+            {/* Date To */}
+            <div className="w-[160px]">
+              <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">To</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+
+            {(searchQuery || filterStatus !== 'all' || dateFrom || dateTo) && (
+              <Button
+                variant="ghost"
+                className="h-11 px-3 text-muted-foreground hover:text-foreground"
+                onClick={() => { setSearchQuery(''); setFilterStatus('all'); setDateFrom(''); setDateTo(''); }}
+              >
+                Clear
+              </Button>
+            )}
           </div>
 
           {!filteredInvoices || filteredInvoices.length === 0 ? (
@@ -231,54 +299,67 @@ export default function CustomerInvoices() {
                   <TableHead className="font-semibold text-muted-foreground">Issue Date</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Due Date</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Amount</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Balance</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
                   <TableHead className="font-semibold text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id} className="hover:bg-muted/50 transition-colors">
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold">{invoice.invoiceNumber}</span>
-                        {invoice.isAdjusted === 1 && (
-                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/30 font-bold shadow-sm">
-                            Adjusted
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium">{formatDate(invoice.issueDate)}</TableCell>
-                    <TableCell className="text-sm font-medium">{formatDate(invoice.dueDate)}</TableCell>
-                    <TableCell className="font-black text-foreground">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
-                    <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
-                          onClick={() => setSelectedInvoiceId(invoice.id)}
-                          title="View Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
-                          onClick={() => handleDownloadPDF(invoice)}
-                          title="Download PDF"
-                        >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredInvoices.map((invoice) => {
+                  const isOverdue = invoice.status === 'overdue';
+                  const balance = getBalance(invoice);
+                  return (
+                    <TableRow
+                      key={invoice.id}
+                      className={`hover:bg-muted/50 transition-colors ${isOverdue ? 'bg-red-500/5 hover:bg-red-500/10' : ''}`}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold">{invoice.invoiceNumber}</span>
+                          {invoice.isAdjusted === 1 && (
+                            <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/30 font-bold shadow-sm">
+                              Adjusted
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium">{formatDate(invoice.issueDate)}</TableCell>
+                      <TableCell className={`text-sm font-medium ${isOverdue ? 'text-red-500 font-bold' : ''}`}>
+                        {formatDate(invoice.dueDate)}
+                      </TableCell>
+                      <TableCell className="font-black text-foreground">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
+                      <TableCell className={`font-bold ${balance > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                        {balance > 0 ? formatCurrency(balance.toString(), invoice.currency) : '—'}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
+                            onClick={() => setSelectedInvoiceId(invoice.id)}
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
+                            onClick={() => handleDownloadPDF(invoice)}
+                            title="Download PDF"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -294,7 +375,6 @@ export default function CustomerInvoices() {
 
           {invoiceDetails && (
             <div className="space-y-6">
-              {/* Invoice Header */}
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-2xl font-bold">{invoiceDetails.invoice.invoiceNumber}</h3>
@@ -305,7 +385,6 @@ export default function CustomerInvoices() {
                 {getStatusBadge(invoiceDetails.invoice.status)}
               </div>
 
-              {/* Dates */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Issue Date</p>
@@ -313,11 +392,12 @@ export default function CustomerInvoices() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Due Date</p>
-                  <p className="font-medium">{formatDate(invoiceDetails.invoice.dueDate)}</p>
+                  <p className={`font-medium ${invoiceDetails.invoice.status === 'overdue' ? 'text-red-500 font-bold' : ''}`}>
+                    {formatDate(invoiceDetails.invoice.dueDate)}
+                  </p>
                 </div>
               </div>
 
-              {/* Line Items */}
               <div>
                 <h4 className="font-semibold mb-2">Line Items</h4>
                 <Table>
@@ -342,7 +422,6 @@ export default function CustomerInvoices() {
                 </Table>
               </div>
 
-              {/* Adjustment Notice */}
               {invoiceDetails.invoice.isAdjusted === 1 && invoiceDetails.invoice.adjustmentNotes && (
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                   <div className="flex items-start gap-2">
@@ -360,7 +439,6 @@ export default function CustomerInvoices() {
                 </div>
               )}
 
-              {/* Totals */}
               <div className="border-t pt-4 space-y-2">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
@@ -374,9 +452,14 @@ export default function CustomerInvoices() {
                   <span>Total:</span>
                   <span>{formatCurrency(invoiceDetails.invoice.total, invoiceDetails.invoice.currency)}</span>
                 </div>
+                {invoiceDetails.invoice.status !== 'paid' && (
+                  <div className="flex justify-between text-base font-bold text-red-500">
+                    <span>Balance Due:</span>
+                    <span>{formatCurrency(invoiceDetails.invoice.total, invoiceDetails.invoice.currency)}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Actions */}
               <div className="flex gap-2 justify-end">
                 <Button
                   variant="outline"

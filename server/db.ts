@@ -956,9 +956,28 @@ export async function generateInvoiceForClient(
   const dueDate = new Date(now);
   dueDate.setDate(dueDate.getDate() + 30); // 30 days payment term
 
+  // Generate consecutive invoice number: INV-YYYY-MM-001
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `INV-${year}-${month}-`;
+  const { sql: sqlFn } = await import('drizzle-orm');
+  const [lastInvoice] = await db
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(sqlFn`invoice_number LIKE ${prefix + '%'}`)
+    .orderBy(sqlFn`invoice_number DESC`)
+    .limit(1);
+  let nextSeq = 1;
+  if (lastInvoice?.invoiceNumber) {
+    const parts = lastInvoice.invoiceNumber.split('-');
+    const lastSeq = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+  }
+  const invoiceNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
   const [invoice] = await db.insert(invoices).values({
     clientId,
-    invoiceNumber: `INV-${Date.now()}`,
+    invoiceNumber,
     periodFrom: periodStart,
     periodTo: periodEnd,
     issueDate: now,
@@ -971,6 +990,7 @@ export async function generateInvoiceForClient(
     status: 'pending',
     currency: 'AED',
   });
+
 
   // Create invoice items with correct rates
   for (const { shipment, shippingRate, fodFee } of shipmentRates) {

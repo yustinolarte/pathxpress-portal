@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle, Package, MapPin, User, Phone, Truck, Calendar, FileText } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle, Package, MapPin, User, Phone, Truck, Calendar, FileText, Download } from 'lucide-react';
 import RemittanceDetailsDialog from './RemittanceDetailsDialog';
+import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 
 export default function CustomerCODPanel() {
   const { token } = usePortalAuth();
@@ -16,29 +20,72 @@ export default function CustomerCODPanel() {
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
   const [selectedWaybill, setSelectedWaybill] = useState<string | null>(null);
 
-  // Get COD summary
+  // COD shipments filters
+  const [codStatusFilter, setCodStatusFilter] = useState('all');
+  const [codDateFrom, setCodDateFrom] = useState('');
+  const [codDateTo, setCodDateTo] = useState('');
+
   const { data: codSummary } = trpc.portal.cod.getMyCODSummary.useQuery(
     { token: token || '' },
     { enabled: !!token }
   );
 
-  // Get my COD records
   const { data: codRecords, isLoading: codLoading } = trpc.portal.cod.getMyCODRecords.useQuery(
     { token: token || '' },
     { enabled: !!token }
   );
 
-  // Get my remittances
   const { data: remittances, isLoading: remittancesLoading } = trpc.portal.cod.getMyRemittances.useQuery(
     { token: token || '' },
     { enabled: !!token }
   );
 
-  // Get shipment details by waybill
   const { data: shipmentDetails, isLoading: shipmentLoading } = trpc.portal.customer.getShipmentDetails.useQuery(
     { token: token || '', waybillNumber: selectedWaybill || '' },
     { enabled: !!token && !!selectedWaybill && shipmentDialogOpen }
   );
+
+  const filteredCodRecords = useMemo(() => {
+    if (!codRecords) return [];
+    return codRecords.filter(record => {
+      if (codStatusFilter !== 'all' && record.status !== codStatusFilter) return false;
+      if (codDateFrom) {
+        const d = record.collectedDate ? new Date(record.collectedDate) : null;
+        if (!d || d < new Date(codDateFrom)) return false;
+      }
+      if (codDateTo) {
+        const d = record.collectedDate ? new Date(record.collectedDate) : null;
+        if (!d || d > new Date(codDateTo + 'T23:59:59')) return false;
+      }
+      return true;
+    });
+  }, [codRecords, codStatusFilter, codDateFrom, codDateTo]);
+
+  const handleExportRemittancesExcel = () => {
+    if (!remittances || remittances.length === 0) {
+      toast.error('No remittances to export');
+      return;
+    }
+    const data = remittances.map(r => ({
+      'Remittance #': r.remittanceNumber,
+      'Shipments': r.shipmentCount,
+      'Gross Amount': parseFloat(r.grossAmount).toFixed(2),
+      'Commission': parseFloat(r.feeAmount).toFixed(2),
+      'Net Amount': parseFloat(r.totalAmount).toFixed(2),
+      'Currency': r.currency,
+      'Payment Method': r.paymentMethod || 'N/A',
+      'Created Date': formatDate(r.createdAt),
+      'Completed Date': formatDate(r.processedDate),
+      'Status': r.status.toUpperCase(),
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Remittances');
+    const wscols = Object.keys(data[0] || {}).map(() => ({ wch: 16 }));
+    worksheet['!cols'] = wscols;
+    XLSX.writeFile(workbook, `COD_Remittances_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Remittances exported to Excel');
+  };
 
   const handleViewShipment = (waybillNumber: string) => {
     setSelectedWaybill(waybillNumber);
@@ -55,24 +102,23 @@ export default function CustomerCODPanel() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline', icon: any }> = {
-      pending_collection: { variant: 'outline', icon: Clock },
-      collected: { variant: 'default', icon: TrendingUp },
-      remitted: { variant: 'secondary', icon: CheckCircle },
-      disputed: { variant: 'destructive', icon: AlertCircle },
-      cancelled: { variant: 'destructive', icon: AlertCircle },
-      pending: { variant: 'outline', icon: Clock },
-      processed: { variant: 'default', icon: TrendingUp },
-      completed: { variant: 'secondary', icon: CheckCircle },
+    const variants: Record<string, { className: string; icon: any; label: string }> = {
+      pending_collection: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending Collection' },
+      collected: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Collected' },
+      remitted: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Remitted' },
+      disputed: { className: 'bg-red-500/20 text-red-500 border-red-500/30', icon: AlertCircle, label: 'Disputed' },
+      cancelled: { className: 'bg-slate-500/20 text-slate-400 border-slate-500/30', icon: AlertCircle, label: 'Cancelled' },
+      pending: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending' },
+      processed: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Processed' },
+      completed: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Completed' },
     };
 
     const config = variants[status] || variants.pending;
     const Icon = config.icon;
-
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1 w-fit">
+      <Badge variant="outline" className={`flex items-center gap-1 w-fit ${config.className}`}>
         <Icon className="w-3 h-3" />
-        {status.replace('_', ' ')}
+        {config.label}
       </Badge>
     );
   };
@@ -127,7 +173,6 @@ export default function CustomerCODPanel() {
       </div>
 
       {/* COD Explanation */}
-      {/* COD Explanation */}
       <div className="bg-primary/5 rounded-xl border border-primary/20 p-6 flex items-start gap-4">
         <span className="material-symbols-outlined text-primary text-3xl shrink-0 mt-1">lightbulb</span>
         <div className="space-y-3">
@@ -142,13 +187,18 @@ export default function CustomerCODPanel() {
       </div>
 
       {/* My Remittances */}
-      {/* My Remittances */}
       <section className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="p-6 border-b border-border flex justify-between items-center bg-muted/10">
           <div>
             <h3 className="text-lg font-bold text-foreground">My Remittances</h3>
             <p className="text-sm text-muted-foreground">Payments received from PATHXPRESS for collected COD amounts</p>
           </div>
+          <Button
+            className="bg-background hover:bg-muted text-foreground border border-border h-10 px-4 rounded-xl shadow-sm"
+            onClick={handleExportRemittancesExcel}
+          >
+            <Download className="mr-2 h-4 w-4 text-muted-foreground" /> Export Excel
+          </Button>
         </div>
 
         <div className="p-0">
@@ -163,9 +213,7 @@ export default function CustomerCODPanel() {
                 <span className="material-symbols-outlined text-muted-foreground opacity-50 text-4xl">receipt_long</span>
               </div>
               <h4 className="text-lg font-bold mb-2">No remittances yet</h4>
-              <p className="text-muted-foreground text-sm max-w-sm">
-                COD amounts will be remitted periodically.
-              </p>
+              <p className="text-muted-foreground text-sm max-w-sm">COD amounts will be remitted periodically.</p>
             </div>
           ) : (
             <Table>
@@ -173,10 +221,12 @@ export default function CustomerCODPanel() {
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableHead className="font-semibold text-muted-foreground">Remittance #</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Shipments</TableHead>
-                  <TableHead className="font-semibold text-muted-foreground">Amount</TableHead>
-                  <TableHead className="font-semibold text-muted-foreground">Payment Method</TableHead>
-                  <TableHead className="font-semibold text-muted-foreground">Created Date</TableHead>
-                  <TableHead className="font-semibold text-muted-foreground">Processed Date</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Gross</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Commission</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Net to You</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Method</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Created</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Completed</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -192,7 +242,13 @@ export default function CustomerCODPanel() {
                   >
                     <TableCell className="font-bold text-primary hover:underline">{remittance.remittanceNumber}</TableCell>
                     <TableCell><span className="font-medium bg-muted py-1 px-2 rounded-md">{remittance.shipmentCount}</span></TableCell>
-                    <TableCell className="font-black text-foreground">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-medium">{formatCurrency(remittance.grossAmount, remittance.currency)}</TableCell>
+                    <TableCell className="text-sm text-red-500 font-medium">
+                      {parseFloat(remittance.feeAmount) > 0
+                        ? `- ${formatCurrency(remittance.feeAmount, remittance.currency)}`
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="font-black text-green-600 dark:text-green-400">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{remittance.paymentMethod || 'N/A'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(remittance.createdAt)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(remittance.processedDate)}</TableCell>
@@ -206,7 +262,6 @@ export default function CustomerCODPanel() {
       </section>
 
       {/* My COD Shipments */}
-      {/* My COD Shipments */}
       <section className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="p-6 border-b border-border flex justify-between items-center bg-muted/10">
           <div>
@@ -215,20 +270,69 @@ export default function CustomerCODPanel() {
           </div>
         </div>
 
-        <div className="p-0">
+        {/* COD Shipments Filters */}
+        <div className="px-6 pt-5 pb-2 flex flex-wrap items-end gap-4">
+          <div className="w-[180px]">
+            <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Status</Label>
+            <Select value={codStatusFilter} onValueChange={setCodStatusFilter}>
+              <SelectTrigger className="w-full bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="pending_collection">Pending Collection</SelectItem>
+                <SelectItem value="collected">Collected</SelectItem>
+                <SelectItem value="remitted">Remitted</SelectItem>
+                <SelectItem value="disputed">Disputed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-[160px]">
+            <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Collected From</Label>
+            <Input
+              type="date"
+              value={codDateFrom}
+              onChange={e => setCodDateFrom(e.target.value)}
+              className="bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          <div className="w-[160px]">
+            <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Collected To</Label>
+            <Input
+              type="date"
+              value={codDateTo}
+              onChange={e => setCodDateTo(e.target.value)}
+              className="bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {(codStatusFilter !== 'all' || codDateFrom || codDateTo) && (
+            <Button
+              variant="ghost"
+              className="h-11 px-3 text-muted-foreground hover:text-foreground"
+              onClick={() => { setCodStatusFilter('all'); setCodDateFrom(''); setCodDateTo(''); }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+
+        <div className="p-0 pt-2">
           {codLoading ? (
             <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
               <span className="material-symbols-outlined text-primary animate-spin text-4xl mb-4">refresh</span>
               Loading COD shipments...
             </div>
-          ) : !codRecords || codRecords.length === 0 ? (
+          ) : !filteredCodRecords || filteredCodRecords.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-6">
                 <span className="material-symbols-outlined text-muted-foreground opacity-50 text-4xl">package</span>
               </div>
               <h4 className="text-lg font-bold mb-2">No COD shipments found</h4>
               <p className="text-muted-foreground text-sm max-w-sm">
-                You don't have any shipments using the Cash on Delivery service.
+                No shipments match the current filter.
               </p>
             </div>
           ) : (
@@ -244,7 +348,7 @@ export default function CustomerCODPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {codRecords.map((record) => (
+                {filteredCodRecords.map((record) => (
                   <TableRow key={record.id} className="hover:bg-muted/50 transition-colors">
                     <TableCell>
                       <button
@@ -291,7 +395,6 @@ export default function CustomerCODPanel() {
             <div className="py-8 text-center text-muted-foreground">Loading shipment details...</div>
           ) : shipmentDetails ? (
             <div className="space-y-6">
-              {/* Shipment Status */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>
@@ -307,7 +410,6 @@ export default function CustomerCODPanel() {
                 </div>
               </div>
 
-              {/* Shipper Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg border bg-card">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
@@ -330,7 +432,6 @@ export default function CustomerCODPanel() {
                   </div>
                 </div>
 
-                {/* Receiver Info */}
                 <div className="p-4 rounded-lg border bg-card">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-green-500" />
@@ -353,7 +454,6 @@ export default function CustomerCODPanel() {
                 </div>
               </div>
 
-              {/* COD Info */}
               {shipmentDetails.order.codRequired === 1 && (
                 <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
                   <h4 className="font-semibold mb-2 flex items-center gap-2">
@@ -366,7 +466,6 @@ export default function CustomerCODPanel() {
                 </div>
               )}
 
-              {/* Tracking Events */}
               {shipmentDetails.trackingEvents && shipmentDetails.trackingEvents.length > 0 && (
                 <div className="p-4 rounded-lg border">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
@@ -392,7 +491,6 @@ export default function CustomerCODPanel() {
                 </div>
               )}
 
-              {/* Special Instructions */}
               {shipmentDetails.order.specialInstructions && (
                 <div className="p-4 rounded-lg border bg-yellow-500/5 border-yellow-500/30">
                   <h4 className="font-semibold mb-2 flex items-center gap-2">
