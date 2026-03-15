@@ -1,0 +1,1510 @@
+{
+  "countries": {
+    "Afghanistan": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Albania": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Algeria": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "American Samoa": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Andorra": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Angola": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Anguilla": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Antigua": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Argentina": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Armenia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Aruba": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Australia": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Austria": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Azerbaijan": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bahamas": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bahrain": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": true,
+      "riskFlag": false
+    },
+    "Bangladesh": {
+      "zone": "ZONE_2",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Barbados": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Belarus": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Belgium": {
+      "zone": "ZONE_4",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Belize": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Benin": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bermuda": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bhutan": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bolivia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bonaire": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bosnia & Herzegovina": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Botswana": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Brazil": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Brunei": {
+      "zone": "ZONE_6",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bulgaria": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Burkina Faso": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Burma (Myanmar)": {
+      "zone": "ZONE_6",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Burundi": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Cambodia": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cameroon": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Canada": {
+      "zone": "ZONE_3",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Canary Islands, The": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cape Verde": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cayman Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Central African Republic": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Chad": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Chile": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "China": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Colombia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Comoros": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Congo": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cook Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Costa Rica": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Croatia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cuba": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Curacao": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cyprus": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Czech Republic, The": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Denmark": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Djibouti": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Dominica": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Dominican Republic": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "East Timor": {
+      "zone": "ZONE_6",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Ecuador": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Egypt": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "El Salvador": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Equatorial Guinea": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Eritrea": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Estonia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Ethiopia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Falkland Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Faroe Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Fiji Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Finland": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "France": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "French Guiana": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Gabon": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Gambia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Georgia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Germany": {
+      "zone": "ZONE_4",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Ghana": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Gibraltar": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Greece": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Greenland": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Grenada": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guadeloupe": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guam": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guatemala": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guernsey": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guinea Bissau": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guinea Republic": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guyana": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Haiti": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Honduras Republic": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Hong Kong": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Hungary": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Iceland": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "India": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Indonesia": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Iran": {
+      "zone": "ZONE_5",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Iraq": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Ireland, Republic Of": {
+      "zone": "ZONE_4",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Israel": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Italy": {
+      "zone": "ZONE_4",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Ivory Coast": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Jamaica": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Japan": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Jersey": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Jordan": {
+      "zone": "ZONE_5",
+      "primeEligible": true,
+      "gccEligible": true,
+      "riskFlag": false
+    },
+    "Kazakhstan": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Kenya": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Kiribati, Republic Of": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Korea, North": {
+      "zone": "ZONE_6",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Korea, South": {
+      "zone": "ZONE_6",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Kosovo": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Kuwait": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": true,
+      "riskFlag": false
+    },
+    "Kyrgystan": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Laos": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Latvia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Lebanon": {
+      "zone": "ZONE_5",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Lesotho": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Liberia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Libya": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Liechtenstein": {
+      "zone": "ZONE_4",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Lithuania": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Luxemborg": {
+      "zone": "ZONE_4",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Macau": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Macedonia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Madagascar": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Malawi": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Malaysia": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Maldives": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mali": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Malta": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Marshall Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Martinique": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mauritania": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mauritius": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mayotte": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mexico": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Moldova, Republic Of": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Monaco": {
+      "zone": "ZONE_1",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mongolia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Montenegro": {
+      "zone": "ZONE_7",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Montserrat": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Morocco": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Mozambique": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Namibia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Naura, Republic Of": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Nepal": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Netherlands, The": {
+      "zone": "ZONE_4",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "New Caledonia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "New Zealand": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Nicaragua": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Niger": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Nigeria": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Niue": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Norway": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Oman": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": true,
+      "riskFlag": false
+    },
+    "Pakistan": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Panama": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Papua New Guinea": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Paraguay": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Peru": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Philippines": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Poland": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Portugal": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Puerto Rico": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Qatar": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": true,
+      "riskFlag": false
+    },
+    "Reunion, Island Of": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Romania": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Russian Federation": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Rwanda": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Saipan (Mariana Islands)": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Samoa": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "San Marino": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Sao Tome & Principe": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Saudi Arabia": {
+      "zone": "ZONE_5",
+      "primeEligible": true,
+      "gccEligible": true,
+      "riskFlag": false
+    },
+    "Senegal": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Serbia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Seychelles": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Sierra Leone": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Singapore": {
+      "zone": "ZONE_1",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Slovakia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Slovenia": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Solomon Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Somalia": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Somaliland": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "South Africa": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "South Sudan": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Spain": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Sri Lanka": {
+      "zone": "ZONE_2",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "St. Barthelemy": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "St. Eustatius": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "St. Kitts": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "St. Lucia": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "St. Maarten": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "St. Vincent": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Sudan": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Suriname": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Swaziland": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Sweden": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Switzerland": {
+      "zone": "ZONE_4",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Syria": {
+      "zone": "ZONE_5",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Tahiti": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Taiwan": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Tajikistan": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Tanzania": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Thailand": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Togo": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Tonga": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Trinidad And Tobago": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Tunisia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Turkey": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Turkmenistan": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Turks And Caicos Islands": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Tuvalu": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Uganda": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Ukraine": {
+      "zone": "ZONE_7",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "United Kingdom": {
+      "zone": "ZONE_2",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "United States": {
+      "zone": "ZONE_3",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Uruguay": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Uzbekistan": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Vanuatu": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Venezuela": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Vietnam": {
+      "zone": "ZONE_6",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Virgin Islands (British)": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Virgin Islands (US)": {
+      "zone": "ZONE_8",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Yemen": {
+      "zone": "ZONE_5",
+      "primeEligible": false,
+      "gccEligible": false,
+      "riskFlag": true
+    },
+    "Zambia": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Zimbabwe": {
+      "zone": "ZONE_8",
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guinea": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Cura\u00e7ao": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Bosnia and Herzegovina": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Luxembourg": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Honduras": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Ireland": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "French Polynesia": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Trinidad and Tobago": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Fiji": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Macao": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Brunei Darussalam": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Moldova": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Congo-Rep": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Korea Rep.": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Congo - D.Rep": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Kyrgyzstan": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Myanmar": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Czech Rep.": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Netherlands": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Saint Lucia": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Sao Tome and Principe": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Virgin Islands": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Guinea-Bissau": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    },
+    "Antigua and Barbuda": {
+      "zone": null,
+      "primeEligible": true,
+      "gccEligible": false,
+      "riskFlag": false
+    }
+  }
+}

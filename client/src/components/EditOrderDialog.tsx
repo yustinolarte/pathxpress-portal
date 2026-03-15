@@ -102,6 +102,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, token, onSu
                       <SelectContent>
                         <SelectItem value="DOM">🚚 DOM (Next Day)</SelectItem>
                         <SelectItem value="SDD">⚡ SDD (Same Day)</SelectItem>
+                        <SelectItem value="BULLET" className="text-red-500 font-medium">🚀 BULLET (4 Hours)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

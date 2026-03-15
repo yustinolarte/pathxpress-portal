@@ -120,6 +120,20 @@
       "when": 1769423800402,
       "tag": "0016_add-hide-consignee-address",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1772551380430,
+      "tag": "0017_chief_havok",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1772902933994,
+      "tag": "0018_absent_the_hand",
+      "breakpoints": true
     }
   ]
 }

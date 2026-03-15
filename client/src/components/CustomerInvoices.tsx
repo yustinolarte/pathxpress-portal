@@ -146,69 +146,60 @@ export default function CustomerInvoices() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold">My Invoices</h2>
-        <p className="text-muted-foreground">View and download your invoices</p>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-3xl font-black tracking-tight text-foreground">My Invoices</h2>
+          <p className="text-muted-foreground mt-1">View and download your invoices</p>
+        </div>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Invoices</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{invoices?.length || 0}</div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-card rounded-xl p-6 border border-border hover:border-blue-500/50 transition-colors shadow-sm">
+          <p className="text-sm font-semibold text-muted-foreground mb-2">Total Invoices</p>
+          <div className="text-3xl font-black text-foreground">{invoices?.length || 0}</div>
+        </div>
 
-        <Card className="glass-strong border-green-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Paid</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-400">
-              {invoices?.filter(i => i.status === 'paid').length || 0}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="bg-card rounded-xl p-6 border border-border hover:border-green-500/50 transition-colors shadow-sm">
+          <p className="text-sm font-semibold text-muted-foreground mb-2">Paid</p>
+          <div className="text-3xl font-black text-green-600 dark:text-green-400">
+            {invoices?.filter(i => i.status === 'paid').length || 0}
+          </div>
+        </div>
 
-        <Card className="glass-strong border-red-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-400">
-              {formatCurrency(
-                invoices
-                  ?.filter(i => i.status !== 'paid')
-                  .reduce((sum, i) => sum + parseFloat(i.total), 0)
-                  .toString() || '0'
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="bg-card rounded-xl p-6 border border-border hover:border-red-500/50 transition-colors shadow-sm">
+          <p className="text-sm font-semibold text-muted-foreground mb-2">Outstanding</p>
+          <div className="text-3xl font-black text-red-600 dark:text-red-400">
+            {formatCurrency(
+              invoices
+                ?.filter(i => i.status !== 'paid')
+                .reduce((sum, i) => sum + parseFloat(i.total), 0)
+                .toString() || '0'
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Invoices Table */}
-      <Card className="glass-strong border-blue-500/20">
-        <CardHeader className="flex flex-row items-center justify-between">
+      <section className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-border flex justify-between items-center bg-muted/10">
           <div>
-            <CardTitle>Invoice History</CardTitle>
-            <CardDescription>All your invoices and payment records</CardDescription>
+            <h3 className="text-lg font-bold text-foreground">Invoice History</h3>
+            <p className="text-sm text-muted-foreground">All your invoices and payment records</p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportExcel}>
-            <Download className="mr-2 h-4 w-4" /> Export Excel
+          <Button className="bg-background hover:bg-muted text-foreground border border-border h-10 px-4 rounded-xl shadow-sm" onClick={handleExportExcel}>
+            <Download className="mr-2 h-4 w-4 text-muted-foreground" /> Export Excel
           </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-[200px] space-y-1">
-              <Label>Filter Status</Label>
+        </div>
+
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-[240px]">
+              <Label className="text-xs font-bold uppercase text-muted-foreground mb-2 block tracking-wider">Filter Status</Label>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full bg-muted/40 border-none rounded-xl h-11 focus:ring-2 focus:ring-primary/20">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -222,57 +213,65 @@ export default function CustomerInvoices() {
           </div>
 
           {!filteredInvoices || filteredInvoices.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>No invoices found</p>
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-6">
+                <FileText className="w-10 h-10 text-muted-foreground opacity-50" />
+              </div>
+              <h4 className="text-lg font-bold mb-2">No invoices found</h4>
+              <p className="text-muted-foreground text-sm max-w-sm">
+                You don't have any invoices matching the current filter.
+              </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Issue Date</TableHead>
-                  <TableHead>Due Date</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableHead className="font-semibold text-muted-foreground">Invoice #</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Period</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Issue Date</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Due Date</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Amount</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">
+                  <TableRow key={invoice.id} className="hover:bg-muted/50 transition-colors">
+                    <TableCell>
                       <div className="flex items-center gap-2">
-                        {invoice.invoiceNumber}
+                        <span className="font-mono font-bold">{invoice.invoiceNumber}</span>
                         {invoice.isAdjusted === 1 && (
-                          <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-300">
+                          <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/30 font-bold shadow-sm">
                             Adjusted
                           </Badge>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm text-muted-foreground">
                       {formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}
                     </TableCell>
-                    <TableCell>{formatDate(invoice.issueDate)}</TableCell>
-                    <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
+                    <TableCell className="text-sm font-medium">{formatDate(invoice.issueDate)}</TableCell>
+                    <TableCell className="text-sm font-medium">{formatDate(invoice.dueDate)}</TableCell>
+                    <TableCell className="font-black text-foreground">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
+                    <TableCell className="text-right">
+                      <div className="flex gap-2 justify-end">
                         <Button
-                          variant="outline"
-                          size="sm"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
                           onClick={() => setSelectedInvoiceId(invoice.id)}
+                          title="View Details"
                         >
-                          <Eye className="w-4 h-4 mr-1" />
-                          View
+                          <Eye className="w-4 h-4" />
                         </Button>
                         <Button
-                          variant="outline"
-                          size="sm"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
                           onClick={() => handleDownloadPDF(invoice)}
+                          title="Download PDF"
                         >
                           <Download className="w-4 h-4" />
                         </Button>
@@ -283,8 +282,8 @@ export default function CustomerInvoices() {
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* Invoice Details Dialog */}
       <Dialog open={!!selectedInvoiceId} onOpenChange={() => setSelectedInvoiceId(null)}>

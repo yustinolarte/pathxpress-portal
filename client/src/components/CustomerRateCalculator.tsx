@@ -72,237 +72,284 @@ export default function CustomerRateCalculator() {
   };
 
   return (
-    <div className="space-y-6">
-      <Card className="glass-strong border-blue-500/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calculator className="w-5 h-5" />
-            Rate Calculator
-          </CardTitle>
-          <CardDescription>
-            Calculate shipping costs before creating your shipment
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Service Type */}
-          <div className="space-y-2">
-            <Label>Service Type</Label>
-            <Select value={serviceType} onValueChange={(value: 'DOM' | 'SDD') => setServiceType(value)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DOM">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Domestic Express (DOM) - Next Business Day
-                  </div>
-                </SelectItem>
-                <SelectItem value="SDD">
-                  <div className="flex items-center gap-2">
-                    <Truck className="w-4 h-4" />
-                    Same-Day Delivery (SDD) - City Limits
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {serviceType === 'SDD' && (
-              <p className="text-xs text-yellow-400">
-                Cut-off: 14:00 | Min 4 shipments/collection | Max 10kg
-              </p>
-            )}
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col gap-1 mb-8">
+        <h2 className="text-3xl font-black tracking-tight text-foreground">Rate Calculator</h2>
+        <p className="text-muted-foreground text-lg max-w-2xl">Compare domestic shipping services and calculate estimated costs for your parcels instantly.</p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        {/* Calculator Section */}
+        <div className="lg:col-span-2 bg-card rounded-2xl shadow-xl shadow-primary/5 border border-primary/10 overflow-hidden">
+          <div className="p-8 border-b border-primary/10 bg-primary/5">
+            <h3 className="text-xl font-bold flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">calculate</span>
+              Shipment Details
+            </h3>
+            <p className="text-muted-foreground text-sm mt-1">Enter your package information to get an accurate quote.</p>
           </div>
 
-          {/* Weight */}
-          <div className="space-y-2">
-            <Label>Weight (kg)</Label>
-            <Input
-              type="number"
-              step="0.1"
-              placeholder="e.g., 2.5"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-            />
-          </div>
+          <div className="p-8 space-y-8">
+            {/* Service Type */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-foreground ml-1">Service Level</Label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="material-symbols-outlined text-muted-foreground group-focus-within:text-primary transition-colors text-lg">local_shipping</span>
+                  </div>
+                  <Select value={serviceType} onValueChange={(value: 'DOM' | 'SDD') => setServiceType(value)}>
+                    <SelectTrigger className="w-full pl-10 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DOM">Express (DOM) - Next Day</SelectItem>
+                      <SelectItem value="SDD">Same-Day (SDD) - City Limits</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {serviceType === 'SDD' && (
+                  <p className="text-xs text-amber-500 font-medium ml-1">
+                    Cut-off: 14:00 | Min 4 qty | Max 10kg
+                  </p>
+                )}
+              </div>
 
-          {/* Dimensions (Volumetric Weight) */}
-          <div className="space-y-2">
-            <Label>Dimensions (cm) - Optional for Volumetric Weight</Label>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-1">
-                <Input
-                  placeholder="L"
-                  type="number"
-                  value={dimL}
-                  onChange={(e) => setDimL(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Input
-                  placeholder="W"
-                  type="number"
-                  value={dimW}
-                  onChange={(e) => setDimW(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Input
-                  placeholder="H"
-                  type="number"
-                  value={dimH}
-                  onChange={(e) => setDimH(e.target.value)}
-                />
+              {/* Weight */}
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-foreground ml-1">Actual Weight (kg)</Label>
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="material-symbols-outlined text-muted-foreground group-focus-within:text-primary transition-colors text-lg">scale</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    placeholder="0.0"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    className="w-full pl-10 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <span className="text-sm text-muted-foreground font-bold">KG</span>
+                  </div>
+                </div>
               </div>
             </div>
-            {getVolumetricWeight() > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Volumetric Weight: <span className="font-medium">{getVolumetricWeight().toFixed(2)} kg</span>
-                {parseFloat(weight) < getVolumetricWeight() && (
-                  <span className="text-orange-400 ml-1">(Chargeable Weight)</span>
-                )}
-              </p>
-            )}
-          </div>
 
-          {/* COD Options */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="cod"
-                checked={codRequired}
-                onCheckedChange={(checked) => setCodRequired(checked as boolean)}
-              />
-              <Label htmlFor="cod" className="cursor-pointer">
-                Cash on Delivery (COD)
-              </Label>
+            {/* Dimensions (Volumetric Weight) */}
+            <div className="space-y-3 pt-6 border-t border-primary/10">
+              <div className="flex justify-between items-end mb-4">
+                <Label className="text-sm font-bold text-foreground ml-1">Dimensions <span className="text-muted-foreground font-normal">(Optional for precise quoting)</span></Label>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="relative group">
+                  <span className="absolute -top-2.5 left-3 bg-card px-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest z-10">Length</span>
+                  <Input
+                    type="number"
+                    value={dimL}
+                    onChange={(e) => setDimL(e.target.value)}
+                    className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-3 text-xs text-muted-foreground font-bold">CM</span>
+                </div>
+                <div className="relative group">
+                  <span className="absolute -top-2.5 left-3 bg-card px-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest z-10">Width</span>
+                  <Input
+                    type="number"
+                    value={dimW}
+                    onChange={(e) => setDimW(e.target.value)}
+                    className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-3 text-xs text-muted-foreground font-bold">CM</span>
+                </div>
+                <div className="relative group">
+                  <span className="absolute -top-2.5 left-3 bg-card px-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest z-10">Height</span>
+                  <Input
+                    type="number"
+                    value={dimH}
+                    onChange={(e) => setDimH(e.target.value)}
+                    className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-3 text-xs text-muted-foreground font-bold">CM</span>
+                </div>
+              </div>
+
+              {getVolumetricWeight() > 0 && (
+                <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Volumetric Weight</p>
+                  <p className="font-bold">{getVolumetricWeight().toFixed(2)} kg</p>
+                </div>
+              )}
             </div>
-            {codRequired && (
-              <div className="space-y-2 pl-6">
-                <Label>COD Amount (AED)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g., 150.00"
-                  value={codAmount}
-                  onChange={(e) => setCodAmount(e.target.value)}
+
+            {/* COD Options */}
+            <div className="space-y-4 pt-6 border-t border-primary/10">
+              <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-primary/10 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => setCodRequired(!codRequired)}>
+                <Checkbox
+                  id="cod"
+                  checked={codRequired}
+                  onCheckedChange={(checked) => setCodRequired(checked as boolean)}
+                  className="rounded border-2 border-primary/50 text-primary data-[state=checked]:bg-primary data-[state=checked]:text-white h-5 w-5"
                 />
-                <p className="text-xs text-muted-foreground">
-                  COD Fee: 3.3% (minimum 2 AED)
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Calculate Button */}
-          <Button
-            onClick={handleCalculate}
-            disabled={!weight || parseFloat(weight) <= 0 || calculateRateMutation.isPending}
-            className="w-full"
-          >
-            {calculateRateMutation.isPending ? 'Calculating...' : 'Calculate Rate'}
-          </Button>
-
-          {/* Results */}
-          {calculatedRate && (
-            <div className="mt-6 p-4 bg-green-500/10 rounded-lg border border-green-500/30 space-y-3">
-              <div className="flex items-center gap-2 text-green-400 font-semibold">
-                <DollarSign className="w-5 h-5" />
-                <span>Estimated Cost Breakdown</span>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">
-                    Base Rate (0-{calculatedRate.appliedTier?.maxWeight || 5}kg):
-                  </span>
-                  <span className="font-medium">{calculatedRate.baseRate.toFixed(2)} AED</span>
+                <div className="flex-1">
+                  <Label htmlFor="cod" className="text-sm font-bold cursor-pointer block">
+                    Cash on Delivery (COD)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">Collect payment from your customer upon delivery.</p>
                 </div>
+                <span className="material-symbols-outlined text-primary/50 text-2xl">payments</span>
+              </div>
 
-                {calculatedRate.additionalKgCharge > 0 && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">
-                      Additional Weight Charge:
-                    </span>
-                    <span className="font-medium">+{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
+              {codRequired && (
+                <div className="pl-12 w-full animate-in slide-in-from-top-2 duration-300">
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <span className="text-muted-foreground font-bold">AED</span>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={codAmount}
+                      onChange={(e) => setCodAmount(e.target.value)}
+                      className="w-full max-w-sm pl-12 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
+                    />
                   </div>
-                )}
-
-                <div className="flex justify-between items-center pt-2 border-t border-green-500/30">
-                  <span className="font-semibold">Shipping Cost:</span>
-                  <span className="text-lg font-bold text-green-400">
-                    {calculatedRate.totalRate.toFixed(2)} AED
-                  </span>
-                </div>
-
-                {codRequired && calculatedCODFee > 0 && (
-                  <>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">COD Fee:</span>
-                      <span className="font-medium text-orange-400">
-                        +{calculatedCODFee.toFixed(2)} AED
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-green-500/30">
-                      <span className="font-semibold">Total Cost:</span>
-                      <span className="text-xl font-bold text-green-400">
-                        {(calculatedRate.totalRate + calculatedCODFee).toFixed(2)} AED
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {calculatedRate.usingManualTier && (
-                <div className="mt-3 p-2 bg-blue-500/10 rounded border border-blue-500/30">
-                  <p className="text-xs text-blue-200">
-                    <strong>Note:</strong> You have a special rate tier assigned by your account manager.
+                  <p className="text-xs text-muted-foreground mt-2 font-medium">
+                    Standard COD Fee: 3.3% (minimum 2.00 AED)
                   </p>
                 </div>
               )}
+            </div>
 
-              <div className="mt-3 p-2 bg-muted/30 rounded">
-                <p className="text-xs text-muted-foreground">
-                  <strong>Tier Info:</strong> {calculatedRate.appliedTier?.minVolume} - {calculatedRate.appliedTier?.maxVolume || '∞'} shipments/month
-                </p>
+            {/* Calculate Button */}
+            <div className="pt-8">
+              <Button
+                onClick={handleCalculate}
+                disabled={!weight || parseFloat(weight) <= 0 || calculateRateMutation.isPending}
+                className="w-full h-14 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 text-lg group"
+              >
+                {calculateRateMutation.isPending ? (
+                  <span className="material-symbols-outlined animate-spin">refresh</span>
+                ) : (
+                  <span className="material-symbols-outlined group-hover:scale-110 transition-transform">calculate</span>
+                )}
+                {calculateRateMutation.isPending ? 'Calculating...' : 'Calculate Exact Rate'}
+              </Button>
+            </div>
+
+            {/* Results Component Integrated Here for Mobile, or absolute for Desktop */}
+            {calculatedRate && (
+              <div className="mt-8 p-6 bg-gradient-to-br from-green-500/10 to-emerald-500/5 rounded-2xl border-2 border-green-500/20 shadow-lg animate-in slide-in-from-bottom-4">
+                <div className="flex items-center gap-3 text-green-600 dark:text-green-500 font-black text-xl mb-6">
+                  <span className="material-symbols-outlined text-3xl">check_circle</span>
+                  <span>Quote Summary</span>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="font-semibold text-muted-foreground">
+                      Base Rate (0-{calculatedRate.appliedTier?.maxWeight || 5}kg)
+                    </span>
+                    <span className="font-bold text-foreground">{calculatedRate.baseRate.toFixed(2)} AED</span>
+                  </div>
+
+                  {calculatedRate.additionalKgCharge > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-semibold text-muted-foreground">
+                        Overweight Charge
+                      </span>
+                      <span className="font-bold text-foreground">+{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
+                    </div>
+                  )}
+
+                  {codRequired && calculatedCODFee > 0 && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-semibold text-muted-foreground">COD Processing Fee</span>
+                      <span className="font-bold text-amber-500">
+                        +{calculatedCODFee.toFixed(2)} AED
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="h-px w-full bg-green-500/20 my-4"></div>
+
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <span className="font-black uppercase tracking-widest text-xs text-green-600/70 dark:text-green-500/70 block mb-1">Total Shipping Cost</span>
+                      <span className="text-4xl font-black text-green-600 dark:text-green-500 shadow-sm">
+                        {(calculatedRate.totalRate + calculatedCODFee).toFixed(2)}
+                      </span>
+                      <span className="text-lg font-bold text-green-600/70 dark:text-green-500/70 ml-1">AED</span>
+                    </div>
+                    {calculatedRate.usingManualTier && (
+                      <div className="px-3 py-1 bg-blue-500/10 text-blue-500 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">verified</span> Standard Tier
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Side Info Cards */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-card rounded-xl p-6 border border-border hover:border-primary transition-colors cursor-default group shadow-sm">
+            <div className="flex justify-between items-start mb-6">
+              <div className="p-3 bg-primary/10 rounded-lg text-primary">
+                <span className="material-symbols-outlined text-3xl">local_shipping</span>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <h4 className="text-lg font-bold mb-2">Domestic Express (DOM)</h4>
+            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+              Fast and reliable delivery within 1-2 business days across all major regions.
+            </p>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-3 text-sm font-medium">
+                <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                Next-business-day delivery in UAE
+              </li>
+              <li className="flex items-center gap-3 text-sm font-medium">
+                <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                Base weight: 5kg (+1 AED/kg additional)
+              </li>
+              <li className="flex items-center gap-3 text-sm font-medium">
+                <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                Volume-based discounts
+              </li>
+            </ul>
+          </div>
 
-      {/* Service Information Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              Domestic Express (DOM)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs space-y-1 text-muted-foreground">
-            <p>• Next-business-day delivery</p>
-            <p>• UAE-wide coverage</p>
-            <p>• Base weight: 5kg</p>
-            <p>• Additional: +1 AED/kg</p>
-            <p>• Volume-based discounts available</p>
-          </CardContent>
-        </Card>
+          <div className="bg-card rounded-2xl p-6 shadow-xl shadow-primary/5 border border-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-primary/10 rounded-full blur-2xl"></div>
+            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-6 relative">
+              <span className="material-symbols-outlined text-2xl">bolt</span>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Same-Day Delivery</h3>
+            <p className="text-sm text-muted-foreground mb-4">Urgent shipments delivered on the same day within city limits.</p>
+            <div className="space-y-3 pt-4 border-t border-primary/10 relative">
+              <div className="flex items-center gap-3 text-sm"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Same Day Guarantee</div>
+              <div className="flex items-center gap-3 text-sm"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Before 2 PM Pickups</div>
+              <div className="flex items-center gap-3 text-sm"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Premium Support</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Truck className="w-4 h-4" />
-              Same-Day Delivery (SDD)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-xs space-y-1 text-muted-foreground">
-            <p>• Same-day delivery</p>
-            <p>• Dubai / Sharjah / Abu Dhabi</p>
-            <p>• Cut-off time: 14:00</p>
-            <p>• Max weight: 10kg</p>
-            <p>• Min 4 shipments per collection</p>
-          </CardContent>
-        </Card>
+      {/* Footer Info */}
+      <div className="flex items-center gap-4 bg-primary/5 border border-primary/10 p-5 rounded-xl shadow-sm">
+        <span className="material-symbols-outlined text-primary text-xl">info</span>
+        <p className="text-sm text-muted-foreground font-medium">
+          Rates are estimated based on provided details. Actual charges may vary after physical inspection and weight verification at the hub.
+        </p>
       </div>
     </div>
   );

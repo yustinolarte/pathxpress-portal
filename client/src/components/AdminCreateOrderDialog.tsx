@@ -20,6 +20,7 @@ interface Client {
     country: string;
     codAllowed: number;
     fodAllowed: number;
+    bulletAllowed: number;
 }
 
 interface AdminCreateOrderDialogProps {
@@ -412,6 +413,9 @@ export default function AdminCreateOrderDialog({
                                                 <SelectContent>
                                                     <SelectItem value="DOM">Domestic Express</SelectItem>
                                                     <SelectItem value="SDD">Same Day Delivery</SelectItem>
+                                                    {selectedClient?.bulletAllowed === 1 && (
+                                                        <SelectItem value="BULLET" className="text-red-500 font-medium">🚀 Bullet Service (4 Hours)</SelectItem>
+                                                    )}
                                                 </SelectContent>
                                             </Select>
                                         </div>

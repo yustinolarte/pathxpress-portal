@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil } from 'lucide-react';
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -22,6 +23,7 @@ import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import DriversSection from '@/components/DriversSection';
 import AdminCreateOrderDialog from '@/components/AdminCreateOrderDialog';
 import EditOrderDialog from '@/components/EditOrderDialog';
+import AdminInternationalShipping from '@/components/AdminInternationalShipping';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -33,6 +35,11 @@ export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { token, user, logout } = usePortalAuth();
   const [activeTab, setActiveTab] = useState('overview');
+
+  const ALL_STATUSES = [
+    'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
+    'delivered', 'failed_delivery', 'returned', 'exchange', 'canceled'
+  ];
 
   // Client editing state
   const [editClientDialogOpen, setEditClientDialogOpen] = useState(false);
@@ -51,6 +58,13 @@ export default function AdminDashboard() {
     // FOD settings
     fodAllowed: false,
     fodFee: '',
+    // Internatioanl settings
+    intlAllowed: false,
+    intlDiscountPercent: '',
+    // Bullet settings
+    bulletAllowed: false,
+    customBulletBaseRate: '',
+    customBulletPerKg: '',
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
@@ -62,6 +76,7 @@ export default function AdminDashboard() {
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
+  const [orderFilterStatuses, setOrderFilterStatuses] = useState<string[]>(ALL_STATUSES);
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
 
   // Create client dialog state
@@ -253,6 +268,11 @@ export default function AdminDashboard() {
         codMaxFee: editForm.codMaxFee,
         fodAllowed: editForm.fodAllowed,
         fodFee: editForm.fodFee,
+        bulletAllowed: editForm.bulletAllowed,
+        customBulletBaseRate: editForm.customBulletBaseRate,
+        customBulletPerKg: editForm.customBulletPerKg,
+        intlAllowed: editForm.intlAllowed,
+        intlDiscountPercent: editForm.intlDiscountPercent,
       });
     } catch (error) {
       // handled by onError
@@ -281,6 +301,11 @@ export default function AdminDashboard() {
         customSddPerKg: editingClient.customSddPerKg || '',
         fodAllowed: !!editingClient.fodAllowed,
         fodFee: editingClient.fodFee || '',
+        bulletAllowed: !!editingClient.bulletAllowed,
+        customBulletBaseRate: editingClient.customBulletBaseRate || '',
+        customBulletPerKg: editingClient.customBulletPerKg || '',
+        intlAllowed: !!editingClient.intlAllowed,
+        intlDiscountPercent: editingClient.intlDiscountPercent || '',
       });
     }
   }, [editingClient]);
@@ -379,13 +404,14 @@ export default function AdminDashboard() {
         toDate.setHours(23, 59, 59, 999);
         if (orderDate > toDate) return false;
       }
+      if (!orderFilterStatuses.includes(order.status)) return false;
       return true;
     }).sort((a, b) => {
       const dateA = new Date(a.createdAt).getTime();
       const dateB = new Date(b.createdAt).getTime();
       return orderSortDirection === 'newest' ? dateB - dateA : dateA - dateB;
     });
-  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderSortDirection]);
+  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterStatuses, orderSortDirection]);
 
   const handleCreateClient = () => {
     if (!newClient.companyName || !newClient.contactName || !newClient.billingEmail) {
@@ -424,6 +450,7 @@ export default function AdminDashboard() {
     { icon: FileText, label: 'Billing', value: 'billing' },
     { icon: Wallet, label: 'COD Management', value: 'cod' },
     { icon: TrendingUp, label: 'Rates & Pricing', value: 'rates' },
+    { icon: Globe, label: 'International', value: 'international' },
     { icon: FileText, label: 'Reports', value: 'reports' },
     { icon: MessageSquare, label: 'Requests', value: 'requests' },
     { icon: Mail, label: 'Messages', value: 'messages' },
@@ -434,7 +461,21 @@ export default function AdminDashboard() {
     <DashboardLayout
       menuItems={menuItems}
       activeItem={activeTab}
-      onItemClick={setActiveTab}
+      onItemClick={(value: string, searchData?: string) => {
+        if (value === 'tracking' && searchData) {
+          const matchingOrder = (allOrders || []).find((o) =>
+            o.waybillNumber.toLowerCase() === searchData.toLowerCase()
+          );
+          if (matchingOrder) {
+            setSelectedOrder(matchingOrder);
+            setViewOrderDialogOpen(true);
+          } else {
+            toast.error(`Order ${searchData} not found`);
+          }
+        } else {
+          setActiveTab(value);
+        }
+      }}
       user={user}
       logout={handleLogout}
       title="Admin Portal"
@@ -710,6 +751,43 @@ export default function AdminDashboard() {
                     />
                   </div>
                   <div className="flex-1 min-w-[180px]">
+                    <label className="text-sm font-medium mb-2 block">Status</label>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between h-10 px-3 font-normal text-left overflow-hidden">
+                          <span className="truncate">
+                            {orderFilterStatuses.length === ALL_STATUSES.length
+                              ? "All Statuses"
+                              : `${orderFilterStatuses.length} Selected`}
+                          </span>
+                          <Filter className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-56" align="start">
+                        <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <div className="max-h-60 overflow-y-auto">
+                          {ALL_STATUSES.map((status) => (
+                            <DropdownMenuCheckboxItem
+                              key={status}
+                              checked={orderFilterStatuses.includes(status)}
+                              onCheckedChange={(checked) => {
+                                setOrderFilterStatuses((prev) =>
+                                  checked
+                                    ? [...prev, status]
+                                    : prev.filter((s) => s !== status)
+                                );
+                              }}
+                              className="capitalize"
+                            >
+                              {status.replace(/_/g, ' ')}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </div>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
                     <label className="text-sm font-medium mb-2 block">Sort By</label>
                     <select
                       value={orderSortDirection}
@@ -720,13 +798,14 @@ export default function AdminDashboard() {
                       <option value="oldest">Oldest First</option>
                     </select>
                   </div>
-                  {(orderFilterClientId !== 'all' || orderFilterDateFrom || orderFilterDateTo) && (
+                  {(orderFilterClientId !== 'all' || orderFilterDateFrom || orderFilterDateTo || orderFilterStatuses.length !== ALL_STATUSES.length) && (
                     <div className="flex items-end">
                       <button
                         onClick={() => {
                           setOrderFilterClientId('all');
                           setOrderFilterDateFrom('');
                           setOrderFilterDateTo('');
+                          setOrderFilterStatuses(ALL_STATUSES);
                         }}
                         className="h-10 px-4 rounded-md border border-input bg-background hover:bg-accent"
                       >
@@ -1100,191 +1179,298 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* International Shipping Tab */}
+          <TabsContent value="international" className="space-y-4">
+            <AdminInternationalShipping />
+          </TabsContent>
         </Tabs>
 
         {/* Edit Client Settings Dialog */}
         <Dialog open={editClientDialogOpen} onOpenChange={setEditClientDialogOpen}>
-          <DialogContent className="glass-strong">
-            <DialogHeader>
-              <DialogTitle>Client Settings: {editingClient?.companyName}</DialogTitle>
-              <DialogDescription>
-                Configure rate tiers and COD preferences.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-6 py-4">
+          <DialogContent className="glass-strong !w-[95vw] !max-w-[1200px] p-0 gap-0 border-white/10">
+            <div className="w-full h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <div className="p-8">
+              <DialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                    <Pencil className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <DialogTitle>Client Settings: {editingClient?.companyName}</DialogTitle>
+                    <DialogDescription>
+                      Configure rates, payments, and specialized services.
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
 
-              {/* Rate Tier Section */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Rate Tier</Label>
-                  <Select
-                    value={editForm.tierId}
-                    onValueChange={(val) => setEditForm({ ...editForm, tierId: val })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select tier or use automatic" />
-                    </SelectTrigger>
-                    <SelectContent className="glass-strong">
-                      <SelectItem value="auto">Automatic (Volume-based)</SelectItem>
-                      <SelectItem value="custom" className="text-amber-500 font-medium">✨ Custom Rates</SelectItem>
-                      {rateTiers?.filter((t: any) => t.serviceType === 'DOM').map((tier: any) => (
-                        <SelectItem key={tier.id} value={tier.id.toString()}>
-                          Tier {tier.minVolume}-{tier.maxVolume || '∞'}: {tier.baseRate} AED (0-{tier.maxWeight}kg)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {editForm.tierId === 'custom'
-                      ? 'Enter custom rates below for this client.'
-                      : 'Overrides the automatic volume-based tier assignment.'}
-                  </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-8 border-y border-white/10 my-6">
+
+                {/* Column 1: Pricing & Tiers */}
+                <div className="space-y-6 pr-6 md:border-r border-border/30">
+                  <div className="flex items-center gap-2 mb-2">
+                    <BarChart3 className="w-4 h-4 text-blue-400" />
+                    <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Pricing & Rates</h3>
+                  </div>
+
+                  <div className="space-y-4 text-sm">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Service Tier</Label>
+                      <Select
+                        value={editForm.tierId}
+                        onValueChange={(val) => setEditForm({ ...editForm, tierId: val })}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select tier" />
+                        </SelectTrigger>
+                        <SelectContent className="glass-strong">
+                          <SelectItem value="auto">Automatic (Volume-based)</SelectItem>
+                          <SelectItem value="custom" className="text-amber-500 font-medium">
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Custom Rates</span>
+                            </div>
+                          </SelectItem>
+                          {rateTiers?.filter((t: any) => t.serviceType === 'DOM').map((tier: any) => (
+                            <SelectItem key={tier.id} value={tier.id.toString()}>
+                              Tier {tier.minVolume}-{tier.maxVolume || '∞'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {editForm.tierId === 'custom' && (
+                      <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="space-y-3">
+                          <Label className="text-[10px] font-bold text-amber-500 uppercase">DOM (Next Day)</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Base (5kg)</Label>
+                              <Input
+                                className="h-8 text-xs bg-background/50"
+                                value={editForm.customDomBaseRate}
+                                onChange={(e) => setEditForm({ ...editForm, customDomBaseRate: e.target.value })}
+                                placeholder="15.00"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Extra KG</Label>
+                              <Input
+                                className="h-8 text-xs bg-background/50"
+                                value={editForm.customDomPerKg}
+                                onChange={(e) => setEditForm({ ...editForm, customDomPerKg: e.target.value })}
+                                placeholder="2.00"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2 border-t border-amber-500/10">
+                          <Label className="text-[10px] font-bold text-amber-500 uppercase">SDD (Same Day)</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Base (5kg)</Label>
+                              <Input
+                                className="h-8 text-xs bg-background/50"
+                                value={editForm.customSddBaseRate}
+                                onChange={(e) => setEditForm({ ...editForm, customSddBaseRate: e.target.value })}
+                                placeholder="25.00"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-[10px]">Extra KG</Label>
+                              <Input
+                                className="h-8 text-xs bg-background/50"
+                                value={editForm.customSddPerKg}
+                                onChange={(e) => setEditForm({ ...editForm, customSddPerKg: e.target.value })}
+                                placeholder="3.00"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Custom Rate Fields - Only shown when Custom is selected */}
-                {editForm.tierId === 'custom' && (
-                  <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/5 space-y-4">
-                    <h4 className="text-sm font-medium text-amber-500">Custom Rates</h4>
+                {/* Column 2: Payment & COD */}
+                <div className="space-y-6 px-0 md:px-8 md:border-r border-white/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Coins className="w-4 h-4 text-emerald-400" />
+                    <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Payment & COD</h3>
+                  </div>
 
-                    {/* DOM (Next Day) Rates */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Next Day (DOM)</Label>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-border/50 bg-background/30 group transition-all hover:bg-background/50">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="editCodAllowed" className="text-sm font-medium cursor-pointer">Enable COD</Label>
+                        <p className="text-[10px] text-muted-foreground">Allow Cash on Delivery</p>
+                      </div>
+                      <Checkbox
+                        id="editCodAllowed"
+                        checked={editForm.codAllowed}
+                        onCheckedChange={(checked) => setEditForm({ ...editForm, codAllowed: checked as boolean })}
+                      />
+                    </div>
+
+                    <div className={`space-y-4 transition-all duration-300 ${!editForm.codAllowed ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
                       <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label htmlFor="customDomBase" className="text-xs">Base Rate (0-5kg)</Label>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] text-muted-foreground">Fee (%)</Label>
+                          <div className="relative">
+                            <Input
+                              className="h-9 pl-7 text-sm bg-background/50"
+                              value={editForm.codFeePercent}
+                              onChange={(e) => setEditForm({ ...editForm, codFeePercent: e.target.value })}
+                              placeholder="3.3"
+                            />
+                            <span className="absolute left-2.5 top-2.5 text-muted-foreground"><DollarSign className="w-3.5 h-3.5" /></span>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] text-muted-foreground">Min Fee (AED)</Label>
                           <Input
-                            id="customDomBase"
-                            value={editForm.customDomBaseRate}
-                            onChange={(e) => setEditForm({ ...editForm, customDomBaseRate: e.target.value })}
-                            placeholder="e.g. 15.00"
+                            className="h-9 text-sm bg-background/50"
+                            value={editForm.codMinFee}
+                            onChange={(e) => setEditForm({ ...editForm, codMinFee: e.target.value })}
+                            placeholder="8.00"
                           />
                         </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="customDomKg" className="text-xs">Per Additional KG</Label>
-                          <Input
-                            id="customDomKg"
-                            value={editForm.customDomPerKg}
-                            onChange={(e) => setEditForm({ ...editForm, customDomPerKg: e.target.value })}
-                            placeholder="e.g. 2.00"
-                          />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground">Fee Cap (Optional)</Label>
+                        <Input
+                          className="h-9 text-sm bg-background/50"
+                          value={editForm.codMaxFee}
+                          onChange={(e) => setEditForm({ ...editForm, codMaxFee: e.target.value })}
+                          placeholder="e.g. 50.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Column 3: Specialized Services */}
+                <div className="space-y-6 md:pl-8">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Services</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Bullet Service */}
+                    <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Rocket className="w-5 h-5 text-red-500" />
+                          <span className="text-sm font-bold uppercase text-red-500 tracking-wider">Bullet (4H)</span>
+                        </div>
+                        <Checkbox
+                          id="editBulletAllowed"
+                          checked={editForm.bulletAllowed}
+                          onCheckedChange={(checked) => setEditForm({ ...editForm, bulletAllowed: checked as boolean })}
+                        />
+                      </div>
+                      <div className={`grid grid-cols-2 gap-4 transition-opacity ${!editForm.bulletAllowed ? 'opacity-30' : 'opacity-100'}`}>
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-red-500/70">Base (5kg)</Label>
+                          <div className="relative">
+                            <Input
+                              className="h-9 pl-8 text-sm bg-background/50 border-red-500/20"
+                              value={editForm.customBulletBaseRate}
+                              onChange={(e) => setEditForm({ ...editForm, customBulletBaseRate: e.target.value })}
+                              placeholder="50.00"
+                              disabled={!editForm.bulletAllowed}
+                            />
+                            <span className="absolute left-2.5 top-2.5 text-[10px] text-red-500/50 font-bold">AED</span>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-red-500/70">Extra KG</Label>
+                          <div className="relative">
+                            <Input
+                              className="h-9 pl-8 text-sm bg-background/50 border-red-500/20"
+                              value={editForm.customBulletPerKg}
+                              onChange={(e) => setEditForm({ ...editForm, customBulletPerKg: e.target.value })}
+                              placeholder="5.00"
+                              disabled={!editForm.bulletAllowed}
+                            />
+                            <span className="absolute left-2.5 top-2.5 text-[10px] text-red-500/50 font-bold">AED</span>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* SDD (Same Day) Rates */}
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Same Day (SDD)</Label>
-                      <div className="grid grid-cols-2 gap-3">
+                    {/* Fit on Delivery */}
+                    <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Shirt className="w-5 h-5 text-blue-500" />
                         <div className="space-y-1">
-                          <Label htmlFor="customSddBase" className="text-xs">Base Rate (0-5kg)</Label>
-                          <Input
-                            id="customSddBase"
-                            value={editForm.customSddBaseRate}
-                            onChange={(e) => setEditForm({ ...editForm, customSddBaseRate: e.target.value })}
-                            placeholder="e.g. 25.00"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="customSddKg" className="text-xs">Per Additional KG</Label>
-                          <Input
-                            id="customSddKg"
-                            value={editForm.customSddPerKg}
-                            onChange={(e) => setEditForm({ ...editForm, customSddPerKg: e.target.value })}
-                            placeholder="e.g. 3.00"
-                          />
+                          <span className="text-sm font-bold uppercase text-blue-500 tracking-wider">Fit on Delivery</span>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] text-blue-500/70 font-bold uppercase">Fee (AED):</Label>
+                            <Input
+                              className="h-6 w-16 p-1 text-xs bg-background/50 border-blue-500/30 text-center font-mono"
+                              value={editForm.fodFee}
+                              onChange={(e) => setEditForm({ ...editForm, fodFee: e.target.value })}
+                              placeholder="5.00"
+                              disabled={!editForm.fodAllowed}
+                            />
+                          </div>
                         </div>
                       </div>
+                      <Checkbox
+                        id="editFodAllowed"
+                        checked={editForm.fodAllowed}
+                        onCheckedChange={(checked) => setEditForm({ ...editForm, fodAllowed: checked as boolean })}
+                      />
+                    </div>
+
+                    {/* International */}
+                    <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Globe className="w-5 h-5 text-indigo-500" />
+                        <div className="space-y-1">
+                          <span className="text-sm font-bold uppercase text-indigo-500 tracking-wider">International</span>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-[10px] text-indigo-500/70 font-bold uppercase">Discount (%):</Label>
+                            <Input
+                              className="h-6 w-16 p-1 text-xs bg-background/50 border-indigo-500/30 text-center font-mono"
+                              value={editForm.intlDiscountPercent}
+                              onChange={(e) => setEditForm({ ...editForm, intlDiscountPercent: e.target.value })}
+                              placeholder="10"
+                              disabled={!editForm.intlAllowed}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Checkbox
+                        id="editIntlAllowed"
+                        checked={editForm.intlAllowed}
+                        onCheckedChange={(checked) => setEditForm({ ...editForm, intlAllowed: checked as boolean })}
+                      />
                     </div>
                   </div>
-                )}
-              </div>
-
-              <div className="h-px bg-border/50" />
-
-              {/* COD Settings Section */}
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="editCodAllowed"
-                    checked={editForm.codAllowed}
-                    onCheckedChange={(checked) => setEditForm({ ...editForm, codAllowed: checked as boolean })}
-                  />
-                  <Label htmlFor="editCodAllowed">Allow COD (Cash on Delivery)</Label>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="editCodPercent">COD Fee Percentage (%)</Label>
-                    <Input
-                      id="editCodPercent"
-                      value={editForm.codFeePercent}
-                      onChange={(e) => setEditForm({ ...editForm, codFeePercent: e.target.value })}
-                      placeholder="Default: 3.3"
-                      disabled={!editForm.codAllowed}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="editCodMin">Min COD Fee (AED)</Label>
-                    <Input
-                      id="editCodMin"
-                      value={editForm.codMinFee}
-                      onChange={(e) => setEditForm({ ...editForm, codMinFee: e.target.value })}
-                      placeholder="Default: 8.00"
-                      disabled={!editForm.codAllowed}
-                    />
-                  </div>
-                  <div className="space-y-2 col-span-2">
-                    <Label htmlFor="editCodMax">Max COD Fee Cap (Optional)</Label>
-                    <Input
-                      id="editCodMax"
-                      value={editForm.codMaxFee}
-                      onChange={(e) => setEditForm({ ...editForm, codMaxFee: e.target.value })}
-                      placeholder="e.g. 50.00"
-                      disabled={!editForm.codAllowed}
-                    />
-                  </div>
-                </div>
-
-              </div>
-
-              <div className="h-px bg-border/50" />
-
-              {/* FOD Settings Section */}
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="editFodAllowed"
-                    checked={editForm.fodAllowed}
-                    onCheckedChange={(checked) => setEditForm({ ...editForm, fodAllowed: checked as boolean })}
-                  />
-                  <Label htmlFor="editFodAllowed" className="flex items-center gap-2">
-                    <span>👗</span> Allow Fit on Delivery
-                  </Label>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="editFodFee">FOD Fee (AED)</Label>
-                  <Input
-                    id="editFodFee"
-                    value={editForm.fodFee}
-                    onChange={(e) => setEditForm({ ...editForm, fodFee: e.target.value })}
-                    placeholder="Default: 5.00"
-                    disabled={!editForm.fodAllowed}
-                  />
                 </div>
               </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setEditClientDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20"
+                  onClick={handleSaveClientSettings}
+                  disabled={updateSettingsMutation.isPending || updateTierMutation.isPending}
+                >
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                  {(updateSettingsMutation.isPending || updateTierMutation.isPending) ? 'Saving...' : 'Save Configuration'}
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setEditClientDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveClientSettings}
-                disabled={updateSettingsMutation.isPending || updateTierMutation.isPending}
-              >
-                {(updateSettingsMutation.isPending || updateTierMutation.isPending) ? 'Saving...' : 'Save Settings'}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
 

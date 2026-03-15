@@ -139,6 +139,15 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   fodAllowed: int("fodAllowed").default(0).notNull(), // 0 = no, 1 = yes
   fodFee: varchar("fodFee", { length: 20 }), // Custom FOD fee (null = use default 5 AED)
 
+  // Bullet Service settings (4-hour delivery)
+  bulletAllowed: int("bulletAllowed").default(0).notNull(), // 0 = no, 1 = yes
+  customBulletBaseRate: varchar("customBulletBaseRate", { length: 20 }), // Custom Bullet base rate (0-5kg)
+  customBulletPerKg: varchar("customBulletPerKg", { length: 20 }), // Custom Bullet rate per additional kg
+
+  // International shipping settings
+  intlAllowed: int("intlAllowed").default(0).notNull(), // 0 = no, 1 = yes
+  intlDiscountPercent: varchar("intlDiscountPercent", { length: 10 }), // e.g., "10" = 10% discount on all intl rates
+
   notes: text("notes"),
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -224,6 +233,16 @@ export const orders = mysqlTable("orders", {
 
   // Privacy settings for waybill printing
   hideConsigneeAddress: int("hideConsigneeAddress").default(0).notNull(), // 0 = show, 1 = hide consignee address (for returns when client has privacy)
+
+  // Shopify Returns integration
+  shopifyReturnId: varchar("shopifyReturnId", { length: 100 }), // Shopify GraphQL Return ID (gid://shopify/Return/xxx)
+  source: varchar("source", { length: 20 }).default("manual"), // Origin: 'manual', 'shopify', 'api'
+
+  // International / Customs fields (null for domestic orders)
+  customsValue: varchar("customsValue", { length: 50 }),       // Declared value for customs (e.g. "120.00")
+  customsCurrency: varchar("customsCurrency", { length: 10 }), // Currency of declared value (e.g. "USD")
+  customsDescription: text("customsDescription"),              // Description of goods for customs declaration
+  hsCode: varchar("hsCode", { length: 20 }),                   // Harmonized System tariff code (optional)
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -573,3 +592,41 @@ export const driverShifts = mysqlTable("driverShifts", {
 
 export type DriverShift = typeof driverShifts.$inferSelect;
 export type InsertDriverShift = typeof driverShifts.$inferInsert;
+
+// ==================== INTERNATIONAL SHIPPING TABLES ====================
+
+/**
+ * International rates table — stores all international shipping rates
+ * Replaces the static JSON files for editability from Admin UI
+ */
+export const internationalRates = mysqlTable("internationalRates", {
+  id: int("id").autoincrement().primaryKey(),
+  rateType: mysqlEnum("rateType", ["prime", "gcc", "premium"]).notNull(),
+  country: varchar("country", { length: 100 }), // For prime/gcc: destination country name
+  zone: varchar("zone", { length: 20 }), // For premium: ZONE_1 to ZONE_8
+  weightBracket: varchar("weightBracket", { length: 10 }).notNull(), // "0.5", "1.0", etc.
+  serviceKey: varchar("serviceKey", { length: 50 }), // PRIME_EXPRESS, PRIME_TRACKED, PRIME_REGISTERED_POD, null for gcc/premium
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  isActive: int("isActive").default(1).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InternationalRate = typeof internationalRates.$inferSelect;
+export type InsertInternationalRate = typeof internationalRates.$inferInsert;
+
+/**
+ * International country maps — zone assignments and service eligibility per country
+ */
+export const internationalCountryMaps = mysqlTable("internationalCountryMaps", {
+  id: int("id").autoincrement().primaryKey(),
+  country: varchar("country", { length: 100 }).notNull().unique(),
+  zone: varchar("zone", { length: 20 }), // ZONE_1..ZONE_8
+  primeEligible: int("primeEligible").default(0).notNull(),
+  gccEligible: int("gccEligible").default(0).notNull(),
+  riskFlag: int("riskFlag").default(0).notNull(),
+  isActive: int("isActive").default(1).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InternationalCountryMap = typeof internationalCountryMaps.$inferSelect;
+export type InsertInternationalCountryMap = typeof internationalCountryMaps.$inferInsert;

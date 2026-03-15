@@ -58,7 +58,7 @@
   --popover-foreground: oklch(1 0 0);
 
   /* Electric Blue: #2D6CF6 */
-  --primary: oklch(0.55 0.22 260);
+  --primary: #e10600;
   --primary-foreground: oklch(1 0 0);
 
   /* Red Accent: #E10600 */
@@ -78,9 +78,9 @@
 
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.55 0.22 260);
+  --ring: #e10600;
 
-  --chart-1: oklch(0.55 0.22 260);
+  --chart-1: #e10600;
   --chart-2: oklch(0.62 0.26 25);
   --chart-3: oklch(0.48 0.24 25);
   --chart-4: oklch(0.15 0.06 265);
@@ -88,12 +88,12 @@
 
   --sidebar: oklch(0.15 0.06 265);
   --sidebar-foreground: oklch(1 0 0);
-  --sidebar-primary: oklch(0.55 0.22 260);
+  --sidebar-primary: #e10600;
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.62 0.26 25);
   --sidebar-accent-foreground: oklch(1 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.55 0.22 260);
+  --sidebar-ring: #e10600;
 }
 
 @layer base {
@@ -148,8 +148,8 @@
   textarea:focus,
   select:focus {
     outline: none;
-    border-color: oklch(0.55 0.22 260);
-    box-shadow: 0 0 0 3px oklch(0.55 0.22 260 / 0.1);
+    border-color: #e10600;
+    box-shadow: 0 0 0 3px rgba(225, 6, 0, 0.1);
   }
 
   /* Scrollbar styling */
@@ -163,7 +163,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.55 0.22 260);
+    background: #e10600;
     border-radius: 5px;
   }
 
@@ -220,7 +220,7 @@
 
   /* Gradient backgrounds */
   .gradient-hero {
-    background: linear-gradient(135deg, oklch(0.12 0.04 265) 0%, oklch(0.15 0.06 265) 50%, oklch(0.55 0.22 260) 100%);
+    background: linear-gradient(135deg, oklch(0.12 0.04 265) 0%, oklch(0.15 0.06 265) 50%, #e10600 100%);
   }
 
   .gradient-dark {
@@ -233,7 +233,7 @@
   }
 
   .glow-blue {
-    box-shadow: 0 0 20px oklch(0.55 0.22 260 / 0.3);
+    box-shadow: 0 0 20px rgba(225, 6, 0, 0.3);
   }
 
   .glow-red-hover:hover {
@@ -241,7 +241,7 @@
   }
 
   .glow-blue-hover:hover {
-    box-shadow: 0 0 30px oklch(0.55 0.22 260 / 0.5);
+    box-shadow: 0 0 30px rgba(225, 6, 0, 0.5);
   }
 
   /* Smooth animations */
@@ -254,14 +254,14 @@
 
   /* Text gradient utilities */
   .text-gradient-blue {
-    background: linear-gradient(135deg, oklch(0.55 0.22 260), oklch(0.62 0.26 25));
+    background: linear-gradient(135deg, #e10600, oklch(0.62 0.26 25));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
   .text-gradient-animated {
-    background: linear-gradient(90deg, oklch(0.55 0.22 260), oklch(0.62 0.26 25), oklch(0.55 0.22 260));
+    background: linear-gradient(90deg, #e10600, oklch(0.62 0.26 25), #e10600);
     background-size: 200% auto;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -278,7 +278,7 @@
   }
 
   .text-gradient-hover:hover {
-    background: linear-gradient(90deg, oklch(0.55 0.22 260), oklch(0.62 0.26 25), oklch(0.55 0.22 260));
+    background: linear-gradient(90deg, #e10600, oklch(0.62 0.26 25), #e10600);
     background-size: 200% auto;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -371,7 +371,7 @@
   /* Typewriter Effect */
   .animate-typewriter {
     overflow: hidden;
-    border-right: 2px solid oklch(0.55 0.22 260);
+    border-right: 2px solid #e10600;
     white-space: nowrap;
     animation: typewriter 3s steps(40, end), blink 0.75s step-end infinite;
   }
@@ -380,7 +380,7 @@
   .animate-gradient-border {
     position: relative;
     background: linear-gradient(var(--background), var(--background)) padding-box,
-      linear-gradient(90deg, oklch(0.55 0.22 260), oklch(0.62 0.26 25), oklch(0.55 0.22 260)) border-box;
+      linear-gradient(90deg, #e10600, oklch(0.62 0.26 25), #e10600) border-box;
     border: 2px solid transparent;
     background-size: 100% 100%, 200% 100%;
     animation: gradientBorder 3s linear infinite;
@@ -392,7 +392,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: radial-gradient(circle, oklch(0.55 0.22 260 / 0.3) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(225, 6, 0, 0.3) 0%, transparent 70%);
     animation: ripple 1.5s ease-out infinite;
     pointer-events: none;
   }
@@ -406,7 +406,7 @@
   .card-hover-lift:hover {
     transform: translateY(-8px);
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3),
-      0 0 30px oklch(0.55 0.22 260 / 0.2);
+      0 0 30px rgba(225, 6, 0, 0.2);
   }
 
   /* Icon Hover Effects */
@@ -460,7 +460,7 @@
     left: 0;
     width: 0;
     height: 2px;
-    background: linear-gradient(90deg, oklch(0.55 0.22 260), oklch(0.62 0.26 25));
+    background: linear-gradient(90deg, #e10600, oklch(0.62 0.26 25));
     transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -631,11 +631,11 @@
 
   @keyframes glow {
     from {
-      box-shadow: 0 0 10px oklch(0.55 0.22 260 / 0.2);
+      box-shadow: 0 0 10px rgba(225, 6, 0, 0.2);
     }
 
     to {
-      box-shadow: 0 0 30px oklch(0.55 0.22 260 / 0.6);
+      box-shadow: 0 0 30px rgba(225, 6, 0, 0.6);
     }
   }
 
@@ -643,13 +643,13 @@
 
     0%,
     100% {
-      box-shadow: 0 0 5px oklch(0.55 0.22 260 / 0.3),
-        0 0 20px oklch(0.55 0.22 260 / 0.2);
+      box-shadow: 0 0 5px rgba(225, 6, 0, 0.3),
+        0 0 20px rgba(225, 6, 0, 0.2);
     }
 
     50% {
-      box-shadow: 0 0 20px oklch(0.55 0.22 260 / 0.5),
-        0 0 40px oklch(0.55 0.22 260 / 0.3);
+      box-shadow: 0 0 20px rgba(225, 6, 0, 0.5),
+        0 0 40px rgba(225, 6, 0, 0.3);
     }
   }
 

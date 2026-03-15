@@ -381,8 +381,30 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
       }
 
-      // Admin sees all orders with full information (no privacy filters)
-      return await getAllOrders();
+      // Admin sees all DOMESTIC orders (standard, exchange, returns) with full information
+      const allOrders = await getAllOrders();
+      return allOrders.filter(order =>
+        (order.destinationCountry === 'United Arab Emirates' || order.destinationCountry === 'UAE' || order.destinationCountry === 'AE' || !order.destinationCountry)
+      );
+    }),
+
+  // Get international orders (admin view)
+  getIntlOrders: publicProcedure
+    .input(z.object({
+      token: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const allOrders = await getAllOrders();
+      return allOrders.filter(order =>
+        (order.orderType === 'standard' || !order.orderType) &&
+        order.destinationCountry.toUpperCase() !== 'UAE' &&
+        order.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES'
+      );
     }),
 
   // Delete order (admin only)
@@ -431,7 +453,7 @@ export const adminPortalRouter = router({
       token: z.string(),
       orderId: z.number(),
       updates: z.object({
-        serviceType: z.enum(['DOM', 'SDD']).optional(),
+        serviceType: z.enum(['DOM', 'SDD', 'BULLET']).optional(),
         weight: z.string().optional(),
         pieces: z.number().optional(),
         codRequired: z.number().min(0).max(1).optional(),
@@ -1128,8 +1150,10 @@ export const customerPortalRouter = router({
       const allOrders = await getOrdersByClientId(payload.clientId);
 
       // Filter out returns and exchanges (they appear in separate Returns & Exchanges section)
+      // Limit to domestic orders
       const orders = allOrders.filter(order =>
-        order.orderType === 'standard' || !order.orderType
+        (order.orderType === 'standard' || !order.orderType) &&
+        (order.destinationCountry.toUpperCase() === 'UAE' || order.destinationCountry.toUpperCase() === 'UNITED ARAB EMIRATES')
       );
 
       // Get client's hideShipperAddress setting
@@ -1137,6 +1161,37 @@ export const customerPortalRouter = router({
       const hideShipperAddress = client?.hideShipperAddress === 1;
 
       // Add hideShipperAddress to each order for waybill generation, and hide address if setting enabled
+      return orders.map(order => ({
+        ...order,
+        shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
+        hideShipperAddress: hideShipperAddress ? 1 : 0,
+      }));
+    }),
+
+  // Get customer's international orders
+  getMyIntlOrders: publicProcedure
+    .input(z.object({
+      token: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'customer' || !payload.clientId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
+      }
+
+      const allOrders = await getOrdersByClientId(payload.clientId);
+
+      // Filter for international orders
+      const orders = allOrders.filter(order =>
+        (order.orderType === 'standard' || !order.orderType) &&
+        order.destinationCountry.toUpperCase() !== 'UAE' &&
+        order.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES'
+      );
+
+      // Get client's hideShipperAddress setting
+      const client = await getClientAccountById(payload.clientId);
+      const hideShipperAddress = client?.hideShipperAddress === 1;
+
       return orders.map(order => ({
         ...order,
         shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
@@ -1173,6 +1228,12 @@ export const customerPortalRouter = router({
         codAmount: z.string().optional(),
         codCurrency: z.string().optional(),
         fitOnDelivery: z.number().default(0),
+
+        // Customs fields (optional for domestic, required for international in UI but optional here to preserve compat)
+        customsValue: z.string().optional(),
+        customsCurrency: z.string().optional(),
+        customsDescription: z.string().optional(),
+        hsCode: z.string().optional(),
       }),
     }))
     .mutation(async ({ input }) => {
@@ -1181,8 +1242,12 @@ export const customerPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
       }
 
+      // Determine if international order
+      const isInternational = input.shipment.destinationCountry.toUpperCase() !== 'UAE'
+        && input.shipment.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES';
+
       // Generate waybill number
-      const waybillNumber = await generateWaybillNumber();
+      const waybillNumber = await generateWaybillNumber(isInternational);
 
       // Create order
       const order = await createOrder({
@@ -1535,6 +1600,9 @@ export const customerPortalRouter = router({
         weight: z.number().default(0.5),
         serviceType: z.string().default('DOM'),
         specialInstructions: z.string().optional(),
+        codRequired: z.number().default(0),
+        codAmount: z.string().optional(),
+        codCurrency: z.string().default('AED'),
       }),
     }))
     .mutation(async ({ input }) => {
@@ -1624,7 +1692,9 @@ export const customerPortalRouter = router({
         serviceType: input.newShipment.serviceType,
         specialInstructions: input.newShipment.specialInstructions || `EXCHANGE NEW - Original: ${originalOrder.waybillNumber}`,
 
-        codRequired: 0,
+        codRequired: clientAccount.codAllowed ? input.newShipment.codRequired : 0,
+        codAmount: clientAccount.codAllowed && input.newShipment.codRequired ? (input.newShipment.codAmount || null) : null,
+        codCurrency: clientAccount.codAllowed && input.newShipment.codRequired ? (input.newShipment.codCurrency || 'AED') : 'AED',
         isReturn: 0,
         originalOrderId: input.orderId,
         orderType: 'exchange',
@@ -1697,6 +1767,10 @@ export const customerPortalRouter = router({
       exchangeCity: z.string().optional(),
       exchangePieces: z.number().default(1),
       exchangeWeight: z.number().default(0.5),
+      // COD for exchange new shipment
+      exchangeCodRequired: z.number().default(0),
+      exchangeCodAmount: z.string().optional(),
+      exchangeCodCurrency: z.string().default('AED'),
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
@@ -1783,7 +1857,9 @@ export const customerPortalRouter = router({
           serviceType: input.serviceType,
           specialInstructions: 'EXCHANGE NEW - Manual creation',
 
-          codRequired: 0,
+          codRequired: clientAccount.codAllowed ? input.exchangeCodRequired : 0,
+          codAmount: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodAmount || null) : null,
+          codCurrency: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodCurrency || 'AED') : 'AED',
           isReturn: 0,
           orderType: 'exchange',
           exchangeOrderId: returnOrder.id,
@@ -1818,6 +1894,53 @@ export const customerPortalRouter = router({
         returnOrder,
         newOrder,
       };
+    }),
+
+  // Update COD on exchange order (only if pending_pickup)
+  updateExchangeCod: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      orderId: z.number(),
+      codRequired: z.number(), // 0 or 1
+      codAmount: z.string().optional(),
+      codCurrency: z.string().default('AED'),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'customer' || !payload.clientId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
+      }
+
+      const order = await getOrderById(input.orderId);
+      if (!order || order.clientId !== payload.clientId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
+      }
+
+      if (order.orderType !== 'exchange') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'COD can only be modified on exchange orders' });
+      }
+
+      if (order.status !== 'pending_pickup') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'COD can only be modified while the order is pending pickup' });
+      }
+
+      // Check if client has COD enabled
+      const clientAccount = await getClientAccountById(payload.clientId);
+      if (!clientAccount || !clientAccount.codAllowed) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'COD is not enabled for your account' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      const { orders } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+
+      await db!.update(orders).set({
+        codRequired: input.codRequired,
+        codAmount: input.codRequired ? (input.codAmount || null) : null,
+        codCurrency: input.codRequired ? input.codCurrency : 'AED',
+      }).where(eq(orders.id, input.orderId));
+
+      return { success: true, message: input.codRequired ? 'COD updated successfully' : 'COD removed successfully' };
     }),
 
   // Get customer analytics
@@ -2884,7 +3007,7 @@ export const rateRouter = router({
     .input(z.object({
       token: z.string(),
       clientId: z.number(),
-      serviceType: z.enum(["DOM", "SDD"]),
+      serviceType: z.enum(["DOM", "SDD", "BULLET"]),
       weight: z.number(),
       length: z.number().optional(),
       width: z.number().optional(),
@@ -3001,6 +3124,11 @@ export const clientsRouter = router({
       codMaxFee: z.string().optional(),
       fodAllowed: z.boolean().optional(),
       fodFee: z.string().optional(),
+      bulletAllowed: z.boolean().optional(),
+      customBulletBaseRate: z.string().optional(),
+      customBulletPerKg: z.string().optional(),
+      intlAllowed: z.boolean().optional(),
+      intlDiscountPercent: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const payload = verifyPortalToken(input.token);
@@ -3023,6 +3151,11 @@ export const clientsRouter = router({
           codMaxFee: input.codMaxFee || null,
           fodAllowed: input.fodAllowed ? 1 : 0,
           fodFee: input.fodFee || null,
+          bulletAllowed: input.bulletAllowed ? 1 : 0,
+          customBulletBaseRate: input.customBulletBaseRate || null,
+          customBulletPerKg: input.customBulletPerKg || null,
+          intlAllowed: input.intlAllowed ? 1 : 0,
+          intlDiscountPercent: input.intlDiscountPercent || null,
         })
         .where(eq(clientAccounts.id, input.clientId));
 
@@ -3143,6 +3276,149 @@ const trackingRouter = router({
     }),
 });
 
+/**
+ * International Rates Router
+ */
+const internationalRatesRouter = router({
+  // Get list of all available destination countries
+  countries: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
+      }
+
+      const { getCountryList, loadRatesFromDB } = await import('./internationalRateEngine');
+      const { getDb } = await import('./db');
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      return await getCountryList(db);
+    }),
+
+  // Calculate international shipping rates
+  quote: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      originCountry: z.string().min(1),
+      destinationCountry: z.string().min(1),
+      realWeightKg: z.number().positive(),
+      dimensionsCm: z.object({
+        length: z.number().positive(),
+        width: z.number().positive(),
+        height: z.number().positive(),
+      }),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
+      }
+
+      const { quote, loadRatesFromDB, validateInput } = await import('./internationalRateEngine');
+      const { getDb } = await import('./db');
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      const quoteInput = {
+        originCountry: input.originCountry,
+        destinationCountry: input.destinationCountry,
+        realWeightKg: input.realWeightKg,
+        dimensionsCm: input.dimensionsCm,
+      };
+
+      const errors = validateInput(quoteInput);
+      if (errors.length > 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: errors.join(' ') });
+      }
+
+      // Load rates from DB
+      const rateData = await loadRatesFromDB(db);
+
+      // Get client discount if applicable
+      let discountPercent: number | undefined;
+      if (payload.clientId) {
+        const client = await getClientAccountById(payload.clientId);
+        if (client?.intlDiscountPercent) {
+          discountPercent = parseFloat(client.intlDiscountPercent);
+        }
+      }
+
+      return quote(rateData, quoteInput, discountPercent);
+    }),
+
+  // Admin: Get all international rates from DB
+  getAll: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      rateType: z.enum(['prime', 'gcc', 'premium']).optional(),
+    }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { internationalRates: intlRatesTable } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      if (input.rateType) {
+        return await db.select().from(intlRatesTable).where(eq(intlRatesTable.rateType, input.rateType));
+      }
+      return await db.select().from(intlRatesTable);
+    }),
+
+  // Admin: Update a specific rate
+  updateRate: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      rateId: z.number(),
+      price: z.string(),
+      isActive: z.number().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { internationalRates: intlRatesTable } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      const updateData: any = { price: input.price };
+      if (input.isActive !== undefined) updateData.isActive = input.isActive;
+
+      await db.update(intlRatesTable).set(updateData).where(eq(intlRatesTable.id, input.rateId));
+      return { success: true };
+    }),
+
+  // Admin: Get all country maps
+  getCountryMaps: publicProcedure
+    .input(z.object({ token: z.string() }))
+    .query(async ({ input }) => {
+      const payload = verifyPortalToken(input.token);
+      if (!payload || payload.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+      }
+
+      const { getDb } = await import('./db');
+      const { internationalCountryMaps } = await import('../drizzle/schema');
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+
+      return await db.select().from(internationalCountryMaps);
+    }),
+
+});
+
+
 export const portalRouter = router({
   auth: portalAuthRouter,
   admin: adminPortalRouter,
@@ -3154,4 +3430,5 @@ export const portalRouter = router({
   publicTracking: publicTrackingRouter,
   tracking: trackingRouter,
   drivers: driverRouter,
+  internationalRates: internationalRatesRouter,
 });
