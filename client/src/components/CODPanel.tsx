@@ -313,24 +313,24 @@ export default function CODPanel() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline', icon: any }> = {
-      pending_collection: { variant: 'outline', icon: Clock },
-      collected: { variant: 'default', icon: TrendingUp },
-      remitted: { variant: 'secondary', icon: CheckCircle },
-      disputed: { variant: 'destructive', icon: Clock },
-      cancelled: { variant: 'destructive', icon: Clock },
-      pending: { variant: 'outline', icon: Clock },
-      processed: { variant: 'default', icon: TrendingUp },
-      completed: { variant: 'secondary', icon: CheckCircle },
+    const variants: Record<string, { className: string; icon: any; label: string }> = {
+      pending_collection: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending Collection' },
+      collected: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Collected' },
+      remitted: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Remitted' },
+      disputed: { className: 'bg-red-500/20 text-red-500 border-red-500/30', icon: Clock, label: 'Disputed' },
+      cancelled: { className: 'bg-slate-500/20 text-slate-400 border-slate-500/30', icon: Clock, label: 'Cancelled' },
+      pending: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending' },
+      processed: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Processed' },
+      completed: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Completed' },
     };
 
     const config = variants[status] || variants.pending;
     const Icon = config.icon;
 
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1 w-fit">
+      <Badge className={`flex items-center gap-1 w-fit border ${config.className}`}>
         <Icon className="w-3 h-3" />
-        {status.replace('_', ' ')}
+        {config.label}
       </Badge>
     );
   };
@@ -689,7 +689,9 @@ export default function CODPanel() {
                   <TableHead>Remittance #</TableHead>
                   <TableHead>Client</TableHead>
                   <TableHead>Shipments</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead>Gross</TableHead>
+                  <TableHead>Commission</TableHead>
+                  <TableHead>Net to Client</TableHead>
                   <TableHead>Payment Method</TableHead>
                   <TableHead>Created Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -710,7 +712,13 @@ export default function CODPanel() {
                     </TableCell>
                     <TableCell>{remittance.client?.companyName || 'N/A'}</TableCell>
                     <TableCell>{remittance.shipmentCount}</TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="font-semibold">{formatCurrency((remittance as any).grossAmount || remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="text-red-400 font-medium">
+                      {(remittance as any).feeAmount && parseFloat((remittance as any).feeAmount) > 0
+                        ? `- ${formatCurrency((remittance as any).feeAmount, remittance.currency)}`
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-green-400 font-bold">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
                     <TableCell>{remittance.paymentMethod || 'N/A'}</TableCell>
                     <TableCell>{formatDate(remittance.createdAt)}</TableCell>
                     <TableCell>{getStatusBadge(remittance.status)}</TableCell>

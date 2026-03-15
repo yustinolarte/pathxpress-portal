@@ -36,6 +36,7 @@ export default function BillingPanel() {
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Get all invoices
   const { data: allInvoices, isLoading, refetch } = trpc.portal.billing.getAllInvoices.useQuery(
@@ -51,6 +52,12 @@ export default function BillingPanel() {
       // Filter by client
       if (filterClientId !== 'all' && invoice.clientId.toString() !== filterClientId) {
         return false;
+      }
+
+      // Filter by invoice number search
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!invoice.invoiceNumber?.toLowerCase().includes(q)) return false;
       }
 
       // Filter by date range
@@ -69,7 +76,7 @@ export default function BillingPanel() {
 
       return true;
     });
-  }, [allInvoices, filterClientId, filterDateFrom, filterDateTo]);
+  }, [allInvoices, filterClientId, filterDateFrom, filterDateTo, searchQuery]);
 
   // Get all clients for the dropdown
   const { data: clients } = trpc.portal.admin.getClients.useQuery(
@@ -330,6 +337,7 @@ export default function BillingPanel() {
       'Issue Date',
       'Due Date',
       'Total Amount',
+      'Balance Due',
       'Currency',
       'Status',
       'Adjustment Notes'
@@ -353,6 +361,7 @@ export default function BillingPanel() {
         escape(formatDate(inv.issueDate)),
         escape(formatDate(inv.dueDate)),
         inv.total,
+        inv.balance || inv.total,
         inv.currency,
         inv.status,
         escape(inv.adjustmentNotes)
@@ -562,7 +571,7 @@ export default function BillingPanel() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="glass-strong border-blue-500/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Invoices</CardTitle>
@@ -593,6 +602,17 @@ export default function BillingPanel() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="glass-strong border-red-500/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Balance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-400">
+              AED {invoices?.filter(i => i.status === 'overdue').reduce((sum, i) => sum + parseFloat(i.balance || i.total || '0'), 0).toFixed(2) || '0.00'}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Invoices Table */}
@@ -610,6 +630,15 @@ export default function BillingPanel() {
         <CardContent>
           {/* Filters */}
           <div className="flex flex-wrap gap-4 mb-6 p-4 bg-muted/30 rounded-lg border border-border/50">
+            <div className="flex-1 min-w-[180px]">
+              <Label className="text-sm font-medium mb-2 block">Invoice #</Label>
+              <Input
+                placeholder="Search invoice..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
             <div className="flex-1 min-w-[200px]">
               <Label htmlFor="filterClient" className="text-sm font-medium mb-2 block">
                 Filter by Client
@@ -653,7 +682,7 @@ export default function BillingPanel() {
               />
             </div>
 
-            {(filterClientId !== 'all' || filterDateFrom || filterDateTo) && (
+            {(filterClientId !== 'all' || filterDateFrom || filterDateTo || searchQuery) && (
               <div className="flex items-end">
                 <Button
                   variant="outline"
@@ -661,6 +690,7 @@ export default function BillingPanel() {
                     setFilterClientId('all');
                     setFilterDateFrom('');
                     setFilterDateTo('');
+                    setSearchQuery('');
                   }}
                 >
                   Clear Filters
@@ -684,13 +714,17 @@ export default function BillingPanel() {
                   <TableHead>Issue Date</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Balance</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
+                {invoices.map((invoice) => {
+                  const isOverdue = invoice.status === 'overdue';
+                  const balance = parseFloat(invoice.balance || invoice.total || '0');
+                  return (
+                  <TableRow key={invoice.id} className={isOverdue ? 'bg-red-500/5 hover:bg-red-500/10' : ''}>
                     <TableCell
                       className="font-medium cursor-pointer text-blue-500 hover:text-blue-400 hover:underline"
                       onClick={() => handlePreviewInvoice(invoice)}
@@ -704,8 +738,11 @@ export default function BillingPanel() {
                       {formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}
                     </TableCell>
                     <TableCell>{formatDate(invoice.issueDate)}</TableCell>
-                    <TableCell>{formatDate(invoice.dueDate)}</TableCell>
+                    <TableCell className={isOverdue ? 'text-red-400 font-medium' : ''}>{formatDate(invoice.dueDate)}</TableCell>
                     <TableCell className="font-semibold">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
+                    <TableCell className={balance > 0 ? 'font-bold text-red-400' : 'text-muted-foreground'}>
+                      {balance > 0 ? formatCurrency(invoice.balance || invoice.total, invoice.currency) : '—'}
+                    </TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
@@ -754,7 +791,8 @@ export default function BillingPanel() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
