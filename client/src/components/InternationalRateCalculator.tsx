@@ -50,7 +50,7 @@ interface QuoteResult {
         volKg: number;
         billableKg: number;
         billableKgRounded05: number;
-        billableGramsRounded100: number;
+        primeGramsBracket: number;
     };
     options: ServiceOption[];
     reasons: string[];
@@ -153,10 +153,10 @@ export default function InternationalRateCalculator() {
                         </p>
                         <div className="flex flex-col sm:flex-row gap-3 justify-center">
                             <Button variant="outline" className="gap-2" onClick={() => window.location.href = 'mailto:support@pathxpress.ae'}>
-                                <Mail className="w-4 h-4" /> support@pathxpress.ae
+                                <Mail className="w-4 h-4" /> support@pathxpress.net
                             </Button>
                             <Button variant="outline" className="gap-2" onClick={() => window.location.href = 'tel:+97142345678'}>
-                                <Phone className="w-4 h-4" /> +971 4 234 5678
+                                <Phone className="w-4 h-4" /> +971 52 280 3433
                             </Button>
                         </div>
                     </CardContent>
