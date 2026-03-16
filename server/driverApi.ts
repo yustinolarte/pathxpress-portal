@@ -328,8 +328,8 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 .where(eq(driverRoutes.id, routeId));
         }
         
-        // --- NEW FIX: Auto set to in_progress (Out for Delivery) ---
-        // Change all pending/picked_up stops to in_progress
+        // --- Auto set routeOrder stops to in_progress ---
+        // Change all pending stops to in_progress
         await db
             .update(routeOrders)
             .set({ status: 'in_progress' })
@@ -342,6 +342,46 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                     )
                 )
             );
+
+        // --- Feature 1: Auto "Out for Delivery" for delivery-only orders ---
+        // Fetch all stops for this route to identify delivery-only orders (no pickup stop)
+        const allRouteStops = await db
+            .select({ routeOrder: routeOrders, order: orders })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.routeId, routeId));
+
+        // Group by orderId; detect which orders have ONLY a delivery stop (no pickup)
+        const orderStopTypeMap = new Map<number, { hasPickup: boolean; hasDelivery: boolean }>();
+        allRouteStops.forEach(item => {
+            const orderId = item.order.id;
+            if (!orderStopTypeMap.has(orderId)) {
+                orderStopTypeMap.set(orderId, { hasPickup: false, hasDelivery: false });
+            }
+            const entry = orderStopTypeMap.get(orderId)!;
+            if (item.routeOrder.type === 'pickup') entry.hasPickup = true;
+            if (item.routeOrder.type === 'delivery') entry.hasDelivery = true;
+        });
+
+        // For delivery-only orders, update order status to out_for_delivery and log tracking event
+        for (const [orderId, stopInfo] of Array.from(orderStopTypeMap.entries())) {
+            if (!stopInfo.hasPickup && stopInfo.hasDelivery) {
+                await db
+                    .update(orders)
+                    .set({ status: 'out_for_delivery', lastStatusUpdate: new Date() })
+                    .where(eq(orders.id, orderId));
+
+                await db.insert(trackingEvents).values({
+                    shipmentId: orderId,
+                    eventDatetime: new Date(),
+                    location: 'Driver Route',
+                    statusCode: 'out_for_delivery',
+                    statusLabel: 'Out for Delivery',
+                    description: 'Package is out for delivery with driver',
+                    createdBy: 'driver',
+                });
+            }
+        }
 
         // Get updated route
         const [updatedRoute] = await db
@@ -522,6 +562,10 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         const [byWaybill] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
         if (byWaybill) {
             order = byWaybill;
+        } else {
+            // Fallback: search by trackingNumber
+            const [byTracking] = await db.select().from(orders).where(eq(orders.trackingNumber, barcode)).limit(1);
+            if (byTracking) order = byTracking;
         }
 
         if (!order) return res.status(404).json({ error: 'Package not found in system!' });
@@ -543,7 +587,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         // Return formatted package matching the driver app expectations
         res.json({
             id: routeOrder ? routeOrder.id : order.id,
-            packageRef: order.waybillNumber,
+            packageRef: order.waybillNumber || order.trackingNumber,
             status: routeOrder ? routeOrder.status : order.status,
             customerName: order.customerName,
             customerPhone: order.customerPhone,
@@ -1051,7 +1095,12 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
         const [order] = await db
             .select()
             .from(orders)
-            .where(eq(orders.waybillNumber, waybillNumber))
+            .where(
+                or(
+                    eq(orders.waybillNumber, waybillNumber),
+                    eq(orders.trackingNumber, waybillNumber)
+                )
+            )
             .limit(1);
 
         if (!order) {
