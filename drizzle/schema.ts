@@ -129,6 +129,14 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   customSddBaseRate: varchar("customSddBaseRate", { length: 20 }), // Custom SDD base rate (0-5kg)
   customSddPerKg: varchar("customSddPerKg", { length: 20 }), // Custom SDD rate per additional kg
 
+  // Zone-based rates (DOM service) — base covers 0-5kg, perKg applies above 5kg
+  zone1BaseRate: varchar("zone1BaseRate", { length: 20 }), // Zone 1: Dubai, Sharjah, Ajman, Abu Dhabi
+  zone1PerKg:    varchar("zone1PerKg",    { length: 20 }),
+  zone2BaseRate: varchar("zone2BaseRate", { length: 20 }), // Zone 2: UAQ, Ras Al Khaimah, Fujairah
+  zone2PerKg:    varchar("zone2PerKg",    { length: 20 }),
+  zone3BaseRate: varchar("zone3BaseRate", { length: 20 }), // Zone 3: Remote areas
+  zone3PerKg:    varchar("zone3PerKg",    { length: 20 }),
+
   // Waybill preferences
   hideShipperAddress: int("hideShipperAddress").default(0).notNull(), // 0 = show address, 1 = hide address on waybill
 

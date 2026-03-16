@@ -1464,6 +1464,21 @@ export async function getMonthlyShipmentCount(clientId: number): Promise<number>
 /**
  * Calculate rate for a shipment based on service type, weight, and client volume
  */
+/**
+ * Map an emirate/city name to a delivery zone (1, 2, or 3).
+ * Zone 1: Dubai, Sharjah, Ajman, Abu Dhabi
+ * Zone 2: Umm Al Quwain, Ras Al Khaimah, Fujairah
+ * Zone 3: everything else (remote areas)
+ */
+export function getZoneFromEmirate(emirate: string): 1 | 2 | 3 {
+  const normalized = emirate.toLowerCase().trim();
+  const zone1 = ['dubai', 'sharjah', 'ajman', 'abu dhabi', 'abudhabi'];
+  const zone2 = ['umm al quwain', 'uaq', 'ras al khaimah', 'rak', 'fujairah'];
+  if (zone1.some(z => normalized.includes(z))) return 1;
+  if (zone2.some(z => normalized.includes(z))) return 2;
+  return 3;
+}
+
 export async function calculateShipmentRate(params: {
   clientId: number;
   serviceType: "DOM" | "SDD" | "BULLET";
@@ -1471,6 +1486,7 @@ export async function calculateShipmentRate(params: {
   length?: number; // cm
   width?: number; // cm
   height?: number; // cm
+  emirate?: string; // destination emirate for zone-based pricing
 }): Promise<{
   baseRate: number;
   additionalKgCharge: number;
@@ -1487,6 +1503,41 @@ export async function calculateShipmentRate(params: {
 
   // Check if client exists and has custom rates
   const client = await getClientAccountById(params.clientId);
+
+  // PRIORITY 0: Zone-based rates (DOM only) — if client has zone rates and emirate is provided
+  if (client && params.serviceType === "DOM" && params.emirate) {
+    const zone = getZoneFromEmirate(params.emirate);
+    const zoneBase = zone === 1 ? client.zone1BaseRate : zone === 2 ? client.zone2BaseRate : client.zone3BaseRate;
+    const zonePkg  = zone === 1 ? client.zone1PerKg   : zone === 2 ? client.zone2PerKg   : client.zone3PerKg;
+
+    if (zoneBase) {
+      const baseRate = parseFloat(zoneBase);
+      const additionalKgRate = zonePkg ? parseFloat(zonePkg) : 0;
+      const maxWeight = 5;
+      let chargeableWeight = params.weight;
+
+      if (params.length && params.width && params.height) {
+        const volumetricWeight = (params.length * params.width * params.height) / 5000;
+        chargeableWeight = Math.max(params.weight, volumetricWeight);
+      }
+
+      let additionalKgCharge = 0;
+      if (chargeableWeight > maxWeight) {
+        const extraKg = Math.ceil(chargeableWeight - maxWeight);
+        additionalKgCharge = extraKg * additionalKgRate;
+      }
+
+      return {
+        baseRate,
+        additionalKgCharge,
+        totalRate: baseRate + additionalKgCharge,
+        appliedTier: null,
+        usingManualTier: false,
+        usingCustomRates: true,
+        chargeableWeight,
+      };
+    }
+  }
 
   // PRIORITY 1: Check for custom rates first
   if (client) {

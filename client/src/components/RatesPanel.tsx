@@ -5,232 +5,292 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
-import { DollarSign, Package, Truck, Users, ChevronDown } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { DollarSign, MapPin, Package, Pencil, Save, Truck, X } from 'lucide-react';
+import { toast } from 'sonner';
+
+type ZoneDraft = {
+  zone1BaseRate: string;
+  zone1PerKg: string;
+  zone2BaseRate: string;
+  zone2PerKg: string;
+  zone3BaseRate: string;
+  zone3PerKg: string;
+};
+
+const ZONE_MAP = {
+  'Zone 1': ['Dubai', 'Sharjah', 'Ajman', 'Abu Dhabi'],
+  'Zone 2': ['Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah'],
+  'Zone 3': ['Remote areas', '(Al Ain, Liwa, Ruwais,', 'RAK remote, etc.)'],
+};
 
 export default function RatesPanel() {
   const { token } = usePortalAuth();
 
-  // Fetch rate tiers
-  const { data: rateTiers, isLoading } = trpc.portal.rates.getTiers.useQuery(
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [draft, setDraft] = useState<ZoneDraft>({
+    zone1BaseRate: '', zone1PerKg: '',
+    zone2BaseRate: '', zone2PerKg: '',
+    zone3BaseRate: '', zone3PerKg: '',
+  });
+
+  const { data: clients, isLoading, refetch } = trpc.portal.clients.getWithTiers.useQuery(
     { token: token || '' },
     { enabled: !!token }
   );
 
-  // Fetch clients to show assignments
-  const { data: clients } = trpc.portal.clients.getWithTiers.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const updateMutation = trpc.portal.clients.updateZoneRates.useMutation({
+    onSuccess: () => {
+      toast.success('Zone rates saved successfully.');
+      setEditingId(null);
+      refetch();
+    },
+    onError: () => {
+      toast.error('Failed to save rates.');
+    },
+  });
 
-  const domTiers = rateTiers?.filter(t => t.serviceType === 'DOM') || [];
-  const sddTiers = rateTiers?.filter(t => t.serviceType === 'SDD') || [];
+  function startEdit(client: any) {
+    setEditingId(client.id);
+    setDraft({
+      zone1BaseRate: client.zone1BaseRate ?? '',
+      zone1PerKg:    client.zone1PerKg    ?? '',
+      zone2BaseRate: client.zone2BaseRate ?? '',
+      zone2PerKg:    client.zone2PerKg    ?? '',
+      zone3BaseRate: client.zone3BaseRate ?? '',
+      zone3PerKg:    client.zone3PerKg    ?? '',
+    });
+  }
+
+  function saveEdit(clientId: number) {
+    updateMutation.mutate({
+      token: token || '',
+      clientId,
+      zone1BaseRate: draft.zone1BaseRate || undefined,
+      zone1PerKg:    draft.zone1PerKg    || undefined,
+      zone2BaseRate: draft.zone2BaseRate || undefined,
+      zone2PerKg:    draft.zone2PerKg    || undefined,
+      zone3BaseRate: draft.zone3BaseRate || undefined,
+      zone3PerKg:    draft.zone3PerKg    || undefined,
+    });
+  }
+
+  function formatRate(base: string | null, perKg: string | null) {
+    if (!base) return <span className="text-muted-foreground">—</span>;
+    return (
+      <span>
+        <span className="text-green-400 font-semibold">{base} AED</span>
+        {perKg && <span className="text-muted-foreground text-xs ml-1">+{perKg}/kg</span>}
+      </span>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Service Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-blue-400" />
-              <CardTitle className="text-lg">Domestic Express (DOM)</CardTitle>
-            </div>
-            <CardDescription>Next-business-day delivery UAE-wide</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Coverage:</span>
-                <span className="font-medium">UAE-Wide</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Base Weight:</span>
-                <span className="font-medium">Up to 5 kg</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Additional Weight:</span>
-                <span className="font-medium">+1 AED/kg</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Volume Tiers:</span>
-                <span className="font-medium">{domTiers.length} tiers</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Truck className="w-5 h-5 text-orange-400" />
-              <CardTitle className="text-lg">Same-Day Delivery (SDD)</CardTitle>
-            </div>
-            <CardDescription>Dubai / Sharjah / Abu Dhabi city limits</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Cut-off Time:</span>
-                <span className="font-medium">14:00</span>
+      {/* Zone Map */}
+      <Card className="glass-strong border-blue-500/20">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-blue-400" />
+            <CardTitle className="text-lg">Delivery Zones — UAE</CardTitle>
+          </div>
+          <CardDescription>Zone classification by emirate/area</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            {Object.entries(ZONE_MAP).map(([zone, areas], idx) => (
+              <div key={zone} className={`p-3 rounded-lg border ${idx === 0 ? 'border-green-500/30 bg-green-500/5' : idx === 1 ? 'border-orange-500/30 bg-orange-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+                <p className={`font-semibold text-sm mb-2 ${idx === 0 ? 'text-green-400' : idx === 1 ? 'text-orange-400' : 'text-red-400'}`}>{zone}</p>
+                {areas.map(a => <p key={a} className="text-xs text-muted-foreground">{a}</p>)}
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Base Weight:</span>
-                <span className="font-medium">Up to 5 kg</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Max Weight:</span>
-                <span className="font-medium">10 kg</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Min Shipments:</span>
-                <span className="font-medium">4 per collection</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* DOM Rate Table */}
+      {/* Client Zone Rates Table */}
       <Card className="glass-strong border-blue-500/20">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5" />
-            Domestic Express (DOM) - Volume-Based Rates
-          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Package className="w-5 h-5 text-blue-400" />
+            <CardTitle className="text-lg">Client Zone Rates — Domestic Express (DOM)</CardTitle>
+          </div>
           <CardDescription>
-            Rates automatically adjust based on monthly shipment volume
+            Base rate covers 0–5 kg. Additional per-kg charge applies above 5 kg.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-center py-8 text-muted-foreground">Loading rates...</p>
-          ) : domTiers.length > 0 ? (
+            <p className="text-center py-8 text-muted-foreground">Loading...</p>
+          ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Volume Range</TableHead>
-                    <TableHead>Base Rate (0-5 kg)</TableHead>
-                    <TableHead>Additional kg</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="min-w-[160px]">Client</TableHead>
+                    <TableHead>
+                      <span className="text-green-400">Zone 1</span>
+                      <span className="text-muted-foreground text-xs block font-normal">Dubai / Sharjah / Ajman / AD</span>
+                    </TableHead>
+                    <TableHead>
+                      <span className="text-orange-400">Zone 2</span>
+                      <span className="text-muted-foreground text-xs block font-normal">UAQ / RAK / Fujairah</span>
+                    </TableHead>
+                    <TableHead>
+                      <span className="text-red-400">Zone 3</span>
+                      <span className="text-muted-foreground text-xs block font-normal">Remote areas</span>
+                    </TableHead>
+                    <TableHead className="w-[100px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {domTiers.map((tier) => (
-                    <TableRow key={tier.id}>
-                      <TableCell className="font-medium">
-                        {tier.minVolume} - {tier.maxVolume || '∞'} shipments/month
-                        {/* Show clients assigned to this tier */}
-                        {/* Show clients assigned to this tier */}
-                        {clients && (
-                          <div className="mt-2">
-                            <Collapsible>
-                              <CollapsibleTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-6 p-0 text-xs text-muted-foreground hover:text-primary">
-                                  <Users className="h-3 w-3 mr-1" />
-                                  View Assigned Clients ({clients.filter((c: any) => c.manualRateTierId === tier.id).length})
-                                  <ChevronDown className="h-3 w-3 ml-1" />
-                                </Button>
-                              </CollapsibleTrigger>
-                              <CollapsibleContent className="mt-2 pl-2 border-l-2 border-primary/20 animate-in slide-in-from-top-2 fade-in duration-200">
-                                <div className="flex flex-wrap gap-1">
-                                  {clients
-                                    .filter((c: any) => c.manualRateTierId === tier.id)
-                                    .map((client: any) => (
-                                      <Badge key={client.id} variant="outline" className="text-[10px] h-5 bg-background border-primary/20">
-                                        {client.companyName}
-                                      </Badge>
-                                    ))}
-                                  {clients.filter((c: any) => c.manualRateTierId === tier.id).length === 0 && (
-                                    <span className="text-[10px] text-muted-foreground italic">No clients manually assigned</span>
-                                  )}
-                                </div>
-                              </CollapsibleContent>
-                            </Collapsible>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-green-400 font-semibold">
-                          {parseFloat(tier.baseRate).toFixed(2)} AED
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-blue-400">
-                          +{parseFloat(tier.additionalKgRate).toFixed(2)} AED/kg
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={tier.isActive ? 'default' : 'secondary'}>
-                          {tier.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {(clients || []).map((client: any) => {
+                    const isEditing = editingId === client.id;
+                    return (
+                      <TableRow key={client.id}>
+                        <TableCell>
+                          <p className="font-medium text-sm">{client.companyName}</p>
+                          <Badge variant={client.status === 'active' ? 'default' : 'secondary'} className="text-[10px] h-4 mt-1">
+                            {client.status}
+                          </Badge>
+                        </TableCell>
+
+                        {/* Zone 1 */}
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <Input
+                                className="h-7 w-16 text-xs"
+                                placeholder="Base"
+                                value={draft.zone1BaseRate}
+                                onChange={e => setDraft(d => ({ ...d, zone1BaseRate: e.target.value }))}
+                              />
+                              <Input
+                                className="h-7 w-14 text-xs"
+                                placeholder="+/kg"
+                                value={draft.zone1PerKg}
+                                onChange={e => setDraft(d => ({ ...d, zone1PerKg: e.target.value }))}
+                              />
+                            </div>
+                          ) : formatRate(client.zone1BaseRate, client.zone1PerKg)}
+                        </TableCell>
+
+                        {/* Zone 2 */}
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <Input
+                                className="h-7 w-16 text-xs"
+                                placeholder="Base"
+                                value={draft.zone2BaseRate}
+                                onChange={e => setDraft(d => ({ ...d, zone2BaseRate: e.target.value }))}
+                              />
+                              <Input
+                                className="h-7 w-14 text-xs"
+                                placeholder="+/kg"
+                                value={draft.zone2PerKg}
+                                onChange={e => setDraft(d => ({ ...d, zone2PerKg: e.target.value }))}
+                              />
+                            </div>
+                          ) : formatRate(client.zone2BaseRate, client.zone2PerKg)}
+                        </TableCell>
+
+                        {/* Zone 3 */}
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <Input
+                                className="h-7 w-16 text-xs"
+                                placeholder="Base"
+                                value={draft.zone3BaseRate}
+                                onChange={e => setDraft(d => ({ ...d, zone3BaseRate: e.target.value }))}
+                              />
+                              <Input
+                                className="h-7 w-14 text-xs"
+                                placeholder="+/kg"
+                                value={draft.zone3PerKg}
+                                onChange={e => setDraft(d => ({ ...d, zone3PerKg: e.target.value }))}
+                              />
+                            </div>
+                          ) : formatRate(client.zone3BaseRate, client.zone3PerKg)}
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell>
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="h-7 px-2"
+                                onClick={() => saveEdit(client.id)}
+                                disabled={updateMutation.isPending}
+                              >
+                                <Save className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2"
+                                onClick={() => setEditingId(null)}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-muted-foreground hover:text-primary"
+                              onClick={() => startEdit(client)}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
-          ) : (
-            <p className="text-center py-8 text-muted-foreground">No DOM rates configured</p>
           )}
         </CardContent>
       </Card>
 
-      {/* SDD Rate Table */}
+      {/* SDD Rate Card */}
       <Card className="glass-strong border-blue-500/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Truck className="w-5 h-5" />
-            Same-Day Delivery (SDD) - Fixed Rates
-          </CardTitle>
-          <CardDescription>
-            Flat rate for same-day delivery within city limits
-          </CardDescription>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Truck className="w-5 h-5 text-orange-400" />
+            <CardTitle className="text-lg">Same-Day Delivery (SDD)</CardTitle>
+          </div>
+          <CardDescription>Dubai / Sharjah / Abu Dhabi / Ajman city limits</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <p className="text-center py-8 text-muted-foreground">Loading rates...</p>
-          ) : sddTiers.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Weight Range</TableHead>
-                    <TableHead>Base Rate</TableHead>
-                    <TableHead>Additional kg</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sddTiers.map((tier) => (
-                    <TableRow key={tier.id}>
-                      <TableCell className="font-medium">
-                        0 - {tier.maxWeight} kg
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-green-400 font-semibold">
-                          {parseFloat(tier.baseRate).toFixed(2)} AED
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-blue-400">
-                          +{parseFloat(tier.additionalKgRate).toFixed(2)} AED/kg
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={tier.isActive ? 'default' : 'secondary'}>
-                          {tier.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Cut-off Time:</span>
+              <span className="font-medium">15:00</span>
             </div>
-          ) : (
-            <p className="text-center py-8 text-muted-foreground">No SDD rates configured</p>
-          )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">0–5 kg:</span>
+              <span className="font-medium text-green-400">16 AED</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">5–10 kg:</span>
+              <span className="font-medium text-blue-400">+1 AED per additional kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Max Weight:</span>
+              <span className="font-medium">10 kg</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Delivery Window:</span>
+              <span className="font-medium">16:00 – 22:00</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -261,9 +321,16 @@ export default function RatesPanel() {
               </div>
               <span className="text-2xl font-bold text-green-400">2.00 AED</span>
             </div>
+            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
+              <div>
+                <p className="font-medium">Maximum COD Amount</p>
+                <p className="text-sm text-muted-foreground">Per shipment limit</p>
+              </div>
+              <span className="text-2xl font-bold text-green-400">3,000 AED</span>
+            </div>
             <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
               <p className="text-sm text-blue-200">
-                <strong>Note:</strong> COD fees are calculated as 3.3% of the collected value, with a minimum fee of 2 AED.
+                <strong>Note:</strong> COD fees are calculated as 3.3% of the collected value, with a minimum of 2 AED.
                 Settlement is processed on a weekly or bi-weekly basis as per client agreement.
               </p>
             </div>

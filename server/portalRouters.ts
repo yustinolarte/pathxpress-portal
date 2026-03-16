@@ -3648,6 +3648,43 @@ export const clientsRouter = router({
 
       return await getAllClientAccounts();
     }),
+
+  updateZoneRates: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      clientId: z.number(),
+      zone1BaseRate: z.string().optional(),
+      zone1PerKg:    z.string().optional(),
+      zone2BaseRate: z.string().optional(),
+      zone2PerKg:    z.string().optional(),
+      zone3BaseRate: z.string().optional(),
+      zone3PerKg:    z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const user = await verifyPortalToken(input.token);
+      if (!user || user.role !== 'admin') {
+        throw new TRPCError({ code: 'UNAUTHORIZED' });
+      }
+
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+
+      const { clientAccounts } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+
+      await db.update(clientAccounts)
+        .set({
+          zone1BaseRate: input.zone1BaseRate ?? null,
+          zone1PerKg:    input.zone1PerKg    ?? null,
+          zone2BaseRate: input.zone2BaseRate ?? null,
+          zone2PerKg:    input.zone2PerKg    ?? null,
+          zone3BaseRate: input.zone3BaseRate ?? null,
+          zone3PerKg:    input.zone3PerKg    ?? null,
+        })
+        .where(eq(clientAccounts.id, input.clientId));
+
+      return { success: true };
+    }),
 });
 
 /**

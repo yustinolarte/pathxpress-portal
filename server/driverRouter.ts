@@ -220,4 +220,11 @@ export const driverRouter = router({
             requireAdmin(input.token);
             return driverAdmin.deleteRoute(input.routeId);
         }),
+
+    getDriverPerformance: publicProcedure
+        .input(z.object({ token: z.string(), driverId: z.number() }))
+        .query(async ({ input }) => {
+            requireAdmin(input.token);
+            return driverAdmin.getDriverPerformance(input.driverId);
+        }),
 });

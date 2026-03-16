@@ -8,9 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2 } from 'lucide-react';
 import { APP_LOGO } from '@/const';
-import DashboardLayout, { MenuItem } from '@/components/DashboardLayout';
+import ModernDashboardLayout, { ModernMenuItem } from '@/components/ModernDashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
 import BillingPanel from '@/components/BillingPanel';
@@ -455,24 +455,24 @@ export default function AdminDashboard() {
     activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled').length || 0,
   };
 
-  const menuItems: MenuItem[] = [
-    { icon: LayoutDashboard, label: 'Overview', value: 'overview' },
-    { icon: BarChart3, label: 'Analytics', value: 'analytics' },
-    { icon: Users, label: 'Clients', value: 'clients' },
-    { icon: Package, label: 'All Orders', value: 'orders' },
-    { icon: Truck, label: 'Drivers', value: 'drivers' },
-    { icon: FileText, label: 'Billing', value: 'billing' },
-    { icon: Wallet, label: 'COD Management', value: 'cod' },
-    { icon: TrendingUp, label: 'Rates & Pricing', value: 'rates' },
-    { icon: Globe, label: 'International', value: 'international' },
-    { icon: FileText, label: 'Reports', value: 'reports' },
-    { icon: MessageSquare, label: 'Requests', value: 'requests' },
-    { icon: Mail, label: 'Messages', value: 'messages' },
-    { icon: BookOpen, label: 'Guide', value: 'guide' },
+  const menuItems: ModernMenuItem[] = [
+    { icon: 'dashboard', label: 'Overview', value: 'overview' },
+    { icon: 'bar_chart', label: 'Analytics', value: 'analytics' },
+    { icon: 'group', label: 'Clients', value: 'clients' },
+    { icon: 'package_2', label: 'All Orders', value: 'orders' },
+    { icon: 'local_shipping', label: 'Drivers', value: 'drivers' },
+    { icon: 'receipt_long', label: 'Billing', value: 'billing' },
+    { icon: 'payments', label: 'COD Management', value: 'cod' },
+    { icon: 'trending_up', label: 'Rates & Pricing', value: 'rates' },
+    { icon: 'public', label: 'International', value: 'international' },
+    { icon: 'summarize', label: 'Reports', value: 'reports' },
+    { icon: 'chat', label: 'Requests', value: 'requests' },
+    { icon: 'mail', label: 'Messages', value: 'messages' },
+    { icon: 'menu_book', label: 'Guide', value: 'guide' },
   ];
 
   return (
-    <DashboardLayout
+    <ModernDashboardLayout
       menuItems={menuItems}
       activeItem={activeTab}
       onItemClick={(value: string, searchData?: string) => {
@@ -493,46 +493,56 @@ export default function AdminDashboard() {
       user={user}
       logout={handleLogout}
       title="Admin Portal"
+      onCreateShipment={() => setCreateOrderDialogOpen(true)}
     >
       <div className="min-h-full p-4 space-y-6">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4 mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="glass-strong border-blue-500/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Total Clients
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalClients}</div>
-                </CardContent>
-              </Card>
-              <Card className="glass-strong border-green-500/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Total Orders
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalOrders}</div>
-                </CardContent>
-              </Card>
-              <Card className="glass-strong border-purple-500/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" />
-                    Active Today
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.activeOrders}</div>
-                </CardContent>
-              </Card>
+            <h2 className="text-2xl font-bold">Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
+                    <span className="material-symbols-outlined">group</span>
+                  </div>
+                  <span className="text-xs font-bold text-muted-foreground">All time</span>
+                </div>
+                <p className="text-muted-foreground text-sm font-medium">Total Clients</p>
+                <h3 className="text-2xl font-bold mt-1">{stats.totalClients}</h3>
+                <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(stats.totalClients, 100)}%` }}></div>
+                </div>
+              </div>
+              <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2.5 bg-blue-500/10 rounded-lg text-blue-500">
+                    <span className="material-symbols-outlined">package_2</span>
+                  </div>
+                  <span className="text-xs font-bold text-muted-foreground">All time</span>
+                </div>
+                <p className="text-muted-foreground text-sm font-medium">Total Orders</p>
+                <h3 className="text-2xl font-bold mt-1">{stats.totalOrders}</h3>
+                <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min((stats.totalOrders / Math.max(stats.totalOrders, 1)) * 100, 100)}%` }}></div>
+                </div>
+              </div>
+              <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2.5 bg-green-500/10 rounded-lg text-green-500">
+                    <span className="material-symbols-outlined">local_shipping</span>
+                  </div>
+                  <span className="text-xs font-bold text-muted-foreground">
+                    {stats.totalOrders > 0 ? `${Math.round((stats.activeOrders / stats.totalOrders) * 100)}% of total` : 'No orders'}
+                  </span>
+                </div>
+                <p className="text-muted-foreground text-sm font-medium">Active Orders</p>
+                <h3 className="text-2xl font-bold mt-1">{stats.activeOrders}</h3>
+                <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500 rounded-full" style={{ width: `${stats.totalOrders > 0 ? (stats.activeOrders / stats.totalOrders) * 100 : 0}%` }}></div>
+                </div>
+              </div>
             </div>
           </TabsContent>
 
@@ -549,7 +559,7 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Overdue Invoices Alert */}
                 {clientAlerts.overdueClients.length > 0 && (
-                  <Card className="glass-strong border-red-500/30 bg-red-500/5">
+                  <Card className="bg-red-500/5 rounded-2xl border border-red-500/20 shadow-xl shadow-primary/5">
                     <CardHeader className="pb-2">
                       <div
                         className="flex items-center justify-between cursor-pointer"
@@ -584,7 +594,7 @@ export default function AdminDashboard() {
 
                 {/* Inactive Clients Alert */}
                 {clientAlerts.inactiveClients.length > 0 && (
-                  <Card className="glass-strong border-yellow-500/30 bg-yellow-500/5">
+                  <Card className="bg-yellow-500/5 rounded-2xl border border-yellow-500/20 shadow-xl shadow-primary/5">
                     <CardHeader className="pb-2">
                       <div
                         className="flex items-center justify-between cursor-pointer"
@@ -616,7 +626,7 @@ export default function AdminDashboard() {
 
             <div className="flex gap-4">
               {/* Clients Table */}
-              <Card className={`glass-strong border-blue-500/20 ${client360Id ? 'flex-1 min-w-0' : 'w-full'}`}>
+              <Card className={`bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 ${client360Id ? 'flex-1 min-w-0' : 'w-full'}`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
                     <CardTitle>Client Accounts</CardTitle>
@@ -782,7 +792,7 @@ export default function AdminDashboard() {
               {/* Client 360 Side Panel */}
               {client360Id !== null && (
                 <div className="w-80 shrink-0">
-                  <Card className="glass-strong border-blue-500/30 sticky top-4">
+                  <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 sticky top-4">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div>
@@ -974,7 +984,7 @@ export default function AdminDashboard() {
 
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-4">
-            <Card className="glass-strong border-blue-500/20">
+            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
               <CardHeader>
                 <CardTitle>All Orders</CardTitle>
                 <div className="flex justify-between items-center">
@@ -1316,7 +1326,7 @@ export default function AdminDashboard() {
 
           {/* Requests Tab */}
           <TabsContent value="requests" className="space-y-4">
-            <Card className="glass-strong border-blue-500/20">
+            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
               <CardHeader>
                 <CardTitle>Pickup Requests</CardTitle>
                 <CardDescription>View all pickup requests from the website</CardDescription>
@@ -1380,7 +1390,7 @@ export default function AdminDashboard() {
 
           {/* Messages Tab */}
           <TabsContent value="messages" className="space-y-4">
-            <Card className="glass-strong border-blue-500/20">
+            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
               <CardHeader>
                 <CardTitle>Contact Messages</CardTitle>
                 <CardDescription>View inquiries from the Contact Us form</CardDescription>
@@ -1438,7 +1448,7 @@ export default function AdminDashboard() {
 
           {/* Guide Tab */}
           <TabsContent value="guide" className="space-y-4">
-            <Card className="glass-strong border-blue-500/20">
+            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
               <CardHeader>
                 <CardTitle>Waybill Guide</CardTitle>
                 <CardDescription>Instructions for printing and attaching waybills</CardDescription>
@@ -1790,110 +1800,131 @@ export default function AdminDashboard() {
 
         {/* Create Client Dialog */}
         <Dialog open={createClientDialogOpen} onOpenChange={setCreateClientDialogOpen}>
-          <DialogContent className="glass-strong max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Add New Client</DialogTitle>
-              <DialogDescription>
-                Create a new client account for the portal
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="companyName">Company Name *</Label>
-                <Input
-                  id="companyName"
-                  value={newClient.companyName}
-                  onChange={(e) => setNewClient({ ...newClient, companyName: e.target.value })}
-                  placeholder="Enter company name"
-                />
+          <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <div className="p-6">
+              <DialogHeader className="mb-6">
+                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <Building2 className="w-6 h-6 text-blue-400" />
+                  </div>
+                  Add New Client
+                </DialogTitle>
+                <DialogDescription>
+                  Create a new client account for the portal
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName">Company Name *</Label>
+                    <Input
+                      id="companyName"
+                      value={newClient.companyName}
+                      onChange={(e) => setNewClient({ ...newClient, companyName: e.target.value })}
+                      placeholder="Enter company name"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="contactName">Contact Name *</Label>
+                    <Input
+                      id="contactName"
+                      value={newClient.contactName}
+                      onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })}
+                      placeholder="Enter contact name"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="billingEmail">Billing Email *</Label>
+                    <Input
+                      id="billingEmail"
+                      type="email"
+                      value={newClient.billingEmail}
+                      onChange={(e) => setNewClient({ ...newClient, billingEmail: e.target.value })}
+                      placeholder="email@example.com"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      value={newClient.phone}
+                      onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
+                      placeholder="+971 XX XXX XXXX"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="billingAddress">Billing Address</Label>
+                  <Input
+                    id="billingAddress"
+                    value={newClient.billingAddress}
+                    onChange={(e) => setNewClient({ ...newClient, billingAddress: e.target.value })}
+                    placeholder="Enter billing address"
+                    className="bg-white/5 border-white/10"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      value={newClient.city}
+                      onChange={(e) => setNewClient({ ...newClient, city: e.target.value })}
+                      placeholder="Enter city"
+                      className="bg-white/5 border-white/10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Select
+                      value={newClient.country}
+                      onValueChange={(value) => setNewClient({ ...newClient, country: value })}
+                    >
+                      <SelectTrigger id="country" className="bg-white/5 border-white/10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="glass-strong">
+                        <SelectItem value="UAE">United Arab Emirates</SelectItem>
+                        <SelectItem value="Saudi Arabia">Saudi Arabia</SelectItem>
+                        <SelectItem value="Qatar">Qatar</SelectItem>
+                        <SelectItem value="Kuwait">Kuwait</SelectItem>
+                        <SelectItem value="Bahrain">Bahrain</SelectItem>
+                        <SelectItem value="Oman">Oman</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                  <Checkbox
+                    id="codAllowed"
+                    checked={newClient.codAllowed}
+                    onCheckedChange={(checked) => setNewClient({ ...newClient, codAllowed: checked as boolean })}
+                  />
+                  <Label htmlFor="codAllowed" className="cursor-pointer">
+                    Allow COD (Cash on Delivery)
+                  </Label>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="contactName">Contact Name *</Label>
-                <Input
-                  id="contactName"
-                  value={newClient.contactName}
-                  onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })}
-                  placeholder="Enter contact name"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="billingEmail">Billing Email *</Label>
-                <Input
-                  id="billingEmail"
-                  type="email"
-                  value={newClient.billingEmail}
-                  onChange={(e) => setNewClient({ ...newClient, billingEmail: e.target.value })}
-                  placeholder="email@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  value={newClient.phone}
-                  onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
-                  placeholder="+971 XX XXX XXXX"
-                />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="billingAddress">Billing Address</Label>
-                <Input
-                  id="billingAddress"
-                  value={newClient.billingAddress}
-                  onChange={(e) => setNewClient({ ...newClient, billingAddress: e.target.value })}
-                  placeholder="Enter billing address"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  value={newClient.city}
-                  onChange={(e) => setNewClient({ ...newClient, city: e.target.value })}
-                  placeholder="Enter city"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="country">Country</Label>
-                <Select
-                  value={newClient.country}
-                  onValueChange={(value) => setNewClient({ ...newClient, country: value })}
+              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+                <Button variant="outline" onClick={() => setCreateClientDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateClient}
+                  disabled={createClientMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700"
                 >
-                  <SelectTrigger id="country">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="UAE">United Arab Emirates</SelectItem>
-                    <SelectItem value="Saudi Arabia">Saudi Arabia</SelectItem>
-                    <SelectItem value="Qatar">Qatar</SelectItem>
-                    <SelectItem value="Kuwait">Kuwait</SelectItem>
-                    <SelectItem value="Bahrain">Bahrain</SelectItem>
-                    <SelectItem value="Oman">Oman</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center space-x-2 col-span-2">
-                <Checkbox
-                  id="codAllowed"
-                  checked={newClient.codAllowed}
-                  onCheckedChange={(checked) => setNewClient({ ...newClient, codAllowed: checked as boolean })}
-                />
-                <Label htmlFor="codAllowed" className="cursor-pointer">
-                  Allow COD (Cash on Delivery)
-                </Label>
-              </div>
+                  {createClientMutation.isPending ? 'Creating...' : 'Create Client'}
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateClientDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateClient}
-                disabled={createClientMutation.isPending}
-              >
-                {createClientMutation.isPending ? 'Creating...' : 'Create Client'}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -1913,62 +1944,76 @@ export default function AdminDashboard() {
 
         {/* Create User Dialog */}
         <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
-          <DialogContent className="glass-strong">
-            <DialogHeader>
-              <DialogTitle>Create User Login</DialogTitle>
-              <DialogDescription>
-                Create a login for {selectedClientForUser?.companyName}.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="userEmail">Email Address</Label>
-                <Input
-                  id="userEmail"
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="user@example.com"
-                />
+          <DialogContent className="glass-strong !w-[90vw] !max-w-[480px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <div className="w-full h-1 bg-gradient-to-r from-violet-600 to-purple-600" />
+            <div className="p-6">
+              <DialogHeader className="mb-6">
+                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-violet-500/20">
+                    <UserPlus className="w-6 h-6 text-violet-400" />
+                  </div>
+                  Create User Login
+                </DialogTitle>
+                <DialogDescription>
+                  Create a login for {selectedClientForUser?.companyName}.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="userEmail">Email Address</Label>
+                  <Input
+                    id="userEmail"
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    placeholder="user@example.com"
+                    className="bg-white/5 border-white/10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="userPassword">Password</Label>
+                  <Input
+                    id="userPassword"
+                    type="password"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                    placeholder="Minimum 8 characters"
+                    className="bg-white/5 border-white/10"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="userPassword">Password</Label>
-                <Input
-                  id="userPassword"
-                  type="password"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  placeholder="Minimum 8 characters"
-                />
-              </div>
+              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+                <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateUser}
+                  disabled={createClientUserMutation.isPending}
+                  className="bg-violet-600 hover:bg-violet-700"
+                >
+                  {createClientUserMutation.isPending ? 'Creating...' : 'Create Login'}
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateUser}
-                disabled={createClientUserMutation.isPending}
-              >
-                {createClientUserMutation.isPending ? 'Creating...' : 'Create Login'}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* Client Notes Dialog */}
         <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
-          <DialogContent className="glass-strong max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <StickyNote className="h-5 w-5 text-amber-500" />
-                Client Notes: {selectedClientForNotes?.companyName}
-              </DialogTitle>
-              <DialogDescription>
-                Add internal notes about this client. This information is only visible to admins.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
+          <DialogContent className="glass-strong !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <div className="w-full h-1 bg-gradient-to-r from-amber-600 to-orange-600" />
+            <div className="p-6">
+              <DialogHeader className="mb-6">
+                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500/20">
+                    <StickyNote className="w-6 h-6 text-amber-400" />
+                  </div>
+                  Client Notes: {selectedClientForNotes?.companyName}
+                </DialogTitle>
+                <DialogDescription>
+                  Add internal notes about this client. This information is only visible to admins.
+                </DialogDescription>
+              </DialogHeader>
               <div className="space-y-2">
                 <Label htmlFor="clientNotes">Notes</Label>
                 <Textarea
@@ -1976,38 +2021,41 @@ export default function AdminDashboard() {
                   value={clientNotes}
                   onChange={(e) => setClientNotes(e.target.value)}
                   placeholder="Enter notes about this client... (e.g., special arrangements, contact preferences, billing notes, etc.)"
-                  className="min-h-[200px] resize-y"
+                  className="min-h-[200px] resize-y bg-white/5 border-white/10"
                 />
               </div>
+              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+                <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveNotes}
+                  disabled={updateNotesMutation.isPending}
+                  className="bg-amber-500 hover:bg-amber-600"
+                >
+                  {updateNotesMutation.isPending ? 'Saving...' : 'Save Notes'}
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveNotes}
-                disabled={updateNotesMutation.isPending}
-                className="bg-amber-500 hover:bg-amber-600"
-              >
-                {updateNotesMutation.isPending ? 'Saving...' : 'Save Notes'}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* Change Password Dialog */}
         <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
-          <DialogContent className="glass-strong">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5 text-blue-500" />
-                Change Password
-              </DialogTitle>
-              <DialogDescription>
-                Set a new password for {selectedClientForPassword?.companyName}'s user account.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
+          <DialogContent className="glass-strong !w-[90vw] !max-w-[480px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600" />
+            <div className="p-6">
+              <DialogHeader className="mb-6">
+                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <Key className="w-6 h-6 text-blue-400" />
+                  </div>
+                  Change Password
+                </DialogTitle>
+                <DialogDescription>
+                  Set a new password for {selectedClientForPassword?.companyName}'s user account.
+                </DialogDescription>
+              </DialogHeader>
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
@@ -2016,24 +2064,25 @@ export default function AdminDashboard() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimum 8 characters"
+                  className="bg-white/5 border-white/10"
                 />
                 <p className="text-xs text-muted-foreground">
                   Password must be at least 8 characters long.
                 </p>
               </div>
+              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+                <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleChangePassword}
+                  disabled={updatePasswordMutation.isPending || newPassword.length < 8}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {updatePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleChangePassword}
-                disabled={updatePasswordMutation.isPending || newPassword.length < 8}
-                className="bg-blue-500 hover:bg-blue-600"
-              >
-                {updatePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -2071,6 +2120,6 @@ export default function AdminDashboard() {
 
 
       </div>
-    </DashboardLayout >
+    </ModernDashboardLayout>
   );
 }

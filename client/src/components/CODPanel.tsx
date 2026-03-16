@@ -345,7 +345,7 @@ export default function CODPanel() {
   return (
     <div className="space-y-6">
       {/* Client Filter */}
-      <Card className="glass-strong border-purple-500/20">
+      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-purple-400" />
@@ -384,7 +384,7 @@ export default function CODPanel() {
       </Card>
 
       {/* Enhanced COD Summary */}
-      <Card className="glass-strong border-blue-500/20 overflow-hidden">
+      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 overflow-hidden">
         <CardHeader className="bg-gradient-to-r from-blue-500/5 to-purple-500/5">
           <CardTitle className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-blue-500/5 border border-blue-500/10">
@@ -535,7 +535,7 @@ export default function CODPanel() {
       </Card>
 
       {/* Remittances Section */}
-      <Card>
+      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>COD Remittances</CardTitle>
@@ -548,129 +548,140 @@ export default function CODPanel() {
                 Create Remittance
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create COD Remittance</DialogTitle>
-                <DialogDescription>
-                  Select collected COD shipments to create a remittance payment to the client
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="client">Client</Label>
-                  <Select value={selectedClient?.toString() || ''} onValueChange={(value) => {
-                    setSelectedClient(parseInt(value));
-                    setSelectedCODRecords([]);
-                  }}>
-                    <SelectTrigger id="client">
-                      <SelectValue placeholder="Select a client" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients?.map((client: any) => (
-                        <SelectItem key={client.id} value={client.id.toString()}>
-                          {client.companyName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedClient && filteredPendingCOD && filteredPendingCOD.length > 0 && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Select Shipments ({selectedCODRecords.length} selected)</Label>
-                      <div className="border rounded-md max-h-[300px] overflow-y-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-[50px]">Select</TableHead>
-                              <TableHead>Waybill</TableHead>
-                              <TableHead>Amount</TableHead>
-                              <TableHead>Collected Date</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {filteredPendingCOD.map((record) => (
-                              <TableRow key={record.id}>
-                                <TableCell>
-                                  <Checkbox
-                                    checked={selectedCODRecords.includes(record.id)}
-                                    onCheckedChange={() => toggleCODSelection(record.id)}
-                                  />
-                                </TableCell>
-                                <TableCell>{record.order.waybillNumber}</TableCell>
-                                <TableCell>{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
-                                <TableCell>{formatDate(record.collectedDate)}</TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                      {selectedCODRecords.length > 0 && (
-                        <div className="flex justify-between items-center p-3 bg-muted rounded-md">
-                          <span className="font-medium">Total Amount:</span>
-                          <span className="text-lg font-bold">AED {totalSelected.toFixed(2)}</span>
-                        </div>
-                      )}
+            <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+              <div className="w-full h-1 bg-gradient-to-r from-purple-600 to-indigo-600" />
+              <div className="p-6">
+                <DialogHeader className="mb-6">
+                  <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-purple-500/20">
+                      <Wallet className="w-6 h-6 text-purple-400" />
                     </div>
+                    Create COD Remittance
+                  </DialogTitle>
+                  <DialogDescription>
+                    Select collected COD shipments to create a remittance payment to the client
+                  </DialogDescription>
+                </DialogHeader>
 
-                    <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="client">Client</Label>
+                    <Select value={selectedClient?.toString() || ''} onValueChange={(value) => {
+                      setSelectedClient(parseInt(value));
+                      setSelectedCODRecords([]);
+                    }}>
+                      <SelectTrigger id="client" className="bg-white/5 border-white/10">
+                        <SelectValue placeholder="Select a client" />
+                      </SelectTrigger>
+                      <SelectContent className="glass-strong">
+                        {clients?.map((client: any) => (
+                          <SelectItem key={client.id} value={client.id.toString()}>
+                            {client.companyName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedClient && filteredPendingCOD && filteredPendingCOD.length > 0 && (
+                    <>
                       <div className="space-y-2">
-                        <Label htmlFor="paymentMethod">Payment Method</Label>
-                        <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                          <SelectTrigger id="paymentMethod">
-                            <SelectValue placeholder="Select method" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                            <SelectItem value="cash">Cash</SelectItem>
-                            <SelectItem value="cheque">Cheque</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label>Select Shipments ({selectedCODRecords.length} selected)</Label>
+                        <div className="border border-white/10 rounded-xl max-h-[300px] overflow-y-auto bg-white/5">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-[50px]">Select</TableHead>
+                                <TableHead>Waybill</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>Collected Date</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {filteredPendingCOD.map((record) => (
+                                <TableRow key={record.id}>
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedCODRecords.includes(record.id)}
+                                      onCheckedChange={() => toggleCODSelection(record.id)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>{record.order.waybillNumber}</TableCell>
+                                  <TableCell>{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
+                                  <TableCell>{formatDate(record.collectedDate)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        {selectedCODRecords.length > 0 && (
+                          <div className="flex justify-between items-center p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                            <span className="font-medium">Total Amount:</span>
+                            <span className="text-lg font-bold text-purple-400">AED {totalSelected.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="paymentMethod">Payment Method</Label>
+                          <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                            <SelectTrigger id="paymentMethod" className="bg-white/5 border-white/10">
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                            <SelectContent className="glass-strong">
+                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="cheque">Cheque</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="paymentReference">Payment Reference (Optional)</Label>
+                          <Input
+                            id="paymentReference"
+                            value={paymentReference}
+                            onChange={(e) => setPaymentReference(e.target.value)}
+                            placeholder="Transaction ID, cheque number, etc."
+                            className="bg-white/5 border-white/10"
+                          />
+                        </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="paymentReference">Payment Reference (Optional)</Label>
-                        <Input
-                          id="paymentReference"
-                          value={paymentReference}
-                          onChange={(e) => setPaymentReference(e.target.value)}
-                          placeholder="Transaction ID, cheque number, etc."
+                        <Label htmlFor="notes">Notes (Optional)</Label>
+                        <Textarea
+                          id="notes"
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          placeholder="Add any notes about this remittance..."
+                          rows={3}
+                          className="bg-white/5 border-white/10 resize-none"
                         />
                       </div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="notes">Notes (Optional)</Label>
-                      <Textarea
-                        id="notes"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Add any notes about this remittance..."
-                        rows={3}
-                      />
-                    </div>
+                      <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
+                        <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={handleCreateRemittance}
+                          disabled={selectedCODRecords.length === 0 || createRemittanceMutation.isPending}
+                          className="bg-purple-600 hover:bg-purple-700"
+                        >
+                          {createRemittanceMutation.isPending ? 'Creating...' : 'Create Remittance'}
+                        </Button>
+                      </div>
+                    </>
+                  )}
 
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={handleCreateRemittance}
-                        disabled={selectedCODRecords.length === 0 || createRemittanceMutation.isPending}
-                      >
-                        {createRemittanceMutation.isPending ? 'Creating...' : 'Create Remittance'}
-                      </Button>
+                  {selectedClient && filteredPendingCOD && filteredPendingCOD.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No pending COD collections for this client
                     </div>
-                  </>
-                )}
-
-                {selectedClient && filteredPendingCOD && filteredPendingCOD.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No pending COD collections for this client
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -755,7 +766,7 @@ export default function CODPanel() {
       />
 
       {/* All COD Records */}
-      <Card>
+      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
         <CardHeader>
           <CardTitle>All COD Records</CardTitle>
           <CardDescription>Complete history of cash on delivery transactions</CardDescription>

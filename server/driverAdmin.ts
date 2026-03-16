@@ -541,6 +541,83 @@ export async function deleteReport(id: number) {
     return { success: true };
 }
 
+// ============ DRIVER PERFORMANCE ============
+
+export async function getDriverPerformance(driverId: number) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const [driver] = await db.select().from(drivers).where(eq(drivers.id, driverId)).limit(1);
+    if (!driver) return null;
+
+    // Get all routes for this driver
+    const driverRoutesData = await db
+        .select()
+        .from(driverRoutes)
+        .where(eq(driverRoutes.driverId, driverId))
+        .orderBy(desc(driverRoutes.date));
+
+    const routeIds = driverRoutesData.map(r => r.id);
+
+    // Aggregate delivery stats
+    let totalDeliveries = 0;
+    let delivered = 0;
+    let attempted = 0;
+    let returned = 0;
+    let codTotal = 0;
+    let totalPieces = 0;
+
+    if (routeIds.length > 0) {
+        const allStops = await db.select().from(routeOrders).where(inArray(routeOrders.routeId, routeIds));
+        totalDeliveries = allStops.filter(s => s.type === 'delivery').length;
+        delivered = allStops.filter(s => s.status === 'delivered').length;
+        attempted = allStops.filter(s => s.status === 'attempted').length;
+        returned = allStops.filter(s => s.status === 'returned').length;
+
+        const orderIds = Array.from(new Set(allStops.map(s => s.orderId)));
+        if (orderIds.length > 0) {
+            const orderData = await db.select().from(orders).where(inArray(orders.id, orderIds));
+            for (const o of orderData) {
+                if (o.codRequired === 1 && o.codAmount) codTotal += parseFloat(o.codAmount) || 0;
+                totalPieces += o.pieces || 0;
+            }
+        }
+    }
+
+    // Last 30 days stats
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentRoutes = driverRoutesData.filter(r => new Date(r.date) >= thirtyDaysAgo);
+
+    // Reports for this driver
+    const driverReportsData = await db.select().from(driverReports).where(eq(driverReports.driverId, driverId));
+
+    const successRate = totalDeliveries > 0 ? Math.round((delivered / totalDeliveries) * 100) : 0;
+
+    return {
+        driver: { id: driver.id, fullName: driver.fullName, username: driver.username, status: driver.status, vehicleNumber: driver.vehicleNumber, phone: driver.phone, email: driver.email, emiratesId: driver.emiratesId, licenseNo: driver.licenseNo, createdAt: driver.createdAt },
+        stats: {
+            totalRoutes: driverRoutesData.length,
+            recentRoutes: recentRoutes.length,
+            totalDeliveries,
+            delivered,
+            attempted,
+            returned,
+            successRate,
+            codTotal: Math.round(codTotal * 100) / 100,
+            totalPieces,
+            totalReports: driverReportsData.length,
+            pendingReports: driverReportsData.filter(r => r.status === 'pending').length,
+        },
+        recentRoutes: driverRoutesData.slice(0, 10).map(r => ({
+            id: r.id,
+            date: r.date,
+            zone: r.zone,
+            status: r.status,
+        })),
+    };
+}
+
 // ============ AVAILABLE ORDERS ============
 
 export async function getAvailableOrders() {

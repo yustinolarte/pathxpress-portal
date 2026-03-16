@@ -399,172 +399,180 @@ export default function BillingPanel() {
               Generate Invoice
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Generate New Invoice</DialogTitle>
-              <DialogDescription>
-                Create an invoice for a client based on shipments in a date range
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <Label>Client</Label>
-                <Select value={selectedClient?.toString()} onValueChange={(v) => setSelectedClient(parseInt(v))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients?.map((client: any) => (
-                      <SelectItem key={client.id} value={client.id.toString()}>
-                        {client.companyName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Period Start</Label>
-                  <Input
-                    type="date"
-                    value={periodStart}
-                    onChange={(e) => setPeriodStart(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Period End</Label>
-                  <Input
-                    type="date"
-                    value={periodEnd}
-                    onChange={(e) => setPeriodEnd(e.target.value)}
-                  />
-                </div>
-              </div>
-
-
-              {/* Billable Shipments List */}
-              {selectedClient && periodStart && periodEnd && (
-                <div className="space-y-2 border rounded-md p-3 mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <Label>Billable Shipments ({selectedShipmentIds.length})</Label>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="select-all"
-                        checked={selectAll}
-                        onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
-                      />
-                      <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">
-                        Select All
-                      </label>
-                    </div>
+          <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <div className="p-6">
+              <DialogHeader className="mb-6">
+                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-500/20">
+                    <FileText className="w-6 h-6 text-blue-400" />
                   </div>
+                  Generate New Invoice
+                </DialogTitle>
+                <DialogDescription>
+                  Create an invoice for a client based on shipments in a date range
+                </DialogDescription>
+              </DialogHeader>
 
-                  {isLoadingBillable ? (
-                    <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
-                  ) : !billableShipments || billableShipments.length === 0 ? (
-                    <div className="text-center py-4 text-sm text-red-400">
-                      No delivered shipments found for this period.
-                    </div>
-                  ) : (
-                    <div className="max-h-[200px] overflow-y-auto space-y-2">
-                      {billableShipments.map((shipment: any) => (
-                        <div key={shipment.id} className="flex items-start space-x-2 p-2 rounded hover:bg-muted/50">
-                          <Checkbox
-                            id={`shipment-${shipment.id}`}
-                            checked={selectedShipmentIds.includes(shipment.id)}
-                            onCheckedChange={() => toggleShipmentSelection(shipment.id)}
-                          />
-                          <div className="grid gap-1.5 leading-none">
-                            <label
-                              htmlFor={`shipment-${shipment.id}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                            >
-                              {shipment.waybillNumber}
-                            </label>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
-                            </p>
-                          </div>
-
-                          <div className="ml-auto text-xs font-mono font-medium">
-                            AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
-                          </div>
-                        </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Client</Label>
+                  <Select value={selectedClient?.toString()} onValueChange={(v) => setSelectedClient(parseInt(v))}>
+                    <SelectTrigger className="bg-white/5 border-white/10">
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent className="glass-strong">
+                      {clients?.map((client: any) => (
+                        <SelectItem key={client.id} value={client.id.toString()}>
+                          {client.companyName}
+                        </SelectItem>
                       ))}
-                    </div>
-                  )}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
 
-              {/* Preview Step */}
-              {showPreviewStep ? (
-                <div className="space-y-4 border-t pt-4">
-                  <h4 className="font-semibold text-lg flex items-center gap-2">
-                    <Eye className="w-5 h-5" />
-                    Invoice Preview
-                  </h4>
-
-                  <div className="p-4 bg-muted/30 rounded-lg space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Client:</span>
-                      <span className="font-medium">{clients?.find(c => c.id === selectedClient)?.companyName}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Period:</span>
-                      <span>{periodStart} to {periodEnd}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Shipments:</span>
-                      <span>{selectedShipmentIds.length} items</span>
-                    </div>
-                    <div className="flex justify-between text-sm border-t pt-2">
-                      <span className="text-muted-foreground">Subtotal:</span>
-                      <span>AED {previewTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Taxes:</span>
-                      <span>AED 0.00</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-lg border-t pt-2">
-                      <span>Total:</span>
-                      <span className="text-primary">AED {previewTotal.toFixed(2)}</span>
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Period Start</Label>
+                    <Input
+                      type="date"
+                      value={periodStart}
+                      onChange={(e) => setPeriodStart(e.target.value)}
+                      className="bg-white/5 border-white/10"
+                    />
                   </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={handleBackToSelection}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      onClick={handleConfirmGenerate}
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      disabled={generateInvoice.isPending}
-                    >
-                      {generateInvoice.isPending ? (
-                        <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
-                      ) : (
-                        'Confirm & Generate Invoice'
-                      )}
-                    </Button>
+                  <div className="space-y-2">
+                    <Label>Period End</Label>
+                    <Input
+                      type="date"
+                      value={periodEnd}
+                      onChange={(e) => setPeriodEnd(e.target.value)}
+                      className="bg-white/5 border-white/10"
+                    />
                   </div>
                 </div>
-              ) : (
-                <Button
-                  onClick={handleShowPreview}
-                  className="w-full"
-                  disabled={!selectedClient || !periodStart || !periodEnd || selectedShipmentIds.length === 0}
-                >
-                  <Eye className="w-4 h-4 mr-2" />
-                  Preview Invoice
-                </Button>
-              )}
+
+                {/* Billable Shipments List */}
+                {selectedClient && periodStart && periodEnd && (
+                  <div className="space-y-2 border border-white/10 rounded-xl p-4 bg-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label>Billable Shipments ({selectedShipmentIds.length})</Label>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="select-all"
+                          checked={selectAll}
+                          onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                        />
+                        <label htmlFor="select-all" className="text-xs text-muted-foreground cursor-pointer">
+                          Select All
+                        </label>
+                      </div>
+                    </div>
+
+                    {isLoadingBillable ? (
+                      <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
+                    ) : !billableShipments || billableShipments.length === 0 ? (
+                      <div className="text-center py-4 text-sm text-red-400">
+                        No delivered shipments found for this period.
+                      </div>
+                    ) : (
+                      <div className="max-h-[200px] overflow-y-auto space-y-2">
+                        {billableShipments.map((shipment: any) => (
+                          <div key={shipment.id} className="flex items-start space-x-2 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                            <Checkbox
+                              id={`shipment-${shipment.id}`}
+                              checked={selectedShipmentIds.includes(shipment.id)}
+                              onCheckedChange={() => toggleShipmentSelection(shipment.id)}
+                            />
+                            <div className="grid gap-1.5 leading-none">
+                              <label
+                                htmlFor={`shipment-${shipment.id}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {shipment.waybillNumber}
+                              </label>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
+                              </p>
+                            </div>
+                            <div className="ml-auto text-xs font-mono font-medium">
+                              AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Preview Step */}
+                {showPreviewStep ? (
+                  <div className="space-y-4 border-t border-white/10 pt-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <Eye className="w-5 h-5 text-blue-400" />
+                      Invoice Preview
+                    </h4>
+
+                    <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Client:</span>
+                        <span className="font-medium">{clients?.find(c => c.id === selectedClient)?.companyName}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Period:</span>
+                        <span>{periodStart} to {periodEnd}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Shipments:</span>
+                        <span>{selectedShipmentIds.length} items</span>
+                      </div>
+                      <div className="flex justify-between text-sm border-t border-white/10 pt-2">
+                        <span className="text-muted-foreground">Subtotal:</span>
+                        <span>AED {previewTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Taxes:</span>
+                        <span>AED 0.00</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-2">
+                        <span>Total:</span>
+                        <span className="text-primary">AED {previewTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={handleBackToSelection}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onClick={handleConfirmGenerate}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        disabled={generateInvoice.isPending}
+                      >
+                        {generateInvoice.isPending ? (
+                          <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</>
+                        ) : (
+                          'Confirm & Generate Invoice'
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={handleShowPreview}
+                    className="w-full bg-blue-600 hover:bg-blue-700"
+                    disabled={!selectedClient || !periodStart || !periodEnd || selectedShipmentIds.length === 0}
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Preview Invoice
+                  </Button>
+                )}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -572,51 +580,51 @@ export default function BillingPanel() {
 
       {/* Statistics Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Invoices</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{invoices?.length || 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card className="glass-strong border-green-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Paid</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-400">
-              {invoices?.filter(i => i.status === 'paid').length || 0}
+        <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+          <div className="flex justify-between items-start mb-3">
+            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+              <FileText className="w-4 h-4" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <p className="text-muted-foreground text-xs font-medium">Total Invoices</p>
+          <h3 className="text-2xl font-bold mt-1">{invoices?.length || 0}</h3>
+        </div>
 
-        <Card className="glass-strong border-yellow-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-400">
-              {invoices?.filter(i => i.status === 'pending').length || 0}
+        <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+          <div className="flex justify-between items-start mb-3">
+            <div className="p-2 bg-green-500/10 rounded-lg text-green-500">
+              <CheckCircle className="w-4 h-4" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <p className="text-muted-foreground text-xs font-medium">Paid</p>
+          <h3 className="text-2xl font-bold mt-1 text-green-400">{invoices?.filter(i => i.status === 'paid').length || 0}</h3>
+        </div>
 
-        <Card className="glass-strong border-red-500/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Balance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-400">
-              AED {invoices?.filter(i => i.status === 'overdue').reduce((sum, i) => sum + parseFloat(i.balance || i.total || '0'), 0).toFixed(2) || '0.00'}
+        <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+          <div className="flex justify-between items-start mb-3">
+            <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500">
+              <Clock className="w-4 h-4" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <p className="text-muted-foreground text-xs font-medium">Pending</p>
+          <h3 className="text-2xl font-bold mt-1 text-yellow-400">{invoices?.filter(i => i.status === 'pending').length || 0}</h3>
+        </div>
+
+        <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+          <div className="flex justify-between items-start mb-3">
+            <div className="p-2 bg-red-500/10 rounded-lg text-red-500">
+              <AlertCircle className="w-4 h-4" />
+            </div>
+          </div>
+          <p className="text-muted-foreground text-xs font-medium">Overdue Balance</p>
+          <h3 className="text-xl font-bold mt-1 text-red-400">
+            AED {invoices?.filter(i => i.status === 'overdue').reduce((sum, i) => sum + parseFloat(i.balance || i.total || '0'), 0).toFixed(2) || '0.00'}
+          </h3>
+        </div>
       </div>
 
       {/* Invoices Table */}
-      <Card className="glass-strong border-blue-500/20">
+      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>All Invoices</CardTitle>
@@ -817,121 +825,126 @@ export default function BillingPanel() {
 
       {/* Invoice Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="w-5 h-5" />
-              Invoice Preview
-            </DialogTitle>
-            <DialogDescription>
-              {previewInvoice?.invoiceNumber || 'Loading...'}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="glass-strong !w-[90vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+          <div className="w-full h-1 bg-gradient-to-r from-green-600 to-emerald-600" />
+          <div className="p-6">
+            <DialogHeader className="mb-6">
+              <DialogTitle className="text-2xl font-bold flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-500/20">
+                  <Eye className="w-6 h-6 text-green-400" />
+                </div>
+                Invoice Preview
+              </DialogTitle>
+              <DialogDescription>
+                {previewInvoice?.invoiceNumber || 'Loading...'}
+              </DialogDescription>
+            </DialogHeader>
 
-          {previewLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : previewInvoice ? (
-            <div className="space-y-6">
-              {/* Invoice Header */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : previewInvoice ? (
+              <div className="space-y-6">
+                {/* Invoice Header */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+                  <div>
+                    <h3 className="font-bold text-lg">{previewInvoice.clientName}</h3>
+                    <p className="text-sm text-muted-foreground">{previewInvoice.billingAddress}</p>
+                    <p className="text-sm text-muted-foreground">{previewInvoice.billingEmail}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm"><span className="text-muted-foreground">Invoice #:</span> <strong>{previewInvoice.invoiceNumber}</strong></p>
+                    <p className="text-sm"><span className="text-muted-foreground">Issue Date:</span> {formatDate(previewInvoice.issueDate)}</p>
+                    <p className="text-sm"><span className="text-muted-foreground">Due Date:</span> {formatDate(previewInvoice.dueDate)}</p>
+                    <p className="text-sm"><span className="text-muted-foreground">Period:</span> {formatDate(previewInvoice.periodFrom)} - {formatDate(previewInvoice.periodTo)}</p>
+                    <div className="mt-2">{getStatusBadge(previewInvoice.status)}</div>
+                  </div>
+                </div>
+
+                {/* Invoice Items */}
                 <div>
-                  <h3 className="font-bold text-lg">{previewInvoice.clientName}</h3>
-                  <p className="text-sm text-muted-foreground">{previewInvoice.billingAddress}</p>
-                  <p className="text-sm text-muted-foreground">{previewInvoice.billingEmail}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm"><span className="text-muted-foreground">Invoice #:</span> <strong>{previewInvoice.invoiceNumber}</strong></p>
-                  <p className="text-sm"><span className="text-muted-foreground">Issue Date:</span> {formatDate(previewInvoice.issueDate)}</p>
-                  <p className="text-sm"><span className="text-muted-foreground">Due Date:</span> {formatDate(previewInvoice.dueDate)}</p>
-                  <p className="text-sm"><span className="text-muted-foreground">Period:</span> {formatDate(previewInvoice.periodFrom)} - {formatDate(previewInvoice.periodTo)}</p>
-                  <div className="mt-2">{getStatusBadge(previewInvoice.status)}</div>
-                </div>
-              </div>
-
-              {/* Invoice Items */}
-              <div>
-                <h4 className="font-semibold mb-2">Items</h4>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Unit Price</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {previewInvoice.items?.map((item: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell>{item.description}</TableCell>
-                        <TableCell className="text-right">{item.quantity}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.unitPrice, previewInvoice.currency)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(item.total, previewInvoice.currency)}</TableCell>
+                  <h4 className="font-semibold mb-2">Items</h4>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Unit Price</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Totals */}
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(previewInvoice.subtotal, previewInvoice.currency)}</span>
+                    </TableHeader>
+                    <TableBody>
+                      {previewInvoice.items?.map((item: any, idx: number) => (
+                        <TableRow key={idx}>
+                          <TableCell>{item.description}</TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(item.unitPrice, previewInvoice.currency)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(item.total, previewInvoice.currency)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-                {previewInvoice.taxes && parseFloat(previewInvoice.taxes) > 0 && (
+
+                {/* Totals */}
+                <div className="border-t border-white/10 pt-4 space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Taxes</span>
-                    <span>{formatCurrency(previewInvoice.taxes, previewInvoice.currency)}</span>
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>{formatCurrency(previewInvoice.subtotal, previewInvoice.currency)}</span>
+                  </div>
+                  {previewInvoice.taxes && parseFloat(previewInvoice.taxes) > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Taxes</span>
+                      <span>{formatCurrency(previewInvoice.taxes, previewInvoice.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Total</span>
+                    <span className="text-primary">{formatCurrency(previewInvoice.total, previewInvoice.currency)}</span>
+                  </div>
+                  {previewInvoice.amountPaid && parseFloat(previewInvoice.amountPaid) > 0 && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Amount Paid</span>
+                        <span className="text-green-500">{formatCurrency(previewInvoice.amountPaid, previewInvoice.currency)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold">
+                        <span>Balance Due</span>
+                        <span className="text-orange-500">{formatCurrency(previewInvoice.balance || '0', previewInvoice.currency)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Adjustment Notes */}
+                {previewInvoice.isAdjusted && previewInvoice.adjustmentNotes && (
+                  <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
+                    <p className="text-sm font-medium text-yellow-500">Adjustment Notes:</p>
+                    <p className="text-sm text-muted-foreground">{previewInvoice.adjustmentNotes}</p>
                   </div>
                 )}
-                <div className="flex justify-between font-bold text-lg">
-                  <span>Total</span>
-                  <span className="text-primary">{formatCurrency(previewInvoice.total, previewInvoice.currency)}</span>
-                </div>
-                {previewInvoice.amountPaid && parseFloat(previewInvoice.amountPaid) > 0 && (
-                  <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Amount Paid</span>
-                      <span className="text-green-500">{formatCurrency(previewInvoice.amountPaid, previewInvoice.currency)}</span>
-                    </div>
-                    <div className="flex justify-between font-bold">
-                      <span>Balance Due</span>
-                      <span className="text-orange-500">{formatCurrency(previewInvoice.balance || '0', previewInvoice.currency)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
 
-              {/* Adjustment Notes */}
-              {previewInvoice.isAdjusted && previewInvoice.adjustmentNotes && (
-                <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
-                  <p className="text-sm font-medium text-yellow-500">Adjustment Notes:</p>
-                  <p className="text-sm text-muted-foreground">{previewInvoice.adjustmentNotes}</p>
+                {/* Actions */}
+                <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
+                  <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
+                    Close
+                  </Button>
+                  <Button className="bg-green-600 hover:bg-green-700" onClick={() => {
+                    handleDownloadPDF(previewInvoice);
+                    setPreviewDialogOpen(false);
+                  }}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Download PDF
+                  </Button>
                 </div>
-              )}
-
-              {/* Actions */}
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
-                  Close
-                </Button>
-                <Button onClick={() => {
-                  handleDownloadPDF(previewInvoice);
-                  setPreviewDialogOpen(false);
-                }}>
-                  <Download className="w-4 h-4 mr-2" />
-                  Download PDF
-                </Button>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No invoice data available
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                No invoice data available
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div >

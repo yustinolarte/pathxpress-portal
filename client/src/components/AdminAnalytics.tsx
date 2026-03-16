@@ -3,21 +3,18 @@ import { trpc } from '@/lib/trpc';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
     AreaChart,
     Area,
     BarChart,
     Bar,
-    PieChart,
-    Pie,
-    Cell,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
-    Legend,
+    Cell,
     ResponsiveContainer
 } from 'recharts';
 import {
@@ -33,7 +30,6 @@ import {
     AlertTriangle,
     CheckCircle2,
     RotateCcw,
-    X
 } from 'lucide-react';
 
 // Color palette for charts
@@ -64,6 +60,7 @@ export default function AdminAnalytics() {
     const { token } = usePortalAuth();
     const [drillDownDate, setDrillDownDate] = useState<string | null>(null);
     const [drillDownWaybills, setDrillDownWaybills] = useState<string[]>([]);
+    const [shipmentView, setShipmentView] = useState<'30d' | '6m'>('30d');
 
     const { data: analytics, isLoading } = trpc.portal.admin.getAnalytics.useQuery(
         { token: token || '' },
@@ -144,6 +141,10 @@ export default function AdminAnalytics() {
 
     // Max revenue for relative bar in top clients table
     const maxRevenue = revenue?.topClients?.[0]?.totalRevenue || 1;
+
+    // Revenue by service derived values
+    const maxServiceRevenue = revenue?.revenueByService?.[0]?.amount || 1;
+    const totalServiceRevenue = revenue?.revenueByService?.reduce((sum, s) => sum + s.amount, 0) || 1;
 
     return (
         <div className="space-y-6">
@@ -276,104 +277,263 @@ export default function AdminAnalytics() {
                 </Card>
             </div>
 
-            {/* Charts Row 1 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Daily Shipments Chart — clickable for drill-down */}
-                <Card className="glass-strong border-border overflow-hidden">
+            {/* Shipment Operations Section */}
+            <div>
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Package className="h-5 w-5 text-blue-400" />
+                    Shipment Operations
+                </h3>
+
+                {/* Shipment Volume — toggled 30d / 6m */}
+                <Card className="glass-strong border-border overflow-hidden mb-6">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <TrendingUp className="h-5 w-5 text-blue-400" />
-                            Shipments Per Day
-                        </CardTitle>
-                        <CardDescription>Last 30 days — click a bar to see shipments</CardDescription>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <TrendingUp className="h-5 w-5 text-blue-400" />
+                                    Shipment Volume
+                                </CardTitle>
+                                <CardDescription>
+                                    {shipmentView === '30d'
+                                        ? 'Last 30 days — click a point to see shipments'
+                                        : 'Last 6 months'}
+                                </CardDescription>
+                            </div>
+                            <div className="flex items-center gap-1 rounded-md border border-border p-1">
+                                <Button
+                                    variant={shipmentView === '30d' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    onClick={() => setShipmentView('30d')}
+                                    className="h-7 px-3 text-xs"
+                                >
+                                    30 Days
+                                </Button>
+                                <Button
+                                    variant={shipmentView === '6m' ? 'default' : 'ghost'}
+                                    size="sm"
+                                    onClick={() => setShipmentView('6m')}
+                                    className="h-7 px-3 text-xs"
+                                >
+                                    6 Months
+                                </Button>
+                            </div>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart
-                                    data={analytics.shipmentsPerDay}
-                                    onClick={(data) => {
-                                        if (data?.activePayload?.[0]) {
-                                            const point = data.activePayload[0].payload as { date: string; count: number; waybills: string[] };
-                                            setDrillDownDate(point.date);
-                                            setDrillDownWaybills(point.waybills || []);
-                                        }
-                                    }}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    <defs>
-                                        <linearGradient id="colorShipments" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                    <XAxis
-                                        dataKey="date"
-                                        tickFormatter={formatDate}
-                                        stroke="#9ca3af"
-                                        fontSize={11}
-                                        interval="preserveStartEnd"
-                                    />
-                                    <YAxis stroke="#9ca3af" fontSize={12} />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
+                                {shipmentView === '30d' ? (
+                                    <AreaChart
+                                        data={analytics.shipmentsPerDay}
+                                        onClick={(data) => {
+                                            if (data?.activePayload?.[0]) {
+                                                const point = data.activePayload[0].payload as { date: string; count: number; waybills: string[] };
+                                                setDrillDownDate(point.date);
+                                                setDrillDownWaybills(point.waybills || []);
+                                            }
                                         }}
-                                        labelFormatter={formatDate}
-                                        formatter={(value: number) => [value, 'Shipments']}
-                                    />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="count"
-                                        stroke="#3b82f6"
-                                        strokeWidth={2}
-                                        fillOpacity={1}
-                                        fill="url(#colorShipments)"
-                                        name="Shipments"
-                                    />
-                                </AreaChart>
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        <defs>
+                                            <linearGradient id="colorShipments" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                        <XAxis
+                                            dataKey="date"
+                                            tickFormatter={formatDate}
+                                            stroke="#9ca3af"
+                                            fontSize={11}
+                                            interval="preserveStartEnd"
+                                        />
+                                        <YAxis stroke="#9ca3af" fontSize={12} />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#1f2937',
+                                                border: '1px solid #374151',
+                                                borderRadius: '8px',
+                                            }}
+                                            labelFormatter={formatDate}
+                                            formatter={(value: number) => [value, 'Shipments']}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="count"
+                                            stroke="#3b82f6"
+                                            strokeWidth={2}
+                                            fillOpacity={1}
+                                            fill="url(#colorShipments)"
+                                            name="Shipments"
+                                        />
+                                    </AreaChart>
+                                ) : (
+                                    <BarChart data={analytics.monthlyComparison}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                        <XAxis
+                                            dataKey="month"
+                                            tickFormatter={formatMonth}
+                                            stroke="#9ca3af"
+                                            fontSize={12}
+                                        />
+                                        <YAxis stroke="#9ca3af" fontSize={12} />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#1f2937',
+                                                border: '1px solid #374151',
+                                                borderRadius: '8px',
+                                            }}
+                                            labelFormatter={formatMonth}
+                                            formatter={(value: number) => [value, 'Shipments']}
+                                        />
+                                        <Bar
+                                            dataKey="count"
+                                            fill="#8b5cf6"
+                                            radius={[4, 4, 0, 0]}
+                                            name="Shipments"
+                                        />
+                                    </BarChart>
+                                )}
                             </ResponsiveContainer>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Monthly Comparison Chart */}
+                {/* City Distribution + Status Distribution side by side */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    {/* Distribution by City — horizontal bar */}
+                    <Card className="glass-strong border-border overflow-hidden">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <MapPin className="h-5 w-5 text-green-400" />
+                                Distribution by City
+                            </CardTitle>
+                            <CardDescription>Top 10 destinations</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={analytics.distributionByCity} layout="vertical">
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                        <XAxis type="number" stroke="#9ca3af" fontSize={12} />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="city"
+                                            stroke="#9ca3af"
+                                            fontSize={11}
+                                            width={90}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#1f2937',
+                                                border: '1px solid #374151',
+                                                borderRadius: '8px',
+                                            }}
+                                            formatter={(value: number) => [value, 'Shipments']}
+                                        />
+                                        <Bar dataKey="count" radius={[0, 4, 4, 0]} name="Shipments">
+                                            {analytics.distributionByCity.map((_entry, index) => (
+                                                <Cell key={`city-cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Status Distribution */}
+                    <Card className="glass-strong border-border overflow-hidden">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Package className="h-5 w-5 text-orange-400" />
+                                Status Distribution
+                            </CardTitle>
+                            <CardDescription>All shipments by status</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={analytics.statusDistribution} layout="vertical">
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                        <XAxis type="number" stroke="#9ca3af" fontSize={12} />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="status"
+                                            stroke="#9ca3af"
+                                            fontSize={11}
+                                            width={100}
+                                            tickFormatter={(value) => value.replace(/_/g, ' ')}
+                                        />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#1f2937',
+                                                border: '1px solid #374151',
+                                                borderRadius: '8px',
+                                            }}
+                                            formatter={(value: number) => [value, 'Shipments']}
+                                            labelFormatter={(label) => label.replace(/_/g, ' ')}
+                                        />
+                                        <Bar
+                                            dataKey="count"
+                                            radius={[0, 4, 4, 0]}
+                                            name="Count"
+                                        >
+                                            {analytics.statusDistribution.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Average Delivery Time by Route */}
                 <Card className="glass-strong border-border overflow-hidden">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5 text-purple-400" />
-                            Monthly Comparison
+                            <Clock className="h-5 w-5 text-cyan-400" />
+                            Average Delivery Time by Route
                         </CardTitle>
-                        <CardDescription>Last 6 months</CardDescription>
+                        <CardDescription>Top 10 routes by volume</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[300px]">
+                        <div className="h-[350px]">
                             <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={analytics.monthlyComparison}>
+                                <BarChart data={analytics.deliveryTimeByRoute} layout="vertical">
                                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                                     <XAxis
-                                        dataKey="month"
-                                        tickFormatter={formatMonth}
+                                        type="number"
                                         stroke="#9ca3af"
                                         fontSize={12}
+                                        tickFormatter={(value) => `${value}h`}
                                     />
-                                    <YAxis stroke="#9ca3af" fontSize={12} />
+                                    <YAxis
+                                        type="category"
+                                        dataKey="route"
+                                        stroke="#9ca3af"
+                                        fontSize={11}
+                                        width={150}
+                                    />
                                     <Tooltip
                                         contentStyle={{
                                             backgroundColor: '#1f2937',
                                             border: '1px solid #374151',
                                             borderRadius: '8px',
                                         }}
-                                        labelFormatter={formatMonth}
+                                        formatter={(value: number, name: string) => {
+                                            if (name === 'avgHours') return [`${value} hours`, 'Avg Time'];
+                                            return [value, 'Shipments'];
+                                        }}
                                     />
                                     <Bar
-                                        dataKey="count"
-                                        fill="#8b5cf6"
-                                        radius={[4, 4, 0, 0]}
-                                        name="Shipments"
+                                        dataKey="avgHours"
+                                        fill="#14b8a6"
+                                        radius={[0, 4, 4, 0]}
+                                        name="Avg Delivery Time (hours)"
                                     />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -438,7 +598,7 @@ export default function AdminAnalytics() {
                         </CardContent>
                     </Card>
 
-                    {/* Revenue by Service Type */}
+                    {/* Revenue by Service Type — bar list */}
                     <Card className="glass-strong border-border overflow-hidden">
                         <CardHeader>
                             <CardTitle className="text-sm font-medium">Revenue by Service Type</CardTitle>
@@ -450,37 +610,39 @@ export default function AdminAnalytics() {
                                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                                 </div>
                             ) : revenue?.revenueByService && revenue.revenueByService.length > 0 ? (
-                                <div className="h-[260px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={revenue.revenueByService}
-                                                cx="50%"
-                                                cy="50%"
-                                                labelLine={false}
-                                                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                                outerRadius={90}
-                                                dataKey="amount"
-                                                nameKey="service"
-                                            >
-                                                {revenue.revenueByService.map((entry, index) => (
-                                                    <Cell
-                                                        key={`cell-${index}`}
-                                                        fill={SERVICE_COLORS[entry.service] || COLORS[index % COLORS.length]}
-                                                    />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip
-                                                contentStyle={{
-                                                    backgroundColor: '#1f2937',
-                                                    border: '1px solid #374151',
-                                                    borderRadius: '8px',
-                                                }}
-                                                formatter={(value: number) => [formatAED(value), 'Revenue']}
-                                            />
-                                            <Legend />
-                                        </PieChart>
-                                    </ResponsiveContainer>
+                                <div className="space-y-3">
+                                    {revenue.revenueByService.map((entry, index) => {
+                                        const pct = Math.round((entry.amount / totalServiceRevenue) * 100);
+                                        const color = SERVICE_COLORS[entry.service] || COLORS[index % COLORS.length];
+                                        return (
+                                            <div key={entry.service} className="flex items-center gap-3">
+                                                <span className="text-xs text-muted-foreground w-5 text-right">{index + 1}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-sm font-medium truncate">{entry.service}</span>
+                                                        <span className="text-sm font-mono ml-2 shrink-0" style={{ color }}>
+                                                            {formatAED(entry.amount)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full rounded-full"
+                                                            style={{
+                                                                width: `${(entry.amount / maxServiceRevenue) * 100}%`,
+                                                                backgroundColor: color,
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <Badge variant="secondary" className="text-xs shrink-0">
+                                                    {pct}%
+                                                </Badge>
+                                                <Badge variant="outline" className="text-xs shrink-0">
+                                                    {entry.count} shp
+                                                </Badge>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-center h-[260px] text-muted-foreground text-sm">
@@ -530,174 +692,6 @@ export default function AdminAnalytics() {
                     </Card>
                 )}
             </div>
-
-            {/* Charts Row 2 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Distribution by City */}
-                <Card className="glass-strong border-border overflow-hidden">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <MapPin className="h-5 w-5 text-green-400" />
-                            Distribution by City
-                        </CardTitle>
-                        <CardDescription>Top 10 destinations</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={analytics.distributionByCity}
-                                        cx="50%"
-                                        cy="50%"
-                                        labelLine={false}
-                                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                        outerRadius={100}
-                                        fill="#8884d8"
-                                        dataKey="count"
-                                        nameKey="city"
-                                    >
-                                        {analytics.distributionByCity.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Status Distribution */}
-                <Card className="glass-strong border-border overflow-hidden">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Package className="h-5 w-5 text-orange-400" />
-                            Status Distribution
-                        </CardTitle>
-                        <CardDescription>All shipments by status</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="h-[300px]">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={analytics.statusDistribution} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                    <XAxis type="number" stroke="#9ca3af" fontSize={12} />
-                                    <YAxis
-                                        type="category"
-                                        dataKey="status"
-                                        stroke="#9ca3af"
-                                        fontSize={11}
-                                        width={100}
-                                        tickFormatter={(value) => value.replace(/_/g, ' ')}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
-                                        formatter={(value: number) => [value, 'Shipments']}
-                                        labelFormatter={(label) => label.replace(/_/g, ' ')}
-                                    />
-                                    <Bar
-                                        dataKey="count"
-                                        radius={[0, 4, 4, 0]}
-                                        name="Count"
-                                    >
-                                        {analytics.statusDistribution.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Average Delivery Time by Route */}
-            <Card className="glass-strong border-border overflow-hidden">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Clock className="h-5 w-5 text-cyan-400" />
-                        Average Delivery Time by Route
-                    </CardTitle>
-                    <CardDescription>Top 10 routes by volume</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="h-[350px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={analytics.deliveryTimeByRoute} layout="vertical">
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis
-                                    type="number"
-                                    stroke="#9ca3af"
-                                    fontSize={12}
-                                    tickFormatter={(value) => `${value}h`}
-                                />
-                                <YAxis
-                                    type="category"
-                                    dataKey="route"
-                                    stroke="#9ca3af"
-                                    fontSize={11}
-                                    width={150}
-                                />
-                                <Tooltip
-                                    contentStyle={{
-                                        backgroundColor: '#1f2937',
-                                        border: '1px solid #374151',
-                                        borderRadius: '8px',
-                                    }}
-                                    formatter={(value: number, name: string) => {
-                                        if (name === 'avgHours') return [`${value} hours`, 'Avg Time'];
-                                        return [value, 'Shipments'];
-                                    }}
-                                />
-                                <Legend />
-                                <Bar
-                                    dataKey="avgHours"
-                                    fill="#14b8a6"
-                                    radius={[0, 4, 4, 0]}
-                                    name="Avg Delivery Time (hours)"
-                                />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-
-                    {/* Route Details Table */}
-                    <div className="mt-4 rounded-lg border border-border overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead className="bg-muted/50">
-                                <tr>
-                                    <th className="px-4 py-2 text-left font-medium">Route</th>
-                                    <th className="px-4 py-2 text-right font-medium">Deliveries</th>
-                                    <th className="px-4 py-2 text-right font-medium">Avg Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {analytics.deliveryTimeByRoute.map((route, index) => (
-                                    <tr key={index} className="border-t border-border hover:bg-muted/30">
-                                        <td className="px-4 py-2">{route.route}</td>
-                                        <td className="px-4 py-2 text-right">
-                                            <Badge variant="secondary">{route.count}</Badge>
-                                        </td>
-                                        <td className="px-4 py-2 text-right font-mono">
-                                            {route.avgHours}h
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </CardContent>
-            </Card>
 
             {/* Drill-down Modal */}
             <Dialog open={!!drillDownDate} onOpenChange={() => { setDrillDownDate(null); setDrillDownWaybills([]); }}>
