@@ -3467,6 +3467,7 @@ export const rateRouter = router({
       length: z.number().optional(),
       width: z.number().optional(),
       height: z.number().optional(),
+      emirate: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const user = await verifyPortalToken(input.token);
@@ -3479,6 +3480,7 @@ export const rateRouter = router({
         length: input.length,
         width: input.width,
         height: input.height,
+        emirate: input.emirate,
       });
 
       return result;
@@ -3659,6 +3661,8 @@ export const clientsRouter = router({
       zone2PerKg:    z.string().optional(),
       zone3BaseRate: z.string().optional(),
       zone3PerKg:    z.string().optional(),
+      sddBaseRate:   z.string().optional(),
+      sddPerKg:      z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const user = await verifyPortalToken(input.token);
@@ -3674,12 +3678,14 @@ export const clientsRouter = router({
 
       await db.update(clientAccounts)
         .set({
-          zone1BaseRate: input.zone1BaseRate ?? null,
-          zone1PerKg:    input.zone1PerKg    ?? null,
-          zone2BaseRate: input.zone2BaseRate ?? null,
-          zone2PerKg:    input.zone2PerKg    ?? null,
-          zone3BaseRate: input.zone3BaseRate ?? null,
-          zone3PerKg:    input.zone3PerKg    ?? null,
+          zone1BaseRate:      input.zone1BaseRate      ?? null,
+          zone1PerKg:         input.zone1PerKg         ?? null,
+          zone2BaseRate:      input.zone2BaseRate      ?? null,
+          zone2PerKg:         input.zone2PerKg         ?? null,
+          zone3BaseRate:      input.zone3BaseRate      ?? null,
+          zone3PerKg:         input.zone3PerKg         ?? null,
+          customSddBaseRate:  input.sddBaseRate        ?? null,
+          customSddPerKg:     input.sddPerKg           ?? null,
         })
         .where(eq(clientAccounts.id, input.clientId));
 

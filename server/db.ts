@@ -819,27 +819,12 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
   const db = await getDb();
   if (!db) return [];
 
-  const { invoiceItems, rateTiers } = await import("../drizzle/schema");
+  const { invoiceItems } = await import("../drizzle/schema");
   const { isNull, inArray } = await import("drizzle-orm");
 
-  // Get client and tiers first
+  // Get client for FOD/return fee handling
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
   if (!client) return [];
-
-  let domTier: any = null;
-  let sddTier: any = null;
-
-  if (client.manualRateTierId) {
-    const domTiers = await db.select().from(rateTiers)
-      .where(and(eq(rateTiers.id, client.manualRateTierId), eq(rateTiers.serviceType, 'DOM'))).limit(1);
-    domTier = domTiers[0];
-
-    if (domTier) {
-      const sddTiers = await db.select().from(rateTiers)
-        .where(and(eq(rateTiers.serviceType, 'SDD'), eq(rateTiers.minVolume, domTier.minVolume))).limit(1);
-      sddTier = sddTiers[0];
-    }
-  }
 
   // Use lastStatusUpdate (delivery/return date) instead of createdAt
   // so shipments delivered after their creation period are still captured
@@ -862,11 +847,42 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
       )
     );
 
-  // Return orders with calculated rates attached
-  return shipmentsData.map(d => ({
-    ...d.order,
-    calculatedRate: calculateRate(client, d.order, domTier, sddTier)
-  }));
+  // Calculate rates using the full rate engine (zone-based, custom, tiers)
+  const shipmentsWithRates = await Promise.all(
+    shipmentsData.map(async (d) => {
+      const order = d.order;
+
+      // Exchange free return — second leg is free
+      if (order.orderType === 'exchange' && order.isReturn === 1) {
+        return { ...order, calculatedRate: 0 };
+      }
+
+      // Standard return with fixed fee
+      if (order.isReturn === 1 && order.orderType !== 'exchange' && client.returnFee) {
+        return { ...order, calculatedRate: parseFloat(client.returnFee) };
+      }
+
+      const serviceType = (order.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
+      const rateResult = await calculateShipmentRate({
+        clientId,
+        serviceType,
+        weight: parseFloat(order.weight || '0'),
+        emirate: order.emirate || undefined,
+      });
+
+      let total = rateResult.totalRate;
+
+      // Add FOD fee if applicable
+      if (order.fitOnDelivery === 1) {
+        const fodFee = client.fodFee ? parseFloat(client.fodFee) : 5.00;
+        total += fodFee;
+      }
+
+      return { ...order, calculatedRate: Math.round(total * 100) / 100 };
+    })
+  );
+
+  return shipmentsWithRates;
 }
 
 export async function generateInvoiceForClient(
@@ -908,40 +924,41 @@ export async function generateInvoiceForClient(
     return null;
   }
 
-  // Get client info to determine rates
+  // Get client info for FOD/return fee
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
   if (!client) throw new Error("Client not found");
 
-  // Get rate tiers for this client
-  let domTier: any = null;
-  let sddTier: any = null;
-
-  if (client.manualRateTierId) {
-    const domTiers = await db.select().from(rateTiers)
-      .where(and(eq(rateTiers.id, client.manualRateTierId), eq(rateTiers.serviceType, 'DOM'))).limit(1);
-    domTier = domTiers[0];
-
-    if (domTier) {
-      const sddTiers = await db.select().from(rateTiers)
-        .where(and(eq(rateTiers.serviceType, 'SDD'), eq(rateTiers.minVolume, domTier.minVolume))).limit(1);
-      sddTier = sddTiers[0];
-    }
-  }
-
-  // Calculate totals using proper rates
+  // Calculate totals using the zone-based rate engine
   let subtotal = 0;
   const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number; fodFee: number }[] = [];
 
   for (const shipment of shipments) {
-    const totalRate = calculateRate(client, shipment, domTier, sddTier);
+    let totalRate = 0;
 
-    // Check for FOD to separate it
+    // Exchange free return
+    if (shipment.orderType === 'exchange' && shipment.isReturn === 1) {
+      totalRate = 0;
+    // Standard return with fixed fee
+    } else if (shipment.isReturn === 1 && shipment.orderType !== 'exchange' && client.returnFee) {
+      totalRate = parseFloat(client.returnFee);
+    } else {
+      const serviceType = (shipment.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
+      const rateResult = await calculateShipmentRate({
+        clientId,
+        serviceType,
+        weight: parseFloat(shipment.weight || '0'),
+        emirate: shipment.emirate || undefined,
+      });
+      totalRate = rateResult.totalRate;
+    }
+
     let shippingRate = totalRate;
     let fodFee = 0;
 
     if (shipment.fitOnDelivery === 1) {
       fodFee = client?.fodFee ? parseFloat(client.fodFee) : 5.00;
-      shippingRate = totalRate - fodFee;
+      shippingRate = totalRate;
+      totalRate += fodFee;
     }
 
     subtotal += totalRate;
@@ -1539,54 +1556,26 @@ export async function calculateShipmentRate(params: {
     }
   }
 
-  // PRIORITY 1: Check for custom rates first
-  if (client) {
-    const isDOM = params.serviceType === "DOM";
-    const isBullet = params.serviceType === "BULLET";
-
-    let customBaseRate = null;
-    let customPerKg = null;
-
-    if (isBullet) {
-      customBaseRate = client.customBulletBaseRate;
-      customPerKg = client.customBulletPerKg;
-
-      // Fallback to default bullet rates if not explicitly set but service is used
-      if (!customBaseRate || !customPerKg) {
-        customBaseRate = "50";
-        customPerKg = "5";
-      }
-    } else {
-      customBaseRate = isDOM ? client.customDomBaseRate : client.customSddBaseRate;
-      customPerKg = isDOM ? client.customDomPerKg : client.customSddPerKg;
-    }
-
-    if (customBaseRate) {
-      const baseRate = parseFloat(customBaseRate);
-      const additionalKgRate = customPerKg ? parseFloat(customPerKg) : 0;
-      const maxWeight = 5; // Standard max weight for base rate
-
-      let totalRate = baseRate;
-      let additionalKgCharge = 0;
+  // SDD: use client-specific rate if set (Zone 1 only), otherwise fall through to volume tier
+  if (params.serviceType === "SDD" && client) {
+    const sddBase = client.customSddBaseRate;
+    const sddPerKg = client.customSddPerKg;
+    if (sddBase) {
+      const baseRate = parseFloat(sddBase);
+      const additionalKgRate = sddPerKg ? parseFloat(sddPerKg) : 0;
+      const maxWeight = 5;
       let chargeableWeight = params.weight;
-
-      // Calculate volumetric weight
       if (params.length && params.width && params.height) {
         const volumetricWeight = (params.length * params.width * params.height) / 5000;
         chargeableWeight = Math.max(params.weight, volumetricWeight);
       }
-
-      // Calculate additional weight charges
-      if (chargeableWeight > maxWeight) {
-        const extraKg = Math.ceil(chargeableWeight - maxWeight);
-        additionalKgCharge = extraKg * additionalKgRate;
-        totalRate += additionalKgCharge;
-      }
-
+      const additionalKgCharge = chargeableWeight > maxWeight
+        ? Math.ceil(chargeableWeight - maxWeight) * additionalKgRate
+        : 0;
       return {
         baseRate,
         additionalKgCharge,
-        totalRate,
+        totalRate: baseRate + additionalKgCharge,
         appliedTier: null,
         usingManualTier: false,
         usingCustomRates: true,
@@ -1595,31 +1584,33 @@ export async function calculateShipmentRate(params: {
     }
   }
 
-  let applicableTier: RateTier | null = null;
-  let usingManualTier = false;
-
-  // PRIORITY 2: Check if client has a manual tier assigned
-  if (client?.manualRateTierId) {
-    const manualTier = await db
-      .select()
-      .from(rateTiers)
-      .where(
-        and(
-          eq(rateTiers.id, client.manualRateTierId),
-          eq(rateTiers.serviceType, params.serviceType as "DOM" | "SDD"),
-          eq(rateTiers.isActive, 1)
-        )
-      )
-      .limit(1);
-
-    if (manualTier.length > 0) {
-      applicableTier = manualTier[0];
-      usingManualTier = true;
+  // BULLET: default fixed rates (no zone/tier system for bullet)
+  if (params.serviceType === "BULLET") {
+    const baseRate = 50;
+    const additionalKgRate = 5;
+    const maxWeight = 5;
+    let chargeableWeight = params.weight;
+    if (params.length && params.width && params.height) {
+      const volumetricWeight = (params.length * params.width * params.height) / 5000;
+      chargeableWeight = Math.max(params.weight, volumetricWeight);
     }
+    const additionalKgCharge = chargeableWeight > maxWeight
+      ? Math.ceil(chargeableWeight - maxWeight) * additionalKgRate
+      : 0;
+    return {
+      baseRate,
+      additionalKgCharge,
+      totalRate: baseRate + additionalKgCharge,
+      appliedTier: null,
+      usingManualTier: false,
+      chargeableWeight,
+    };
   }
 
-  // PRIORITY 3: If no manual tier, calculate based on monthly volume
-  if (!applicableTier) {
+  let applicableTier: RateTier | null = null;
+
+  // PRIORITY 1 (fallback): calculate based on monthly volume tier
+  {
     const monthlyVolume = await getMonthlyShipmentCount(params.clientId);
 
     // Find applicable rate tier
@@ -1661,7 +1652,6 @@ export async function calculateShipmentRate(params: {
   let totalRate = baseRate;
   let additionalKgCharge = 0;
 
-  // Calculate volumetric weight
   let chargeableWeight = params.weight;
 
   if (params.length && params.width && params.height) {
@@ -1669,7 +1659,6 @@ export async function calculateShipmentRate(params: {
     chargeableWeight = Math.max(params.weight, volumetricWeight);
   }
 
-  // Calculate additional weight charges using chargeable weight
   if (chargeableWeight > maxWeight) {
     const extraKg = Math.ceil(chargeableWeight - maxWeight);
     additionalKgCharge = extraKg * additionalKgRate;
@@ -1681,8 +1670,8 @@ export async function calculateShipmentRate(params: {
     additionalKgCharge,
     totalRate,
     appliedTier: applicableTier,
-    usingManualTier,
-    chargeableWeight, // Return this so UI can show it
+    usingManualTier: false,
+    chargeableWeight,
   };
 }
 

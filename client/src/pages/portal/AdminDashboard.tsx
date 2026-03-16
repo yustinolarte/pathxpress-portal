@@ -1531,91 +1531,21 @@ export default function AdminDashboard() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-8 border-y border-white/10 my-6">
 
-                {/* Column 1: Pricing & Tiers */}
+                {/* Column 1: Pricing & Rates */}
                 <div className="space-y-6 pr-6 md:border-r border-border/30">
                   <div className="flex items-center gap-2 mb-2">
                     <BarChart3 className="w-4 h-4 text-blue-400" />
                     <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Pricing & Rates</h3>
                   </div>
 
-                  <div className="space-y-4 text-sm">
-                    <div className="space-y-2">
-                      <Label className="text-xs">Service Tier</Label>
-                      <Select
-                        value={editForm.tierId}
-                        onValueChange={(val) => setEditForm({ ...editForm, tierId: val })}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Select tier" />
-                        </SelectTrigger>
-                        <SelectContent className="glass-strong">
-                          <SelectItem value="auto">Automatic (Volume-based)</SelectItem>
-                          <SelectItem value="custom" className="text-amber-500 font-medium">
-                            <div className="flex items-center gap-2">
-                              <Sparkles className="w-3.5 h-3.5" />
-                              <span>Custom Rates</span>
-                            </div>
-                          </SelectItem>
-                          {rateTiers?.filter((t: any) => t.serviceType === 'DOM').map((tier: any) => (
-                            <SelectItem key={tier.id} value={tier.id.toString()}>
-                              Tier {tier.minVolume}-{tier.maxVolume || '∞'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {editForm.tierId === 'custom' && (
-                      <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="space-y-3">
-                          <Label className="text-[10px] font-bold text-amber-500 uppercase">DOM (Next Day)</Label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <Label className="text-[10px]">Base (5kg)</Label>
-                              <Input
-                                className="h-8 text-xs bg-background/50"
-                                value={editForm.customDomBaseRate}
-                                onChange={(e) => setEditForm({ ...editForm, customDomBaseRate: e.target.value })}
-                                placeholder="15.00"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-[10px]">Extra KG</Label>
-                              <Input
-                                className="h-8 text-xs bg-background/50"
-                                value={editForm.customDomPerKg}
-                                onChange={(e) => setEditForm({ ...editForm, customDomPerKg: e.target.value })}
-                                placeholder="2.00"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 pt-2 border-t border-amber-500/10">
-                          <Label className="text-[10px] font-bold text-amber-500 uppercase">SDD (Same Day)</Label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <Label className="text-[10px]">Base (5kg)</Label>
-                              <Input
-                                className="h-8 text-xs bg-background/50"
-                                value={editForm.customSddBaseRate}
-                                onChange={(e) => setEditForm({ ...editForm, customSddBaseRate: e.target.value })}
-                                placeholder="25.00"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label className="text-[10px]">Extra KG</Label>
-                              <Input
-                                className="h-8 text-xs bg-background/50"
-                                value={editForm.customSddPerKg}
-                                onChange={(e) => setEditForm({ ...editForm, customSddPerKg: e.target.value })}
-                                placeholder="3.00"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
+                    <p className="text-xs font-semibold text-blue-400">Zone-Based Rates Active</p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Shipping rates for this client are configured in the <span className="font-semibold text-foreground">Rates &amp; Pricing</span> tab using Zone 1 / Zone 2 / Zone 3 pricing based on destination emirate.
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      If no zone rates are set, volume-based tiers apply automatically.
+                    </p>
                   </div>
                 </div>
 

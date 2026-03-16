@@ -1757,9 +1757,10 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
         length: !isNaN(lengthVal) && lengthVal > 0 ? lengthVal : undefined,
         width: !isNaN(widthVal) && widthVal > 0 ? widthVal : undefined,
         height: !isNaN(heightVal) && heightVal > 0 ? heightVal : undefined,
+        emirate: formData.emirate || undefined,
       });
     }
-  }, [formData.weight, formData.length, formData.width, formData.height, formData.serviceType]);
+  }, [formData.weight, formData.length, formData.width, formData.height, formData.serviceType, formData.emirate]);
 
   // Auto-calculate COD fee when COD amount changes
   useEffect(() => {

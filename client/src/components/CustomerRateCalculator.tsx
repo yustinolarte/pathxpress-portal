@@ -13,6 +13,7 @@ export default function CustomerRateCalculator() {
   const { token, user } = usePortalAuth();
   const [serviceType, setServiceType] = useState<'DOM' | 'SDD'>('DOM');
   const [weight, setWeight] = useState<string>('');
+  const [emirate, setEmirate] = useState<string>('');
   const [dimL, setDimL] = useState<string>('');
   const [dimW, setDimW] = useState<string>('');
   const [dimH, setDimH] = useState<string>('');
@@ -55,7 +56,11 @@ export default function CustomerRateCalculator() {
       token: token || '',
       clientId: user.clientId,
       serviceType,
-      weight: Math.max(weightNum, getVolumetricWeight()),
+      weight: weightNum,
+      length: parseFloat(dimL) > 0 ? parseFloat(dimL) : undefined,
+      width: parseFloat(dimW) > 0 ? parseFloat(dimW) : undefined,
+      height: parseFloat(dimH) > 0 ? parseFloat(dimH) : undefined,
+      emirate: emirate || undefined,
     });
 
     if (codRequired && codAmount) {
@@ -137,6 +142,27 @@ export default function CustomerRateCalculator() {
                 </div>
               </div>
             </div>
+
+            {/* Destination Emirate */}
+            {serviceType === 'DOM' && (
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-foreground ml-1">Destination Emirate <span className="text-muted-foreground font-normal">(for zone-based pricing)</span></Label>
+                <Select value={emirate} onValueChange={setEmirate}>
+                  <SelectTrigger className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
+                    <SelectValue placeholder="Select emirate..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Dubai">Dubai</SelectItem>
+                    <SelectItem value="Abu Dhabi">Abu Dhabi</SelectItem>
+                    <SelectItem value="Sharjah">Sharjah</SelectItem>
+                    <SelectItem value="Ajman">Ajman</SelectItem>
+                    <SelectItem value="RAK">Ras Al Khaimah</SelectItem>
+                    <SelectItem value="Fujairah">Fujairah</SelectItem>
+                    <SelectItem value="UAQ">Umm Al Quwain</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Dimensions (Volumetric Weight) */}
             <div className="space-y-3 pt-6 border-t border-primary/10">

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { APP_TITLE, getLoginUrl } from "@/const";
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Loader2, Key, FileText, LogOut, Plus, Sun, Moon } from "lucide-react";
@@ -74,6 +75,17 @@ export default function ModernDashboardLayout({
 
     // Sidebar collapse state
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const isMobileHook = useIsMobile();
+    // Sync check to avoid flash of desktop layout on first render
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' ? window.innerWidth < 768 : false
+    );
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        setIsMobile(isMobileHook);
+        if (!isMobileHook) setMobileMenuOpen(false);
+    }, [isMobileHook]);
 
     // Password change state
     const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
@@ -202,12 +214,25 @@ export default function ModernDashboardLayout({
     return (
         <ThemeProvider defaultTheme="dark" switchable storageKey="portal-theme" targetRef={portalRef}>
         <div ref={portalRef} className="flex h-screen overflow-hidden bg-background text-foreground">
+            {/* Mobile overlay backdrop */}
+            {isMobile && mobileMenuOpen && (
+                <div
+                    className="fixed inset-0 z-40 bg-black/50"
+                    onClick={() => setMobileMenuOpen(false)}
+                />
+            )}
             {/* Sidebar */}
-            <aside className={`${isCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 flex-shrink-0 border-r border-primary/10 bg-card flex flex-col justify-between p-4 overflow-y-auto`}>
+            <aside className={`
+                ${isMobile
+                    ? `fixed inset-y-0 left-0 z-50 w-72 transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`
+                    : `${isCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 flex-shrink-0`
+                }
+                border-r border-primary/10 bg-card flex flex-col justify-between p-4 overflow-y-auto
+            `}>
                 <div className="space-y-8">
-                    <div className={`flex items-center gap-3 px-2 mb-2 ${isCollapsed ? 'justify-center' : ''}`}>
+                    <div className={`flex items-center gap-3 px-2 mb-2 ${isCollapsed && !isMobile ? 'justify-center' : ''}`}>
                         <img src="/favicon.png" alt={title} className="h-10 w-10 object-contain rounded-lg shrink-0" />
-                        {!isCollapsed && (
+                        {(!isCollapsed || isMobile) && (
                             <div className="overflow-hidden">
                                 <h1 className="text-sm font-bold tracking-tight truncate">{title}</h1>
                                 <p className="text-[10px] text-red-500 font-medium uppercase tracking-wider truncate">{user.role}</p>
@@ -220,40 +245,45 @@ export default function ModernDashboardLayout({
                             return (
                                 <button
                                     key={item.value}
-                                    onClick={() => onItemClick(item.value)}
-                                    className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors text-left ${isCollapsed ? 'justify-center' : 'gap-3'} ${isActive
+                                    onClick={() => {
+                                        onItemClick(item.value);
+                                        if (isMobile) setMobileMenuOpen(false);
+                                    }}
+                                    className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors text-left ${isCollapsed && !isMobile ? 'justify-center' : 'gap-3'} ${isActive
                                         ? 'bg-red-500/10 text-red-600 dark:text-red-500 font-medium'
                                         : 'text-muted-foreground hover:bg-red-500/5 hover:text-red-600 dark:hover:text-red-500'
                                         }`}
                                     title={isCollapsed ? item.label : undefined}
                                 >
                                     <span className="material-symbols-outlined shrink-0">{item.icon}</span>
-                                    {!isCollapsed && <span className="text-sm truncate">{item.label}</span>}
+                                    {(!isCollapsed || isMobile) && <span className="text-sm truncate">{item.label}</span>}
                                 </button>
                             );
                         })}
                     </nav>
                 </div>
                 <div className="mt-auto space-y-4 pt-4 border-t border-primary/10">
-                    <button
-                        onClick={() => setIsCollapsed(!isCollapsed)}
-                        className={`w-full flex items-center p-2 text-muted-foreground hover:bg-primary/5 hover:text-primary rounded-xl transition-colors ${isCollapsed ? 'justify-center' : 'gap-3'}`}
-                    >
-                        <span className="material-symbols-outlined">
-                            {isCollapsed ? 'chevron_right' : 'chevron_left'}
-                        </span>
-                        {!isCollapsed && <span className="text-sm font-medium">Collapse</span>}
-                    </button>
+                    {!isMobile && (
+                        <button
+                            onClick={() => setIsCollapsed(!isCollapsed)}
+                            className={`w-full flex items-center p-2 text-muted-foreground hover:bg-primary/5 hover:text-primary rounded-xl transition-colors ${isCollapsed ? 'justify-center' : 'gap-3'}`}
+                        >
+                            <span className="material-symbols-outlined">
+                                {isCollapsed ? 'chevron_right' : 'chevron_left'}
+                            </span>
+                            {!isCollapsed && <span className="text-sm font-medium">Collapse</span>}
+                        </button>
+                    )}
 
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <button className={`flex items-center p-2 bg-primary/5 rounded-xl w-full text-left hover:bg-primary/10 transition-colors ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
+                            <button className={`flex items-center p-2 bg-primary/5 rounded-xl w-full text-left hover:bg-primary/10 transition-colors ${isCollapsed && !isMobile ? 'justify-center' : 'gap-3'}`}>
                                 <Avatar className="size-10 shrink-0 border border-primary/20">
                                     <AvatarFallback className="text-xs font-medium bg-primary/20 text-primary">
                                         {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
-                                {!isCollapsed && (
+                                {(!isCollapsed || isMobile) && (
                                     <>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-semibold truncate text-foreground">
@@ -300,23 +330,34 @@ export default function ModernDashboardLayout({
             {/* Main Content */}
             <main className="flex-1 flex flex-col overflow-hidden bg-background">
                 {/* Header */}
-                <header className="h-20 bg-card border-b border-primary/10 px-8 flex items-center justify-between shrink-0">
-                    <div className="relative w-96 max-w-full">
-                        <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">search</span>
-                        <input
-                            className="w-full pl-10 pr-4 py-2.5 bg-background border border-primary/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm transition-all text-foreground"
-                            placeholder="Press Enter to Track..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={handleSearch}
-                            type="text"
-                        />
+                <header className="h-14 md:h-20 bg-card border-b border-primary/10 px-4 md:px-8 flex items-center justify-between shrink-0 gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        {isMobile && (
+                            <button
+                                onClick={() => setMobileMenuOpen(true)}
+                                className="p-2 -ml-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                                aria-label="Open menu"
+                            >
+                                <span className="material-symbols-outlined">menu</span>
+                            </button>
+                        )}
+                        <div className="relative w-full max-w-xs md:max-w-sm lg:w-96">
+                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">search</span>
+                            <input
+                                className="w-full pl-10 pr-4 py-2 md:py-2.5 bg-background border border-primary/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm transition-all text-foreground"
+                                placeholder="Press Enter to Track..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleSearch}
+                                type="text"
+                            />
+                        </div>
                     </div>
                     <div className="flex items-center gap-4">
                         {isCustomer && token && (
                             <NotificationBell token={token} />
                         )}
-                        <div className="h-8 w-[1px] bg-border mx-2"></div>
+                        <div className="h-8 w-[1px] bg-border mx-2 hidden sm:block"></div>
                         <div className="text-right hidden sm:block">
                             <p className="text-xs font-medium text-muted-foreground">System Status</p>
                             <p className="text-sm font-bold text-green-500 flex items-center gap-1 justify-end">
@@ -328,7 +369,7 @@ export default function ModernDashboardLayout({
                 </header>
 
                 {/* Dashboard Body */}
-                <div className="flex-1 overflow-y-auto p-8 relative">
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
                     <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center opacity-[0.03] pointer-events-none mix-blend-overlay" />
                     <div className="relative z-10 w-full max-w-[1600px] mx-auto min-h-full">
                         {children}

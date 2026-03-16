@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2, Edit3 } from 'lucide-react';
+import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2, Edit3, DollarSign } from 'lucide-react';
 
 interface Client {
     id: number;
@@ -41,6 +41,8 @@ export default function AdminCreateOrderDialog({
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [overrideShipper, setOverrideShipper] = useState(false);
+    const [calculatedRate, setCalculatedRate] = useState<{ baseRate: number; additionalKgCharge: number; totalRate: number; chargeableWeight?: number } | null>(null);
+    const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -85,6 +87,8 @@ export default function AdminCreateOrderDialog({
             setSelectedClientId('');
             setSelectedClient(null);
             setOverrideShipper(false);
+            setCalculatedRate(null);
+            setCalculatedCODFee(0);
             setFormData({
                 orderNumber: '',
                 customerName: '',
@@ -120,6 +124,48 @@ export default function AdminCreateOrderDialog({
             toast.error(`Failed to create order: ${error.message}`);
         },
     });
+
+    const calculateRateMutation = trpc.portal.rates.calculate.useMutation({
+        onSuccess: (data) => setCalculatedRate(data),
+    });
+
+    const calculateCODMutation = trpc.portal.rates.calculateCOD.useMutation({
+        onSuccess: (data) => setCalculatedCODFee(data.fee),
+    });
+
+    // Auto-calculate rate when relevant fields change
+    useEffect(() => {
+        if (!selectedClientId || !formData.weight || formData.weight <= 0) {
+            setCalculatedRate(null);
+            return;
+        }
+        const serviceType = formData.serviceType as 'DOM' | 'SDD' | 'BULLET';
+        if (serviceType === 'DOM' || serviceType === 'SDD' || serviceType === 'BULLET') {
+            calculateRateMutation.mutate({
+                token,
+                clientId: parseInt(selectedClientId),
+                serviceType,
+                weight: formData.weight,
+                emirate: formData.emirate || undefined,
+            });
+        }
+    }, [selectedClientId, formData.weight, formData.serviceType, formData.emirate]);
+
+    // Auto-calculate COD fee when COD amount changes
+    useEffect(() => {
+        if (formData.codRequired && formData.codAmount && selectedClientId) {
+            const amount = parseFloat(formData.codAmount);
+            if (!isNaN(amount) && amount > 0) {
+                calculateCODMutation.mutate({
+                    token,
+                    codAmount: amount,
+                    clientId: parseInt(selectedClientId),
+                });
+            }
+        } else {
+            setCalculatedCODFee(0);
+        }
+    }, [formData.codRequired, formData.codAmount, selectedClientId]);
 
     const handleSubmit = () => {
         if (!selectedClientId) {
@@ -521,6 +567,53 @@ export default function AdminCreateOrderDialog({
                                         </div>
                                     </div>
                                 </div>
+                            {/* Rate Preview */}
+                            {selectedClientId && (
+                                <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-5">
+                                    <h4 className="font-semibold mb-3 flex items-center gap-2 text-green-400">
+                                        <DollarSign className="h-5 w-5" />
+                                        Estimated Shipping Cost
+                                        {calculateRateMutation.isPending && <Loader2 className="h-4 w-4 animate-spin ml-1" />}
+                                    </h4>
+                                    {calculatedRate ? (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-muted-foreground">Base Rate (0–5kg)</span>
+                                                <span className="font-medium">{calculatedRate.baseRate.toFixed(2)} AED</span>
+                                            </div>
+                                            {calculatedRate.additionalKgCharge > 0 && (
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-muted-foreground">
+                                                        Overweight ({calculatedRate.chargeableWeight ? `${calculatedRate.chargeableWeight.toFixed(2)} kg chargeable` : 'extra kg'})
+                                                    </span>
+                                                    <span className="font-medium">{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
+                                                </div>
+                                            )}
+                                            {calculatedCODFee > 0 && (
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-muted-foreground">COD Fee</span>
+                                                    <span className="font-medium">{calculatedCODFee.toFixed(2)} AED</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between font-semibold text-base pt-2 border-t border-green-500/20">
+                                                <span>Total</span>
+                                                <span className="text-green-400">
+                                                    {(calculatedRate.totalRate + calculatedCODFee).toFixed(2)} AED
+                                                </span>
+                                            </div>
+                                            {formData.emirate && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Zone rate applied for {formData.emirate}
+                                                </p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground">
+                                            {calculateRateMutation.isPending ? 'Calculating...' : 'Enter weight and select a client to see the estimated cost.'}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                             </>
                         )}
                     </div>
