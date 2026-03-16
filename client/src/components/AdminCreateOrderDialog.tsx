@@ -384,7 +384,7 @@ export default function AdminCreateOrderDialog({
                                                     <Label className="text-xs">Customer Name *</Label>
                                                     <Input
                                                         value={formData.customerName}
-                                                        onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, customerName: e.target.value }))}
                                                         placeholder="Full name"
                                                         className="mt-1"
                                                     />
@@ -395,7 +395,7 @@ export default function AdminCreateOrderDialog({
                                                     </Label>
                                                     <Input
                                                         value={formData.customerPhone}
-                                                        onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
                                                         placeholder="+971..."
                                                         className="mt-1"
                                                     />
@@ -405,7 +405,7 @@ export default function AdminCreateOrderDialog({
                                                 <Label className="text-xs">Address *</Label>
                                                 <Textarea
                                                     value={formData.address}
-                                                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
                                                     placeholder="Full delivery address"
                                                     rows={2}
                                                     className="mt-1"
@@ -416,14 +416,28 @@ export default function AdminCreateOrderDialog({
                                                     <Label className="text-xs">City *</Label>
                                                     <Input
                                                         value={formData.city}
-                                                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
                                                         placeholder="Dubai"
                                                         className="mt-1"
                                                     />
                                                 </div>
                                                 <div>
                                                     <Label className="text-xs">Emirate</Label>
-                                                    <Select value={formData.emirate} onValueChange={(val) => setFormData({ ...formData, emirate: val })}>
+                                                    <Select value={formData.emirate} onValueChange={(val) => {
+                                                        setFormData(prev => ({ ...prev, emirate: val }));
+                                                        if (selectedClientId && formData.weight && formData.weight > 0) {
+                                                            const serviceType = formData.serviceType as 'DOM' | 'SDD' | 'BULLET';
+                                                            if (serviceType === 'DOM' || serviceType === 'SDD' || serviceType === 'BULLET') {
+                                                                calculateRateMutation.mutate({
+                                                                    token,
+                                                                    clientId: parseInt(selectedClientId),
+                                                                    serviceType,
+                                                                    weight: formData.weight,
+                                                                    emirate: val,
+                                                                });
+                                                            }
+                                                        }
+                                                    }}>
                                                         <SelectTrigger className="mt-1">
                                                             <SelectValue placeholder="Select" />
                                                         </SelectTrigger>
@@ -452,7 +466,7 @@ export default function AdminCreateOrderDialog({
                                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                         <div>
                                             <Label className="text-xs">Service Type *</Label>
-                                            <Select value={formData.serviceType} onValueChange={(val) => setFormData({ ...formData, serviceType: val })}>
+                                            <Select value={formData.serviceType} onValueChange={(val) => setFormData(prev => ({ ...prev, serviceType: val }))}>
                                                 <SelectTrigger className="mt-1">
                                                     <SelectValue />
                                                 </SelectTrigger>
@@ -472,7 +486,7 @@ export default function AdminCreateOrderDialog({
                                                 step="0.1"
                                                 min="0.1"
                                                 value={formData.weight}
-                                                onChange={(e) => setFormData({ ...formData, weight: parseFloat(e.target.value) || 0.5 })}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, weight: parseFloat(e.target.value) || 0.5 }))}
                                                 className="mt-1"
                                             />
                                         </div>
@@ -482,7 +496,7 @@ export default function AdminCreateOrderDialog({
                                                 type="number"
                                                 min="1"
                                                 value={formData.pieces}
-                                                onChange={(e) => setFormData({ ...formData, pieces: parseInt(e.target.value) || 1 })}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, pieces: parseInt(e.target.value) || 1 }))}
                                                 className="mt-1"
                                             />
                                         </div>
@@ -492,7 +506,7 @@ export default function AdminCreateOrderDialog({
                                             </Label>
                                             <Input
                                                 value={formData.orderNumber}
-                                                onChange={(e) => setFormData({ ...formData, orderNumber: e.target.value })}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, orderNumber: e.target.value }))}
                                                 placeholder="Optional"
                                                 className="mt-1"
                                             />
@@ -502,7 +516,7 @@ export default function AdminCreateOrderDialog({
                                         <Label className="text-xs">Special Instructions</Label>
                                         <Textarea
                                             value={formData.specialInstructions}
-                                            onChange={(e) => setFormData({ ...formData, specialInstructions: e.target.value })}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, specialInstructions: e.target.value }))}
                                             placeholder="Any delivery instructions..."
                                             rows={2}
                                             className="mt-1"
@@ -517,7 +531,7 @@ export default function AdminCreateOrderDialog({
                                         <Checkbox
                                             id="cod"
                                             checked={formData.codRequired}
-                                            onCheckedChange={(checked) => setFormData({ ...formData, codRequired: !!checked })}
+                                            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, codRequired: !!checked }))}
                                             disabled={!selectedClient?.codAllowed}
                                             className="mt-1"
                                         />
@@ -537,7 +551,7 @@ export default function AdminCreateOrderDialog({
                                                         step="0.01"
                                                         min="0.01"
                                                         value={formData.codAmount}
-                                                        onChange={(e) => setFormData({ ...formData, codAmount: e.target.value })}
+                                                        onChange={(e) => setFormData(prev => ({ ...prev, codAmount: e.target.value }))}
                                                         placeholder="Amount in AED"
                                                         className="max-w-[200px]"
                                                     />
@@ -551,7 +565,7 @@ export default function AdminCreateOrderDialog({
                                         <Checkbox
                                             id="fod"
                                             checked={formData.fitOnDelivery}
-                                            onCheckedChange={(checked) => setFormData({ ...formData, fitOnDelivery: !!checked })}
+                                            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, fitOnDelivery: !!checked }))}
                                             disabled={!selectedClient?.fodAllowed}
                                             className="mt-1"
                                         />

@@ -1521,15 +1521,19 @@ export async function calculateShipmentRate(params: {
   // Check if client exists and has custom rates
   const client = await getClientAccountById(params.clientId);
 
-  // PRIORITY 0: Zone-based rates (DOM only) — if client has zone rates and emirate is provided
-  if (client && params.serviceType === "DOM" && params.emirate) {
-    const zone = getZoneFromEmirate(params.emirate);
-    const zoneBase = zone === 1 ? client.zone1BaseRate : zone === 2 ? client.zone2BaseRate : client.zone3BaseRate;
-    const zonePkg  = zone === 1 ? client.zone1PerKg   : zone === 2 ? client.zone2PerKg   : client.zone3PerKg;
+  // PRIORITY 0: Zone-based rates (DOM only)
+  // If client has zone rates set, use them. Emirate determines the zone; defaults to Zone 1 if none provided.
+  if (client && params.serviceType === "DOM" && (client.zone1BaseRate || client.zone2BaseRate || client.zone3BaseRate)) {
+    const zone = params.emirate ? getZoneFromEmirate(params.emirate) : 1;
+    const rawBase = zone === 1 ? client.zone1BaseRate : zone === 2 ? client.zone2BaseRate : client.zone3BaseRate;
+    const rawPkg  = zone === 1 ? client.zone1PerKg   : zone === 2 ? client.zone2PerKg   : client.zone3PerKg;
+    // If the resolved zone has no rate (e.g. zone 3 not configured), fallback to zone 1
+    const effectiveBase = rawBase || client.zone1BaseRate;
+    const effectivePkg  = rawBase ? rawPkg : client.zone1PerKg;
 
-    if (zoneBase) {
-      const baseRate = parseFloat(zoneBase);
-      const additionalKgRate = zonePkg ? parseFloat(zonePkg) : 0;
+    if (effectiveBase) {
+      const baseRate = parseFloat(effectiveBase);
+      const additionalKgRate = effectivePkg ? parseFloat(effectivePkg) : 0;
       const maxWeight = 5;
       let chargeableWeight = params.weight;
 

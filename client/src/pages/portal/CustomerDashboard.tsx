@@ -878,108 +878,154 @@ export default function CustomerDashboard() {
                 {isLoadingOrders ? (
                   <p className="text-center py-8 text-muted-foreground">Loading shipments...</p>
                 ) : filteredOrders && filteredOrders.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-primary/5 hover:bg-primary/5 border-b border-primary/10">
-                          <TableHead className="w-[50px] font-bold text-foreground tracking-wide text-xs uppercase">
-                            <Checkbox
-                              checked={filteredOrders && filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
-                              onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
-                            />
-                          </TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Waybill</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Customer</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Destination</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Weight</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Service</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">COD</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Status</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Created</TableHead>
-                          <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredOrders.map((order) => (
-                          <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30 border-b border-primary/10 transition-colors group">
-                            <TableCell>
+                  <>
+                    {/* Desktop Table */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-primary/5 hover:bg-primary/5 border-b border-primary/10">
+                            <TableHead className="w-[50px] font-bold text-foreground tracking-wide text-xs uppercase">
                               <Checkbox
-                                checked={selectedOrderIds.includes(order.id)}
-                                onCheckedChange={(checked) => handleSelectRow(order.id, checked as boolean)}
+                                checked={filteredOrders && filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
+                                onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                               />
-                            </TableCell>
-                            <TableCell className="font-mono font-medium">
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="link"
-                                  className="p-0 h-auto text-primary underline"
-                                  onClick={() => handleViewTracking(order.waybillNumber)}
-                                >
-                                  {order.waybillNumber}
-                                </Button>
-                                {order.isReturn === 1 && (
-                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
-                                    <RotateCcw className="h-4 w-4" />
-                                  </Badge>
-                                )}
-                                {order.fitOnDelivery === 1 && (
-                                  <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs flex items-center gap-1">
-                                    <Package className="h-3 w-3" /> FOD
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>{order.customerName}</TableCell>
-                            <TableCell>{order.city}, {order.destinationCountry}</TableCell>
-                            <TableCell>
-                              <span className="font-medium">{order.weight}</span>
-                              <span className="text-muted-foreground text-xs ml-1">kg</span>
-                            </TableCell>
-                            <TableCell>{order.serviceType}</TableCell>
-                            <TableCell>
-                              {order.codRequired === 1 && order.codAmount ? (
-                                <Badge className="bg-orange-500 text-white border-none">
-                                  {order.codCurrency || 'AED'} {parseFloat(order.codAmount).toFixed(2)}
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={`${getStatusColor(order.status)} border-none text-white shadow-sm`}>
-                                {getStatusLabel(order.status)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>
-                              <div className="flex gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => generateWaybillPDF(order)}
-                                  title="Download Waybill"
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                                {order.status === 'pending_pickup' && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                    onClick={() => handleCancelOrder(order.id, order.waybillNumber)}
-                                    title="Cancel Order"
-                                    disabled={cancelOrderMutation.isPending}
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
+                            </TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Waybill</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Customer</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Destination</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Weight</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Service</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">COD</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Status</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Created</TableHead>
+                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Actions</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredOrders.map((order) => (
+                            <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30 border-b border-primary/10 transition-colors group">
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedOrderIds.includes(order.id)}
+                                  onCheckedChange={(checked) => handleSelectRow(order.id, checked as boolean)}
+                                />
+                              </TableCell>
+                              <TableCell className="font-mono font-medium">
+                                <div className="flex items-center gap-2">
+                                  <Button variant="link" className="p-0 h-auto text-primary underline" onClick={() => handleViewTracking(order.waybillNumber)}>
+                                    {order.waybillNumber}
+                                  </Button>
+                                  {order.isReturn === 1 && (
+                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
+                                      <RotateCcw className="h-4 w-4" />
+                                    </Badge>
+                                  )}
+                                  {order.fitOnDelivery === 1 && (
+                                    <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs flex items-center gap-1">
+                                      <Package className="h-3 w-3" /> FOD
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell>{order.customerName}</TableCell>
+                              <TableCell>{order.city}, {order.destinationCountry}</TableCell>
+                              <TableCell>
+                                <span className="font-medium">{order.weight}</span>
+                                <span className="text-muted-foreground text-xs ml-1">kg</span>
+                              </TableCell>
+                              <TableCell>{order.serviceType}</TableCell>
+                              <TableCell>
+                                {order.codRequired === 1 && order.codAmount ? (
+                                  <Badge className="bg-orange-500 text-white border-none">
+                                    {order.codCurrency || 'AED'} {parseFloat(order.codAmount).toFixed(2)}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={`${getStatusColor(order.status)} border-none text-white shadow-sm`}>
+                                  {getStatusLabel(order.status)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => generateWaybillPDF(order)} title="Download Waybill">
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                  {order.status === 'pending_pickup' && (
+                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10" onClick={() => handleCancelOrder(order.id, order.waybillNumber)} title="Cancel Order" disabled={cancelOrderMutation.isPending}>
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Mobile Cards */}
+                    <div className="md:hidden space-y-3 p-3">
+                      {filteredOrders.map((order) => (
+                        <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
+                          {/* Top row: waybill + status */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                className="font-mono font-bold text-primary text-sm underline"
+                                onClick={() => handleViewTracking(order.waybillNumber)}
+                              >
+                                {order.waybillNumber}
+                              </button>
+                              {order.isReturn === 1 && (
+                                <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs">
+                                  <RotateCcw className="h-3 w-3 mr-1" />Return
+                                </Badge>
+                              )}
+                              {order.fitOnDelivery === 1 && (
+                                <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
+                                  <Package className="h-3 w-3 mr-1" />FOD
+                                </Badge>
+                              )}
+                            </div>
+                            <Badge className={`${getStatusColor(order.status)} border-none text-white text-xs shrink-0`}>
+                              {getStatusLabel(order.status)}
+                            </Badge>
+                          </div>
+                          {/* Customer + destination */}
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{order.customerName}</span>
+                            <span className="text-xs text-muted-foreground">{order.city}, {order.destinationCountry}</span>
+                          </div>
+                          {/* Service + weight + COD + date */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{order.serviceType}</span>
+                            <span className="text-xs text-muted-foreground">{order.weight} kg</span>
+                            {order.codRequired === 1 && order.codAmount && (
+                              <Badge className="bg-orange-500 text-white border-none text-xs">
+                                COD {order.codCurrency || 'AED'} {parseFloat(order.codAmount).toFixed(2)}
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground ml-auto">{new Date(order.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          {/* Actions */}
+                          <div className="flex gap-2 pt-1 border-t border-border">
+                            <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => generateWaybillPDF(order)}>
+                              <Download className="h-3.5 w-3.5 mr-1" />Waybill
+                            </Button>
+                            {order.status === 'pending_pickup' && (
+                              <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs text-destructive hover:bg-destructive/10" onClick={() => handleCancelOrder(order.id, order.waybillNumber)} disabled={cancelOrderMutation.isPending}>
+                                <X className="h-3.5 w-3.5 mr-1" />Cancel
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="flex-1 flex flex-col items-center justify-center bg-card/50 rounded-2xl border-2 border-dashed border-primary/20 py-20 m-4">
                     <div className="size-24 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-6">
@@ -2045,7 +2091,19 @@ function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: ()
               <Label className="text-xs">City *</Label>
               <Select
                 value={formData.city}
-                onValueChange={(val) => setFormData({ ...formData, city: val })}
+                onValueChange={(val) => {
+                  setFormData(prev => ({ ...prev, city: val, emirate: val }));
+                  const weightVal = parseFloat(formData.weight);
+                  if (!isNaN(weightVal) && weightVal > 0 && user?.clientId) {
+                    calculateRateMutation.mutate({
+                      token,
+                      clientId: user.clientId,
+                      serviceType: formData.serviceType as 'DOM' | 'SDD' | 'BULLET',
+                      weight: weightVal,
+                      emirate: val,
+                    });
+                  }
+                }}
               >
                 <SelectTrigger className="bg-background border-border h-9">
                   <SelectValue placeholder="Select City" />

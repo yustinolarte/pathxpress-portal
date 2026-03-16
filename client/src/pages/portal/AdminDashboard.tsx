@@ -1142,156 +1142,206 @@ export default function AdminDashboard() {
                 {ordersLoading ? (
                   <p className="text-center py-8 text-muted-foreground">Loading orders...</p>
                 ) : orders && orders.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Waybill</TableHead>
-                          <TableHead>Client</TableHead>
-                          <TableHead>Consignee</TableHead>
-                          <TableHead>Destination</TableHead>
-                          <TableHead>Weight</TableHead>
-                          <TableHead>Service</TableHead>
-                          <TableHead>COD</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Created</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {orders.map((order) => {
-                          const statusColors: Record<string, string> = {
-                            pending_pickup: 'bg-yellow-500/80 hover:bg-yellow-500',
-                            picked_up: 'bg-blue-500/80 hover:bg-blue-500',
-                            in_transit: 'bg-indigo-500/80 hover:bg-indigo-500',
-                            out_for_delivery: 'bg-purple-500/80 hover:bg-purple-500',
-                            delivered: 'bg-green-500/80 hover:bg-green-500',
-                            failed_delivery: 'bg-red-500/80 hover:bg-red-500',
-                            returned: 'bg-gray-500/80 hover:bg-gray-500',
-                            exchange: 'bg-amber-500/80 hover:bg-amber-500',
-                            canceled: 'bg-slate-500/80 hover:bg-slate-500',
-                          };
+                  <>
+                    {/* Desktop Table */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Waybill</TableHead>
+                            <TableHead>Client</TableHead>
+                            <TableHead>Consignee</TableHead>
+                            <TableHead>Destination</TableHead>
+                            <TableHead>Weight</TableHead>
+                            <TableHead>Service</TableHead>
+                            <TableHead>COD</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Created</TableHead>
+                            <TableHead>Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {orders.map((order) => {
+                            const statusColors: Record<string, string> = {
+                              pending_pickup: 'bg-yellow-500/80 hover:bg-yellow-500',
+                              picked_up: 'bg-blue-500/80 hover:bg-blue-500',
+                              in_transit: 'bg-indigo-500/80 hover:bg-indigo-500',
+                              out_for_delivery: 'bg-purple-500/80 hover:bg-purple-500',
+                              delivered: 'bg-green-500/80 hover:bg-green-500',
+                              failed_delivery: 'bg-red-500/80 hover:bg-red-500',
+                              returned: 'bg-gray-500/80 hover:bg-gray-500',
+                              exchange: 'bg-amber-500/80 hover:bg-amber-500',
+                              canceled: 'bg-slate-500/80 hover:bg-slate-500',
+                            };
 
-                          const canCreateReturn = ['failed_delivery', 'returned', 'exchange'].includes(order.status) && !order.isReturn;
+                            const canCreateReturn = ['failed_delivery', 'returned', 'exchange'].includes(order.status) && !order.isReturn;
 
-                          return (
-                            <TableRow key={order.id}>
-                              <TableCell
-                                className="font-mono font-medium text-blue-500"
-                              >
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {order.waybillNumber}
-                                  {order.isReturn === 1 && order.orderType !== 'exchange' && (
-                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
-                                      <RotateCcw className="h-4 w-4" />
+                            return (
+                              <TableRow key={order.id}>
+                                <TableCell className="font-mono font-medium text-blue-500">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {order.waybillNumber}
+                                    {order.isReturn === 1 && order.orderType !== 'exchange' && (
+                                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
+                                        <RotateCcw className="h-4 w-4" />
+                                      </Badge>
+                                    )}
+                                    {order.orderType === 'exchange' && (
+                                      <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1" title="Exchange">
+                                        <ArrowLeftRight className="h-4 w-4" />
+                                        {order.exchangeOrderId && (
+                                          <span
+                                            className="ml-1 underline cursor-pointer hover:text-amber-300"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const linkedOrder = allOrders?.find((o: any) => o.id === order.exchangeOrderId);
+                                              if (linkedOrder) {
+                                                setSelectedOrder(linkedOrder);
+                                                setViewOrderDialogOpen(true);
+                                              }
+                                            }}
+                                            title={`View linked order: ${allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber || ''}`}
+                                          >
+                                            → {allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber?.slice(-3) || ''}
+                                          </span>
+                                        )}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="font-medium text-primary">
+                                  {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span>{order.customerName}</span>
+                                    <span className="text-xs text-muted-foreground">{order.customerPhone}</span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{order.city}, {order.destinationCountry}</TableCell>
+                                <TableCell>
+                                  <span className="font-medium">{order.weight}</span>
+                                  <span className="text-muted-foreground text-xs ml-1">kg</span>
+                                </TableCell>
+                                <TableCell>{order.serviceType}</TableCell>
+                                <TableCell>
+                                  {order.codRequired ? (
+                                    <Badge variant="default" className="bg-orange-500 hover:bg-orange-600">
+                                      {order.codAmount} {order.codCurrency}
                                     </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground text-sm">-</span>
                                   )}
-                                  {order.orderType === 'exchange' && (
-                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1" title="Exchange">
-                                      <ArrowLeftRight className="h-4 w-4" />
-                                      {order.exchangeOrderId && (
-                                        <span
-                                          className="ml-1 underline cursor-pointer hover:text-amber-300"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const linkedOrder = allOrders?.find((o: any) => o.id === order.exchangeOrderId);
-                                            if (linkedOrder) {
-                                              setSelectedOrder(linkedOrder);
-                                              setViewOrderDialogOpen(true);
-                                            }
-                                          }}
-                                          title={`View linked order: ${allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber || ''}`}
-                                        >
-                                          → {allOrders?.find((o: any) => o.id === order.exchangeOrderId)?.waybillNumber?.slice(-3) || ''}
-                                        </span>
-                                      )}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-medium text-primary">
-                                {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex flex-col">
-                                  <span>{order.customerName}</span>
-                                  <span className="text-xs text-muted-foreground">{order.customerPhone}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell>{order.city}, {order.destinationCountry}</TableCell>
-                              <TableCell>
-                                <span className="font-medium">{order.weight}</span>
-                                <span className="text-muted-foreground text-xs ml-1">kg</span>
-                              </TableCell>
-                              <TableCell>{order.serviceType}</TableCell>
-                              <TableCell>
-                                {order.codRequired ? (
-                                  <Badge variant="default" className="bg-orange-500 hover:bg-orange-600">
-                                    {order.codAmount} {order.codCurrency}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize shadow-sm`}>
+                                    {order.status.replace(/_/g, ' ')}
                                   </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-sm">-</span>
+                                </TableCell>
+                                <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2">
+                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedOrder(order); setViewOrderDialogOpen(true); }} title="View Order Details">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => { setOrderToEdit(order); setEditOrderDialogOpen(true); }} title="Edit Order">
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }} title="Add Tracking Event">
+                                      <Package className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} title="Delete Order" disabled={deleteOrderMutation.isPending}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Mobile Cards */}
+                    <div className="md:hidden space-y-3">
+                      {orders.map((order) => {
+                        const statusColors: Record<string, string> = {
+                          pending_pickup: 'bg-yellow-500/80',
+                          picked_up: 'bg-blue-500/80',
+                          in_transit: 'bg-indigo-500/80',
+                          out_for_delivery: 'bg-purple-500/80',
+                          delivered: 'bg-green-500/80',
+                          failed_delivery: 'bg-red-500/80',
+                          returned: 'bg-gray-500/80',
+                          exchange: 'bg-amber-500/80',
+                          canceled: 'bg-slate-500/80',
+                        };
+                        return (
+                          <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
+                            {/* Top row: waybill + status */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-blue-500 text-sm">{order.waybillNumber}</span>
+                                {order.isReturn === 1 && order.orderType !== 'exchange' && (
+                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs">
+                                    <RotateCcw className="h-3 w-3 mr-1" />Return
+                                  </Badge>
                                 )}
-                              </TableCell>
-                              <TableCell>
-                                <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize shadow-sm`}>
-                                  {order.status.replace(/_/g, ' ')}
+                                {order.orderType === 'exchange' && (
+                                  <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">
+                                    <ArrowLeftRight className="h-3 w-3 mr-1" />Exchange
+                                  </Badge>
+                                )}
+                              </div>
+                              <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize text-xs shrink-0`}>
+                                {order.status.replace(/_/g, ' ')}
+                              </Badge>
+                            </div>
+                            {/* Client */}
+                            <div className="text-xs font-medium text-primary">
+                              {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
+                            </div>
+                            {/* Consignee + destination row */}
+                            <div className="flex items-center justify-between text-sm">
+                              <div>
+                                <p className="font-medium">{order.customerName}</p>
+                                <p className="text-xs text-muted-foreground">{order.customerPhone}</p>
+                              </div>
+                              <div className="text-right text-xs text-muted-foreground">
+                                <p>{order.city}, {order.destinationCountry}</p>
+                                <p>{new Date(order.createdAt).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                            {/* Service + weight + COD */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{order.serviceType}</span>
+                              <span className="text-xs text-muted-foreground">{order.weight} kg</span>
+                              {order.codRequired && (
+                                <Badge className="bg-orange-500 text-white border-none text-xs">
+                                  COD {order.codAmount} {order.codCurrency}
                                 </Badge>
-                              </TableCell>
-                              <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setSelectedOrder(order);
-                                      setViewOrderDialogOpen(true);
-                                    }}
-                                    title="View Order Details"
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setOrderToEdit(order);
-                                      setEditOrderDialogOpen(true);
-                                    }}
-                                    title="Edit Order"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setSelectedShipmentId(order.id);
-                                      setTrackingDialogOpen(true);
-                                    }}
-                                    title="Add Tracking Event"
-                                  >
-                                    <Package className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                    onClick={() => handleDeleteOrder(order.id, order.waybillNumber)}
-                                    title="Delete Order"
-                                    disabled={deleteOrderMutation.isPending}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
+                              )}
+                            </div>
+                            {/* Actions */}
+                            <div className="flex gap-2 pt-1 border-t border-border">
+                              <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setSelectedOrder(order); setViewOrderDialogOpen(true); }}>
+                                <Eye className="h-3.5 w-3.5 mr-1" />View
+                              </Button>
+                              <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setOrderToEdit(order); setEditOrderDialogOpen(true); }}>
+                                <Pencil className="h-3.5 w-3.5 mr-1" />Edit
+                              </Button>
+                              <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }}>
+                                <Package className="h-3.5 w-3.5 mr-1" />Track
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} disabled={deleteOrderMutation.isPending}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 ) : (
                   <p className="text-center py-8 text-muted-foreground">No orders found</p>
                 )}
