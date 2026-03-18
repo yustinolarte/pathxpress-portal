@@ -38,7 +38,7 @@ export default function AdminDashboard() {
 
   const ALL_STATUSES = [
     'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
-    'delivered', 'failed_delivery', 'returned', 'exchange', 'canceled'
+    'delivered', 'failed_delivery', 'on_hold', 'returned', 'exchange', 'canceled'
   ];
 
   // Client editing state

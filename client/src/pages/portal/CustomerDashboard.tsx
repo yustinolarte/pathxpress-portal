@@ -826,6 +826,7 @@ export default function CustomerDashboard() {
                             { value: 'out_for_delivery', label: 'Out for Delivery' },
                             { value: 'delivered', label: 'Delivered' },
                             { value: 'failed_delivery', label: 'Failed / Returned' },
+                            { value: 'on_hold', label: 'On Hold' },
                             { value: 'cancelled', label: 'Cancelled' },
                           ].map((status) => (
                             <label
