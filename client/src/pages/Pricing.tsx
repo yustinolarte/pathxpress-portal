@@ -49,7 +49,7 @@ export default function Pricing() {
     { weight: '5 - 10 kg', standard: '25 AED', sameDay: '35 AED' },
     { weight: '10 - 15 kg', standard: '30 AED', sameDay: '40 AED' },
     { weight: '15 - 20 kg', standard: '35 AED', sameDay: '45 AED' },
-    { weight: '20+ kg', standard: '+1 AED/kg', sameDay: '+1 AED/kg' },
+    { weight: '20+ kg', standard: '+1 AED/kg', sameDay: '+2 AED/kg' },
   ];
 
   return (

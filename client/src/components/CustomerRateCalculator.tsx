@@ -345,7 +345,7 @@ export default function CustomerRateCalculator() {
               </li>
               <li className="flex items-center gap-3 text-sm font-medium">
                 <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
-                Base weight: 5kg (+1 AED/kg additional)
+                Base weight: 5kg (+2 AED/kg additional)
               </li>
               <li className="flex items-center gap-3 text-sm font-medium">
                 <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>

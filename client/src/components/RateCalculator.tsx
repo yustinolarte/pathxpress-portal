@@ -46,7 +46,7 @@ export default function RateCalculator() {
     },
     sameDay: {
       basePrice: 30, // AED for ≤5kg
-      extraPerKg: 1,  // AED per kg above 5kg
+      extraPerKg: 2,  // AED per kg above 5kg
     },
   };
 

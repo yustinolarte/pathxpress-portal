@@ -65,6 +65,7 @@ import CustomerAnalytics from '@/components/CustomerAnalytics';
 import ReturnsExchangesPanel from '@/components/ReturnsExchangesPanel';
 import InternationalRateCalculator from '@/components/InternationalRateCalculator';
 import CreateIntlShipmentForm from '@/components/CreateIntlShipmentForm';
+import CustomerPortalGuide from '@/components/CustomerPortalGuide';
 import * as XLSX from 'xlsx';
 
 export default function CustomerDashboard() {
@@ -523,6 +524,7 @@ export default function CustomerDashboard() {
     { icon: 'receipt_long', label: 'Invoices', value: 'invoices' },
     { icon: 'payments', label: 'COD', value: 'cod' },
     { icon: 'summarize', label: 'Reports', value: 'reports' },
+    { icon: 'menu_book', label: 'Guide', value: 'guide' },
   ];
 
   return (
@@ -1565,6 +1567,11 @@ export default function CustomerDashboard() {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          {/* Guide Tab */}
+          <TabsContent value="guide" className="space-y-4 mt-0">
+            <CustomerPortalGuide />
           </TabsContent>
         </Tabs>
       </div>

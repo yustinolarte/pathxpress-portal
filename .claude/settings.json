@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -1 /c/Users/steve/Downloads/pathxpress/client/src/components/*.tsx)"
+    ]
+  }
+}
