@@ -84,7 +84,7 @@
     "sameDay": {
       "title": "Entrega el Mismo Día",
       "label": "Dubái / EAU",
-      "point1": "Dubái / Sharjah / Abu Dhabi (límites de la ciudad)",
+      "point1": "Dubái / Sharjah / Abu Dhabi / Ajman (límites de la ciudad)",
       "point2": "Hora límite flexible",
       "point3": "Máximo 10 kg"
     },
@@ -103,11 +103,11 @@
       "point3": "Servicio puerta a puerta"
     },
     "latam": {
-      "title": "Carga EAU ⇄ LATAM",
-      "label": "Colombia, México, etc.",
-      "point1": "Corredor especializado",
-      "point2": "Soporte aduanero",
-      "point3": "Manejo experto"
+      "title": "Carga Internacional",
+      "label": "LATAM y destinos mundiales",
+      "point1": "Corredor especializado LATAM",
+      "point2": "Soluciones de envío global",
+      "point3": "Soporte de despacho aduanero"
     },
     "lastMile": {
       "title": "Última Milla para E-commerce",
@@ -137,14 +137,14 @@
       "description": "Precios competitivos diseñados para empresas en crecimiento"
     },
     "specialist": {
-      "title": "Especialistas EAU ⇄ LATAM",
-      "description": "Expertos en conectar Dubái con América Latina"
+      "title": "Especialistas en Envíos Globales",
+      "description": "Envíos mundiales con corredor especializado LATAM"
     }
   },
   "about": {
     "title": "Acerca de PATHXPRESS",
     "subtitle": "Su socio logístico desde 2025",
-    "description": "PATHXPRESS FZCO fue creada en 2025 en Dubái bajo IFZA. Nuestro enfoque está en la transparencia, eficiencia y accesibilidad en la logística de los EAU. Con un equipo de amplia experiencia logística, operamos en todos los Emiratos y conectamos Dubái con LATAM.",
+    "description": "PATHXPRESS FZCO fue creada en 2025 en Dubái bajo IFZA. Nuestro enfoque está en la transparencia, eficiencia y accesibilidad en la logística de los EAU. Con un equipo de amplia experiencia logística, operamos en todos los Emiratos y conectamos Dubái con el mundo.",
     "hero": {
       "badge": "Nuestra Historia",
       "extendedDescription": "Creemos que la logística debe ser simple, confiable y accesible para todos."
@@ -316,7 +316,7 @@
     },
     "q3": {
       "question": "¿Qué zonas cubren?",
-      "answer": "Cubrimos los siete Emiratos en los EAU. Para entrega el mismo día, nos enfocamos en los límites de la ciudad de Dubái, Sharjah y Abu Dhabi. Nuestro servicio nacional cubre todos los Emiratos, y también nos especializamos en carga internacional entre EAU y América Latina."
+      "answer": "Cubrimos los siete Emiratos en los EAU. Para entrega el mismo día, nos enfocamos en los límites de la ciudad de Dubái, Sharjah, Abu Dhabi y Ajman. Nuestro servicio nacional cubre todos los Emiratos, y ofrecemos carga internacional a destinos en todo el mundo."
     },
     "q4": {
       "question": "¿Cómo puedo rastrear mi envío?",
@@ -350,7 +350,7 @@
       "sameDay": "Entrega el Mismo Día",
       "domestic": "Nacional Día Siguiente / Económico",
       "freight": "Corretaje de Carga",
-      "latam": "Carga EAU ⇄ LATAM",
+      "latam": "Carga Internacional",
       "lastMile": "Última Milla E-commerce"
     },
     "submitSuccess": "¡Solicitud de recogida enviada con éxito! Nos pondremos en contacto pronto."
@@ -438,7 +438,11 @@
       "emirates": {
         "dubai": "Dubái",
         "abuDhabi": "Abu Dabi",
-        "sharjah": "Sharjah"
+        "sharjah": "Sharjah",
+        "ajman": "Ajman",
+        "rak": "Ras Al Khaimah",
+        "fujairah": "Fujairah",
+        "uaq": "Umm Al Quwain"
       }
     },
     "international": {

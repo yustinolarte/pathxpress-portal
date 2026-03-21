@@ -981,8 +981,8 @@ export async function generateInvoiceForClient(
   const [lastInvoice] = await db
     .select({ invoiceNumber: invoices.invoiceNumber })
     .from(invoices)
-    .where(sqlFn`invoice_number LIKE ${prefix + '%'}`)
-    .orderBy(sqlFn`invoice_number DESC`)
+    .where(sqlFn`invoiceNumber LIKE ${prefix + '%'}`)
+    .orderBy(sqlFn`invoiceNumber DESC`)
     .limit(1);
   let nextSeq = 1;
   if (lastInvoice?.invoiceNumber) {

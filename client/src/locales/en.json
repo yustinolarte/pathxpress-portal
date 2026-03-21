@@ -85,7 +85,7 @@
     "sameDay": {
       "title": "Same Day Delivery",
       "label": "Dubai / UAE",
-      "point1": "Dubai / Sharjah / Abu Dhabi (city limits)",
+      "point1": "Dubai / Sharjah / Abu Dhabi / Ajman (city limits)",
       "point2": "Flexible cut-off",
       "point3": "Max 10 kg"
     },
@@ -104,11 +104,11 @@
       "point3": "Door-to-door service"
     },
     "latam": {
-      "title": "UAE ⇄ LATAM Freight",
-      "label": "Colombia, Mexico, etc.",
-      "point1": "Specialized corridor",
-      "point2": "Customs support",
-      "point3": "Expert handling"
+      "title": "International Freight",
+      "label": "LATAM & Worldwide",
+      "point1": "Specialized LATAM corridor",
+      "point2": "Global shipping solutions",
+      "point3": "Customs clearance support"
     },
     "lastMile": {
       "title": "Last Mile for E-commerce",
@@ -138,14 +138,14 @@
       "description": "Competitive pricing designed for growing businesses"
     },
     "specialist": {
-      "title": "UAE ⇄ LATAM Specialists",
-      "description": "Expert in connecting Dubai to Latin America"
+      "title": "Global Shipping Specialists",
+      "description": "Worldwide shipping with specialized LATAM corridor"
     }
   },
   "about": {
     "title": "About PATHXPRESS",
     "subtitle": "Your logistics partner since 2025",
-    "description": "PATHXPRESS FZCO was created in 2025 in Dubai under IFZA. Our focus is on transparency, efficiency, and accessibility in UAE logistics. With a team of extensive logistics expertise, we operate in all Emirates and connect Dubai to LATAM.",
+    "description": "PATHXPRESS FZCO was created in 2025 in Dubai under IFZA. Our focus is on transparency, efficiency, and accessibility in UAE logistics. With a team of extensive logistics expertise, we operate in all Emirates and connect Dubai to the world.",
     "hero": {
       "badge": "Our Story",
       "extendedDescription": "We believe that logistics should be simple, reliable, and accessible to everyone."
@@ -321,7 +321,7 @@
     },
     "q3": {
       "question": "What zones do you cover?",
-      "answer": "We cover all seven Emirates in the UAE. For same-day delivery, we focus on Dubai, Sharjah, and Abu Dhabi city limits. Our domestic service covers all Emirates, and we also specialize in international freight between UAE and Latin America."
+      "answer": "We cover all seven Emirates in the UAE. For same-day delivery, we focus on Dubai, Sharjah, Abu Dhabi and Ajman city limits. Our domestic service covers all Emirates, and we provide international freight to destinations worldwide."
     },
     "q4": {
       "question": "How can I track my shipment?",
@@ -396,7 +396,7 @@
       "sameDay": "Same Day Delivery",
       "domestic": "Domestic Next Day / Economy",
       "freight": "Freight Brokerage",
-      "latam": "UAE ⇄ LATAM Freight",
+      "latam": "International Freight",
       "lastMile": "Last Mile E-commerce"
     },
     "cardTitle": "Request Information",
@@ -491,7 +491,11 @@
       "emirates": {
         "dubai": "Dubai",
         "abuDhabi": "Abu Dhabi",
-        "sharjah": "Sharjah"
+        "sharjah": "Sharjah",
+        "ajman": "Ajman",
+        "rak": "Ras Al Khaimah",
+        "fujairah": "Fujairah",
+        "uaq": "Umm Al Quwain"
       }
     },
     "international": {

@@ -9,7 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Calculator } from 'lucide-react';
 
 type ServiceType = 'standard' | 'sameDay';
-type Emirate = 'dubai' | 'abuDhabi' | 'sharjah';
+type Emirate = 'dubai' | 'abuDhabi' | 'sharjah' | 'ajman' | 'rak' | 'fujairah' | 'uaq';
 
 interface CalculationResult {
   actualWeight: number;
@@ -133,7 +133,7 @@ export default function RateCalculator() {
     });
   };
 
-  const emirates: Emirate[] = ['dubai', 'abuDhabi', 'sharjah'];
+  const emirates: Emirate[] = ['dubai', 'abuDhabi', 'sharjah', 'ajman', 'rak', 'fujairah', 'uaq'];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
