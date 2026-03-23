@@ -1425,6 +1425,14 @@ export const adminPortalRouter = router({
         shipperCity: z.string().optional(),
         shipperCountry: z.string().optional(),
         shipperPhone: z.string().optional(),
+        // Dimensions & customs (for international orders)
+        length: z.number().optional(),
+        width: z.number().optional(),
+        height: z.number().optional(),
+        customsValue: z.string().optional(),
+        customsCurrency: z.string().optional(),
+        customsDescription: z.string().optional(),
+        hsCode: z.string().optional(),
       }),
     }))
     .mutation(async ({ input }) => {
@@ -1494,8 +1502,17 @@ export const adminPortalRouter = router({
         // Shipment details
         pieces: input.shipment.pieces,
         weight: input.shipment.weight.toString(),
+        length: input.shipment.length?.toString() || null,
+        width: input.shipment.width?.toString() || null,
+        height: input.shipment.height?.toString() || null,
         serviceType: input.shipment.serviceType,
         specialInstructions: input.shipment.specialInstructions || null,
+
+        // Customs (for international orders)
+        customsValue: input.shipment.customsValue || null,
+        customsCurrency: input.shipment.customsCurrency || null,
+        customsDescription: input.shipment.customsDescription || null,
+        hsCode: input.shipment.hsCode || null,
 
         // COD
         codRequired: input.shipment.codRequired,

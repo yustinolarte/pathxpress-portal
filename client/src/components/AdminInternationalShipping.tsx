@@ -32,9 +32,13 @@ import {
     Search,
     Edit3,
     MapPin,
-    Download
+    Download,
+    Plus,
+    Trash2
 } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
+import { generateQuotationPDF } from '@/lib/generateQuotationPDF';
+import AdminCreateIntlOrderDialog from './AdminCreateIntlOrderDialog';
 
 // ─── Inline Rate Calculator (reused from customer side) ─────────────────────
 
@@ -143,6 +147,21 @@ function AdminRateCalculator() {
                         </CardContent>
                     </Card>
                 ))}
+                {quoteResult?.options?.length > 0 && (
+                    <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => generateQuotationPDF({
+                            originCountry,
+                            destinationCountry,
+                            realWeightKg: parseFloat(realWeightKg),
+                            dimensions: { length: parseFloat(length), width: parseFloat(width), height: parseFloat(height) },
+                            options: quoteResult.options,
+                        })}
+                    >
+                        <Download className="mr-2 h-4 w-4" /> Download Quote PDF
+                    </Button>
+                )}
                 {quoteResult?.options?.length === 0 && (
                     <Card className="glass-strong border-amber-500/20">
                         <CardContent className="py-6 text-center">
@@ -315,11 +334,39 @@ function QuoteRequestsTable() {
 function AdminIntlOrdersTable() {
     const { token } = usePortalAuth();
     const [filterSearch, setFilterSearch] = useState('');
+    const [newShipmentOpen, setNewShipmentOpen] = useState(false);
+    const [deletingId, setDeletingId] = useState<number | null>(null);
 
-    const { data: orders, isLoading } = trpc.portal.admin.getIntlOrders.useQuery(
+    const { data: orders, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery(
         { token: token || '' },
         { enabled: !!token }
     );
+
+    const { data: clients } = trpc.portal.admin.getClients.useQuery(
+        { token: token || '' },
+        { enabled: !!token }
+    );
+
+    const { data: countries } = trpc.portal.internationalRates.countries.useQuery(
+        { token: token || '' },
+        { enabled: !!token }
+    );
+
+    const deleteMutation = trpc.portal.admin.deleteOrder.useMutation({
+        onSuccess: () => {
+            setDeletingId(null);
+            refetch();
+        },
+        onError: () => {
+            setDeletingId(null);
+        },
+    });
+
+    const handleDelete = (orderId: number, waybillNumber: string) => {
+        if (!window.confirm(`Delete order ${waybillNumber}? This cannot be undone.`)) return;
+        setDeletingId(orderId);
+        deleteMutation.mutate({ token: token || '', orderId });
+    };
 
     const filteredOrders = orders?.filter((order: any) => {
         const search = filterSearch.toLowerCase();
@@ -362,6 +409,9 @@ function AdminIntlOrdersTable() {
                         onChange={(e) => setFilterSearch(e.target.value)}
                         className="w-full sm:w-[250px] bg-background/50 h-9"
                     />
+                    <Button size="sm" onClick={() => setNewShipmentOpen(true)}>
+                        <Plus className="mr-1 h-4 w-4" /> New Shipment
+                    </Button>
                 </div>
             </CardHeader>
             <CardContent>
@@ -433,6 +483,19 @@ function AdminIntlOrdersTable() {
                                                 >
                                                     <Download className="h-4 w-4" />
                                                 </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleDelete(order.id, order.waybillNumber)}
+                                                    disabled={deletingId === order.id}
+                                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                                    title="Delete Order"
+                                                >
+                                                    {deletingId === order.id
+                                                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                        : <Trash2 className="h-4 w-4" />
+                                                    }
+                                                </Button>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -451,6 +514,14 @@ function AdminIntlOrdersTable() {
                 )}
             </CardContent>
         </Card>
+        <AdminCreateIntlOrderDialog
+            open={newShipmentOpen}
+            onOpenChange={setNewShipmentOpen}
+            clients={clients}
+            countries={countries || []}
+            token={token || ''}
+            onSuccess={() => { setNewShipmentOpen(false); refetch(); }}
+        />
     );
 }
 
