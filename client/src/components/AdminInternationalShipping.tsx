@@ -394,6 +394,7 @@ function AdminIntlOrdersTable() {
     const getStatusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
 
     return (
+        <>
         <Card className="glass-strong border-green-500/20">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -522,6 +523,7 @@ function AdminIntlOrdersTable() {
             token={token || ''}
             onSuccess={() => { setNewShipmentOpen(false); refetch(); }}
         />
+        </>
     );
 }
 
