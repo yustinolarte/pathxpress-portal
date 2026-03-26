@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Search, Plus, RotateCcw, ArrowLeftRight, Package, Download, DollarSign } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
+import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 
 interface ReturnsExchangesPanelProps {
     token: string;
@@ -26,6 +27,8 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
     const [createDialogOpen, setCreateDialogOpen] = useState(false);
     const [createType, setCreateType] = useState<'return' | 'exchange'>('return');
     const [manualDialogOpen, setManualDialogOpen] = useState(false);
+    const [pickedLocationExchange, setPickedLocationExchange] = useState<PickedLocation | null>(null);
+    const [pickedLocationManual, setPickedLocationManual] = useState<PickedLocation | null>(null);
 
     // Edit COD state
     const [editCodDialogOpen, setEditCodDialogOpen] = useState(false);
@@ -39,6 +42,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
     // Form for new exchange shipment
     const [exchangeForm, setExchangeForm] = useState({
         customerName: '',
+        customerPhonePrefix: '+971',
         customerPhone: '',
         address: '',
         city: '',
@@ -57,12 +61,14 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
         type: 'return' as 'return' | 'exchange',
         // Pickup (where the package is)
         pickupName: '',
+        pickupPhonePrefix: '+971',
         pickupPhone: '',
         pickupAddress: '',
         pickupCity: '',
         pickupCountry: 'UAE',
         // Delivery (where it goes)
         deliveryName: '',
+        deliveryPhonePrefix: '+971',
         deliveryPhone: '',
         deliveryAddress: '',
         deliveryCity: '',
@@ -74,6 +80,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
         specialInstructions: '',
         // For exchange - new shipment details
         exchangeCustomerName: '',
+        exchangeCustomerPhonePrefix: '+971',
         exchangeCustomerPhone: '',
         exchangeAddress: '',
         exchangeCity: '',
@@ -124,8 +131,10 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             setCreateDialogOpen(false);
             setFoundOrder(null);
             setSearchWaybill('');
+            setPickedLocationExchange(null);
             setExchangeForm({
                 customerName: '',
+                customerPhonePrefix: '+971',
                 customerPhone: '',
                 address: '',
                 city: '',
@@ -150,14 +159,17 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
         onSuccess: (data) => {
             toast.success(data.message || 'Created successfully!');
             setManualDialogOpen(false);
+            setPickedLocationManual(null);
             setManualForm({
                 type: 'return',
                 pickupName: '',
+                pickupPhonePrefix: '+971',
                 pickupPhone: '',
                 pickupAddress: '',
                 pickupCity: '',
                 pickupCountry: 'UAE',
                 deliveryName: '',
+                deliveryPhonePrefix: '+971',
                 deliveryPhone: '',
                 deliveryAddress: '',
                 deliveryCity: '',
@@ -167,6 +179,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                 serviceType: 'DOM',
                 specialInstructions: '',
                 exchangeCustomerName: '',
+                exchangeCustomerPhonePrefix: '+971',
                 exchangeCustomerPhone: '',
                 exchangeAddress: '',
                 exchangeCity: '',
@@ -249,10 +262,15 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             orderId: foundOrder.id,
             newShipment: {
                 ...exchangeForm,
+                customerPhone: `${exchangeForm.customerPhonePrefix} ${exchangeForm.customerPhone}`,
                 weight: parseFloat(exchangeForm.weight) || 0.5,
                 codRequired: exchangeForm.codRequired,
                 codAmount: exchangeForm.codRequired ? exchangeForm.codAmount : undefined,
                 codCurrency: exchangeForm.codCurrency,
+                // @ts-ignore
+                latitude: pickedLocationExchange?.latitude,
+                // @ts-ignore
+                longitude: pickedLocationExchange?.longitude,
             },
         });
     };
@@ -266,14 +284,36 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             toast.error('Please fill in delivery details');
             return;
         }
+        if (manualForm.type === 'exchange') {
+            if (!manualForm.exchangeCustomerName || !manualForm.exchangeCustomerPhone) {
+                toast.error('Please fill in the exchange recipient name and phone');
+                return;
+            }
+            if (!manualForm.exchangeAddress || !manualForm.exchangeCity) {
+                toast.error('Please fill in the exchange shipment address and city');
+                return;
+            }
+            if (manualForm.exchangeCodRequired && !manualForm.exchangeCodAmount) {
+                toast.error('Please enter the COD amount for the exchange shipment');
+                return;
+            }
+        }
         createManualMutation.mutate({
             token,
             ...manualForm,
+            pickupPhone: `${manualForm.pickupPhonePrefix} ${manualForm.pickupPhone}`,
+            deliveryPhone: `${manualForm.deliveryPhonePrefix} ${manualForm.deliveryPhone}`,
             weight: parseFloat(manualForm.weight) || 0.5,
             exchangeWeight: parseFloat(manualForm.exchangeWeight) || 0.5,
             exchangeCodRequired: manualForm.exchangeCodRequired,
             exchangeCodAmount: manualForm.exchangeCodRequired ? manualForm.exchangeCodAmount : undefined,
             exchangeCodCurrency: manualForm.exchangeCodCurrency,
+            // @ts-ignore
+            exchangeCustomerPhone: `${manualForm.exchangeCustomerPhonePrefix} ${manualForm.exchangeCustomerPhone}`,
+            // @ts-ignore
+            latitude: pickedLocationManual?.latitude,
+            // @ts-ignore
+            longitude: pickedLocationManual?.longitude,
         });
     };
 
@@ -586,111 +626,152 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
 
             {/* Create Return/Exchange Dialog */}
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                <DialogContent className="glass-strong !w-[95vw] !max-w-[800px] p-0 gap-0 border-white/10 max-h-[90vh] overflow-y-auto">
-                    <div className={`w-full h-1.5 ${createType === 'return' ? 'bg-gradient-to-r from-cyan-600 to-blue-600' : 'bg-gradient-to-r from-amber-600 to-orange-600'}`} />
-                    <div className="p-6">
-                        <DialogHeader className="mb-5">
-                            <DialogTitle className="text-xl font-bold flex items-center gap-3">
+                <DialogContent className="bg-background text-foreground !w-[98vw] !max-w-[1300px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl">
+                    <div className="p-6 md:p-8">
+                        <DialogHeader className="mb-8 border-b border-border pb-4">
+                            <DialogTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
                                 {createType === 'return' ? (
-                                    <><RotateCcw className="w-6 h-6 text-cyan-500" /> Create Return</>
+                                    <><span className="material-symbols-outlined text-primary text-3xl">keyboard_return</span> Create Return</>
                                 ) : (
-                                    <><ArrowLeftRight className="w-6 h-6 text-amber-500" /> Create Exchange</>
+                                    <><span className="material-symbols-outlined text-primary text-3xl">swap_horiz</span> Create Exchange</>
                                 )}
                             </DialogTitle>
-                            <DialogDescription>
+                            <DialogDescription className="text-muted-foreground text-base mt-2">
                                 {createType === 'return'
-                                    ? 'The package will be returned from the consignee to the original shipper.'
+                                    ? 'The package will be picked up from the consignee and returned to the original shipper.'
                                     : 'The package will be returned AND a new shipment will be sent to the customer.'}
                             </DialogDescription>
                         </DialogHeader>
 
                         {foundOrder && (
-                            <div className="space-y-4">
-                                {/* Return Summary */}
-                                <div className="p-4 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
-                                    <p className="text-sm font-medium text-cyan-400 mb-2">Return Shipment:</p>
-                                    <div className="text-sm space-y-1">
-                                        <p><Package className="inline h-4 w-4 mr-1 text-cyan-500" /> From: <strong className="text-foreground">{foundOrder.customerName}</strong> ({foundOrder.city})</p>
-                                        <p><Package className="inline h-4 w-4 mr-1 text-cyan-500" /> To: <strong className="text-foreground">{foundOrder.shipperName}</strong> ({foundOrder.shipperCity})</p>
-                                    </div>
-                                </div>
-
-                                {/* Exchange New Shipment Form */}
-                                {createType === 'exchange' && (
-                                    <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                                        <p className="text-sm font-medium text-amber-400 mb-3">New Shipment (to customer):</p>
-                                        <div className="grid gap-3">
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <Label className="text-xs">Customer Name *</Label>
-                                                    <Input
-                                                        value={exchangeForm.customerName}
-                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, customerName: e.target.value })}
-                                                        placeholder="Customer name"
-                                                        className="bg-white/5 border-white/10"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label className="text-xs">Phone *</Label>
-                                                    <Input
-                                                        value={exchangeForm.customerPhone}
-                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, customerPhone: e.target.value })}
-                                                        placeholder="Phone"
-                                                        className="bg-white/5 border-white/10"
-                                                    />
-                                                </div>
-                                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                {/* Left Column: Summaries & Forms */}
+                                <div className="space-y-6">
+                                    {/* Return Summary */}
+                                    <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                        <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-primary">assignment_return</span>
+                                            <h2 className="font-bold">Return Path</h2>
+                                        </div>
+                                        <div className="p-6 space-y-4">
                                             <div>
-                                                <Label className="text-xs">Address *</Label>
-                                                <Textarea
-                                                    value={exchangeForm.address}
-                                                    onChange={(e) => setExchangeForm({ ...exchangeForm, address: e.target.value })}
-                                                    placeholder="Delivery address"
-                                                    rows={2}
-                                                    className="bg-white/5 border-white/10"
-                                                />
+                                                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Pickup From (Customer)</p>
+                                                <p className="font-bold text-foreground">{foundOrder.customerName}</p>
+                                                <p className="text-sm text-muted-foreground">{foundOrder.city}, {foundOrder.destinationCountry}</p>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <Label className="text-xs">City *</Label>
-                                                    <Input
-                                                        value={exchangeForm.city}
-                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, city: e.target.value })}
-                                                        placeholder="City"
-                                                        className="bg-white/5 border-white/10"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label className="text-xs">Weight (kg)</Label>
-                                                    <Input
-                                                        type="number"
-                                                        step="0.1"
-                                                        min="0.1"
-                                                        value={exchangeForm.weight}
-                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })}
-                                                        className="bg-white/5 border-white/10"
-                                                    />
-                                                </div>
+                                            <div className="h-px w-full bg-border"></div>
+                                            <div>
+                                                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Deliver To (Shipper)</p>
+                                                <p className="font-bold text-foreground">{foundOrder.shipperName}</p>
+                                                <p className="text-sm text-muted-foreground">{foundOrder.shipperCity}, {foundOrder.shipperCountry}</p>
                                             </div>
                                         </div>
+                                    </section>
 
-                                        {/* COD Section - only for clients with COD enabled */}
-                                        {codAllowed && (
-                                            <div className="mt-3 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        id="exchange-cod"
-                                                        checked={exchangeForm.codRequired === 1}
-                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, codRequired: e.target.checked ? 1 : 0 })}
-                                                        className="rounded bg-white/5 border-white/10"
-                                                    />
-                                                    <Label htmlFor="exchange-cod" className="text-xs font-medium text-green-400 cursor-pointer">💰 Cash on Delivery (COD)</Label>
+                                    {/* Exchange New Shipment Form */}
+                                    {createType === 'exchange' && (
+                                        <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                            <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                                <span className="material-symbols-outlined text-primary">local_shipping</span>
+                                                <h2 className="font-bold">New Shipment Details</h2>
+                                            </div>
+                                            <div className="p-6 space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Customer Name</Label>
+                                                        <Input
+                                                            value={exchangeForm.customerName}
+                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, customerName: e.target.value })}
+                                                            placeholder="Name"
+                                                            className="bg-background border-border"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Phone</Label>
+                                                        <div className="flex">
+                                                            <select className="px-2 rounded-l-md border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={exchangeForm.customerPhonePrefix} onChange={(e) => setExchangeForm({ ...exchangeForm, customerPhonePrefix: e.target.value })}>
+                                                                <option value="+971">🇦🇪 +971</option>
+                                                                <option value="+966">🇸🇦 +966</option>
+                                                                <option value="+965">🇰🇼 +965</option>
+                                                                <option value="+973">🇧🇭 +973</option>
+                                                                <option value="+968">🇴🇲 +968</option>
+                                                                <option value="+974">🇶🇦 +974</option>
+                                                            </select>
+                                                            <Input
+                                                                value={exchangeForm.customerPhone}
+                                                                onChange={(e) => setExchangeForm({ ...exchangeForm, customerPhone: e.target.value })}
+                                                                placeholder="Phone"
+                                                                className="bg-background border-border rounded-l-none"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Address</Label>
+                                                    <Textarea
+                                                        value={exchangeForm.address}
+                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, address: e.target.value })}
+                                                        placeholder="Delivery address"
+                                                        rows={2}
+                                                        className="bg-background border-border"
+                                                    />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">City</Label>
+                                                        <select
+                                                            value={exchangeForm.city}
+                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, city: e.target.value })}
+                                                            className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                        >
+                                                            <option value="">Select City</option>
+                                                            {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Weight (kg)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0.1"
+                                                            value={exchangeForm.weight}
+                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })}
+                                                            className="bg-background border-border"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Location Picker for Exchange */}
+                                                <div className="pt-2 border-t border-border mt-4">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-3">Delivery Map Location (optional)</Label>
+                                                    <LocationPicker onLocationPicked={setPickedLocationExchange} />
+                                                </div>
+                                            </div>
+                                        </section>
+                                    )}
+                                </div>
+
+                                {/* Right Column: COD & Actions */}
+                                <div className="space-y-6">
+                                    {codAllowed && createType === 'exchange' && (
+                                        <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                            <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                                <span className="material-symbols-outlined text-primary">payments</span>
+                                                <h2 className="font-bold">Payment Setup</h2>
+                                            </div>
+                                            <div className="p-6 space-y-4">
+                                                <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${exchangeForm.codRequired === 1 ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
+                                                    <input className="text-primary focus:ring-primary w-4 h-4" type="checkbox" checked={exchangeForm.codRequired === 1} onChange={(e) => setExchangeForm({ ...exchangeForm, codRequired: e.target.checked ? 1 : 0 })} />
+                                                    <div className="ml-3">
+                                                        <div className="font-bold text-sm">Cash on Delivery (COD)</div>
+                                                        <div className="text-[11px] text-muted-foreground">Collect payment from the receiver</div>
+                                                    </div>
+                                                </label>
+
                                                 {exchangeForm.codRequired === 1 && (
-                                                    <div className="grid grid-cols-2 gap-2 mt-3 p-3 bg-white/5 rounded-lg">
-                                                        <div>
-                                                            <Label className="text-xs">Amount *</Label>
+                                                    <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Amount to Collect</Label>
+                                                        <div className="relative">
                                                             <Input
                                                                 type="number"
                                                                 step="0.01"
@@ -698,379 +779,317 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
                                                                 value={exchangeForm.codAmount}
                                                                 onChange={(e) => setExchangeForm({ ...exchangeForm, codAmount: e.target.value })}
                                                                 placeholder="0.00"
-                                                                className="bg-white/5 border-white/10 font-mono"
+                                                                className="bg-background border-border pl-12 h-12 text-lg font-bold"
                                                             />
-                                                        </div>
-                                                        <div>
-                                                            <Label className="text-xs">Currency</Label>
-                                                            <Select
-                                                                value={exchangeForm.codCurrency}
-                                                                onValueChange={(value) => setExchangeForm({ ...exchangeForm, codCurrency: value })}
-                                                            >
-                                                                <SelectTrigger className="bg-white/5 border-white/10">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="AED">AED</SelectItem>
-                                                                    <SelectItem value="USD">USD</SelectItem>
-                                                                    <SelectItem value="EUR">EUR</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
+                                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">AED</span>
                                                         </div>
                                                     </div>
                                                 )}
                                             </div>
-                                        )}
-                                    </div>
-                                )}
+                                        </section>
+                                    )}
+
+                                    <section className="bg-slate-900 text-white rounded-xl shadow-xl p-6 relative overflow-hidden">
+                                        <h2 className="font-bold mb-4 flex items-center gap-2 relative z-10">
+                                            <span className="material-symbols-outlined text-blue-400">info</span>
+                                            Important
+                                        </h2>
+                                        <p className="text-sm text-slate-300 relative z-10 leading-relaxed">
+                                            Please verify all details before confirming. Return shipping fees will be deducted from your prepaid balance according to your agreed rate card.
+                                        </p>
+                                        <div className="mt-8 flex flex-col gap-3 relative z-10">
+                                            <button type="button" onClick={() => setCreateDialogOpen(false)} className="w-full py-3 bg-white/10 text-white rounded-xl font-bold hover:bg-white/20 transition-all">
+                                                Cancel
+                                            </button>
+                                            <button 
+                                                type="button" 
+                                                onClick={createType === 'return' ? handleCreateReturn : handleCreateExchange}
+                                                disabled={createReturnMutation.isPending || createExchangeMutation.isPending} 
+                                                className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <span className="material-symbols-outlined">rocket_launch</span>
+                                                {(createReturnMutation.isPending || createExchangeMutation.isPending) ? 'Processing...' : 'Confirm Request'}
+                                            </button>
+                                        </div>
+                                    </section>
+                                </div>
                             </div>
                         )}
-
-                        <DialogFooter className="mt-6 border-t border-white/10 pt-4">
-                            <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="bg-white/5 border-white/10 hover:bg-white/10">
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={createType === 'return' ? handleCreateReturn : handleCreateExchange}
-                                disabled={createReturnMutation.isPending || createExchangeMutation.isPending}
-                                className={createType === 'return' ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-amber-500 hover:bg-amber-600'}
-                            >
-                                {(createReturnMutation.isPending || createExchangeMutation.isPending) ? 'Creating...' :
-                                    createType === 'return' ? 'Create Return' : 'Create Exchange'}
-                            </Button>
-                        </DialogFooter>
                     </div>
                 </DialogContent>
             </Dialog>
 
             {/* Manual Return/Exchange Dialog (without existing waybill) */}
-            <Dialog open={manualDialogOpen} onOpenChange={setManualDialogOpen}>
-                <DialogContent className="glass-strong !w-[95vw] !max-w-[1000px] p-0 gap-0 border-white/10 max-h-[90vh] overflow-y-auto">
-                    <div className="w-full h-1.5 bg-gradient-to-r from-primary to-blue-600" />
-                    <div className="p-6">
-                        <DialogHeader className="mb-5">
-                            <DialogTitle className="text-xl font-bold flex items-center gap-3">
-                                <Plus className="h-6 w-6 text-primary" />
-                                Create New Return/Exchange
+            <Dialog open={manualDialogOpen} onOpenChange={(open) => { setManualDialogOpen(open); if (!open) setPickedLocationManual(null); }}>
+                <DialogContent className="bg-background text-foreground !w-[98vw] !max-w-[1400px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl">
+                    <div className="p-6 md:p-8">
+                        <DialogHeader className="mb-8 border-b border-border pb-4">
+                            <DialogTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
+                                <span className="material-symbols-outlined text-primary text-3xl">add_box</span>
+                                Create Return/Exchange manually
                             </DialogTitle>
-                            <DialogDescription>
-                                For packages that don't have an existing waybill in our system (e.g., shipped with another company)
+                            <DialogDescription className="text-muted-foreground text-base mt-2">
+                                For packages that don't have an existing waybill in our system.
                             </DialogDescription>
                         </DialogHeader>
 
-                        <div className="space-y-6">
-                            {/* Type Selection */}
-                            <div className="w-1/2">
-                                <Label>Type</Label>
-                                <Select
-                                    value={manualForm.type}
-                                    onValueChange={(value: 'return' | 'exchange') => setManualForm({ ...manualForm, type: value })}
-                                >
-                                    <SelectTrigger className="bg-white/5 border-white/10 mt-1">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="return">Return (pickup and return to sender)</SelectItem>
-                                        <SelectItem value="exchange">Exchange (pickup + send new item)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                            {/* Left Column: Pickup & Delivery Forms */}
+                            <div className="xl:col-span-2 space-y-8">
+                                <div className="bg-primary/5 border border-primary/20 p-4 rounded-xl flex items-center justify-between">
+                                    <div>
+                                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">Operation Type</Label>
+                                        <div className="flex gap-4">
+                                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${manualForm.type === 'return' ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
+                                                <input className="text-primary focus:ring-primary w-4 h-4" type="radio" checked={manualForm.type === 'return'} onChange={() => setManualForm({...manualForm, type: 'return'})} />
+                                                <div className="ml-3 font-bold text-sm">Return Only</div>
+                                            </label>
+                                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${manualForm.type === 'exchange' ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}>
+                                                <input className="text-primary focus:ring-primary w-4 h-4" type="radio" checked={manualForm.type === 'exchange'} onChange={() => setManualForm({...manualForm, type: 'exchange'})} />
+                                                <div className="ml-3 font-bold text-sm">Exchange</div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div className="grid grid-cols-2 gap-6">
                                 {/* Pickup Details */}
-                                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-                                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                                        <Package className="h-4 w-4 text-cyan-500" />
-                                        Pickup Location (where the package is)
-                                    </h4>
-                                    <div className="grid gap-3">
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <Label className="text-xs">Name *</Label>
-                                                <Input
-                                                    value={manualForm.pickupName}
-                                                    onChange={(e) => setManualForm({ ...manualForm, pickupName: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>outbox</span>
+                                        <h2 className="font-bold">Pickup Details (From)</h2>
+                                    </div>
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</Label>
+                                                <Input value={manualForm.pickupName} onChange={(e) => setManualForm({ ...manualForm, pickupName: e.target.value })} className="bg-background border-border" />
                                             </div>
-                                            <div>
-                                                <Label className="text-xs">Phone *</Label>
-                                                <Input
-                                                    value={manualForm.pickupPhone}
-                                                    onChange={(e) => setManualForm({ ...manualForm, pickupPhone: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</Label>
+                                                <div className="flex">
+                                                    <select className="px-2 rounded-l-md border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={manualForm.pickupPhonePrefix} onChange={(e) => setManualForm({ ...manualForm, pickupPhonePrefix: e.target.value })}>
+                                                        <option value="+971">🇦🇪 +971</option>
+                                                        <option value="+966">🇸🇦 +966</option>
+                                                        <option value="+965">🇰🇼 +965</option>
+                                                        <option value="+973">🇧🇭 +973</option>
+                                                        <option value="+968">🇴🇲 +968</option>
+                                                        <option value="+974">🇶🇦 +974</option>
+                                                    </select>
+                                                    <Input value={manualForm.pickupPhone} onChange={(e) => setManualForm({ ...manualForm, pickupPhone: e.target.value })} className="bg-background border-border rounded-l-none" />
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div>
-                                            <Label className="text-xs">Address *</Label>
-                                            <Textarea
-                                                value={manualForm.pickupAddress}
-                                                onChange={(e) => setManualForm({ ...manualForm, pickupAddress: e.target.value })}
-                                                rows={2}
-                                                className="bg-white/5 border-white/10"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <Label className="text-xs">City *</Label>
-                                                <Input
+                                            <div className="md:col-span-2 space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</Label>
+                                                <Textarea value={manualForm.pickupAddress} onChange={(e) => setManualForm({ ...manualForm, pickupAddress: e.target.value })} rows={2} className="bg-background border-border" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City</Label>
+                                                <select
                                                     value={manualForm.pickupCity}
                                                     onChange={(e) => setManualForm({ ...manualForm, pickupCity: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs">Country</Label>
-                                                <Input
-                                                    value={manualForm.pickupCountry}
-                                                    onChange={(e) => setManualForm({ ...manualForm, pickupCountry: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
+                                                    className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                >
+                                                    <option value="">Select City</option>
+                                                    {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </section>
 
                                 {/* Delivery Details */}
-                                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-                                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                                        <Package className="h-4 w-4 text-green-500" />
-                                        Delivery Location (where it goes)
-                                    </h4>
-                                    <div className="grid gap-3">
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <Label className="text-xs">Name *</Label>
-                                                <Input
-                                                    value={manualForm.deliveryName}
-                                                    onChange={(e) => setManualForm({ ...manualForm, deliveryName: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>move_to_inbox</span>
+                                        <h2 className="font-bold">Delivery Details (To)</h2>
+                                    </div>
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</Label>
+                                                <Input value={manualForm.deliveryName} onChange={(e) => setManualForm({ ...manualForm, deliveryName: e.target.value })} className="bg-background border-border" />
                                             </div>
-                                            <div>
-                                                <Label className="text-xs">Phone *</Label>
-                                                <Input
-                                                    value={manualForm.deliveryPhone}
-                                                    onChange={(e) => setManualForm({ ...manualForm, deliveryPhone: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</Label>
+                                                <div className="flex">
+                                                    <select className="px-2 rounded-l-md border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={manualForm.deliveryPhonePrefix} onChange={(e) => setManualForm({ ...manualForm, deliveryPhonePrefix: e.target.value })}>
+                                                        <option value="+971">🇦🇪 +971</option>
+                                                        <option value="+966">🇸🇦 +966</option>
+                                                        <option value="+965">🇰🇼 +965</option>
+                                                        <option value="+973">🇧🇭 +973</option>
+                                                        <option value="+968">🇴🇲 +968</option>
+                                                        <option value="+974">🇶🇦 +974</option>
+                                                    </select>
+                                                    <Input value={manualForm.deliveryPhone} onChange={(e) => setManualForm({ ...manualForm, deliveryPhone: e.target.value })} className="bg-background border-border rounded-l-none" />
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div>
-                                            <Label className="text-xs">Address *</Label>
-                                            <Textarea
-                                                value={manualForm.deliveryAddress}
-                                                onChange={(e) => setManualForm({ ...manualForm, deliveryAddress: e.target.value })}
-                                                rows={2}
-                                                className="bg-white/5 border-white/10"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <Label className="text-xs">City *</Label>
-                                                <Input
+                                            <div className="md:col-span-2 space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</Label>
+                                                <Textarea value={manualForm.deliveryAddress} onChange={(e) => setManualForm({ ...manualForm, deliveryAddress: e.target.value })} rows={2} className="bg-background border-border" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City</Label>
+                                                <select
                                                     value={manualForm.deliveryCity}
                                                     onChange={(e) => setManualForm({ ...manualForm, deliveryCity: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs">Country</Label>
-                                                <Input
-                                                    value={manualForm.deliveryCountry}
-                                                    onChange={(e) => setManualForm({ ...manualForm, deliveryCountry: e.target.value })}
-                                                    className="bg-white/5 border-white/10 h-9"
-                                                />
+                                                    className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                >
+                                                    <option value="">Select City</option>
+                                                    {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
                                             </div>
                                         </div>
                                     </div>
+                                </section>
+                                
+                                <div className="pt-4 border-t border-border mt-4">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Pickup Map Location (optional)</Label>
+                                    <p className="text-xs text-muted-foreground mb-3">Pin the exact pickup address on the map to help the driver locate it.</p>
+                                    <LocationPicker onLocationPicked={setPickedLocationManual} />
                                 </div>
                             </div>
 
-                            {/* Package Details */}
-                            <div className="grid grid-cols-3 gap-4">
-                                <div>
-                                    <Label className="text-xs">Pieces</Label>
-                                    <Input
-                                        type="number"
-                                        min="1"
-                                        value={manualForm.pieces}
-                                        onChange={(e) => setManualForm({ ...manualForm, pieces: parseInt(e.target.value) || 1 })}
-                                        className="bg-white/5 border-white/10 h-9"
-                                    />
-                                </div>
-                                <div>
-                                    <Label className="text-xs">Weight (kg)</Label>
-                                    <Input
-                                        type="number"
-                                        step="0.1"
-                                        min="0.1"
-                                        value={manualForm.weight}
-                                        onChange={(e) => setManualForm({ ...manualForm, weight: e.target.value })}
-                                        className="bg-white/5 border-white/10 h-9"
-                                    />
-                                </div>
-                                <div>
-                                    <Label className="text-xs">Service</Label>
-                                    <Select
-                                        value={manualForm.serviceType}
-                                        onValueChange={(value) => setManualForm({ ...manualForm, serviceType: value })}
-                                    >
-                                        <SelectTrigger className="bg-white/5 border-white/10 h-9">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="DOM">Domestic</SelectItem>
-                                            <SelectItem value="SDD">Same Day</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
+                            {/* Right Column: Package Details & Exchange Form */}
+                            <div className="space-y-8">
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>inventory</span>
+                                        <h2 className="font-bold">Package Information</h2>
+                                    </div>
+                                    <div className="p-6 space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Pieces</Label>
+                                                <Input type="number" min="1" value={manualForm.pieces} onChange={(e) => setManualForm({ ...manualForm, pieces: parseInt(e.target.value) || 1 })} className="bg-background border-border" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Weight (kg)</Label>
+                                                <Input type="number" step="0.1" min="0.1" value={manualForm.weight} onChange={(e) => setManualForm({ ...manualForm, weight: e.target.value })} className="bg-background border-border" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service Type</Label>
+                                            <select
+                                                value={manualForm.serviceType}
+                                                onChange={(e) => setManualForm({ ...manualForm, serviceType: e.target.value })}
+                                                className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                            >
+                                                <option value="DOM">Domestic</option>
+                                                <option value="SDD">Same Day</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Instructions</Label>
+                                            <Textarea value={manualForm.specialInstructions} onChange={(e) => setManualForm({ ...manualForm, specialInstructions: e.target.value })} placeholder="Any special instructions..." rows={2} className="bg-background border-border" />
+                                        </div>
+                                    </div>
+                                </section>
 
-                            {/* Exchange: New Shipment Details */}
-                            {manualForm.type === 'exchange' && (
-                                <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                                    <h4 className="font-medium mb-3 flex items-center gap-2 text-amber-400">
-                                        <ArrowLeftRight className="h-4 w-4" />
-                                        New Shipment (exchange item to customer)
-                                    </h4>
-                                    <div className="grid gap-3">
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <Label className="text-xs">Customer Name *</Label>
-                                                <Input
-                                                    value={manualForm.exchangeCustomerName}
-                                                    onChange={(e) => setManualForm({ ...manualForm, exchangeCustomerName: e.target.value })}
-                                                    className="bg-white/5 border-white/10"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs">Phone *</Label>
-                                                <Input
-                                                    value={manualForm.exchangeCustomerPhone}
-                                                    onChange={(e) => setManualForm({ ...manualForm, exchangeCustomerPhone: e.target.value })}
-                                                    className="bg-white/5 border-white/10"
-                                                />
-                                            </div>
+                                {manualForm.type === 'exchange' && (
+                                    <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                        <div className="px-6 py-4 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-amber-500">local_shipping</span>
+                                            <h2 className="font-bold text-amber-600 dark:text-amber-500">New Item Shipment (To Customer)</h2>
                                         </div>
-                                        <div>
-                                            <Label className="text-xs">Address *</Label>
-                                            <Textarea
-                                                value={manualForm.exchangeAddress}
-                                                onChange={(e) => setManualForm({ ...manualForm, exchangeAddress: e.target.value })}
-                                                rows={2}
-                                                className="bg-white/5 border-white/10"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <div>
-                                                <Label className="text-xs">City *</Label>
-                                                <Input
-                                                    value={manualForm.exchangeCity}
-                                                    onChange={(e) => setManualForm({ ...manualForm, exchangeCity: e.target.value })}
-                                                    className="bg-white/5 border-white/10"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs">Pieces</Label>
-                                                <Input
-                                                    type="number"
-                                                    min="1"
-                                                    value={manualForm.exchangePieces}
-                                                    onChange={(e) => setManualForm({ ...manualForm, exchangePieces: parseInt(e.target.value) || 1 })}
-                                                    className="bg-white/5 border-white/10"
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs">Weight (kg)</Label>
-                                                <Input
-                                                    type="number"
-                                                    step="0.1"
-                                                    min="0.1"
-                                                    value={manualForm.exchangeWeight}
-                                                    onChange={(e) => setManualForm({ ...manualForm, exchangeWeight: e.target.value })}
-                                                    className="bg-white/5 border-white/10"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* COD Section - only for clients with COD enabled */}
-                                        {codAllowed && (
-                                            <div className="mt-4 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-                                                <div className="flex items-center gap-2 mb-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        id="manual-exchange-cod"
-                                                        checked={manualForm.exchangeCodRequired === 1}
-                                                        onChange={(e) => setManualForm({ ...manualForm, exchangeCodRequired: e.target.checked ? 1 : 0 })}
-                                                        className="rounded bg-white/5 border-white/10"
-                                                    />
-                                                    <Label htmlFor="manual-exchange-cod" className="text-xs font-medium text-green-400 cursor-pointer">💰 Cash on Delivery (COD)</Label>
+                                        <div className="p-6 space-y-4">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Recipient Name *</Label>
+                                                    <Input value={manualForm.exchangeCustomerName} onChange={(e) => setManualForm({ ...manualForm, exchangeCustomerName: e.target.value })} placeholder="Full name" className="bg-background border-border" />
                                                 </div>
-                                                {manualForm.exchangeCodRequired === 1 && (
-                                                    <div className="grid grid-cols-2 gap-2 mt-3 p-3 bg-white/5 rounded-lg">
-                                                        <div>
-                                                            <Label className="text-xs">Amount *</Label>
-                                                            <Input
-                                                                type="number"
-                                                                step="0.01"
-                                                                min="0"
-                                                                value={manualForm.exchangeCodAmount}
-                                                                onChange={(e) => setManualForm({ ...manualForm, exchangeCodAmount: e.target.value })}
-                                                                placeholder="0.00"
-                                                                className="bg-white/5 border-white/10 font-mono"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <Label className="text-xs">Currency</Label>
-                                                            <Select
-                                                                value={manualForm.exchangeCodCurrency}
-                                                                onValueChange={(value) => setManualForm({ ...manualForm, exchangeCodCurrency: value })}
-                                                            >
-                                                                <SelectTrigger className="bg-white/5 border-white/10">
-                                                                    <SelectValue />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="AED">AED</SelectItem>
-                                                                    <SelectItem value="USD">USD</SelectItem>
-                                                                    <SelectItem value="EUR">EUR</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Phone *</Label>
+                                                    <div className="flex">
+                                                        <select className="px-2 rounded-l-md border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={manualForm.exchangeCustomerPhonePrefix} onChange={(e) => setManualForm({ ...manualForm, exchangeCustomerPhonePrefix: e.target.value })}>
+                                                            <option value="+971">🇦🇪 +971</option>
+                                                            <option value="+966">🇸🇦 +966</option>
+                                                            <option value="+965">🇰🇼 +965</option>
+                                                            <option value="+973">🇧🇭 +973</option>
+                                                            <option value="+968">🇴🇲 +968</option>
+                                                            <option value="+974">🇶🇦 +974</option>
+                                                        </select>
+                                                        <Input value={manualForm.exchangeCustomerPhone} onChange={(e) => setManualForm({ ...manualForm, exchangeCustomerPhone: e.target.value })} placeholder="Phone" className="bg-background border-border rounded-l-none" />
                                                     </div>
-                                                )}
+                                                </div>
+                                                <div className="space-y-1 col-span-2">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Delivery Address *</Label>
+                                                    <Textarea value={manualForm.exchangeAddress} onChange={(e) => setManualForm({ ...manualForm, exchangeAddress: e.target.value })} rows={2} className="bg-background border-border" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">City *</Label>
+                                                    <select
+                                                        value={manualForm.exchangeCity}
+                                                        onChange={(e) => setManualForm({ ...manualForm, exchangeCity: e.target.value })}
+                                                        className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                    >
+                                                        <option value="">Select City</option>
+                                                        {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Weight (kg)</Label>
+                                                    <Input type="number" step="0.1" min="0.1" value={manualForm.exchangeWeight} onChange={(e) => setManualForm({ ...manualForm, exchangeWeight: e.target.value })} className="bg-background border-border" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Pieces</Label>
+                                                    <Input type="number" min="1" value={manualForm.exchangePieces} onChange={(e) => setManualForm({ ...manualForm, exchangePieces: parseInt(e.target.value) || 1 })} className="bg-background border-border" />
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
-                            <div>
-                                <Label className="text-xs">Special Instructions</Label>
-                                <Textarea
-                                    value={manualForm.specialInstructions}
-                                    onChange={(e) => setManualForm({ ...manualForm, specialInstructions: e.target.value })}
-                                    placeholder="Any special instructions..."
-                                    rows={2}
-                                    className="bg-white/5 border-white/10"
-                                />
+                                            {codAllowed && (
+                                                <div className="pt-4 mt-4 border-t border-border">
+                                                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${manualForm.exchangeCodRequired === 1 ? 'border-amber-500 bg-amber-500/10' : 'border-border hover:bg-muted'}`}>
+                                                        <input className="text-amber-500 focus:ring-amber-500 w-4 h-4" type="checkbox" checked={manualForm.exchangeCodRequired === 1} onChange={(e) => setManualForm({ ...manualForm, exchangeCodRequired: e.target.checked ? 1 : 0 })} />
+                                                        <div className="ml-3">
+                                                            <div className="font-bold text-sm">Require COD on New Item</div>
+                                                            <div className="text-[11px] text-muted-foreground">Collect payment for exchange processing</div>
+                                                        </div>
+                                                    </label>
+                                                    {manualForm.exchangeCodRequired === 1 && (
+                                                        <div className="mt-3 animate-in fade-in">
+                                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">Amount to Collect</Label>
+                                                            <div className="flex gap-2">
+                                                                <select
+                                                                    value={manualForm.exchangeCodCurrency}
+                                                                    onChange={(e) => setManualForm({ ...manualForm, exchangeCodCurrency: e.target.value })}
+                                                                    className="px-2 rounded-l-md border border-r-0 border-input bg-muted text-foreground text-sm font-bold focus:outline-none"
+                                                                >
+                                                                    <option value="AED">AED</option>
+                                                                    <option value="USD">USD</option>
+                                                                    <option value="EUR">EUR</option>
+                                                                </select>
+                                                                <Input type="number" step="0.01" value={manualForm.exchangeCodAmount} onChange={(e) => setManualForm({ ...manualForm, exchangeCodAmount: e.target.value })} placeholder="0.00" className="h-12 text-lg font-bold rounded-l-none" />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </section>
+                                )}
+
+                                <section className="bg-slate-900 text-white rounded-xl shadow-xl p-6 relative overflow-hidden">
+                                    <h2 className="font-bold mb-4 flex items-center gap-2 relative z-10">
+                                        <span className="material-symbols-outlined text-blue-400">check_circle</span>
+                                        Confirm
+                                    </h2>
+                                    <div className="mt-8 flex flex-col gap-3 relative z-10">
+                                        <button type="button" onClick={() => setManualDialogOpen(false)} className="w-full py-3 bg-white/10 text-white rounded-xl font-bold hover:bg-white/20 transition-all">
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={handleCreateManual}
+                                            disabled={createManualMutation.isPending} 
+                                            className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <span className="material-symbols-outlined">rocket_launch</span>
+                                            {createManualMutation.isPending ? 'Processing...' : (manualForm.type === 'return' ? 'Process Return' : 'Process Exchange')}
+                                        </button>
+                                    </div>
+                                </section>
                             </div>
                         </div>
-
-                        <DialogFooter className="mt-6 border-t border-white/10 pt-4">
-                            <Button variant="outline" onClick={() => setManualDialogOpen(false)} className="bg-white/5 border-white/10 hover:bg-white/10">
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleCreateManual}
-                                disabled={createManualMutation.isPending}
-                                className={manualForm.type === 'return' ? 'bg-cyan-500 hover:bg-cyan-600' : 'bg-amber-500 hover:bg-amber-600'}
-                            >
-                                {createManualMutation.isPending ? 'Creating...' :
-                                    manualForm.type === 'return' ? 'Create Return' : 'Create Exchange'}
-                            </Button>
-                        </DialogFooter>
                     </div>
                 </DialogContent>
             </Dialog>

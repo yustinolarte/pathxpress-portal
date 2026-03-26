@@ -260,6 +260,26 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
                 longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
 
+                // Navigation links for driver app
+                mapsUrl: (() => {
+                    const lat = item.order.latitude;
+                    const lng = item.order.longitude;
+                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
+                    const city = isPickup ? item.order.shipperCity : item.order.city;
+                    return (lat && lng)
+                        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`;
+                })(),
+                wazeUrl: (() => {
+                    const lat = item.order.latitude;
+                    const lng = item.order.longitude;
+                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
+                    const city = isPickup ? item.order.shipperCity : item.order.city;
+                    return (lat && lng)
+                        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+                        : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
+                })(),
+
                 // COD info (only relevant for delivery)
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
@@ -430,6 +450,24 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 deliveryCity: item.order.city,
                 latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
                 longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+                mapsUrl: (() => {
+                    const lat = item.order.latitude;
+                    const lng = item.order.longitude;
+                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
+                    const city = isPickup ? item.order.shipperCity : item.order.city;
+                    return (lat && lng)
+                        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`;
+                })(),
+                wazeUrl: (() => {
+                    const lat = item.order.latitude;
+                    const lng = item.order.longitude;
+                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
+                    const city = isPickup ? item.order.shipperCity : item.order.city;
+                    return (lat && lng)
+                        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+                        : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
+                })(),
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',

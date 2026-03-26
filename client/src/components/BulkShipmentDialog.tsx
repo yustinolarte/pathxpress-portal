@@ -24,7 +24,7 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
     const [shipperDetails, setShipperDetails] = useState<any>(null);
-    const [resultsLog, setResultsLog] = useState<{ row: number, status: 'success' | 'error', message: string }[]>([]);
+    const [resultsLog, setResultsLog] = useState<{ row: number, status: 'success' | 'error', message: string, locationStatus?: 'confirmed' | 'approximate' | 'none' }[]>([]);
 
     // Fetch saved shippers to populate the dropdown
     const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery({ token });
@@ -54,7 +54,7 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
 
     const handleDownloadTemplate = () => {
         const headers = [
-            ['Customer Name', 'Customer Phone', 'Address', 'City', 'Weight', 'Service Type (DOM/SDD)', 'COD Amount', 'Instructions']
+            ['Customer Name', 'Customer Phone', 'Address', 'City', 'Weight', 'Service Type (DOM/SDD)', 'COD Amount', 'Instructions', 'Latitude', 'Longitude']
         ];
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.aoa_to_sheet(headers);
@@ -134,7 +134,14 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                 // Instructions - flexible matching
                 const instructions = getColumnValue(row, ['Instructions', 'Special Instructions', 'SpecialInstructions', 'Notes', 'Comments', 'Remarks', 'Instrucciones']);
 
-                console.log(`[Bulk Import] Row ${i + 1}: weight=${weight} (raw: "${weightRaw}"), serviceType=${serviceType} (raw: "${serviceTypeRaw}"), COD=${hasCOD ? codAmountParsed : 'none'} (raw: "${codAmountRaw}"), instructions="${instructions || 'none'}"`);
+                // Coordinates - read from Shopify/Excel columns if available
+                const latRaw = getColumnValue(row, ['Latitude', 'lat', 'Shipping Latitude', 'Delivery Latitude', 'latitude']);
+                const lngRaw = getColumnValue(row, ['Longitude', 'lng', 'Shipping Longitude', 'Delivery Longitude', 'longitude']);
+                const latitude = latRaw ? String(latRaw).trim() : undefined;
+                const longitude = lngRaw ? String(lngRaw).trim() : undefined;
+                const locationStatus: 'confirmed' | 'approximate' | 'none' = (latitude && longitude) ? 'confirmed' : 'none';
+
+                console.log(`[Bulk Import] Row ${i + 1}: weight=${weight} (raw: "${weightRaw}"), serviceType=${serviceType} (raw: "${serviceTypeRaw}"), COD=${hasCOD ? codAmountParsed : 'none'} (raw: "${codAmountRaw}"), instructions="${instructions || 'none'}", coords=${latitude ? `${latitude},${longitude}` : 'none'}`);
 
                 await createMutation.mutateAsync({
                     token,
@@ -158,11 +165,14 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
 
                         codRequired: hasCOD ? 1 : 0,
                         codAmount: hasCOD ? String(codAmountParsed) : undefined,
-                        codCurrency: 'AED'
+                        codCurrency: 'AED',
+
+                        latitude,
+                        longitude,
                     }
                 });
                 successCount++;
-                newLog.push({ row: i + 1, status: 'success', message: `Created (${serviceType}, ${weight}kg${hasCOD ? ', COD: ' + codAmountParsed : ''})` });
+                newLog.push({ row: i + 1, status: 'success', message: `Created (${serviceType}, ${weight}kg${hasCOD ? ', COD: ' + codAmountParsed : ''})`, locationStatus });
             } catch (error: any) {
                 console.error('[Bulk Import] Failed row', i + 1, row, error);
                 failCount++;
@@ -370,6 +380,24 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                     {resultsLog.length > 0 && (
                         <div className="space-y-2">
                             <Label>Processing Results</Label>
+
+                            {/* Location summary */}
+                            {(() => {
+                                const confirmed = resultsLog.filter(l => l.status === 'success' && l.locationStatus === 'confirmed').length;
+                                const noCoords = resultsLog.filter(l => l.status === 'success' && l.locationStatus === 'none').length;
+                                return (confirmed > 0 || noCoords > 0) && (
+                                    <div className="flex flex-wrap gap-2 text-xs bg-muted/30 rounded-md p-2 border">
+                                        <span className="font-medium text-muted-foreground">Driver navigation:</span>
+                                        {confirmed > 0 && (
+                                            <span className="text-green-600 font-medium">✅ {confirmed} with GPS pin</span>
+                                        )}
+                                        {noCoords > 0 && (
+                                            <span className="text-amber-500 font-medium">⚠️ {noCoords} address-only (no GPS)</span>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
                             <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 text-xs space-y-1">
                                 {resultsLog.filter(l => l.status === 'error').map((log, i) => (
                                     <div key={i} className="text-red-500 flex gap-2">

@@ -1433,6 +1433,9 @@ export const adminPortalRouter = router({
         customsCurrency: z.string().optional(),
         customsDescription: z.string().optional(),
         hsCode: z.string().optional(),
+        // Coordinates for driver navigation
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
       }),
     }))
     .mutation(async ({ input }) => {
@@ -1521,6 +1524,10 @@ export const adminPortalRouter = router({
 
         // FOD
         fitOnDelivery: input.shipment.fitOnDelivery,
+
+        // Coordinates for driver navigation
+        latitude: input.shipment.latitude || null,
+        longitude: input.shipment.longitude || null,
 
         status: 'pending_pickup',
         lastStatusUpdate: new Date(),
@@ -1677,6 +1684,10 @@ export const customerPortalRouter = router({
         customsCurrency: z.string().optional(),
         customsDescription: z.string().optional(),
         hsCode: z.string().optional(),
+
+        // Coordinates for driver navigation
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
       }),
     }))
     .mutation(async ({ input }) => {
@@ -1897,9 +1908,9 @@ export const customerPortalRouter = router({
 
         return {
           ...order,
-          shipperAddress: hideAddress ? '' : order.shipperAddress,
-          // For returns/exchanges, hide consignee address if client has privacy enabled
-          hideConsigneeAddress: hideAddress ? 1 : (order.hideConsigneeAddress || 0),
+          // For returns/exchanges: shipper is the end customer (returning the package), never hide their address
+          // Only hide the consignee (merchant) address based on current setting
+          hideConsigneeAddress: hideAddress ? 1 : 0,
           originalWaybill,
           exchangeWaybill
         };

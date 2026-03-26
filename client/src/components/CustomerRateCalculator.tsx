@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { trpc } from '@/lib/trpc';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Calculator, Package, Truck, DollarSign } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 
 export default function CustomerRateCalculator() {
   const { token, user } = usePortalAuth();
-  const [serviceType, setServiceType] = useState<'DOM' | 'SDD'>('DOM');
+  const [serviceType, setServiceType] = useState<'DOM' | 'SDD' | 'BULLET'>('DOM');
   const [weight, setWeight] = useState<string>('');
   const [emirate, setEmirate] = useState<string>('');
   const [dimL, setDimL] = useState<string>('');
@@ -104,19 +102,25 @@ export default function CustomerRateCalculator() {
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <span className="material-symbols-outlined text-muted-foreground group-focus-within:text-primary transition-colors text-lg">local_shipping</span>
                   </div>
-                  <Select value={serviceType} onValueChange={(value: 'DOM' | 'SDD') => setServiceType(value)}>
+                  <Select value={serviceType} onValueChange={(value: 'DOM' | 'SDD' | 'BULLET') => setServiceType(value)}>
                     <SelectTrigger className="w-full pl-10 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="DOM">Express (DOM) - Next Day</SelectItem>
                       <SelectItem value="SDD">Same-Day (SDD) - City Limits</SelectItem>
+                      <SelectItem value="BULLET">Bullet Service - Express Hours</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {serviceType === 'SDD' && (
                   <p className="text-xs text-amber-500 font-medium ml-1">
-                    Cut-off: 14:00 | Min 4 qty | Max 10kg
+                    Cut-off time subject to assigned schedule | Max 10kg
+                  </p>
+                )}
+                {serviceType === 'BULLET' && (
+                  <p className="text-xs text-amber-500 font-medium ml-1">
+                    Express hours delivery | City limits
                   </p>
                 )}
               </div>
@@ -247,9 +251,6 @@ export default function CustomerRateCalculator() {
                       className="w-full max-w-sm pl-12 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2 font-medium">
-                    Standard COD Fee: 3.3% (minimum 2.00 AED)
-                  </p>
                 </div>
               )}
             </div>
@@ -339,15 +340,15 @@ export default function CustomerRateCalculator() {
               Fast and reliable delivery within 1-2 business days across all major regions.
             </p>
             <ul className="space-y-3">
-              <li className="flex items-center gap-3 text-sm font-medium">
+              <li className="flex items-center gap-3 text-sm font-medium text-foreground">
                 <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
                 Next-business-day delivery in UAE
               </li>
-              <li className="flex items-center gap-3 text-sm font-medium">
+              <li className="flex items-center gap-3 text-sm font-medium text-foreground">
                 <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
-                Base weight: 5kg (+2 AED/kg additional)
+                Base weight: 5kg
               </li>
-              <li className="flex items-center gap-3 text-sm font-medium">
+              <li className="flex items-center gap-3 text-sm font-medium text-foreground">
                 <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
                 Volume-based discounts
               </li>
@@ -362,9 +363,23 @@ export default function CustomerRateCalculator() {
             <h3 className="text-xl font-bold mb-2">Same-Day Delivery</h3>
             <p className="text-sm text-muted-foreground mb-4">Urgent shipments delivered on the same day within city limits.</p>
             <div className="space-y-3 pt-4 border-t border-primary/10 relative">
-              <div className="flex items-center gap-3 text-sm"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Same Day Guarantee</div>
-              <div className="flex items-center gap-3 text-sm"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Before 2 PM Pickups</div>
-              <div className="flex items-center gap-3 text-sm"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Premium Support</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Same Day Guarantee</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Guaranteed delivery until 11:30 PM</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Premium Support</div>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-2xl p-6 shadow-xl shadow-primary/5 border border-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-6 relative">
+              <span className="material-symbols-outlined text-2xl">rocket_launch</span>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Bullet Service</h3>
+            <p className="text-sm text-muted-foreground mb-4">Ultra-fast express delivery within hours, city limits.</p>
+            <div className="space-y-3 pt-4 border-t border-amber-500/10 relative">
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-amber-500 text-lg">check_circle</span> Express Hours Delivery</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-amber-500 text-lg">check_circle</span> Priority Handling</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-amber-500 text-lg">check_circle</span> Real-Time Tracking</div>
             </div>
           </div>
         </div>

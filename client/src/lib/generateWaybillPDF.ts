@@ -194,12 +194,19 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
   if (shipment.hideShipperAddress === 1) {
     // Only show city (no phone or full address for privacy)
     pdf.text(`${shipment.shipperCity}`, margin + 11, y + 7);
+    y += 10;
   } else {
-    // Show full contact info
-    pdf.text(`${shipment.shipperPhone} | ${shipment.shipperCity}`, margin + 11, y + 7);
+    // Show full contact info: address, then phone | city
+    if (shipment.shipperAddress) {
+      const addrLines = pdf.splitTextToSize(shipment.shipperAddress, contentWidth - 11);
+      pdf.text(addrLines[0], margin + 11, y + 7);
+      pdf.text(`${shipment.shipperPhone} | ${shipment.shipperCity}`, margin + 11, y + 11);
+      y += 14;
+    } else {
+      pdf.text(`${shipment.shipperPhone} | ${shipment.shipperCity}`, margin + 11, y + 7);
+      y += 10;
+    }
   }
-
-  y += 10;
   pdf.line(margin, y, pageWidth - margin, y);
 
   // ===== CONSIGNEE (TO) Section =====

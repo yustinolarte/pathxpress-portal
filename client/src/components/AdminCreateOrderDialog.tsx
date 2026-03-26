@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2, Edit3, DollarSign } from 'lucide-react';
+import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 
 interface Client {
     id: number;
@@ -48,6 +49,7 @@ export default function AdminCreateOrderDialog({
     const [formData, setFormData] = useState({
         orderNumber: '',
         customerName: '',
+        customerPhonePrefix: '+971',
         customerPhone: '',
         address: '',
         city: '',
@@ -62,12 +64,16 @@ export default function AdminCreateOrderDialog({
         fitOnDelivery: false,
     });
 
+    // Location pin state
+    const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+
     // Shipper override state
     const [shipperData, setShipperData] = useState({
         shipperName: '',
         shipperAddress: '',
         shipperCity: '',
         shipperCountry: 'UAE',
+        shipperPhonePrefix: '+971',
         shipperPhone: '',
     });
 
@@ -92,6 +98,7 @@ export default function AdminCreateOrderDialog({
             setFormData({
                 orderNumber: '',
                 customerName: '',
+                customerPhonePrefix: '+971',
                 customerPhone: '',
                 address: '',
                 city: '',
@@ -110,8 +117,10 @@ export default function AdminCreateOrderDialog({
                 shipperAddress: '',
                 shipperCity: '',
                 shipperCountry: 'UAE',
+                shipperPhonePrefix: '+971',
                 shipperPhone: '',
             });
+            setPickedLocation(null);
         }
     }, [open]);
 
@@ -195,7 +204,7 @@ export default function AdminCreateOrderDialog({
             shipment: {
                 orderNumber: formData.orderNumber || undefined,
                 customerName: formData.customerName,
-                customerPhone: formData.customerPhone,
+                customerPhone: `${formData.customerPhonePrefix} ${formData.customerPhone}`,
                 address: formData.address,
                 city: formData.city,
                 emirate: formData.emirate || undefined,
@@ -208,44 +217,45 @@ export default function AdminCreateOrderDialog({
                 codAmount: formData.codRequired ? formData.codAmount : undefined,
                 codCurrency: 'AED',
                 fitOnDelivery: formData.fitOnDelivery ? 1 : 0,
+                latitude: pickedLocation?.latitude,
+                longitude: pickedLocation?.longitude,
                 // Shipper override fields
                 shipperOverride: overrideShipper,
                 shipperName: overrideShipper ? shipperData.shipperName : undefined,
                 shipperAddress: overrideShipper ? shipperData.shipperAddress : undefined,
                 shipperCity: overrideShipper ? shipperData.shipperCity : undefined,
                 shipperCountry: overrideShipper ? shipperData.shipperCountry : undefined,
-                shipperPhone: overrideShipper ? shipperData.shipperPhone : undefined,
+                shipperPhone: overrideShipper ? `${shipperData.shipperPhonePrefix} ${shipperData.shipperPhone}` : undefined,
             },
         });
     };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong !w-[90vw] !max-w-[1200px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+            <DialogContent className="glass-strong !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10 bg-background text-foreground antialiased font-sans">
                 {/* Decorative Top Line */}
-                <div className="w-full h-1 bg-red-600" />
+                <div className="w-full h-1 bg-primary" />
 
-                <div className="p-6 space-y-6">
-                    <DialogHeader className="p-0">
-                        <DialogTitle className="flex items-center gap-2 text-xl">
-                            <Package className="h-6 w-6 text-primary" />
-                            Create Order
-                        </DialogTitle>
-                        <DialogDescription>
-                            Create a new order on behalf of a client. Select a client first, then fill in consignee details.
-                        </DialogDescription>
+                <div className="p-6 md:p-8 space-y-6">
+                    <DialogHeader className="p-0 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <DialogTitle className="text-2xl font-extrabold tracking-tight">Create Order (Admin)</DialogTitle>
+                            <DialogDescription>
+                                Create a new order on behalf of a client. Select a client first, then fill in details.
+                            </DialogDescription>
+                        </div>
                     </DialogHeader>
 
-                    <div className="space-y-6">
-                        {/* Client Selection - Full Width */}
-                        <div className="space-y-3">
-                            <Label className="flex items-center gap-2 text-base font-semibold">
-                                <User className="h-5 w-5 text-primary" />
+                    {/* Client Selection - Full Width Top bar */}
+                    <div className="bg-card rounded-xl shadow-sm border border-border p-6 mb-8 flex flex-col md:flex-row gap-6 items-center">
+                        <div className="w-full md:w-1/3">
+                            <Label className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                                <User className="h-4 w-4 text-primary" />
                                 Select Client *
                             </Label>
                             <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                                <SelectTrigger className="w-full h-12 text-base">
-                                    <SelectValue placeholder="Choose a client..." />
+                                <SelectTrigger className="w-full h-12 text-base rounded-lg border-input bg-background focus:ring-primary">
+                                    <SelectValue placeholder="Search or Choose a client..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {clients?.map((client) => (
@@ -256,401 +266,313 @@ export default function AdminCreateOrderDialog({
                                 </SelectContent>
                             </Select>
                         </div>
-
                         {selectedClient && (
-                            <>
-                                {/* Two Column Layout: Shipper + Consignee */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    {/* Shipper Section */}
-                                    <div className={`rounded-xl p-5 ${overrideShipper ? 'bg-orange-500/5 border border-orange-500/20' : 'bg-blue-500/5 border border-blue-500/20'}`}>
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h4 className={`font-semibold flex items-center gap-2 ${overrideShipper ? 'text-orange-400' : 'text-blue-400'}`}>
-                                                <Building2 className="h-5 w-5" />
-                                                {overrideShipper ? 'Custom Shipper' : 'Shipper (From Client)'}
-                                            </h4>
-                                            <div className="flex items-center gap-2">
-                                                <Checkbox
-                                                    id="overrideShipper"
-                                                    checked={overrideShipper}
-                                                    onCheckedChange={(checked) => setOverrideShipper(!!checked)}
-                                                />
-                                                <label htmlFor="overrideShipper" className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1">
-                                                    <Edit3 className="h-3 w-3" />
-                                                    Custom Address
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {overrideShipper ? (
-                                                <>
-                                                    {/* Editable shipper fields */}
-                                                    <div>
-                                                        <Label className="text-xs">Shipper Name *</Label>
-                                                        <Input
-                                                            value={shipperData.shipperName}
-                                                            onChange={(e) => setShipperData({ ...shipperData, shipperName: e.target.value })}
-                                                            placeholder="Customer name or company"
-                                                            className="mt-1"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <Label className="text-xs">Pickup Address *</Label>
-                                                        <Input
-                                                            value={shipperData.shipperAddress}
-                                                            onChange={(e) => setShipperData({ ...shipperData, shipperAddress: e.target.value })}
-                                                            placeholder="Full pickup address"
-                                                            className="mt-1"
-                                                        />
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <Label className="text-xs">City *</Label>
-                                                            <Input
-                                                                value={shipperData.shipperCity}
-                                                                onChange={(e) => setShipperData({ ...shipperData, shipperCity: e.target.value })}
-                                                                placeholder="Dubai"
-                                                                className="mt-1"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <Label className="text-xs">Country</Label>
-                                                            <Input
-                                                                value={shipperData.shipperCountry}
-                                                                onChange={(e) => setShipperData({ ...shipperData, shipperCountry: e.target.value })}
-                                                                placeholder="UAE"
-                                                                className="mt-1"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <Label className="text-xs flex items-center gap-1">
-                                                            <Phone className="h-3 w-3" /> Phone *
-                                                        </Label>
-                                                        <Input
-                                                            value={shipperData.shipperPhone}
-                                                            onChange={(e) => setShipperData({ ...shipperData, shipperPhone: e.target.value })}
-                                                            placeholder="+971..."
-                                                            className="mt-1"
-                                                        />
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {/* Read-only client fields */}
-                                                    <div>
-                                                        <Label className="text-xs text-muted-foreground">Company Name</Label>
-                                                        <Input value={selectedClient.companyName} disabled className="bg-muted/50 mt-1" />
-                                                    </div>
-                                                    <div>
-                                                        <Label className="text-xs text-muted-foreground">Address</Label>
-                                                        <Input value={selectedClient.billingAddress || '-'} disabled className="bg-muted/50 mt-1" />
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <Label className="text-xs text-muted-foreground">City</Label>
-                                                            <Input value={selectedClient.city || '-'} disabled className="bg-muted/50 mt-1" />
-                                                        </div>
-                                                        <div>
-                                                            <Label className="text-xs text-muted-foreground">Country</Label>
-                                                            <Input value={selectedClient.country || 'UAE'} disabled className="bg-muted/50 mt-1" />
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <Label className="text-xs text-muted-foreground">Phone</Label>
-                                                        <Input value={selectedClient.phone || '-'} disabled className="bg-muted/50 mt-1" />
-                                                    </div>
-                                                </>
-                                            )}
-                                            <div className="flex gap-3 mt-3">
-                                                <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${selectedClient.codAllowed ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                                                    COD: {selectedClient.codAllowed ? 'Allowed' : 'Not Allowed'}
-                                                </span>
-                                                <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${selectedClient.fodAllowed ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-                                                    FOD: {selectedClient.fodAllowed ? 'Allowed' : 'Not Allowed'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Consignee Section */}
-                                    <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-5">
-                                        <h4 className="font-semibold mb-4 flex items-center gap-2 text-purple-400">
-                                            <MapPin className="h-5 w-5" />
-                                            Consignee (Delivery To)
-                                        </h4>
-                                        <div className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <Label className="text-xs">Customer Name *</Label>
-                                                    <Input
-                                                        value={formData.customerName}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, customerName: e.target.value }))}
-                                                        placeholder="Full name"
-                                                        className="mt-1"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label className="text-xs flex items-center gap-1">
-                                                        <Phone className="h-3 w-3" /> Phone *
-                                                    </Label>
-                                                    <Input
-                                                        value={formData.customerPhone}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, customerPhone: e.target.value }))}
-                                                        placeholder="+971..."
-                                                        className="mt-1"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <Label className="text-xs">Address *</Label>
-                                                <Textarea
-                                                    value={formData.address}
-                                                    onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                                                    placeholder="Full delivery address"
-                                                    rows={2}
-                                                    className="mt-1"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <Label className="text-xs">City *</Label>
-                                                    <Input
-                                                        value={formData.city}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
-                                                        placeholder="Dubai"
-                                                        className="mt-1"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <Label className="text-xs">Emirate</Label>
-                                                    <Select value={formData.emirate} onValueChange={(val) => {
-                                                        setFormData(prev => ({ ...prev, emirate: val }));
-                                                        if (selectedClientId && formData.weight && formData.weight > 0) {
-                                                            const serviceType = formData.serviceType as 'DOM' | 'SDD' | 'BULLET';
-                                                            if (serviceType === 'DOM' || serviceType === 'SDD' || serviceType === 'BULLET') {
-                                                                calculateRateMutation.mutate({
-                                                                    token,
-                                                                    clientId: parseInt(selectedClientId),
-                                                                    serviceType,
-                                                                    weight: formData.weight,
-                                                                    emirate: val,
-                                                                });
-                                                            }
-                                                        }
-                                                    }}>
-                                                        <SelectTrigger className="mt-1">
-                                                            <SelectValue placeholder="Select" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="Dubai">Dubai</SelectItem>
-                                                            <SelectItem value="Abu Dhabi">Abu Dhabi</SelectItem>
-                                                            <SelectItem value="Sharjah">Sharjah</SelectItem>
-                                                            <SelectItem value="Ajman">Ajman</SelectItem>
-                                                            <SelectItem value="RAK">Ras Al Khaimah</SelectItem>
-                                                            <SelectItem value="Fujairah">Fujairah</SelectItem>
-                                                            <SelectItem value="UAQ">Umm Al Quwain</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Shipment Details - Full Width */}
-                                <div className="border border-border/50 rounded-xl p-5">
-                                    <h4 className="font-semibold mb-4 flex items-center gap-2">
-                                        <Truck className="h-5 w-5 text-primary" />
-                                        Shipment Details
-                                    </h4>
-                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                        <div>
-                                            <Label className="text-xs">Service Type *</Label>
-                                            <Select value={formData.serviceType} onValueChange={(val) => setFormData(prev => ({ ...prev, serviceType: val }))}>
-                                                <SelectTrigger className="mt-1">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="DOM">Domestic Express</SelectItem>
-                                                    <SelectItem value="SDD">Same Day Delivery</SelectItem>
-                                                    {selectedClient?.bulletAllowed === 1 && (
-                                                        <SelectItem value="BULLET" className="text-red-500 font-medium">🚀 Bullet Service (4 Hours)</SelectItem>
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div>
-                                            <Label className="text-xs">Weight (kg) *</Label>
-                                            <Input
-                                                type="number"
-                                                step="0.1"
-                                                min="0.1"
-                                                value={formData.weight}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, weight: parseFloat(e.target.value) || 0.5 }))}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-xs">Pieces</Label>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                value={formData.pieces}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, pieces: parseInt(e.target.value) || 1 }))}
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                        <div>
-                                            <Label className="text-xs flex items-center gap-1">
-                                                <FileText className="h-3 w-3" /> Reference #
-                                            </Label>
-                                            <Input
-                                                value={formData.orderNumber}
-                                                onChange={(e) => setFormData(prev => ({ ...prev, orderNumber: e.target.value }))}
-                                                placeholder="Optional"
-                                                className="mt-1"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="mt-4">
-                                        <Label className="text-xs">Special Instructions</Label>
-                                        <Textarea
-                                            value={formData.specialInstructions}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, specialInstructions: e.target.value }))}
-                                            placeholder="Any delivery instructions..."
-                                            rows={2}
-                                            className="mt-1"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* COD & FOD Options - Full Width */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {/* COD */}
-                                    <div className={`flex items-start gap-4 p-4 rounded-xl border ${selectedClient?.codAllowed ? 'border-orange-500/30 bg-orange-500/5' : 'border-border/50 bg-muted/20 opacity-60'}`}>
-                                        <Checkbox
-                                            id="cod"
-                                            checked={formData.codRequired}
-                                            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, codRequired: !!checked }))}
-                                            disabled={!selectedClient?.codAllowed}
-                                            className="mt-1"
-                                        />
-                                        <div className="flex-1">
-                                            <label htmlFor="cod" className="text-sm font-semibold cursor-pointer">
-                                                Cash on Delivery (COD)
-                                            </label>
-                                            {!selectedClient?.codAllowed ? (
-                                                <p className="text-xs text-muted-foreground mt-1">COD not enabled for this client</p>
-                                            ) : (
-                                                <p className="text-xs text-muted-foreground mt-1">Driver collects payment on delivery</p>
-                                            )}
-                                            {formData.codRequired && selectedClient?.codAllowed && (
-                                                <div className="mt-3">
-                                                    <Input
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0.01"
-                                                        value={formData.codAmount}
-                                                        onChange={(e) => setFormData(prev => ({ ...prev, codAmount: e.target.value }))}
-                                                        placeholder="Amount in AED"
-                                                        className="max-w-[200px]"
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* FOD */}
-                                    <div className={`flex items-start gap-4 p-4 rounded-xl border ${selectedClient?.fodAllowed ? 'border-purple-500/30 bg-purple-500/5' : 'border-border/50 bg-muted/20 opacity-60'}`}>
-                                        <Checkbox
-                                            id="fod"
-                                            checked={formData.fitOnDelivery}
-                                            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, fitOnDelivery: !!checked }))}
-                                            disabled={!selectedClient?.fodAllowed}
-                                            className="mt-1"
-                                        />
-                                        <div>
-                                            <label htmlFor="fod" className="text-sm font-semibold cursor-pointer">
-                                                Fit on Delivery (FOD)
-                                            </label>
-                                            {!selectedClient?.fodAllowed ? (
-                                                <p className="text-xs text-muted-foreground mt-1">FOD not enabled for this client</p>
-                                            ) : (
-                                                <p className="text-xs text-muted-foreground mt-1">Customer tries product before accepting</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            {/* Rate Preview */}
-                            {selectedClientId && (
-                                <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-5">
-                                    <h4 className="font-semibold mb-3 flex items-center gap-2 text-green-400">
-                                        <DollarSign className="h-5 w-5" />
-                                        Estimated Shipping Cost
-                                        {calculateRateMutation.isPending && <Loader2 className="h-4 w-4 animate-spin ml-1" />}
-                                    </h4>
-                                    {calculatedRate ? (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-muted-foreground">Base Rate (0–5kg)</span>
-                                                <span className="font-medium">{calculatedRate.baseRate.toFixed(2)} AED</span>
-                                            </div>
-                                            {calculatedRate.additionalKgCharge > 0 && (
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-muted-foreground">
-                                                        Overweight ({calculatedRate.chargeableWeight ? `${calculatedRate.chargeableWeight.toFixed(2)} kg chargeable` : 'extra kg'})
-                                                    </span>
-                                                    <span className="font-medium">{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
-                                                </div>
-                                            )}
-                                            {calculatedCODFee > 0 && (
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-muted-foreground">COD Fee</span>
-                                                    <span className="font-medium">{calculatedCODFee.toFixed(2)} AED</span>
-                                                </div>
-                                            )}
-                                            <div className="flex justify-between font-semibold text-base pt-2 border-t border-green-500/20">
-                                                <span>Total</span>
-                                                <span className="text-green-400">
-                                                    {(calculatedRate.totalRate + calculatedCODFee).toFixed(2)} AED
-                                                </span>
-                                            </div>
-                                            {formData.emirate && (
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    Zone rate applied for {formData.emirate}
-                                                </p>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                            {calculateRateMutation.isPending ? 'Calculating...' : 'Enter weight and select a client to see the estimated cost.'}
-                                        </p>
-                                    )}
-                                </div>
-                            )}
-                            </>
+                            <div className="flex gap-4 items-center pl-6 border-l border-border mt-6 md:mt-0">
+                                <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${selectedClient.codAllowed ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-muted text-muted-foreground border border-border'}`}>
+                                    COD: {selectedClient.codAllowed ? 'Allowed' : 'Not Allowed'}
+                                </span>
+                                <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${selectedClient.fodAllowed ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-muted text-muted-foreground border border-border'}`}>
+                                    FOD: {selectedClient.fodAllowed ? 'Allowed' : 'Not Allowed'}
+                                </span>
+                                {selectedClient.bulletAllowed === 1 && (
+                                    <span className="text-xs px-3 py-1.5 rounded-full font-medium bg-red-500/20 text-red-500 border border-red-500/30 flex items-center gap-1">
+                                        🚀 Bullet Allowed
+                                    </span>
+                                )}
+                            </div>
                         )}
                     </div>
 
-                    <DialogFooter className="gap-2 pt-4 border-t border-border/50">
-                        <Button variant="outline" onClick={() => onOpenChange(false)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            onClick={handleSubmit}
-                            disabled={!selectedClientId || createOrderMutation.isPending}
-                            className="min-w-[140px]"
-                        >
-                            {createOrderMutation.isPending ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Creating...
-                                </>
-                            ) : (
-                                'Create Order'
-                            )}
-                        </Button>
-                    </DialogFooter>
+                    {selectedClient && (
+                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                            {/* Left Column: Sender & Receiver */}
+                            <div className="xl:col-span-2 space-y-8">
+                            
+                                {/* Shipper Details */}
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>outbox</span>
+                                            <h2 className="font-bold">Shipper Details</h2>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <label htmlFor="overrideShipper" className="text-xs text-muted-foreground cursor-pointer font-bold uppercase tracking-wider">Custom Address</label>
+                                            <Checkbox id="overrideShipper" checked={overrideShipper} onCheckedChange={(checked) => setOverrideShipper(!!checked)} />
+                                        </div>
+                                    </div>
+                                    <div className="p-6">
+                                        {overrideShipper ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Shipper Name *</label>
+                                                    <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperName} onChange={e => setShipperData({...shipperData, shipperName: e.target.value})} placeholder="Company Name" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Contact Number *</label>
+                                                    <div className="flex">
+                                                        <select className="px-2 rounded-l-lg border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={shipperData.shipperPhonePrefix} onChange={e => setShipperData({...shipperData, shipperPhonePrefix: e.target.value})}>
+                                                            <option value="+971">🇦🇪 +971</option>
+                                                            <option value="+966">🇸🇦 +966</option>
+                                                            <option value="+965">🇰🇼 +965</option>
+                                                            <option value="+973">🇧🇭 +973</option>
+                                                            <option value="+968">🇴🇲 +968</option>
+                                                            <option value="+974">🇶🇦 +974</option>
+                                                        </select>
+                                                        <input required className="w-full rounded-r-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperPhone} onChange={e => setShipperData({...shipperData, shipperPhone: e.target.value})} placeholder="5x xxx xxxx" />
+                                                    </div>
+                                                </div>
+                                                <div className="md:col-span-2 space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Address *</label>
+                                                    <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperAddress} onChange={e => setShipperData({...shipperData, shipperAddress: e.target.value})} placeholder="Building, Street, Area" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City *</label>
+                                                    <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperCity} onChange={e => setShipperData({...shipperData, shipperCity: e.target.value})}>
+                                                        <option value="">Select City</option>
+                                                        {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-75">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Company Name</label>
+                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.companyName} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone</label>
+                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.phone || '-'} />
+                                                </div>
+                                                <div className="md:col-span-2 space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</label>
+                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.billingAddress || '-'} />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City</label>
+                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.city || '-'} />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+
+                                {/* Consignee Details */}
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>move_to_inbox</span>
+                                        <h2 className="font-bold">Consignee (Receiver)</h2>
+                                    </div>
+                                    <div className="p-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Customer Name *</label>
+                                                <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} placeholder="Full name" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number *</label>
+                                                <div className="flex">
+                                                    <select className="px-2 rounded-l-lg border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={formData.customerPhonePrefix} onChange={e => setFormData({...formData, customerPhonePrefix: e.target.value})}>
+                                                        <option value="+971">🇦🇪 +971</option>
+                                                        <option value="+966">🇸🇦 +966</option>
+                                                        <option value="+965">🇰🇼 +965</option>
+                                                        <option value="+973">🇧🇭 +973</option>
+                                                        <option value="+968">🇴🇲 +968</option>
+                                                        <option value="+974">🇶🇦 +974</option>
+                                                    </select>
+                                                    <input required className="w-full rounded-r-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} placeholder="5x xxx xxxx" />
+                                                </div>
+                                            </div>
+                                            <div className="md:col-span-2 space-y-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Address *</label>
+                                                <textarea required rows={2} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 text-foreground" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Building name, street, area..." />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City *</label>
+                                                <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="City name" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Emirate (For Rating) *</label>
+                                                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.emirate} onChange={e => setFormData({...formData, emirate: e.target.value})}>
+                                                    <option value="">Select Emirate</option>
+                                                    <option value="Dubai">Dubai</option>
+                                                    <option value="Abu Dhabi">Abu Dhabi</option>
+                                                    <option value="Sharjah">Sharjah</option>
+                                                    <option value="Ajman">Ajman</option>
+                                                    <option value="RAK">Ras Al Khaimah</option>
+                                                    <option value="Fujairah">Fujairah</option>
+                                                    <option value="UAQ">Umm Al Quwain</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-6 pt-6 border-t border-border">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Find Location</label>
+                                            {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates' || formData.destinationCountry === '') && (
+                                                <div className="col-span-2">
+                                                    <LocationPicker onLocationPicked={setPickedLocation} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* Shipment Details */}
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>inventory</span>
+                                        <h2 className="font-bold">Shipment Details</h2>
+                                    </div>
+                                    <div className="p-6 space-y-8">
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <div className="space-y-1 col-span-2 lg:col-span-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Pieces</label>
+                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" min="1" type="number" required value={formData.pieces} onChange={e => setFormData({...formData, pieces: parseInt(e.target.value)||1})} />
+                                            </div>
+                                            <div className="space-y-1 col-span-2 lg:col-span-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Weight(kg)</label>
+                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" step="0.1" type="number" required value={formData.weight} onChange={e => setFormData({...formData, weight: parseFloat(e.target.value)||0.5})} />
+                                            </div>
+                                            <div className="space-y-1 col-span-2 lg:col-span-2">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Reference #</label>
+                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" type="text" value={formData.orderNumber} onChange={e => setFormData({...formData, orderNumber: e.target.value})} placeholder="Optional Order Number" />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Special Instructions</label>
+                                            <textarea className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" placeholder="Any delivery instructions..." rows={2} value={formData.specialInstructions} onChange={e => setFormData({...formData, specialInstructions: e.target.value})}></textarea>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            {/* Right Column: Summary & Payment */}
+                            <div className="space-y-8">
+                                
+                                {/* Payment Configuration */}
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>payments</span>
+                                        <h2 className="font-bold">Service & Add-ons</h2>
+                                    </div>
+                                    <div className="p-6 space-y-6">
+                                        <div className="space-y-4">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Service Type</label>
+                                            <div className="space-y-3">
+                                                <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.serviceType === 'DOM' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
+                                                    <input className="text-primary focus:ring-primary w-4 h-4 rounded-full border border-primary bg-transparent" name="admin_service_type" type="radio" checked={formData.serviceType === 'DOM'} onChange={() => setFormData({...formData, serviceType: 'DOM'})} />
+                                                    <div className="ml-3">
+                                                        <div className="font-bold text-sm">Domestic Express</div>
+                                                        <div className="text-[11px] text-muted-foreground">Standard Next Day</div>
+                                                    </div>
+                                                </label>
+                                                <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.serviceType === 'SDD' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
+                                                    <input className="text-primary focus:ring-primary w-4 h-4 rounded-full border border-primary bg-transparent" name="admin_service_type" type="radio" checked={formData.serviceType === 'SDD'} onChange={() => setFormData({...formData, serviceType: 'SDD'})} />
+                                                    <div className="ml-3">
+                                                        <div className="font-bold text-sm">Same Day (SDD)</div>
+                                                        <div className="text-[11px] text-muted-foreground">Delivered today</div>
+                                                    </div>
+                                                </label>
+                                                {selectedClient.bulletAllowed === 1 && (
+                                                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.serviceType === 'BULLET' ? 'border-red-500 bg-red-500/10' : 'border-border hover:bg-muted'}`}>
+                                                        <input className="text-red-500 focus:ring-red-500 w-4 h-4 rounded-full border border-red-500 bg-transparent" name="admin_service_type" type="radio" checked={formData.serviceType === 'BULLET'} onChange={() => setFormData({...formData, serviceType: 'BULLET'})} />
+                                                        <div className="ml-3">
+                                                            <div className="font-bold text-sm text-red-500">🚀 Bullet Service</div>
+                                                            <div className="text-[11px] text-muted-foreground">Premium 4-Hour Delivery</div>
+                                                        </div>
+                                                    </label>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-4 border-t border-border space-y-4">
+                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Add-ons</label>
+                                            
+                                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.codRequired ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'} ${!selectedClient.codAllowed ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                <Checkbox checked={formData.codRequired} disabled={!selectedClient.codAllowed} onCheckedChange={(checked) => setFormData({...formData, codRequired: !!checked})} className="mr-3 bg-background border-primary" />
+                                                <div className="flex-1">
+                                                    <div className="font-bold text-sm">Cash on Delivery (COD)</div>
+                                                    <div className="text-[11px] text-muted-foreground">{!selectedClient.codAllowed ? 'Not allowed for client' : 'Collect cash from receiver'}</div>
+                                                </div>
+                                            </label>
+
+                                            {formData.codRequired && (
+                                                <div className="pl-8 -mt-2 animate-in fade-in slide-in-from-top-2">
+                                                    <div className="relative">
+                                                        <input className="w-full rounded-lg border border-input bg-background pl-12 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 h-10 font-bold" placeholder="0.00" type="number" step="0.01" required value={formData.codAmount} onChange={e => setFormData({...formData, codAmount: e.target.value})} />
+                                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">AED</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.fitOnDelivery ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'} ${!selectedClient.fodAllowed ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                <Checkbox checked={formData.fitOnDelivery} disabled={!selectedClient.fodAllowed} onCheckedChange={(checked) => setFormData({...formData, fitOnDelivery: !!checked})} className="mr-3 bg-background border-primary" />
+                                                <div className="flex-1">
+                                                    <div className="font-bold text-sm">Fit on Delivery (FOD)</div>
+                                                    <div className="text-[11px] text-muted-foreground">{!selectedClient.fodAllowed ? 'Not allowed for client' : 'Allow try-on before accept'}</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                {/* Order Summary */}
+                                <section className="bg-slate-900 text-white rounded-xl shadow-xl p-6 relative overflow-hidden">
+                                    <h2 className="font-bold mb-4 flex items-center gap-2 relative z-10">
+                                        <span className="material-symbols-outlined text-blue-400">receipt_long</span>
+                                        Summary
+                                    </h2>
+                                    <div className="space-y-3 text-sm relative z-10">
+                                        {calculatedRate ? (
+                                            <>
+                                                <div className="flex justify-between">
+                                                    <span className="opacity-70">Base Shipping</span>
+                                                    <span className="font-medium">{calculatedRate.baseRate.toFixed(2)} AED</span>
+                                                </div>
+                                                {calculatedRate.additionalKgCharge > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span className="opacity-70">Overweight</span>
+                                                        <span className="font-medium">{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
+                                                    </div>
+                                                )}
+                                                {calculatedCODFee > 0 && (
+                                                    <div className="flex justify-between">
+                                                        <span className="opacity-70">COD Handling</span>
+                                                        <span className="font-medium">{calculatedCODFee.toFixed(2)} AED</span>
+                                                    </div>
+                                                )}
+                                                {formData.fitOnDelivery && (
+                                                    <div className="flex justify-between">
+                                                        <span className="opacity-70">Fit on Delivery</span>
+                                                        <span className="font-medium text-purple-400">{((selectedClient as any)?.fodFee ? Number((selectedClient as any).fodFee) : 5.00).toFixed(2)} AED</span>
+                                                    </div>
+                                                )}
+                                                <div className="flex justify-between items-end pt-4 border-t border-white/20">
+                                                    <span className="text-lg font-bold">Total Payable</span>
+                                                    <span className="text-2xl font-black text-blue-400">{(calculatedRate.totalRate + calculatedCODFee + (formData.fitOnDelivery ? ((selectedClient as any)?.fodFee ? Number((selectedClient as any).fodFee) : 5.00) : 0)).toFixed(2)} AED</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <p className="opacity-70 text-center py-4 text-xs">Awaiting client / weight info to estimate costs.</p>
+                                        )}
+                                    </div>
+                                    <div className="mt-8 flex flex-col gap-3 relative z-10">
+                                        <button onClick={handleSubmit} disabled={!selectedClientId || createOrderMutation.isPending} className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold text-lg hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2">
+                                            {createOrderMutation.isPending ? (
+                                                <><span className="animate-spin mr-2">⏳</span> Creating...</>
+                                            ) : (
+                                                <><span className="material-symbols-outlined">rocket_launch</span> Confirm Order</>
+                                            )}
+                                        </button>
+                                        <button onClick={() => onOpenChange(false)} className="w-full py-3 bg-white/10 text-white rounded-xl font-bold text-sm hover:bg-white/20 transition-all">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </section>
+
+                            </div>
+                        </div>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

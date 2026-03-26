@@ -100,6 +100,7 @@ export default function ModernDashboardLayout({
 
     const token = localStorage.getItem('pathxpress_portal_token') || '';
     const isCustomer = user?.role === 'customer';
+    const utils = trpc.useUtils();
 
     const { data: customerAccount } = trpc.portal.customer.getMyAccount.useQuery(
         { token },
@@ -116,6 +117,9 @@ export default function ModernDashboardLayout({
         onSuccess: () => {
             toast.success('Waybill settings saved!');
             setIsSavingWaybillSettings(false);
+            utils.portal.customer.getMyOrders.invalidate();
+            utils.portal.customer.getMyIntlOrders.invalidate();
+            utils.portal.customer.getMyReturnsExchanges.invalidate();
         },
         onError: (error: { message?: string }) => {
             toast.error(error.message || 'Failed to save settings');
