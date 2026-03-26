@@ -443,6 +443,16 @@ export default function CustomerDashboard() {
     { enabled: !!token }
   );
 
+  // Fetch invoices for overdue banner
+  const { data: allInvoices } = trpc.portal.billing.getMyInvoices.useQuery(
+    { token: token || '' },
+    { enabled: !!token }
+  );
+  const overdueInvoices = allInvoices?.filter((inv: any) => inv.status === 'overdue') ?? [];
+  const overdueCount = overdueInvoices.length;
+  const overdueBalance = overdueInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.balance || '0'), 0);
+  const overdueCurrency = overdueInvoices[0]?.currency ?? 'AED';
+
   // Derived metrics computed from orders data
   const _now = new Date();
   const _thisMonthStart = new Date(_now.getFullYear(), _now.getMonth(), 1);
@@ -543,6 +553,21 @@ export default function CustomerDashboard() {
       logout={handleLogout}
       title="Customer Portal"
       onCreateShipment={() => setCreateDialogOpen(true)}
+      topBanner={overdueCount > 0 ? (
+        <div
+          onClick={() => setActiveTab('invoices')}
+          className="flex items-center justify-center gap-2 px-4 py-1.5 bg-red-50 border-b border-red-200 text-red-700 text-xs cursor-pointer hover:bg-red-100 transition-colors shrink-0 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/60"
+        >
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span>
+            {overdueCount === 1 ? 'You have 1 overdue invoice' : `You have ${overdueCount} overdue invoices`}
+            {' · '}
+            <strong>Balance due: {overdueCurrency} {overdueBalance.toFixed(2)}</strong>
+            {' · '}
+            <span className="underline">View invoices →</span>
+          </span>
+        </div>
+      ) : undefined}
     >
       <div className="min-h-full p-4 space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>

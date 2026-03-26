@@ -57,6 +57,7 @@ interface ModernDashboardLayoutProps {
     loading?: boolean;
     title?: string;
     onCreateShipment?: () => void;
+    topBanner?: React.ReactNode;
 }
 
 export default function ModernDashboardLayout({
@@ -69,6 +70,7 @@ export default function ModernDashboardLayout({
     loading = false,
     title = APP_TITLE,
     onCreateShipment,
+    topBanner,
 }: ModernDashboardLayoutProps) {
     const [, setLocation] = useLocation();
     const portalRef = useRef<HTMLDivElement>(null);
@@ -217,7 +219,9 @@ export default function ModernDashboardLayout({
 
     return (
         <ThemeProvider defaultTheme="dark" switchable storageKey="portal-theme" targetRef={portalRef}>
-        <div ref={portalRef} className="flex h-screen overflow-hidden bg-background text-foreground">
+        <div ref={portalRef} className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
+            {topBanner}
+            <div className="flex flex-1 overflow-hidden">
             {/* Mobile overlay backdrop */}
             {isMobile && mobileMenuOpen && (
                 <div
@@ -380,6 +384,7 @@ export default function ModernDashboardLayout({
                     </div>
                 </div>
             </main>
+            </div>{/* end flex-1 row (sidebar + main) */}
 
             {/* Change Password Dialog */}
             <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
