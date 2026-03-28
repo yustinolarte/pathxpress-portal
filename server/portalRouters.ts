@@ -332,7 +332,7 @@ export const adminPortalRouter = router({
   getAllOrders: portalAdminProcedure
     .query(async ({ ctx }) => {
       // Admin sees all DOMESTIC orders (standard, exchange, returns) with full information
-      const allOrders = await getAllOrders();
+      const allOrders = await cachedQuery('admin:allOrders', 60, getAllOrders);
       return allOrders.filter(order =>
         (order.destinationCountry === 'United Arab Emirates' || order.destinationCountry === 'UAE' || order.destinationCountry === 'AE' || !order.destinationCountry)
       );
@@ -341,7 +341,7 @@ export const adminPortalRouter = router({
   // Get international orders (admin view)
   getIntlOrders: portalAdminProcedure
     .query(async ({ ctx }) => {
-      const allOrders = await getAllOrders();
+      const allOrders = await cachedQuery('admin:allOrders', 60, getAllOrders);
       return allOrders.filter(order =>
         (order.orderType === 'standard' || !order.orderType) &&
         order.destinationCountry.toUpperCase() !== 'UAE' &&
@@ -376,6 +376,7 @@ export const adminPortalRouter = router({
         // Finally delete the order
         await db.delete(orders).where(eq(orders.id, input.orderId));
 
+        cacheInvalidate('admin:allOrders');
         return { success: true };
       } catch (error) {
         console.error('[Database] Failed to delete order:', error);
@@ -1116,6 +1117,7 @@ export const adminPortalRouter = router({
         createdBy: 'admin',
       });
 
+      cacheInvalidate('admin:allOrders');
       return order;
     }),
 

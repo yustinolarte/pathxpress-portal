@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import helmet from "helmet";
+import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
@@ -38,6 +39,9 @@ async function startServer() {
 
   // Trust the first proxy (Railway/Load Balancer) to fix rate-limiting and IP detection
   app.set("trust proxy", 1);
+
+  // Gzip/Brotli compression — reduces JSON response sizes by ~80-90%
+  app.use(compression());
 
   // CORS
   app.use(cors({
