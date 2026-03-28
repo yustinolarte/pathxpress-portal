@@ -503,7 +503,7 @@ export default function CustomerDashboard() {
 
   const stats = {
     totalOrders: orders?.length || 0,
-    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled').length || 0,
+    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled' && o.status !== 'returned').length || 0,
   };
 
   const menuItems: ModernMenuItem[] = [
