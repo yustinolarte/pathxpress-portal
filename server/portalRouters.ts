@@ -1437,7 +1437,7 @@ export const customerPortalRouter = router({
   // Get customer's orders (excluding returns and exchanges - those appear in separate section)
   getMyOrders: portalCustomerProcedure
     .query(async ({ ctx }) => {
-      const allOrders = await getOrdersByClientId(ctx.portalUser.clientId);
+      const allOrders = await cachedQuery(`customer:orders:${ctx.portalUser.clientId}`, 30, () => getOrdersByClientId(ctx.portalUser.clientId));
 
       // Filter out returns and exchanges (they appear in separate Returns & Exchanges section)
       // Limit to domestic orders
@@ -1461,7 +1461,7 @@ export const customerPortalRouter = router({
   // Get customer's international orders
   getMyIntlOrders: portalCustomerProcedure
     .query(async ({ ctx }) => {
-      const allOrders = await getOrdersByClientId(ctx.portalUser.clientId);
+      const allOrders = await cachedQuery(`customer:orders:${ctx.portalUser.clientId}`, 30, () => getOrdersByClientId(ctx.portalUser.clientId));
 
       // Filter for international orders
       const orders = allOrders.filter(order =>
