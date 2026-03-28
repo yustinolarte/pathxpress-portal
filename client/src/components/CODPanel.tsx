@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -29,7 +28,6 @@ import {
 import RemittanceDetailsDialog from './RemittanceDetailsDialog';
 
 export default function CODPanel() {
-  const { token } = usePortalAuth();
   const utils = trpc.useUtils();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
@@ -43,16 +41,10 @@ export default function CODPanel() {
   const [reportMonth, setReportMonth] = useState<string>('all'); // 'all' or 'YYYY-MM' format
 
   // Get COD summary
-  const { data: codSummary } = trpc.portal.cod.getCODSummary.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: codSummary } = trpc.portal.cod.getCODSummary.useQuery();
 
   // Get all COD records
-  const { data: allCODRecords, isLoading: codLoading, refetch: refetchCOD } = trpc.portal.cod.getAllCODRecords.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: allCODRecords, isLoading: codLoading, refetch: refetchCOD } = trpc.portal.cod.getAllCODRecords.useQuery();
 
   // Filter COD records by client
   const codRecords = allCODRecords?.filter(record =>
@@ -60,21 +52,15 @@ export default function CODPanel() {
   );
 
   // Get all remittances
-  const { data: remittances, isLoading: remittancesLoading, refetch: refetchRemittances } = trpc.portal.cod.getAllRemittances.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: remittances, isLoading: remittancesLoading, refetch: refetchRemittances } = trpc.portal.cod.getAllRemittances.useQuery();
 
   // Get clients for dropdown
-  const { data: clients } = trpc.portal.admin.getClients.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: clients } = trpc.portal.admin.getClients.useQuery();
 
   // Get pending COD for selected client
   const { data: pendingCOD, refetch: refetchPending } = trpc.portal.cod.getPendingCODByClient.useQuery(
-    { token: token || '', clientId: selectedClient || 0 },
-    { enabled: !!token && !!selectedClient }
+    { clientId: selectedClient || 0 },
+    { enabled: !!selectedClient }
   );
 
   // Filter to ensure only collected COD are shown
@@ -270,7 +256,6 @@ export default function CODPanel() {
     }
 
     createRemittanceMutation.mutate({
-      token: token || '',
       clientId: selectedClient,
       codRecordIds: selectedCODRecords,
       paymentMethod: paymentMethod || undefined,
@@ -281,7 +266,6 @@ export default function CODPanel() {
 
   const handleStatusChange = (remittanceId: number, status: 'pending' | 'processed' | 'completed') => {
     updateStatusMutation.mutate({
-      token: token || '',
       remittanceId,
       status,
     });
@@ -289,7 +273,6 @@ export default function CODPanel() {
 
   const handleCODStatusChange = (codRecordId: number, status: 'pending_collection' | 'collected' | 'remitted' | 'disputed') => {
     updateCODStatusMutation.mutate({
-      token: token || '',
       codRecordId,
       status,
     });

@@ -9,6 +9,10 @@ import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
+// One-time cleanup: remove legacy localStorage keys from before cookie migration
+localStorage.removeItem('pathxpress_portal_token');
+localStorage.removeItem('pathxpress_portal_user');
+
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {

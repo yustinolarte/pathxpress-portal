@@ -5,24 +5,20 @@
 import { useState, useRef, useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
 
-interface NotificationBellProps {
-    token: string;
-}
-
-export default function NotificationBell({ token }: NotificationBellProps) {
+export default function NotificationBell() {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
     // Fetch unread count (refetch every 30s)
     const { data: unreadData } = trpc.portal.notifications.getUnreadCount.useQuery(
-        { token },
-        { enabled: !!token, refetchInterval: 30000 }
+        undefined,
+        { refetchInterval: 30000 }
     );
 
     // Fetch notification list (only when dropdown is open)
     const { data: notifications, refetch: refetchList } = trpc.portal.notifications.list.useQuery(
-        { token, limit: 15 },
-        { enabled: !!token && open }
+        { limit: 15 },
+        { enabled: open }
     );
 
     const markAsReadMutation = trpc.portal.notifications.markAsRead.useMutation();
@@ -41,12 +37,12 @@ export default function NotificationBell({ token }: NotificationBellProps) {
     }, [open]);
 
     const handleMarkAllRead = async () => {
-        await markAsReadMutation.mutateAsync({ token });
+        await markAsReadMutation.mutateAsync({});
         refetchList();
     };
 
     const handleNotificationClick = async (id: number, link?: string | null) => {
-        await markAsReadMutation.mutateAsync({ token, notificationId: id });
+        await markAsReadMutation.mutateAsync({ notificationId: id });
         refetchList();
         if (link) {
             // Dispatch a custom event that the parent dashboard can listen to for navigation

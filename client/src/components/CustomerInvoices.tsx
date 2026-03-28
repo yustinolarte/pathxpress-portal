@@ -1,5 +1,4 @@
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -15,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
 
 export default function CustomerInvoices() {
-  const { token } = usePortalAuth();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -25,9 +23,7 @@ export default function CustomerInvoices() {
   // Download invoice PDF handler
   const handleDownloadPDF = async (invoice: any) => {
     try {
-      if (!token) return;
-
-      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
+      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })));
       const result = await response.json();
 
       if (!result.result?.data?.json) {
@@ -74,10 +70,7 @@ export default function CustomerInvoices() {
     }
   };
 
-  const { data: invoices, isLoading } = trpc.portal.billing.getMyInvoices.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: invoices, isLoading } = trpc.portal.billing.getMyInvoices.useQuery();
 
   const filteredInvoices = useMemo(() => {
     if (!invoices) return [];
@@ -130,8 +123,8 @@ export default function CustomerInvoices() {
   };
 
   const { data: invoiceDetails } = trpc.portal.billing.getInvoiceDetails.useQuery(
-    { token: token || '', invoiceId: selectedInvoiceId || 0 },
-    { enabled: !!token && !!selectedInvoiceId }
+    { invoiceId: selectedInvoiceId || 0 },
+    { enabled: !!selectedInvoiceId }
   );
 
   const getStatusBadge = (status: string) => {

@@ -5,29 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { toast } from 'sonner';
 import { APP_LOGO } from '@/const';
 import { Lock, Mail } from 'lucide-react';
 
 export default function PortalLogin() {
   const [, setLocation] = useLocation();
-  const { login } = usePortalAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const loginMutation = trpc.portal.auth.login.useMutation({
     onSuccess: (data) => {
-      // Save auth data
-      login(data.token, { 
-        userId: data.user.id, 
-        email: data.user.email, 
-        role: data.user.role, 
-        clientId: data.user.clientId || undefined 
-      });
-      
-      // Redirect based on role
+      // Cookie is set by the server — redirect based on role
       const redirectPath = data.user.role === 'admin' ? '/portal/admin' : '/portal/customer';
       window.location.href = redirectPath;
     },

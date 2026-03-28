@@ -6,52 +6,58 @@ import bcrypt from 'bcryptjs';
 import { eq, and, desc, sql, gte, isNull, notInArray, or, inArray } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, clientAccounts } from '../drizzle/schema';
+import { cachedQuery } from './_core/queryCache';
 
 // ============ DASHBOARD STATS ============
 
 export async function getDriverDashboardStats() {
-    const db = await getDb();
-    if (!db) throw new Error('Database not available');
+    return cachedQuery('driver:dashboardStats', 30, async () => {
+        const db = await getDb();
+        if (!db) throw new Error('Database not available');
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-    // Driver stats
-    const allDrivers = await db.select().from(drivers);
-    const activeDrivers = allDrivers.filter(d => d.status === 'active');
+        const [[driverStats], [routeTotal], [todayRoutes], [deliveryStats], [reportStats]] = await Promise.all([
+            db.select({
+                total: sql<number>`cast(count(*) as unsigned)`,
+                active: sql<number>`cast(SUM(CASE WHEN ${drivers.status} = 'active' THEN 1 ELSE 0 END) as unsigned)`,
+            }).from(drivers),
 
-    // Route stats
-    const allRoutes = await db.select().from(driverRoutes);
-    const todayRoutes = allRoutes.filter(r => new Date(r.date) >= today);
+            db.select({ total: sql<number>`cast(count(*) as unsigned)` }).from(driverRoutes),
 
-    // Delivery stats
-    const allDeliveries = await db.select().from(routeOrders);
-    const deliveredCount = allDeliveries.filter(d => d.status === 'delivered').length;
-    const pendingCount = allDeliveries.filter(d => d.status === 'pending' || d.status === 'in_progress').length;
+            db.select({ count: sql<number>`cast(count(*) as unsigned)` })
+                .from(driverRoutes)
+                .where(gte(driverRoutes.date, today)),
 
-    // Report stats
-    const pendingReports = await db
-        .select()
-        .from(driverReports)
-        .where(eq(driverReports.status, 'pending'));
+            db.select({
+                delivered: sql<number>`cast(SUM(CASE WHEN ${routeOrders.status} = 'delivered' THEN 1 ELSE 0 END) as unsigned)`,
+                pending: sql<number>`cast(SUM(CASE WHEN ${routeOrders.status} IN ('pending', 'in_progress') THEN 1 ELSE 0 END) as unsigned)`,
+            }).from(routeOrders),
 
-    return {
-        drivers: {
-            total: allDrivers.length,
-            active: activeDrivers.length,
-        },
-        routes: {
-            total: allRoutes.length,
-            today: todayRoutes.length,
-        },
-        deliveries: {
-            delivered: deliveredCount,
-            pending: pendingCount,
-        },
-        reports: {
-            pending: pendingReports.length,
-        },
-    };
+            db.select({ pending: sql<number>`cast(count(*) as unsigned)` })
+                .from(driverReports)
+                .where(eq(driverReports.status, 'pending')),
+        ]);
+
+        return {
+            drivers: {
+                total: Number(driverStats?.total || 0),
+                active: Number(driverStats?.active || 0),
+            },
+            routes: {
+                total: Number(routeTotal?.total || 0),
+                today: Number(todayRoutes?.count || 0),
+            },
+            deliveries: {
+                delivered: Number(deliveryStats?.delivered || 0),
+                pending: Number(deliveryStats?.pending || 0),
+            },
+            reports: {
+                pending: Number(reportStats?.pending || 0),
+            },
+        };
+    });
 }
 
 // ============ DRIVERS CRUD ============
@@ -145,67 +151,89 @@ export async function getAllDriverRoutes() {
         .from(driverRoutes)
         .orderBy(desc(driverRoutes.date));
 
-    // Get driver info and delivery stats for each route
-    const routesWithDetails = await Promise.all(
-        routes.map(async (route) => {
-            let driver = null;
-            if (route.driverId) {
-                const [d] = await db.select().from(drivers).where(eq(drivers.id, route.driverId)).limit(1);
-                driver = d || null;
-            }
+    if (routes.length === 0) return [];
 
-            const deliveries = await db.select().from(routeOrders).where(eq(routeOrders.routeId, route.id));
-            const delivered = deliveries.filter(d => d.status === 'delivered').length;
-            const pickupCount = deliveries.filter(d => d.type === 'pickup').length;
-            const deliveryCount = deliveries.filter(d => d.type === 'delivery').length;
+    // Batch 1: get all drivers for these routes in one query
+    const driverIds = Array.from(new Set(
+        routes.map(r => r.driverId).filter((id): id is number => id !== null && id !== undefined)
+    ));
+    const driversMap = new Map<number, typeof drivers.$inferSelect>();
+    if (driverIds.length > 0) {
+        const allDrivers = await db.select().from(drivers).where(inArray(drivers.id, driverIds));
+        for (const d of allDrivers) driversMap.set(d.id, d);
+    }
 
-            // Get order details for enriched data (companies, COD, returns)
-            const orderIds = Array.from(new Set(deliveries.map(d => d.orderId)));
-            let companies: string[] = [];
-            let codTotal = 0;
-            let returnCount = 0;
-            let totalPieces = 0;
-            let totalWeight = 0;
+    // Batch 2: get all route orders for all routes in one query
+    const routeIds = routes.map(r => r.id);
+    const allRouteOrders = await db.select().from(routeOrders).where(inArray(routeOrders.routeId, routeIds));
 
-            if (orderIds.length > 0) {
-                const routeOrdersData = await db.select().from(orders).where(inArray(orders.id, orderIds));
+    // Batch 3: get all related orders in one query
+    const orderIds = Array.from(new Set(allRouteOrders.map(ro => ro.orderId)));
+    const ordersMap = new Map<number, typeof orders.$inferSelect>();
+    if (orderIds.length > 0) {
+        const allOrders = await db.select().from(orders).where(inArray(orders.id, orderIds));
+        for (const o of allOrders) ordersMap.set(o.id, o);
+    }
 
-                // Get unique client IDs
-                const clientIds = Array.from(new Set(routeOrdersData.map(o => o.clientId)));
-                if (clientIds.length > 0) {
-                    const clients = await db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
-                        .from(clientAccounts).where(inArray(clientAccounts.id, clientIds));
-                    companies = clients.map(c => c.companyName);
-                }
+    // Batch 4: get all client names in one query
+    const clientIds = Array.from(new Set(
+        Array.from(ordersMap.values()).map(o => o.clientId)
+    ));
+    const clientsMap = new Map<number, string>();
+    if (clientIds.length > 0) {
+        const clientsList = await db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
+            .from(clientAccounts).where(inArray(clientAccounts.id, clientIds));
+        for (const c of clientsList) clientsMap.set(c.id, c.companyName);
+    }
 
-                // Aggregate COD, returns, pieces, weight
-                for (const o of routeOrdersData) {
-                    if (o.codRequired === 1 && o.codAmount) codTotal += parseFloat(o.codAmount) || 0;
-                    if (o.isReturn === 1 || o.orderType === 'return') returnCount++;
-                    totalPieces += o.pieces || 0;
-                    totalWeight += parseFloat(o.weight as string) || 0;
-                }
-            }
+    // Group routeOrders by routeId for fast lookup
+    const routeOrdersByRoute = new Map<string, typeof routeOrders.$inferSelect[]>();
+    for (const ro of allRouteOrders) {
+        if (!routeOrdersByRoute.has(ro.routeId)) routeOrdersByRoute.set(ro.routeId, []);
+        routeOrdersByRoute.get(ro.routeId)!.push(ro);
+    }
 
-            return {
-                ...route,
-                driver,
-                deliveryStats: {
-                    total: deliveries.length,
-                    delivered,
-                    pickups: pickupCount,
-                    deliveries: deliveryCount,
-                },
-                companies,
-                codTotal,
-                returnCount,
-                totalPieces,
-                totalWeight: Math.round(totalWeight * 100) / 100,
-            };
-        })
-    );
+    // Aggregate in JS (data already in memory, no more DB calls)
+    return routes.map(route => {
+        const deliveries = routeOrdersByRoute.get(route.id) || [];
+        const delivered = deliveries.filter(d => d.status === 'delivered').length;
+        const pickupCount = deliveries.filter(d => d.type === 'pickup').length;
+        const deliveryCount = deliveries.filter(d => d.type === 'delivery').length;
 
-    return routesWithDetails;
+        const routeOrderIds = Array.from(new Set(deliveries.map(d => d.orderId)));
+        const companiesSet = new Set<string>();
+        let codTotal = 0;
+        let returnCount = 0;
+        let totalPieces = 0;
+        let totalWeight = 0;
+
+        for (const orderId of routeOrderIds) {
+            const o = ordersMap.get(orderId);
+            if (!o) continue;
+            if (o.codRequired === 1 && o.codAmount) codTotal += parseFloat(o.codAmount) || 0;
+            if (o.isReturn === 1 || o.orderType === 'return') returnCount++;
+            totalPieces += o.pieces || 0;
+            totalWeight += parseFloat(o.weight as string) || 0;
+            const companyName = clientsMap.get(o.clientId);
+            if (companyName) companiesSet.add(companyName);
+        }
+
+        return {
+            ...route,
+            driver: route.driverId ? driversMap.get(route.driverId) || null : null,
+            deliveryStats: {
+                total: deliveries.length,
+                delivered,
+                pickups: pickupCount,
+                deliveries: deliveryCount,
+            },
+            companies: Array.from(companiesSet),
+            codTotal,
+            returnCount,
+            totalPieces,
+            totalWeight: Math.round(totalWeight * 100) / 100,
+        };
+    });
 }
 
 export async function getRouteDetails(routeId: string) {
@@ -434,7 +462,7 @@ export async function getAllDeliveries(filters?: {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    let query = db
+    const results = await db
         .select({
             id: routeOrders.id,
             routeId: routeOrders.routeId,
@@ -449,39 +477,34 @@ export async function getAllDeliveries(filters?: {
             customerPhone: orders.customerPhone,
             address: orders.address,
             city: orders.city,
+            driverId: driverRoutes.driverId,
+            driverFullName: drivers.fullName,
         })
         .from(routeOrders)
-        .innerJoin(orders, eq(routeOrders.orderId, orders.id));
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+        .leftJoin(drivers, eq(driverRoutes.driverId, drivers.id));
 
-    const results = await query;
+    const deliveries = results.map(r => ({
+        id: r.id,
+        routeId: r.routeId,
+        orderId: r.orderId,
+        sequence: r.sequence,
+        status: r.status,
+        proofPhotoUrl: r.proofPhotoUrl,
+        notes: r.notes,
+        deliveredAt: r.deliveredAt,
+        waybillNumber: r.waybillNumber,
+        customerName: r.customerName,
+        customerPhone: r.customerPhone,
+        address: r.address,
+        city: r.city,
+        driver: r.driverId && r.driverFullName ? { id: r.driverId, fullName: r.driverFullName } : null,
+    }));
 
-    // Get driver info for each
-    const deliveriesWithDriver = await Promise.all(
-        results.map(async (delivery) => {
-            const [route] = await db
-                .select()
-                .from(driverRoutes)
-                .where(eq(driverRoutes.id, delivery.routeId))
-                .limit(1);
-
-            let driver = null;
-            if (route?.driverId) {
-                const [d] = await db.select().from(drivers).where(eq(drivers.id, route.driverId)).limit(1);
-                driver = d ? { id: d.id, fullName: d.fullName } : null;
-            }
-
-            return { ...delivery, driver };
-        })
-    );
-
-    // Apply filters
-    let filtered = deliveriesWithDriver;
-    if (filters?.status) {
-        filtered = filtered.filter(d => d.status === filters.status);
-    }
-    if (filters?.routeId) {
-        filtered = filtered.filter(d => d.routeId === filters.routeId);
-    }
+    let filtered = deliveries;
+    if (filters?.status) filtered = filtered.filter(d => d.status === filters.status);
+    if (filters?.routeId) filtered = filtered.filter(d => d.routeId === filters.routeId);
 
     return filtered;
 }
@@ -495,27 +518,23 @@ export async function getAllDriverReports(filters?: {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    const reports = await db.select().from(driverReports).orderBy(desc(driverReports.createdAt));
-
-    // Get driver info for each
-    const reportsWithDriver = await Promise.all(
-        reports.map(async (report) => {
-            const [driver] = await db.select().from(drivers).where(eq(drivers.id, report.driverId)).limit(1);
-            return {
-                ...report,
-                driver: driver ? { id: driver.id, fullName: driver.fullName } : null,
-            };
+    const rows = await db
+        .select({
+            report: driverReports,
+            driverFullName: drivers.fullName,
         })
-    );
+        .from(driverReports)
+        .leftJoin(drivers, eq(driverReports.driverId, drivers.id))
+        .orderBy(desc(driverReports.createdAt));
 
-    // Apply filters
+    const reportsWithDriver = rows.map(r => ({
+        ...r.report,
+        driver: r.driverFullName ? { id: r.report.driverId, fullName: r.driverFullName } : null,
+    }));
+
     let filtered = reportsWithDriver;
-    if (filters?.status) {
-        filtered = filtered.filter(r => r.status === filters.status);
-    }
-    if (filters?.driverId) {
-        filtered = filtered.filter(r => r.driverId === filters.driverId);
-    }
+    if (filters?.status) filtered = filtered.filter(r => r.status === filters.status);
+    if (filters?.driverId) filtered = filtered.filter(r => r.driverId === filters.driverId);
 
     return filtered;
 }

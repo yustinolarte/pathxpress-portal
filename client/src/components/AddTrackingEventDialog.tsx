@@ -83,7 +83,6 @@ interface AddTrackingEventDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shipmentId: number;
-  token: string;
   onSuccess: () => void;
 }
 
@@ -91,7 +90,6 @@ export default function AddTrackingEventDialog({
   open,
   onOpenChange,
   shipmentId,
-  token,
   onSuccess,
 }: AddTrackingEventDialogProps) {
   const [formData, setFormData] = useState({
@@ -195,7 +193,6 @@ export default function AddTrackingEventDialog({
     }
 
     await addEventMutation.mutateAsync({
-      token,
       shipmentId,
       eventDatetime: eventDatetimeWithOffset,
       location: getLocationLabel(),

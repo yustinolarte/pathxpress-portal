@@ -14,7 +14,6 @@ interface EditInvoiceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invoice: any;
-  token: string;
   onSuccess: () => void;
 }
 
@@ -40,7 +39,7 @@ const PRESET_ITEMS = [
   { label: 'Discount', icon: Percent, defaultPrice: '-0.00' },
 ];
 
-export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, onSuccess }: EditInvoiceDialogProps) {
+export default function EditInvoiceDialog({ open, onOpenChange, invoice, onSuccess }: EditInvoiceDialogProps) {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -61,7 +60,7 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, 
   useEffect(() => {
     if (open && invoice) {
       setIsLoadingItems(true);
-      fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })))
+      fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })))
         .then(res => res.json())
         .then(result => {
           if (result.result?.data?.json?.items) {
@@ -81,7 +80,7 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, 
         adjustmentNotes: invoice.adjustmentNotes || '',
       });
     }
-  }, [open, invoice, token]);
+  }, [open, invoice]);
 
   const utils = trpc.useUtils();
 
@@ -121,7 +120,7 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, 
 
   const refreshItems = () => {
     setIsLoadingItems(true);
-    fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })))
+    fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })))
       .then(res => res.json())
       .then(result => {
         if (result.result?.data?.json) {
@@ -147,7 +146,6 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, 
     }
 
     addItemMutation.mutate({
-      token,
       invoiceId: invoice.id,
       description: newItem.description,
       quantity: newItem.quantity,
@@ -159,7 +157,6 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, 
     if (!confirm('Are you sure you want to delete this item?')) return;
 
     deleteItemMutation.mutate({
-      token,
       invoiceId: invoice.id,
       itemId,
     });
@@ -183,7 +180,6 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, token, 
     const balance = total - amountPaid;
 
     updateMutation.mutate({
-      token,
       invoiceId: invoice.id,
       data: {
         subtotal: subtotal.toFixed(2),

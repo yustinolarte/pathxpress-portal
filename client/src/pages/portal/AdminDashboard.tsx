@@ -33,7 +33,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
-  const { token, user, logout } = usePortalAuth();
+  const { user, logout, loading } = usePortalAuth();
   const [activeTab, setActiveTab] = useState('overview');
 
   const ALL_STATUSES = [
@@ -140,7 +140,6 @@ export default function AdminDashboard() {
   const handleDeleteClient = (clientId: number) => {
     if (confirm('Are you sure you want to delete this client? This action cannot be undone.')) {
       deleteClientMutation.mutate({
-        token: token || '',
         clientId,
       });
     }
@@ -159,7 +158,6 @@ export default function AdminDashboard() {
     if (!selectedClientForUser) return;
 
     createClientUserMutation.mutate({
-      token: token || '',
       clientId: selectedClientForUser.id,
       email: newUser.email,
       password: newUser.password,
@@ -196,7 +194,6 @@ export default function AdminDashboard() {
   const handleSaveNotes = () => {
     if (!selectedClientForNotes) return;
     updateNotesMutation.mutate({
-      token: token || '',
       clientId: selectedClientForNotes.id,
       notes: clientNotes,
     });
@@ -209,38 +206,31 @@ export default function AdminDashboard() {
       return;
     }
     updatePasswordMutation.mutate({
-      token: token || '',
       clientId: selectedClientForPassword.id,
       newPassword: newPassword,
     });
   };
 
-  // Redirect if not authenticated or not admin
+  // Redirect if not authenticated or not admin (wait for session to load first)
   useEffect(() => {
-    if (!token || !user || user.role !== 'admin') {
+    if (!loading && (!user || user.role !== 'admin')) {
       setLocation('/portal/login');
     }
-  }, [token, user, setLocation]);
+  }, [user, loading, setLocation]);
 
   // Fetch clients
-  const { data: clients, isLoading: clientsLoading, refetch: refetchClients } = trpc.portal.clients.list.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: clients, isLoading: clientsLoading, refetch: refetchClients } = trpc.portal.clients.list.useQuery();
 
-  const { data: rateTiers } = trpc.portal.rates.listTiers.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: rateTiers } = trpc.portal.rates.listTiers.useQuery();
 
   const { data: clientAlerts } = trpc.portal.admin.getClientAlerts.useQuery(
-    { token: token || '' },
-    { enabled: !!token && activeTab === 'clients', refetchInterval: 120000 }
+    undefined,
+    { enabled: activeTab === 'clients', refetchInterval: 120000 }
   );
 
   const { data: client360Data, isLoading: client360Loading } = trpc.portal.admin.getClient360.useQuery(
-    { token: token || '', clientId: client360Id! },
-    { enabled: !!token && client360Id !== null }
+    { clientId: client360Id! },
+    { enabled: client360Id !== null }
   );
 
   const updateTierMutation = trpc.portal.clients.updateTier.useMutation();
@@ -262,7 +252,6 @@ export default function AdminDashboard() {
       // Update Tier (and custom rates if applicable)
       const isCustom = editForm.tierId === 'custom';
       await updateTierMutation.mutateAsync({
-        token: token || '',
         clientId: editingClient.id,
         tierId: editForm.tierId === 'auto' || isCustom ? null : parseInt(editForm.tierId),
         // Pass custom rates if using custom tier
@@ -274,7 +263,6 @@ export default function AdminDashboard() {
 
       // Update Settings
       await updateSettingsMutation.mutateAsync({
-        token: token || '',
         clientId: editingClient.id,
         codAllowed: editForm.codAllowed,
         codFeePercent: editForm.codFeePercent,
@@ -346,16 +334,10 @@ export default function AdminDashboard() {
   });
 
   // Fetch all orders
-  const { data: allOrders, isLoading: ordersLoading, refetch: refetchOrders } = trpc.portal.admin.getAllOrders.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: allOrders, isLoading: ordersLoading, refetch: refetchOrders } = trpc.portal.admin.getAllOrders.useQuery();
 
   // Fetch quote requests
-  const { data: quoteRequests, isLoading: requestsLoading, refetch: refetchRequests } = trpc.portal.admin.getQuoteRequests.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: quoteRequests, isLoading: requestsLoading, refetch: refetchRequests } = trpc.portal.admin.getQuoteRequests.useQuery();
 
   const deleteRequestMutation = trpc.portal.admin.deleteQuoteRequest.useMutation({
     onSuccess: () => {
@@ -368,10 +350,7 @@ export default function AdminDashboard() {
   });
 
   // Fetch contact messages
-  const { data: contactMessages, isLoading: messagesLoading, refetch: refetchMessages } = trpc.portal.admin.getContactMessages.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: contactMessages, isLoading: messagesLoading, refetch: refetchMessages } = trpc.portal.admin.getContactMessages.useQuery();
 
   const deleteMessageMutation = trpc.portal.admin.deleteContactMessage.useMutation({
     onSuccess: () => {
@@ -397,7 +376,6 @@ export default function AdminDashboard() {
   const handleDeleteOrder = (orderId: number, waybillNumber: string) => {
     if (confirm(`Are you sure you want to delete order ${waybillNumber}? This will also delete all related tracking events, COD records, and invoice items. This action cannot be undone.`)) {
       deleteOrderMutation.mutate({
-        token: token || '',
         orderId,
       });
     }
@@ -434,7 +412,6 @@ export default function AdminDashboard() {
     }
 
     createClientMutation.mutate({
-      token: token || '',
       client: newClient,
     });
   };
@@ -445,7 +422,7 @@ export default function AdminDashboard() {
     setLocation('/portal/login');
   };
 
-  if (!token || !user) {
+  if (loading || !user) {
     return null;
   }
 
@@ -1371,7 +1348,7 @@ export default function AdminDashboard() {
 
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-4">
-            <AdminReports token={token} />
+            <AdminReports />
           </TabsContent>
 
           {/* Requests Tab */}
@@ -1417,7 +1394,6 @@ export default function AdminDashboard() {
                                 onClick={() => {
                                   if (confirm('Are you sure you want to delete this request?')) {
                                     deleteRequestMutation.mutate({
-                                      token: token || '',
                                       requestId: req.id,
                                     });
                                   }
@@ -1475,7 +1451,6 @@ export default function AdminDashboard() {
                                 onClick={() => {
                                   if (confirm('Are you sure you want to delete this message?')) {
                                     deleteMessageMutation.mutate({
-                                      token: token || '',
                                       messageId: msg.id,
                                     });
                                   }
@@ -1914,7 +1889,6 @@ export default function AdminDashboard() {
             open={trackingDialogOpen}
             onOpenChange={setTrackingDialogOpen}
             shipmentId={selectedShipmentId}
-            token={token || ''}
             onSuccess={() => {
               // Refresh orders list
               refetchOrders();
@@ -2080,7 +2054,6 @@ export default function AdminDashboard() {
           open={createOrderDialogOpen}
           onOpenChange={setCreateOrderDialogOpen}
           clients={clients}
-          token={token || ''}
           onSuccess={() => {
             setCreateOrderDialogOpen(false);
             refetchOrders();
@@ -2092,7 +2065,6 @@ export default function AdminDashboard() {
           open={editOrderDialogOpen}
           onOpenChange={setEditOrderDialogOpen}
           order={orderToEdit}
-          token={token || ''}
           onSuccess={() => {
             refetchOrders();
           }}

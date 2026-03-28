@@ -28,7 +28,6 @@ interface AdminCreateIntlOrderDialogProps {
     onOpenChange: (open: boolean) => void;
     clients: Client[] | undefined;
     countries: string[];
-    token: string;
     onSuccess: () => void;
 }
 
@@ -67,7 +66,6 @@ export default function AdminCreateIntlOrderDialog({
     onOpenChange,
     clients,
     countries,
-    token,
     onSuccess,
 }: AdminCreateIntlOrderDialogProps) {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
@@ -116,7 +114,6 @@ export default function AdminCreateIntlOrderDialog({
         }
 
         createOrderMutation.mutate({
-            token,
             clientId: parseInt(selectedClientId),
             shipment: {
                 customerName: formData.customerName,

@@ -33,7 +33,7 @@ interface QuoteOption {
 
 /* ─── Component ────────────────────────────────────────────────────────── */
 
-export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: { token: string; onSuccess: () => void; clientId?: number }) {
+export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSuccess: () => void; clientId?: number }) {
     // Phase (1 = quotation, 2 = details)
     const [phase, setPhase] = useState<1 | 2>(1);
 
@@ -73,16 +73,10 @@ export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: {
     const [openCountry, setOpenCountry] = useState(false);
 
     // Fetch saved shippers
-    const { data: savedShippers = [], refetch: refetchShippers } = trpc.portal.customer.getSavedShippers.useQuery(
-        { token },
-        { enabled: !!token }
-    );
+    const { data: savedShippers = [], refetch: refetchShippers } = trpc.portal.customer.getSavedShippers.useQuery();
 
     // Fetch destination countries
-    const { data: countries = [] } = trpc.portal.internationalRates.countries.useQuery(
-        { token },
-        { enabled: !!token }
-    );
+    const { data: countries = [] } = trpc.portal.internationalRates.countries.useQuery();
 
     // Mutations
     const createShipperMutation = trpc.portal.customer.createSavedShipper.useMutation({
@@ -149,7 +143,6 @@ export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: {
 
         setIsQuoting(true);
         calculateQuoteMutation.mutate({
-            token,
             originCountry: formData.shipperCountry,
             destinationCountry: formData.destinationCountry,
             realWeightKg: weightVal,
@@ -175,7 +168,6 @@ export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: {
         }
 
         createMutation.mutate({
-            token,
             shipment: {
                 ...formData,
                 weight: weightVal,
@@ -189,7 +181,7 @@ export default function CreateIntlShipmentForm({ token, onSuccess, clientId }: {
     const handleSaveShipper = () => {
         if (!shipperNickname.trim()) return toast.error('Please enter a nickname');
         createShipperMutation.mutate({
-            token, nickname: shipperNickname, shipperName: formData.shipperName,
+            nickname: shipperNickname, shipperName: formData.shipperName,
             shipperAddress: formData.shipperAddress, shipperCity: formData.shipperCity,
             shipperCountry: formData.shipperCountry, shipperPhone: formData.shipperPhone,
         });

@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,7 +16,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useEffect } from 'react';
 
 export default function BillingPanel() {
-  const { token } = usePortalAuth();
   const utils = trpc.useUtils();
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
   const [periodStart, setPeriodStart] = useState('');
@@ -39,10 +37,7 @@ export default function BillingPanel() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Get all invoices
-  const { data: allInvoices, isLoading, refetch } = trpc.portal.billing.getAllInvoices.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: allInvoices, isLoading, refetch } = trpc.portal.billing.getAllInvoices.useQuery();
 
   // Filter invoices based on selected filters
   const invoices = useMemo(() => {
@@ -79,10 +74,7 @@ export default function BillingPanel() {
   }, [allInvoices, filterClientId, filterDateFrom, filterDateTo, searchQuery]);
 
   // Get all clients for the dropdown
-  const { data: clients } = trpc.portal.admin.getClients.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: clients } = trpc.portal.admin.getClients.useQuery();
 
   // Generate invoice mutation
   const generateInvoice = trpc.portal.billing.generateInvoice.useMutation({
@@ -103,12 +95,11 @@ export default function BillingPanel() {
   // Get billable shipments
   const { data: billableShipments, isLoading: isLoadingBillable } = trpc.portal.billing.getBillableShipments.useQuery(
     {
-      token: token || '',
       clientId: selectedClient || 0,
       periodStart,
       periodEnd
     },
-    { enabled: !!token && !!selectedClient && !!periodStart && !!periodEnd && generateDialogOpen }
+    { enabled: !!selectedClient && !!periodStart && !!periodEnd && generateDialogOpen }
   );
 
   useEffect(() => {
@@ -161,20 +152,17 @@ export default function BillingPanel() {
   });
 
   const handleDeleteInvoice = (invoiceId: number, invoiceNumber: string) => {
-    if (!token) return;
     if (!confirm(`Are you sure you want to delete invoice ${invoiceNumber}?\n\nThis will allow the shipments to be billed again.`)) {
       return;
     }
-    deleteInvoiceMutation.mutate({ token, invoiceId });
+    deleteInvoiceMutation.mutate({ invoiceId });
   };
 
   // Download invoice PDF handler
   const handleDownloadPDF = async (invoice: any) => {
     try {
-      if (!token) return;
-
       // Fetch invoice details
-      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
+      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })));
       const result = await response.json();
 
       if (!result.result?.data?.json) {
@@ -246,13 +234,12 @@ export default function BillingPanel() {
   };
 
   const handleConfirmGenerate = () => {
-    if (!token || !selectedClient || !periodStart || !periodEnd) {
+    if (!selectedClient || !periodStart || !periodEnd) {
       toast.error('Please fill all fields');
       return;
     }
 
     generateInvoice.mutate({
-      token,
       clientId: selectedClient,
       periodStart,
       periodEnd,
@@ -265,15 +252,14 @@ export default function BillingPanel() {
   };
 
   const handleStatusChange = (invoiceId: number, status: 'pending' | 'paid' | 'overdue') => {
-    if (!token) return;
-    updateStatus.mutate({ token, invoiceId, status });
+    updateStatus.mutate({ invoiceId, status });
   };
 
   const handlePreviewInvoice = async (invoice: any) => {
     setPreviewLoading(true);
     setPreviewDialogOpen(true);
     try {
-      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { token, invoiceId: invoice.id } })));
+      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })));
       const result = await response.json();
 
       if (!result.result?.data?.json) {
@@ -814,7 +800,6 @@ export default function BillingPanel() {
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
             invoice={selectedInvoice}
-            token={token || ''}
             onSuccess={() => {
               refetch();
               setSelectedInvoice(null);

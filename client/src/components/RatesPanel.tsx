@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,8 +26,6 @@ const ZONE_MAP = {
 };
 
 export default function RatesPanel() {
-  const { token } = usePortalAuth();
-
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<ZoneDraft>({
     zone1BaseRate: '', zone1PerKg: '',
@@ -37,10 +34,7 @@ export default function RatesPanel() {
     sddBaseRate: '', sddPerKg: '',
   });
 
-  const { data: clients, isLoading, refetch } = trpc.portal.clients.getWithTiers.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: clients, isLoading, refetch } = trpc.portal.clients.getWithTiers.useQuery();
 
   const updateMutation = trpc.portal.clients.updateZoneRates.useMutation({
     onSuccess: () => {
@@ -69,7 +63,6 @@ export default function RatesPanel() {
 
   function saveEdit(clientId: number) {
     updateMutation.mutate({
-      token: token || '',
       clientId,
       zone1BaseRate: draft.zone1BaseRate || undefined,
       zone1PerKg:    draft.zone1PerKg    || undefined,

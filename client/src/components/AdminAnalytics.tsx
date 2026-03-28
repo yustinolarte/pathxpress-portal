@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -57,19 +56,18 @@ const SERVICE_COLORS: Record<string, string> = {
 };
 
 export default function AdminAnalytics() {
-    const { token } = usePortalAuth();
     const [drillDownDate, setDrillDownDate] = useState<string | null>(null);
     const [drillDownWaybills, setDrillDownWaybills] = useState<string[]>([]);
     const [shipmentView, setShipmentView] = useState<'30d' | '6m'>('30d');
 
     const { data: analytics, isLoading } = trpc.portal.admin.getAnalytics.useQuery(
-        { token: token || '' },
-        { enabled: !!token, refetchInterval: 60000 }
+        undefined,
+        { refetchInterval: 60000 }
     );
 
     const { data: revenue, isLoading: revenueLoading } = trpc.portal.admin.getRevenueAnalytics.useQuery(
-        { token: token || '' },
-        { enabled: !!token, refetchInterval: 120000 }
+        undefined,
+        { refetchInterval: 120000 }
     );
 
     if (isLoading) {

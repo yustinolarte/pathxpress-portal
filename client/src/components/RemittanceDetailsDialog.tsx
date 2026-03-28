@@ -4,7 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar, DollarSign, Download, CreditCard, FileText } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { toast } from 'sonner';
 
 interface RemittanceDetailsDialogProps {
@@ -15,11 +14,9 @@ interface RemittanceDetailsDialogProps {
 }
 
 export default function RemittanceDetailsDialog({ remittanceId, isOpen, onClose, isAdmin = false }: RemittanceDetailsDialogProps) {
-    const { token } = usePortalAuth();
-
     const { data: details, isLoading } = trpc.portal.cod.getRemittanceDetails.useQuery(
-        { token: token || '', remittanceId: remittanceId || 0 },
-        { enabled: !!token && !!remittanceId && isOpen }
+        { remittanceId: remittanceId || 0 },
+        { enabled: !!remittanceId && isOpen }
     );
 
     const formatDate = (date: string | Date | null) => {

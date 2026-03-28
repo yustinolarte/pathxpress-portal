@@ -185,14 +185,12 @@ function DashboardLayoutContent({
   const [hideShipperAddress, setHideShipperAddress] = useState(false);
   const [isSavingWaybillSettings, setIsSavingWaybillSettings] = useState(false);
 
-  // Get token from localStorage
-  const token = localStorage.getItem('pathxpress_portal_token') || '';
   const isCustomer = user?.role === 'customer';
 
   // Fetch customer account to get current hideShipperAddress setting
   const { data: customerAccount } = trpc.portal.customer.getMyAccount.useQuery(
-    { token },
-    { enabled: !!token && isCustomer }
+    undefined,
+    { enabled: isCustomer }
   );
 
   // Update hideShipperAddress when account data loads
@@ -217,7 +215,6 @@ function DashboardLayoutContent({
     setHideShipperAddress(checked);
     setIsSavingWaybillSettings(true);
     updateWaybillSettingsMutation.mutate({
-      token,
       hideShipperAddress: checked ? 1 : 0,
     });
   };
@@ -245,7 +242,6 @@ function DashboardLayoutContent({
       return;
     }
     changePasswordMutation.mutate({
-      token,
       currentPassword,
       newPassword,
     });

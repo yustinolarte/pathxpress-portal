@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 
 export default function CustomerRateCalculator() {
-  const { token, user } = usePortalAuth();
+  const { user } = usePortalAuth();
   const [serviceType, setServiceType] = useState<'DOM' | 'SDD' | 'BULLET'>('DOM');
   const [weight, setWeight] = useState<string>('');
   const [emirate, setEmirate] = useState<string>('');
@@ -51,7 +51,6 @@ export default function CustomerRateCalculator() {
     }
 
     calculateRateMutation.mutate({
-      token: token || '',
       clientId: user.clientId,
       serviceType,
       weight: weightNum,
@@ -65,7 +64,6 @@ export default function CustomerRateCalculator() {
       const codAmountNum = parseFloat(codAmount);
       if (!isNaN(codAmountNum) && codAmountNum > 0) {
         calculateCODMutation.mutate({
-          token: token || '',
           codAmount: codAmountNum,
         });
       }

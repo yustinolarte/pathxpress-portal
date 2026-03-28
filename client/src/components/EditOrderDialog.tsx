@@ -15,11 +15,10 @@ interface EditOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: any;
-  token: string;
   onSuccess: () => void;
 }
 
-export default function EditOrderDialog({ open, onOpenChange, order, token, onSuccess }: EditOrderDialogProps) {
+export default function EditOrderDialog({ open, onOpenChange, order, onSuccess }: EditOrderDialogProps) {
   const [formData, setFormData] = useState({
     serviceType: 'DOM', weight: '', pieces: 1, codRequired: 0, codAmount: '', codCurrency: 'AED',
     customerName: '', customerPhone: '', address: '', city: '', specialInstructions: '', fitOnDelivery: 0,
@@ -61,7 +60,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, token, onSu
     if (formData.specialInstructions !== originalData?.specialInstructions) updates.specialInstructions = formData.specialInstructions;
     if (formData.fitOnDelivery !== originalData?.fitOnDelivery) updates.fitOnDelivery = formData.fitOnDelivery;
     if (Object.keys(updates).length === 0) { toast.info('No changes detected'); return; }
-    await updateOrderMutation.mutateAsync({ token, orderId: order.id, updates });
+    await updateOrderMutation.mutateAsync({ orderId: order.id, updates });
   };
 
   const hasChanges = originalData && JSON.stringify(formData) !== JSON.stringify(originalData);

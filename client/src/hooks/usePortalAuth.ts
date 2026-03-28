@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { trpc } from '@/lib/trpc';
 
 export interface PortalUser {
   userId: number;
@@ -7,71 +7,40 @@ export interface PortalUser {
   clientId?: number;
 }
 
-const TOKEN_KEY = 'pathxpress_portal_token';
-const USER_KEY = 'pathxpress_portal_user';
-
 export function usePortalAuth() {
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(TOKEN_KEY);
-    }
-    return null;
+  const utils = trpc.useUtils();
+
+  const { data: sessionData, isLoading } = trpc.portal.auth.me.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
   });
-  
-  const [user, setUser] = useState<PortalUser | null>(() => {
-    if (typeof window !== 'undefined') {
-      const savedUser = localStorage.getItem(USER_KEY);
-      if (savedUser) {
-        try {
-          return JSON.parse(savedUser);
-        } catch {
-          return null;
-        }
+
+  const logoutMutation = trpc.portal.auth.logout.useMutation({
+    onSuccess: () => {
+      utils.portal.auth.me.invalidate();
+    },
+  });
+
+  const user: PortalUser | null = sessionData?.user
+    ? {
+        userId: sessionData.user.userId,
+        email: sessionData.user.email,
+        role: sessionData.user.role as 'admin' | 'customer',
+        clientId: sessionData.user.clientId,
       }
-    }
-    return null;
-  });
-  
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (token) {
-      localStorage.setItem(TOKEN_KEY, token);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(USER_KEY);
-    }
-  }, [user]);
-
-  const login = (newToken: string, userData: PortalUser) => {
-    setToken(newToken);
-    setUser(userData);
-    setLoading(false);
-  };
+    : null;
 
   const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    setLoading(false);
+    logoutMutation.mutate();
   };
 
   return {
-    token,
     user,
-    loading,
-    isAuthenticated: !!token && !!user,
-    login,
+    loading: isLoading,
+    isAuthenticated: !!user,
     logout,
-    setLoading,
-    setUser,
+    // Kept for backward compatibility — no-ops since auth is now cookie-based
+    setLoading: (_: boolean) => {},
+    setUser: (_: PortalUser | null) => {},
   };
 }

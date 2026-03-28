@@ -28,7 +28,6 @@ interface AdminCreateOrderDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     clients: Client[] | undefined;
-    token: string;
     onSuccess: () => void;
 }
 
@@ -36,7 +35,6 @@ export default function AdminCreateOrderDialog({
     open,
     onOpenChange,
     clients,
-    token,
     onSuccess,
 }: AdminCreateOrderDialogProps) {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
@@ -151,7 +149,6 @@ export default function AdminCreateOrderDialog({
         const serviceType = formData.serviceType as 'DOM' | 'SDD' | 'BULLET';
         if (serviceType === 'DOM' || serviceType === 'SDD' || serviceType === 'BULLET') {
             calculateRateMutation.mutate({
-                token,
                 clientId: parseInt(selectedClientId),
                 serviceType,
                 weight: formData.weight,
@@ -166,7 +163,6 @@ export default function AdminCreateOrderDialog({
             const amount = parseFloat(formData.codAmount);
             if (!isNaN(amount) && amount > 0) {
                 calculateCODMutation.mutate({
-                    token,
                     codAmount: amount,
                     clientId: parseInt(selectedClientId),
                 });
@@ -199,7 +195,6 @@ export default function AdminCreateOrderDialog({
         }
 
         createOrderMutation.mutate({
-            token,
             clientId: parseInt(selectedClientId),
             shipment: {
                 orderNumber: formData.orderNumber || undefined,

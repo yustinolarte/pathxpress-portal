@@ -699,8 +699,22 @@ export async function getTrackingEventsByShipmentId(shipmentId: number) {
 }
 
 /**
+ * Generate a random 3-character alphanumeric suffix for waybill numbers.
+ * Excludes visually ambiguous characters: I, O, 0, 1.
+ */
+function generateWaybillSuffix(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let result = '';
+  for (let i = 0; i < 3; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return result;
+}
+
+/**
  * Generate next waybill number
- * Format: PX + YEAR + 5-digit incremental (e.g., PX202500001) or PXI... for international
+ * Format: PX + YEAR + 5-digit incremental + random suffix (e.g., PX202500001-K7X)
+ * or PXI... for international
  */
 export async function generateWaybillNumber(isInternational = false): Promise<string> {
   const db = await getDb();
@@ -708,7 +722,7 @@ export async function generateWaybillNumber(isInternational = false): Promise<st
   const basePrefix = isInternational ? `PXI` : `PX`;
   const fullPrefix = `${basePrefix}${year}`;
 
-  if (!db) return `${fullPrefix}00001`;
+  if (!db) return `${fullPrefix}00001-${generateWaybillSuffix()}`;
 
   try {
     // Get all waybill numbers for this year and find the highest
@@ -720,18 +734,18 @@ export async function generateWaybillNumber(isInternational = false): Promise<st
       .limit(1);
 
     if (allOrders.length === 0) {
-      return `${fullPrefix}00001`;
+      return `${fullPrefix}00001-${generateWaybillSuffix()}`;
     }
 
-    // Extract the number and increment
+    // Extract the number and increment (parseInt stops at '-', handles both old and new format)
     const lastNumber = parseInt(allOrders[0].waybillNumber.slice(fullPrefix.length));
     const nextNumber = (lastNumber + 1).toString().padStart(5, '0');
-    return `${fullPrefix}${nextNumber}`;
+    return `${fullPrefix}${nextNumber}-${generateWaybillSuffix()}`;
   } catch (error) {
     console.error("[Database] Failed to generate waybill number:", error);
     // Fallback: use timestamp to ensure uniqueness
     const timestamp = Date.now().toString().slice(-5);
-    return `${fullPrefix}${timestamp}`;
+    return `${fullPrefix}${timestamp}-${generateWaybillSuffix()}`;
   }
 }
 

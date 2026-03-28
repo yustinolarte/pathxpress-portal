@@ -5,7 +5,6 @@
 import { useState, useMemo } from 'react';
 import QRCode from 'react-qr-code';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -56,7 +55,6 @@ const ZONE_OPTIONS = [
 ];
 
 export default function DriversSection() {
-    const { token } = usePortalAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
 
     // Dialogs
@@ -106,48 +104,33 @@ export default function DriversSection() {
 
     // Queries
     const { data: dashboardStats, isLoading: statsLoading, refetch: refetchStats } =
-        trpc.portal.drivers.getDashboardStats.useQuery(
-            { token: token || '' },
-            { enabled: !!token }
-        );
+        trpc.portal.drivers.getDashboardStats.useQuery();
 
     const { data: drivers, isLoading: driversLoading, refetch: refetchDrivers } =
-        trpc.portal.drivers.getAllDrivers.useQuery(
-            { token: token || '' },
-            { enabled: !!token }
-        );
+        trpc.portal.drivers.getAllDrivers.useQuery();
 
     const { data: routes, isLoading: routesLoading, refetch: refetchRoutes } =
-        trpc.portal.drivers.getAllRoutes.useQuery(
-            { token: token || '' },
-            { enabled: !!token }
-        );
+        trpc.portal.drivers.getAllRoutes.useQuery();
 
     const { data: deliveries, isLoading: deliveriesLoading, refetch: refetchDeliveries } =
-        trpc.portal.drivers.getAllDeliveries.useQuery(
-            { token: token || '' },
-            { enabled: !!token }
-        );
+        trpc.portal.drivers.getAllDeliveries.useQuery({});
 
     const { data: reports, isLoading: reportsLoading, refetch: refetchReports } =
-        trpc.portal.drivers.getAllReports.useQuery(
-            { token: token || '' },
-            { enabled: !!token }
-        );
+        trpc.portal.drivers.getAllReports.useQuery({});
 
     const { data: routeDetails, refetch: refetchRouteDetails } = trpc.portal.drivers.getRouteDetails.useQuery(
-        { token: token || '', routeId: selectedRouteId || '' },
-        { enabled: !!token && !!selectedRouteId }
+        { routeId: selectedRouteId || '' },
+        { enabled: !!selectedRouteId }
     );
 
     const { data: availableOrders, refetch: refetchAvailableOrders } = trpc.portal.drivers.getAvailableOrders.useQuery(
-        { token: token || '' },
-        { enabled: !!token && addOrdersDialogOpen }
+        undefined,
+        { enabled: addOrdersDialogOpen }
     );
 
     const { data: driverProfile, isLoading: profileLoading } = trpc.portal.drivers.getDriverPerformance.useQuery(
-        { token: token || '', driverId: profileDriverId || 0 },
-        { enabled: !!token && !!profileDriverId }
+        { driverId: profileDriverId || 0 },
+        { enabled: !!profileDriverId }
     );
 
     // Filtered routes
@@ -270,13 +253,12 @@ export default function DriversSection() {
             toast.error('Username, password, and full name are required');
             return;
         }
-        createDriverMutation.mutate({ token: token || '', ...newDriver });
+        createDriverMutation.mutate({ ...newDriver });
     };
 
     const handleUpdateDriver = () => {
         if (!selectedDriver) return;
         updateDriverMutation.mutate({
-            token: token || '',
             id: selectedDriver.id,
             ...selectedDriver,
         });
@@ -284,7 +266,7 @@ export default function DriversSection() {
 
     const handleDeleteDriver = (id: number, name: string) => {
         if (confirm(`Are you sure you want to delete driver "${name}"?`)) {
-            deleteDriverMutation.mutate({ token: token || '', id });
+            deleteDriverMutation.mutate({ id });
         }
     };
 
@@ -294,7 +276,6 @@ export default function DriversSection() {
             return;
         }
         createRouteMutation.mutate({
-            token: token || '',
             id: newRoute.id,
             date: newRoute.date,
             driverId: newRoute.driverId && newRoute.driverId !== 'none' ? parseInt(newRoute.driverId) : undefined,
@@ -304,7 +285,7 @@ export default function DriversSection() {
     };
 
     const handleUpdateReportStatus = (reportId: number, status: 'pending' | 'in_review' | 'resolved' | 'rejected') => {
-        updateReportStatusMutation.mutate({ token: token || '', id: reportId, status });
+        updateReportStatusMutation.mutate({ id: reportId, status });
     };
 
     const handleAddOrdersToRoute = () => {
@@ -319,7 +300,6 @@ export default function DriversSection() {
         }));
 
         addOrdersToRouteMutation.mutate({
-            token: token || '',
             routeId: selectedRouteId,
             orders: ordersPayload,
         });
@@ -327,13 +307,13 @@ export default function DriversSection() {
 
     const handleDeleteRoute = (routeId: string) => {
         if (confirm(`Are you sure you want to delete route ${routeId}?`)) {
-            deleteRouteMutation.mutate({ token: token || '', routeId });
+            deleteRouteMutation.mutate({ routeId });
         }
     };
 
     const handleDeleteReport = (id: number) => {
         if (confirm('Are you sure you want to delete this report?')) {
-            deleteReportMutation.mutate({ token: token || '', id });
+            deleteReportMutation.mutate({ id });
         }
     };
 
@@ -698,7 +678,7 @@ export default function DriversSection() {
                                                                 size="sm"
                                                                 title="Mark In Progress"
                                                                 className="h-6 w-6 p-0 text-blue-400 hover:text-blue-300"
-                                                                onClick={() => updateRouteStatusMutation.mutate({ token: token || '', routeId: route.id, status: 'in_progress' })}
+                                                                onClick={() => updateRouteStatusMutation.mutate({ routeId: route.id, status: 'in_progress' })}
                                                             >
                                                                 <ChevronRight className="h-3 w-3" />
                                                             </Button>
@@ -709,7 +689,7 @@ export default function DriversSection() {
                                                                 size="sm"
                                                                 title="Mark Completed"
                                                                 className="h-6 w-6 p-0 text-green-400 hover:text-green-300"
-                                                                onClick={() => updateRouteStatusMutation.mutate({ token: token || '', routeId: route.id, status: 'completed' })}
+                                                                onClick={() => updateRouteStatusMutation.mutate({ routeId: route.id, status: 'completed' })}
                                                             >
                                                                 <CheckCircle className="h-3 w-3" />
                                                             </Button>

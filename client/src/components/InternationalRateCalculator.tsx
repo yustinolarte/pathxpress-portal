@@ -4,7 +4,6 @@
  */
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -57,18 +56,13 @@ interface QuoteResult {
 }
 
 export default function InternationalRateCalculator() {
-    const { token } = usePortalAuth();
-
     // Client settings to check permission
-    const { data: clientSettings, isLoading: settingsLoading } = trpc.portal.customer.getMyAccount.useQuery(
-        { token: token || '' },
-        { enabled: !!token }
-    );
+    const { data: clientSettings, isLoading: settingsLoading } = trpc.portal.customer.getMyAccount.useQuery();
 
     // Country list
     const { data: countries } = trpc.portal.internationalRates.countries.useQuery(
-        { token: token || '' },
-        { enabled: !!token && clientSettings?.intlAllowed === 1 }
+        undefined,
+        { enabled: clientSettings?.intlAllowed === 1 }
     );
 
     // Form state
@@ -89,7 +83,6 @@ export default function InternationalRateCalculator() {
     const handleQuote = () => {
         if (!destinationCountry || !realWeightKg || !length || !width || !height) return;
         quoteMutation.mutate({
-            token: token || '',
             originCountry,
             destinationCountry,
             realWeightKg: parseFloat(realWeightKg),

@@ -3,6 +3,8 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import helmet from "helmet";
+import cors from "cors";
+import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -37,6 +39,14 @@ async function startServer() {
   // Trust the first proxy (Railway/Load Balancer) to fix rate-limiting and IP detection
   app.set("trust proxy", 1);
 
+  // CORS
+  app.use(cors({
+    origin: process.env.NODE_ENV === 'production'
+      ? ['https://pathxpress.net', 'https://www.pathxpress.net']
+      : ['http://localhost:3000', 'http://localhost:5173'],
+    credentials: true,
+  }));
+
   // Security middleware
   app.use(
     helmet({
@@ -68,11 +78,22 @@ async function startServer() {
   // Apply rate limiting
   // Note: tRPC batching might bypass the specific route match, but this catches direct calls
   app.use("/api/trpc/portal.auth.login", authLimiter);
+  app.use("/api/driver/auth/login", authLimiter);
+  app.use("/api/trpc/tracking.getByTrackingId", rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: "Too many tracking lookups from this IP, please try again after 15 minutes",
+  }));
   app.use("/api", apiLimiter);
 
+  // Cookie parser (must be before tRPC middleware)
+  app.use(cookieParser());
+
   // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ limit: "10mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // Driver API (REST endpoints for mobile app)

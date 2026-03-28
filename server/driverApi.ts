@@ -13,7 +13,8 @@ import { uploadImageToCloudinary } from './cloudinary';
 const router = Router();
 
 // JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // Extend Request to include driver info
 interface DriverRequest extends Request {

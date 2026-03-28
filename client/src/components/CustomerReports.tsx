@@ -16,11 +16,10 @@ import {
 import { format } from 'date-fns';
 
 interface CustomerReportsProps {
-    token: string;
     companyName: string;
 }
 
-export default function CustomerReports({ token, companyName }: CustomerReportsProps) {
+export default function CustomerReports({ companyName }: CustomerReportsProps) {
     const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
     const [isDownloading, setIsDownloading] = useState(false);
 
@@ -41,7 +40,6 @@ export default function CustomerReports({ token, companyName }: CustomerReportsP
         setIsDownloading(true);
         try {
             const orders = await utils.portal.customer.getMonthlyReport.fetch({
-                token,
                 month: selectedMonth
             });
 
@@ -66,7 +64,6 @@ export default function CustomerReports({ token, companyName }: CustomerReportsP
         setIsDownloading(true);
         try {
             const orders = await utils.portal.customer.getMonthlyReport.fetch({
-                token,
                 month: selectedMonth
             });
 
@@ -90,7 +87,7 @@ export default function CustomerReports({ token, companyName }: CustomerReportsP
     const handleDownloadCODPDF = async () => {
         setIsDownloading(true);
         try {
-            const codRecords = await utils.portal.customer.getCODReport.fetch({ token });
+            const codRecords = await utils.portal.customer.getCODReport.fetch();
 
             if (!codRecords || codRecords.length === 0) {
                 toast.error('No COD records found');
@@ -111,7 +108,7 @@ export default function CustomerReports({ token, companyName }: CustomerReportsP
     const handleDownloadCODExcel = async () => {
         setIsDownloading(true);
         try {
-            const codRecords = await utils.portal.customer.getCODReport.fetch({ token });
+            const codRecords = await utils.portal.customer.getCODReport.fetch();
 
             if (!codRecords || codRecords.length === 0) {
                 toast.error('No COD records found');
@@ -246,7 +243,7 @@ export default function CustomerReports({ token, companyName }: CustomerReportsP
                                 setIsDownloading(true);
                                 try {
                                     const currentDate = new Date();
-                                    const orders = await utils.portal.customer.getMyOrders.fetch({ token });
+                                    const orders = await utils.portal.customer.getMyOrders.fetch();
 
                                     if (!orders || orders.length === 0) {
                                         toast.error('No orders found');
@@ -274,7 +271,7 @@ export default function CustomerReports({ token, companyName }: CustomerReportsP
                                 setIsDownloading(true);
                                 try {
                                     const currentDate = new Date();
-                                    const orders = await utils.portal.customer.getMyOrders.fetch({ token });
+                                    const orders = await utils.portal.customer.getMyOrders.fetch();
 
                                     if (!orders || orders.length === 0) {
                                         toast.error('No orders found');

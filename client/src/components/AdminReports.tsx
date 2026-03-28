@@ -15,11 +15,7 @@ import {
 } from '@/lib/reportUtils';
 import { format } from 'date-fns';
 
-interface AdminReportsProps {
-    token: string;
-}
-
-export default function AdminReports({ token }: AdminReportsProps) {
+export default function AdminReports() {
     const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
     const [selectedClient, setSelectedClient] = useState<string>('all');
     const [isDownloading, setIsDownloading] = useState(false);
@@ -34,7 +30,7 @@ export default function AdminReports({ token }: AdminReportsProps) {
     });
 
     // Fetch clients for filtering
-    const { data: clients } = trpc.portal.admin.getClientsForReports.useQuery({ token });
+    const { data: clients } = trpc.portal.admin.getClientsForReports.useQuery();
 
     // Create a trpc client for imperative queries
     const utils = trpc.useUtils();
@@ -45,7 +41,6 @@ export default function AdminReports({ token }: AdminReportsProps) {
         try {
             const clientId = selectedClient === 'all' ? undefined : parseInt(selectedClient);
             const orders = await utils.portal.admin.getMonthlyReport.fetch({
-                token,
                 month: selectedMonth,
                 clientId
             });
@@ -76,7 +71,6 @@ export default function AdminReports({ token }: AdminReportsProps) {
         try {
             const clientId = selectedClient === 'all' ? undefined : parseInt(selectedClient);
             const orders = await utils.portal.admin.getMonthlyReport.fetch({
-                token,
                 month: selectedMonth,
                 clientId
             });
@@ -102,7 +96,7 @@ export default function AdminReports({ token }: AdminReportsProps) {
         setIsDownloading(true);
         try {
             const clientId = selectedClient === 'all' ? undefined : parseInt(selectedClient);
-            const codRecords = await utils.portal.admin.getCODReport.fetch({ token, clientId });
+            const codRecords = await utils.portal.admin.getCODReport.fetch({ clientId });
 
             if (!codRecords || codRecords.length === 0) {
                 toast.error('No COD records found');
@@ -128,7 +122,7 @@ export default function AdminReports({ token }: AdminReportsProps) {
         setIsDownloading(true);
         try {
             const clientId = selectedClient === 'all' ? undefined : parseInt(selectedClient);
-            const codRecords = await utils.portal.admin.getCODReport.fetch({ token, clientId });
+            const codRecords = await utils.portal.admin.getCODReport.fetch({ clientId });
 
             if (!codRecords || codRecords.length === 0) {
                 toast.error('No COD records found');
@@ -149,7 +143,7 @@ export default function AdminReports({ token }: AdminReportsProps) {
     const handleDownloadAllOrdersPDF = async () => {
         setIsDownloading(true);
         try {
-            const orders = await utils.portal.admin.getAllOrders.fetch({ token });
+            const orders = await utils.portal.admin.getAllOrders.fetch();
 
             if (!orders || orders.length === 0) {
                 toast.error('No orders found');
@@ -169,7 +163,7 @@ export default function AdminReports({ token }: AdminReportsProps) {
     const handleDownloadAllOrdersExcel = async () => {
         setIsDownloading(true);
         try {
-            const orders = await utils.portal.admin.getAllOrders.fetch({ token });
+            const orders = await utils.portal.admin.getAllOrders.fetch();
 
             if (!orders || orders.length === 0) {
                 toast.error('No orders found');

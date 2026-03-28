@@ -72,7 +72,7 @@ import * as XLSX from 'xlsx';
 
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
-  const { token, user, logout } = usePortalAuth();
+  const { user, logout, loading } = usePortalAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createIntlDialogOpen, setCreateIntlDialogOpen] = useState(false);
@@ -110,30 +110,21 @@ export default function CustomerDashboard() {
 
   const getStatusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
 
-  // Redirect if not authenticated or not customer
+  // Redirect if not authenticated or not customer (wait for session to load first)
   useEffect(() => {
-    if (!token || !user || user.role !== 'customer') {
+    if (!loading && (!user || user.role !== 'customer')) {
       setLocation('/portal/login');
     }
-  }, [token, user, setLocation]);
+  }, [user, loading, setLocation]);
 
   // Fetch customer's orders
-  const { data: orders, isLoading: isLoadingOrders, refetch } = trpc.portal.customer.getMyOrders.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: orders, isLoading: isLoadingOrders, refetch } = trpc.portal.customer.getMyOrders.useQuery();
 
   // Fetch customer's intl orders
-  const { data: intlOrders, isLoading: isLoadingIntl, refetch: refetchIntl } = trpc.portal.customer.getMyIntlOrders.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: intlOrders, isLoading: isLoadingIntl, refetch: refetchIntl } = trpc.portal.customer.getMyIntlOrders.useQuery();
 
   // Fetch client account settings (for FOD, COD permissions)
-  const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery();
 
   // Filtered orders based on status and date, sorted newest first
   const filteredOrders = orders?.filter((order: any) => {
@@ -425,29 +416,19 @@ export default function CustomerDashboard() {
   const handleCancelOrder = (orderId: number, waybillNumber: string) => {
     if (confirm(`Are you sure you want to cancel order ${waybillNumber}? This action cannot be undone.`)) {
       cancelOrderMutation.mutate({
-        token: token || '',
         orderId,
       });
     }
   };
 
   // Fetch customer account
-  const { data: account } = trpc.portal.customer.getMyAccount.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: account } = trpc.portal.customer.getMyAccount.useQuery();
 
   // Fetch dashboard metrics
-  const { data: metrics, isLoading: metricsLoading } = trpc.portal.customer.getDashboardMetrics.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: metrics, isLoading: metricsLoading } = trpc.portal.customer.getDashboardMetrics.useQuery();
 
   // Fetch invoices for overdue banner
-  const { data: allInvoices } = trpc.portal.billing.getMyInvoices.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: allInvoices } = trpc.portal.billing.getMyInvoices.useQuery();
   const overdueInvoices = allInvoices?.filter((inv: any) => inv.status === 'overdue') ?? [];
   const overdueCount = overdueInvoices.length;
   const overdueBalance = overdueInvoices.reduce((sum: number, inv: any) => sum + parseFloat(inv.balance || '0'), 0);
@@ -516,7 +497,7 @@ export default function CustomerDashboard() {
     setLocation('/portal/login');
   };
 
-  if (!token || !user) {
+  if (loading || !user) {
     return null;
   }
 
@@ -775,7 +756,7 @@ export default function CustomerDashboard() {
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
               <h2 className="text-3xl font-black tracking-tight text-foreground">My Shipments</h2>
               <div className="flex justify-end gap-2">
-                <BulkShipmentDialog token={token} onSuccess={refetch} />
+                <BulkShipmentDialog onSuccess={refetch} />
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                   <DialogTrigger asChild>
                     <button className="px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20">
@@ -796,7 +777,6 @@ export default function CustomerDashboard() {
                         </DialogDescription>
                       </DialogHeader>
                       <CreateShipmentForm
-                        token={token}
                         onSuccess={() => {
                           setCreateDialogOpen(false);
                           refetch();
@@ -1337,7 +1317,7 @@ export default function CustomerDashboard() {
 
           {/* Returns & Exchanges Tab */}
           <TabsContent value="returns" className="space-y-4 mt-0">
-            <ReturnsExchangesPanel token={token} codAllowed={!!clientSettings?.codAllowed} />
+            <ReturnsExchangesPanel codAllowed={!!clientSettings?.codAllowed} />
           </TabsContent>
 
           {/* Invoices Tab */}
@@ -1352,7 +1332,7 @@ export default function CustomerDashboard() {
 
           {/* Reports Tab */}
           <TabsContent value="reports" className="space-y-4">
-            <CustomerReports token={token} companyName={account?.companyName || 'Your Company'} />
+            <CustomerReports companyName={account?.companyName || 'Your Company'} />
           </TabsContent>
 
           {/* International Tab */}
@@ -1380,7 +1360,6 @@ export default function CustomerDashboard() {
                           </DialogDescription>
                         </DialogHeader>
                         <CreateIntlShipmentForm
-                          token={token}
                           clientId={clientSettings.id}
                           onSuccess={() => {
                             setCreateIntlDialogOpen(false);

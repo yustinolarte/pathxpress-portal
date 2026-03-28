@@ -1,5 +1,4 @@
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -45,11 +44,9 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function CustomerAnalytics() {
-    const { token } = usePortalAuth();
-
     const { data: analytics, isLoading } = trpc.portal.customer.getMyAnalytics.useQuery(
-        { token: token || '' },
-        { enabled: !!token, refetchInterval: 60000 }
+        undefined,
+        { refetchInterval: 60000 }
     );
 
     if (isLoading) {

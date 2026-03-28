@@ -14,10 +14,9 @@ import { toast } from 'sonner';
 
 interface BulkShipmentDialogProps {
     onSuccess: () => void;
-    token: string;
 }
 
-export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDialogProps) {
+export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProps) {
     const [open, setOpen] = useState(false);
     const [file, setFile] = useState<File | null>(null);
     const [parsedData, setParsedData] = useState<any[]>([]);
@@ -27,7 +26,7 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
     const [resultsLog, setResultsLog] = useState<{ row: number, status: 'success' | 'error', message: string, locationStatus?: 'confirmed' | 'approximate' | 'none' }[]>([]);
 
     // Fetch saved shippers to populate the dropdown
-    const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery({ token });
+    const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery();
 
     const createMutation = trpc.portal.customer.createShipment.useMutation();
 
@@ -144,7 +143,6 @@ export default function BulkShipmentDialog({ onSuccess, token }: BulkShipmentDia
                 console.log(`[Bulk Import] Row ${i + 1}: weight=${weight} (raw: "${weightRaw}"), serviceType=${serviceType} (raw: "${serviceTypeRaw}"), COD=${hasCOD ? codAmountParsed : 'none'} (raw: "${codAmountRaw}"), instructions="${instructions || 'none'}", coords=${latitude ? `${latitude},${longitude}` : 'none'}`);
 
                 await createMutation.mutateAsync({
-                    token,
                     shipment: {
                         shipperName: String(shipperDetails.shipperName || ''),
                         shipperPhone: String(shipperDetails.shipperPhone || ''),

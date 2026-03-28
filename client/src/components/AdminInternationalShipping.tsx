@@ -4,7 +4,6 @@
  */
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -43,11 +42,7 @@ import AdminCreateIntlOrderDialog from './AdminCreateIntlOrderDialog';
 // ─── Inline Rate Calculator (reused from customer side) ─────────────────────
 
 function AdminRateCalculator() {
-    const { token } = usePortalAuth();
-    const { data: countries } = trpc.portal.internationalRates.countries.useQuery(
-        { token: token || '' },
-        { enabled: !!token }
-    );
+    const { data: countries } = trpc.portal.internationalRates.countries.useQuery();
 
     const [originCountry, setOriginCountry] = useState('United Arab Emirates');
     const [destinationCountry, setDestinationCountry] = useState('');
@@ -65,7 +60,6 @@ function AdminRateCalculator() {
     const handleQuote = () => {
         if (!destinationCountry || !realWeightKg || !length || !width || !height) return;
         quoteMutation.mutate({
-            token: token || '',
             originCountry,
             destinationCountry,
             realWeightKg: parseFloat(realWeightKg),
@@ -187,14 +181,12 @@ function AdminRateCalculator() {
 // ─── Rate Management Table ──────────────────────────────────────────────────
 
 function RateManagement() {
-    const { token } = usePortalAuth();
     const [rateType, setRateType] = useState<'prime' | 'gcc' | 'premium'>('gcc');
     const [editingRate, setEditingRate] = useState<{ id: number; price: string } | null>(null);
     const [filterSearch, setFilterSearch] = useState('');
 
     const { data: rates, isLoading, refetch } = trpc.portal.internationalRates.getAll.useQuery(
-        { token: token || '', rateType },
-        { enabled: !!token }
+        { rateType }
     );
 
     const updateMutation = trpc.portal.internationalRates.updateRate.useMutation({
@@ -206,7 +198,7 @@ function RateManagement() {
 
     const handleSave = () => {
         if (!editingRate) return;
-        updateMutation.mutate({ token: token || '', rateId: editingRate.id, price: editingRate.price });
+        updateMutation.mutate({ rateId: editingRate.id, price: editingRate.price });
     };
 
     const filteredRates = rates?.filter((r: any) => {
@@ -332,25 +324,15 @@ function QuoteRequestsTable() {
 // ─── Admin International Orders Table ───────────────────────────────────────
 
 function AdminIntlOrdersTable() {
-    const { token } = usePortalAuth();
     const [filterSearch, setFilterSearch] = useState('');
     const [newShipmentOpen, setNewShipmentOpen] = useState(false);
     const [deletingId, setDeletingId] = useState<number | null>(null);
 
-    const { data: orders, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery(
-        { token: token || '' },
-        { enabled: !!token }
-    );
+    const { data: orders, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery();
 
-    const { data: clients } = trpc.portal.admin.getClients.useQuery(
-        { token: token || '' },
-        { enabled: !!token }
-    );
+    const { data: clients } = trpc.portal.admin.getClients.useQuery();
 
-    const { data: countries } = trpc.portal.internationalRates.countries.useQuery(
-        { token: token || '' },
-        { enabled: !!token }
-    );
+    const { data: countries } = trpc.portal.internationalRates.countries.useQuery();
 
     const deleteMutation = trpc.portal.admin.deleteOrder.useMutation({
         onSuccess: () => {
@@ -365,7 +347,7 @@ function AdminIntlOrdersTable() {
     const handleDelete = (orderId: number, waybillNumber: string) => {
         if (!window.confirm(`Delete order ${waybillNumber}? This cannot be undone.`)) return;
         setDeletingId(orderId);
-        deleteMutation.mutate({ token: token || '', orderId });
+        deleteMutation.mutate({ orderId });
     };
 
     const filteredOrders = orders?.filter((order: any) => {
@@ -520,7 +502,6 @@ function AdminIntlOrdersTable() {
             onOpenChange={setNewShipmentOpen}
             clients={clients}
             countries={countries || []}
-            token={token || ''}
             onSuccess={() => { setNewShipmentOpen(false); refetch(); }}
         />
         </>

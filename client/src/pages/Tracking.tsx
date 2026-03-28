@@ -20,7 +20,7 @@ export default function Tracking() {
 
   const { data: shipment, isLoading, error } = trpc.tracking.getByTrackingId.useQuery(
     { trackingId: searchId },
-    { enabled: !!searchId && /^PX\d+$/.test(searchId) }
+    { enabled: !!searchId && /^PX[I]?\d+(-[A-Z0-9]+)?$/.test(searchId) }
   );
 
   const handleTrack = (e: React.FormEvent) => {
@@ -29,8 +29,8 @@ export default function Tracking() {
       toast.error('Please enter a tracking ID');
       return;
     }
-    if (!/^PX\d+$/.test(trackingId)) {
-      toast.error('Invalid tracking ID format. Use format: PX00001 or PX202500001');
+    if (!/^PX[I]?\d+(-[A-Z0-9]+)?$/.test(trackingId)) {
+      toast.error('Invalid tracking ID format. Use format: PX202500001 or PX202600143-K7X');
       return;
     }
     setSearchId(trackingId);
@@ -42,7 +42,7 @@ export default function Tracking() {
     const id = params.get('id');
     if (id) {
       setTrackingId(id);
-      if (/^PX\d+$/.test(id)) {
+      if (/^PX[I]?\d+(-[A-Z0-9]+)?$/.test(id)) {
         setSearchId(id);
       }
     }

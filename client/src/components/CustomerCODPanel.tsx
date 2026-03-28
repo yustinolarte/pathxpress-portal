@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
-import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -14,7 +13,6 @@ import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
 export default function CustomerCODPanel() {
-  const { token } = usePortalAuth();
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedRemittanceId, setSelectedRemittanceId] = useState<number | null>(null);
   const [shipmentDialogOpen, setShipmentDialogOpen] = useState(false);
@@ -25,24 +23,15 @@ export default function CustomerCODPanel() {
   const [codDateFrom, setCodDateFrom] = useState('');
   const [codDateTo, setCodDateTo] = useState('');
 
-  const { data: codSummary } = trpc.portal.cod.getMyCODSummary.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: codSummary } = trpc.portal.cod.getMyCODSummary.useQuery();
 
-  const { data: codRecords, isLoading: codLoading } = trpc.portal.cod.getMyCODRecords.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: codRecords, isLoading: codLoading } = trpc.portal.cod.getMyCODRecords.useQuery();
 
-  const { data: remittances, isLoading: remittancesLoading } = trpc.portal.cod.getMyRemittances.useQuery(
-    { token: token || '' },
-    { enabled: !!token }
-  );
+  const { data: remittances, isLoading: remittancesLoading } = trpc.portal.cod.getMyRemittances.useQuery();
 
   const { data: shipmentDetails, isLoading: shipmentLoading } = trpc.portal.customer.getShipmentDetails.useQuery(
-    { token: token || '', waybillNumber: selectedWaybill || '' },
-    { enabled: !!token && !!selectedWaybill && shipmentDialogOpen }
+    { waybillNumber: selectedWaybill || '' },
+    { enabled: !!selectedWaybill && shipmentDialogOpen }
   );
 
   const filteredCodRecords = useMemo(() => {

@@ -100,13 +100,12 @@ export default function ModernDashboardLayout({
     const [hideShipperAddress, setHideShipperAddress] = useState(false);
     const [isSavingWaybillSettings, setIsSavingWaybillSettings] = useState(false);
 
-    const token = localStorage.getItem('pathxpress_portal_token') || '';
     const isCustomer = user?.role === 'customer';
     const utils = trpc.useUtils();
 
     const { data: customerAccount } = trpc.portal.customer.getMyAccount.useQuery(
-        { token },
-        { enabled: !!token && isCustomer }
+        undefined,
+        { enabled: isCustomer }
     );
 
     useEffect(() => {
@@ -133,7 +132,6 @@ export default function ModernDashboardLayout({
         setHideShipperAddress(checked);
         setIsSavingWaybillSettings(true);
         updateWaybillSettingsMutation.mutate({
-            token,
             hideShipperAddress: checked ? 1 : 0,
         });
     };
@@ -161,7 +159,6 @@ export default function ModernDashboardLayout({
             return;
         }
         changePasswordMutation.mutate({
-            token,
             currentPassword,
             newPassword,
         });
@@ -362,8 +359,8 @@ export default function ModernDashboardLayout({
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        {isCustomer && token && (
-                            <NotificationBell token={token} />
+                        {isCustomer && (
+                            <NotificationBell />
                         )}
                         <div className="h-8 w-[1px] bg-border mx-2 hidden sm:block"></div>
                         <div className="text-right hidden sm:block">

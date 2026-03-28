@@ -4,7 +4,7 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 
-export default function CreateShipmentForm({ token, onSuccess }: { token: string; onSuccess: () => void }) {
+export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => void }) {
   const { user } = usePortalAuth();
   const [formData, setFormData] = useState({
     // Shipper
@@ -52,15 +52,9 @@ export default function CreateShipmentForm({ token, onSuccess }: { token: string
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
 
   // Fetch client settings
-  const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery(
-    { token },
-    { enabled: !!token }
-  );
+  const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery();
 
-  const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery(
-    { token },
-    { enabled: !!token }
-  );
+  const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery();
 
   const handleLoadShipper = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const shipperId = e.target.value;
@@ -107,7 +101,6 @@ export default function CreateShipmentForm({ token, onSuccess }: { token: string
 
     if (!isNaN(weightVal) && weightVal > 0 && user?.clientId) {
       calculateRateMutation.mutate({
-        token,
         clientId: user.clientId,
         serviceType: formData.serviceType as 'DOM' | 'SDD' | 'BULLET',
         weight: weightVal,
@@ -124,7 +117,7 @@ export default function CreateShipmentForm({ token, onSuccess }: { token: string
     if (formData.codRequired === 1 && formData.codAmount) {
       const amount = parseFloat(formData.codAmount);
       if (!isNaN(amount) && amount > 0) {
-        calculateCODMutation.mutate({ token, codAmount: amount });
+        calculateCODMutation.mutate({ codAmount: amount });
       }
     } else {
       setCalculatedCODFee(0);
@@ -154,7 +147,6 @@ export default function CreateShipmentForm({ token, onSuccess }: { token: string
     const receiverAddress = [formData.consigneeBuilding, formData.consigneeApt ? `Apt ${formData.consigneeApt}` : '', formData.consigneeStreet, formData.consigneeArea, formData.consigneeLandmark].filter(Boolean).join(', ');
 
     createMutation.mutate({
-      token,
       shipment: {
         shipperName: formData.shipperName,
         shipperPhone: `${formData.shipperPhonePrefix} ${formData.shipperPhone}`,

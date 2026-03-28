@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { publicProcedure, router } from './_core/trpc';
+import { publicProcedure, portalAdminProcedure, portalCustomerProcedure, portalProtectedProcedure, router } from './_core/trpc';
+import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import {
   hashPassword,
   comparePassword,
   generatePortalToken,
-  verifyPortalToken,
   validatePassword,
   validateEmail,
   type PortalTokenPayload
@@ -63,7 +63,7 @@ export const portalAuthRouter = router({
       email: z.string().email(),
       password: z.string().min(1),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { email, password } = input;
 
       // Get user by email
@@ -103,8 +103,15 @@ export const portalAuthRouter = router({
         clientId: user.clientId || undefined,
       });
 
+      ctx.res.cookie('pathxpress_portal_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: '/',
+      });
+
       return {
-        token,
         user: {
           id: user.id,
           email: user.email,
@@ -115,40 +122,28 @@ export const portalAuthRouter = router({
     }),
 
   // Verify token and get current user
-  me: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid or expired token',
-        });
-      }
+  me: portalProtectedProcedure
+    .query(async ({ ctx }) => {
+      if (!ctx.portalUser) return { user: null };
+      return { user: ctx.portalUser };
+    }),
 
-      return payload;
+  // Logout
+  logout: portalProtectedProcedure
+    .mutation(async ({ ctx }) => {
+      ctx.res.clearCookie('pathxpress_portal_token', { path: '/' });
+      return { success: true };
     }),
 
   // Change password (user can change their own password)
-  changePassword: publicProcedure
+  changePassword: portalProtectedProcedure
     .input(z.object({
-      token: z.string(),
       currentPassword: z.string().min(1),
       newPassword: z.string().min(8, 'Password must be at least 8 characters'),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({
-          code: 'UNAUTHORIZED',
-          message: 'Invalid or expired token',
-        });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Get user
-      const user = await getPortalUserByEmail(payload.email);
+      const user = await getPortalUserByEmail(ctx.portalUser.email);
       if (!user) {
         throw new TRPCError({
           code: 'NOT_FOUND',
@@ -187,23 +182,14 @@ export const portalAuthRouter = router({
  */
 export const adminPortalRouter = router({
   // Get all clients
-  getClients: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getClients: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getAllClientAccounts();
     }),
 
   // Create client account
-  createClient: publicProcedure
+  createClient: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       client: z.object({
         companyName: z.string().min(1),
         contactName: z.string().min(1),
@@ -220,12 +206,7 @@ export const adminPortalRouter = router({
         notes: z.string().optional(),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const client = await createClientAccount(input.client);
       if (!client) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create client' });
@@ -235,17 +216,11 @@ export const adminPortalRouter = router({
     }),
 
   // Delete client account
-  deleteClient: publicProcedure
+  deleteClient: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { deleteClientAccount } = await import('./db');
       const result = await deleteClientAccount(input.clientId);
 
@@ -262,19 +237,13 @@ export const adminPortalRouter = router({
 
 
   // Create customer user for a client
-  createCustomerUser: publicProcedure
+  createCustomerUser: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       email: z.string().email(),
       password: z.string().min(8),
       clientId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Validate password
       const passwordValidation = validatePassword(input.password);
       if (!passwordValidation.valid) {
@@ -307,18 +276,12 @@ export const adminPortalRouter = router({
     }),
 
   // Update user password (for existing customer users)
-  updateUserPassword: publicProcedure
+  updateUserPassword: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       newPassword: z.string().min(8),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Validate password
       const passwordValidation = validatePassword(input.newPassword);
       if (!passwordValidation.valid) {
@@ -349,18 +312,12 @@ export const adminPortalRouter = router({
     }),
 
   // Update client notes
-  updateClientNotes: publicProcedure
+  updateClientNotes: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       notes: z.string(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const updated = await updateClientAccount(input.clientId, { notes: input.notes });
       if (!updated) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
@@ -372,16 +329,8 @@ export const adminPortalRouter = router({
   // Get all orders (global view)
   // NOTE: Admin sees ALL information without privacy filters
   // Privacy rules (hideShipperAddress/hideConsigneeAddress) only apply when customers generate waybills from their portal
-  getAllOrders: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getAllOrders: portalAdminProcedure
+    .query(async ({ ctx }) => {
       // Admin sees all DOMESTIC orders (standard, exchange, returns) with full information
       const allOrders = await getAllOrders();
       return allOrders.filter(order =>
@@ -390,16 +339,8 @@ export const adminPortalRouter = router({
     }),
 
   // Get international orders (admin view)
-  getIntlOrders: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getIntlOrders: portalAdminProcedure
+    .query(async ({ ctx }) => {
       const allOrders = await getAllOrders();
       return allOrders.filter(order =>
         (order.orderType === 'standard' || !order.orderType) &&
@@ -409,17 +350,11 @@ export const adminPortalRouter = router({
     }),
 
   // Delete order (admin only)
-  deleteOrder: publicProcedure
+  deleteOrder: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -449,9 +384,8 @@ export const adminPortalRouter = router({
     }),
 
   // Update order (admin only) - Edit order details
-  updateOrder: publicProcedure
+  updateOrder: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
       updates: z.object({
         serviceType: z.enum(['DOM', 'SDD', 'BULLET']).optional(),
@@ -468,12 +402,7 @@ export const adminPortalRouter = router({
         fitOnDelivery: z.number().min(0).max(1).optional(),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { updateOrder } = await import('./db');
       const result = await updateOrder(input.orderId, input.updates);
 
@@ -508,18 +437,12 @@ export const adminPortalRouter = router({
     }),
 
   // Create return shipment (admin only)
-  createReturn: publicProcedure
+  createReturn: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
       chargeReturn: z.boolean().default(true),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -611,7 +534,7 @@ export const adminPortalRouter = router({
         statusCode: 'pending_pickup',
         statusLabel: 'RETURN PENDING PICKUP',
         description: `Return shipment created for order ${originalOrder.waybillNumber}`,
-        createdBy: payload.email || 'admin',
+        createdBy: ctx.portalUser.email || 'admin',
       });
 
       return {
@@ -622,16 +545,9 @@ export const adminPortalRouter = router({
     }),
 
   // Get dashboard analytics
-  getAnalytics: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getAnalytics: portalAdminProcedure
+    .query(async ({ ctx }) => {
+      return cachedQuery('analytics:admin', 60, async () => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -864,17 +780,13 @@ export const adminPortalRouter = router({
           count: Number(s.count),
         })),
       };
+      }); // end cachedQuery
     }),
 
   // Revenue Analytics (for Revenue Dashboard)
-  getRevenueAnalytics: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getRevenueAnalytics: portalAdminProcedure
+    .query(async ({ ctx }) => {
+      return cachedQuery('analytics:revenue', 60, async () => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
 
@@ -953,17 +865,14 @@ export const adminPortalRouter = router({
         totalAR: parseFloat(arResult[0]?.total || '0'),
         overdueAmount: parseFloat(overdueResult[0]?.total || '0'),
       };
+      }); // end cachedQuery
     }),
 
   // Client 360 View
-  getClient360: publicProcedure
-    .input(z.object({ token: z.string(), clientId: z.number() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getClient360: portalAdminProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      return cachedQuery(`analytics:client360:${input.clientId}`, 60, async () => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
 
@@ -1101,98 +1010,97 @@ export const adminPortalRouter = router({
           count: Number(m.count),
         })),
       };
+      }); // end cachedQuery
     }),
 
   // Client alerts — for alert panel in admin dashboard
-  getClientAlerts: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
+  getClientAlerts: portalAdminProcedure
+    .query(async ({ ctx }) => {
+      return cachedQuery('alerts:admin', 60, async () => {
+        const db = await import('./db').then(m => m.getDb());
+        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
 
-      const db = await import('./db').then(m => m.getDb());
-      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+        const { invoices, orders, clientAccounts } = await import('../drizzle/schema');
+        const { sql, eq, inArray, gte } = await import('drizzle-orm');
 
-      const { invoices, orders, clientAccounts } = await import('../drizzle/schema');
-      const { sql, eq, inArray, gte, desc } = await import('drizzle-orm');
+        // 1. Clients with overdue invoices
+        const overdueClients = await db
+          .select({
+            clientId: invoices.clientId,
+            companyName: clientAccounts.companyName,
+            overdueBalance: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)`,
+            invoiceCount: sql<number>`cast(count(*) as unsigned)`,
+          })
+          .from(invoices)
+          .innerJoin(clientAccounts, eq(invoices.clientId, clientAccounts.id))
+          .where(eq(invoices.status, 'overdue'))
+          .groupBy(invoices.clientId, clientAccounts.companyName)
+          .orderBy(sql`SUM(CAST(${invoices.balance} AS DECIMAL(12,2))) DESC`);
 
-      // 1. Clients with overdue invoices
-      const overdueClients = await db
-        .select({
-          clientId: invoices.clientId,
-          companyName: clientAccounts.companyName,
-          overdueBalance: sql<string>`COALESCE(SUM(CAST(${invoices.balance} AS DECIMAL(12,2))), 0)`,
-          invoiceCount: sql<number>`cast(count(*) as unsigned)`,
-        })
-        .from(invoices)
-        .innerJoin(clientAccounts, eq(invoices.clientId, clientAccounts.id))
-        .where(eq(invoices.status, 'overdue'))
-        .groupBy(invoices.clientId, clientAccounts.companyName)
-        .orderBy(sql`SUM(CAST(${invoices.balance} AS DECIMAL(12,2))) DESC`);
+        // 2. Clients inactive for 30+ days
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // 2. Clients inactive for 30+ days (no orders in last 30 days, but have orders overall)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      // Get all active clients
-      const activeClients = await db
-        .select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
-        .from(clientAccounts)
-        .where(eq(clientAccounts.status, 'active'));
-
-      // Get clients with recent activity
-      const recentlyActiveClientIds = await db
-        .select({ clientId: orders.clientId })
-        .from(orders)
-        .where(gte(orders.createdAt, thirtyDaysAgo))
-        .groupBy(orders.clientId);
-
-      const recentIds = new Set(recentlyActiveClientIds.map(r => r.clientId));
-
-      // Get last order date for inactive clients
-      const inactiveClients: Array<{ clientId: number; companyName: string; daysSinceLastOrder: number }> = [];
-      for (const client of activeClients) {
-        if (!recentIds.has(client.id)) {
-          const lastOrder = await db
-            .select({ createdAt: orders.createdAt })
+        const [activeClients, recentlyActiveClientIds] = await Promise.all([
+          db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
+            .from(clientAccounts)
+            .where(eq(clientAccounts.status, 'active')),
+          db.select({ clientId: orders.clientId })
             .from(orders)
-            .where(eq(orders.clientId, client.id))
-            .orderBy(desc(orders.createdAt))
-            .limit(1);
-          if (lastOrder[0]) {
-            const diffMs = Date.now() - new Date(lastOrder[0].createdAt).getTime();
-            const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-            inactiveClients.push({ clientId: client.id, companyName: client.companyName, daysSinceLastOrder: days });
+            .where(gte(orders.createdAt, thirtyDaysAgo))
+            .groupBy(orders.clientId),
+        ]);
+
+        const recentIds = new Set(recentlyActiveClientIds.map(r => r.clientId));
+        const inactiveClientIds = activeClients
+          .filter(c => !recentIds.has(c.id))
+          .map(c => c.id);
+
+        const inactiveClients: Array<{ clientId: number; companyName: string; daysSinceLastOrder: number }> = [];
+
+        if (inactiveClientIds.length > 0) {
+          // Single query: get the last order date for ALL inactive clients at once
+          const lastOrders = await db
+            .select({
+              clientId: orders.clientId,
+              lastOrderDate: sql<string>`MAX(${orders.createdAt})`,
+            })
+            .from(orders)
+            .where(inArray(orders.clientId, inactiveClientIds))
+            .groupBy(orders.clientId);
+
+          const lastOrderMap = new Map(lastOrders.map(r => [r.clientId, r.lastOrderDate]));
+          const clientMap = new Map(activeClients.map(c => [c.id, c.companyName]));
+          const now = Date.now();
+
+          for (const clientId of inactiveClientIds) {
+            const lastOrderDate = lastOrderMap.get(clientId);
+            if (lastOrderDate) {
+              const days = Math.floor((now - new Date(lastOrderDate).getTime()) / (1000 * 60 * 60 * 24));
+              inactiveClients.push({ clientId, companyName: clientMap.get(clientId) || 'Unknown', daysSinceLastOrder: days });
+            }
           }
         }
-      }
 
-      return {
-        overdueClients: overdueClients.map(c => ({
-          clientId: c.clientId,
-          companyName: c.companyName,
-          overdueBalance: parseFloat(c.overdueBalance),
-          invoiceCount: Number(c.invoiceCount),
-        })),
-        inactiveClients: inactiveClients.sort((a, b) => b.daysSinceLastOrder - a.daysSinceLastOrder).slice(0, 10),
-      };
+        return {
+          overdueClients: overdueClients.map(c => ({
+            clientId: c.clientId,
+            companyName: c.companyName,
+            overdueBalance: parseFloat(c.overdueBalance),
+            invoiceCount: Number(c.invoiceCount),
+          })),
+          inactiveClients: inactiveClients.sort((a, b) => b.daysSinceLastOrder - a.daysSinceLastOrder).slice(0, 10),
+        };
+      });
     }),
 
   // Update order status
-  updateOrderStatus: publicProcedure
+  updateOrderStatus: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
-      status: z.string(),
+      status: z.enum(['pending', 'in_progress', 'picked_up', 'delivered', 'attempted', 'returned', 'failed', 'on_hold']),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const order = await updateOrderStatus(input.orderId, input.status);
       if (!order) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found' });
@@ -1212,18 +1120,12 @@ export const adminPortalRouter = router({
     }),
 
   // Get monthly report data for all clients (admin)
-  getMonthlyReport: publicProcedure
+  getMonthlyReport: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       month: z.string(), // Format: YYYY-MM
       clientId: z.number().optional(), // Optional filter by client
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -1262,17 +1164,11 @@ export const adminPortalRouter = router({
     }),
 
   // Get COD report data for all clients (admin)
-  getCODReport: publicProcedure
+  getCODReport: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number().optional(), // Optional filter by client
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -1309,46 +1205,24 @@ export const adminPortalRouter = router({
     }),
 
   // Get all clients for report filtering
-  getClientsForReports: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getClientsForReports: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getAllClientAccounts();
     }),
 
   // Get all quote requests
-  getQuoteRequests: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getQuoteRequests: portalAdminProcedure
+    .query(async ({ ctx }) => {
       const { getAllQuoteRequests } = await import('./db');
       return await getAllQuoteRequests();
     }),
 
   // Delete quote request
-  deleteQuoteRequest: publicProcedure
+  deleteQuoteRequest: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       requestId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { deleteQuoteRequest } = await import('./db');
       const success = await deleteQuoteRequest(input.requestId);
 
@@ -1360,32 +1234,18 @@ export const adminPortalRouter = router({
     }),
 
   // Get all contact messages
-  getContactMessages: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getContactMessages: portalAdminProcedure
+    .query(async ({ ctx }) => {
       const { getAllContactMessages } = await import('./db');
       return await getAllContactMessages();
     }),
 
   // Delete contact message
-  deleteContactMessage: publicProcedure
+  deleteContactMessage: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       messageId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { deleteContactMessage } = await import('./db');
       const success = await deleteContactMessage(input.messageId);
 
@@ -1397,9 +1257,8 @@ export const adminPortalRouter = router({
     }),
 
   // Admin creates order on behalf of a client
-  adminCreateOrder: publicProcedure
+  adminCreateOrder: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       shipment: z.object({
         orderNumber: z.string().optional(),
@@ -1438,12 +1297,7 @@ export const adminPortalRouter = router({
         longitude: z.string().optional(),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Get client account for shipper info
       const clientAccount = await getClientAccountById(input.clientId);
       if (!clientAccount) {
@@ -1573,31 +1427,15 @@ export const adminPortalRouter = router({
  */
 export const customerPortalRouter = router({
   // Get customer's client account
-  getMyAccount: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      return await getClientAccountById(payload.clientId);
+  getMyAccount: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      return await getClientAccountById(ctx.portalUser.clientId);
     }),
 
   // Get customer's orders (excluding returns and exchanges - those appear in separate section)
-  getMyOrders: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      const allOrders = await getOrdersByClientId(payload.clientId);
+  getMyOrders: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      const allOrders = await getOrdersByClientId(ctx.portalUser.clientId);
 
       // Filter out returns and exchanges (they appear in separate Returns & Exchanges section)
       // Limit to domestic orders
@@ -1607,7 +1445,7 @@ export const customerPortalRouter = router({
       );
 
       // Get client's hideShipperAddress setting
-      const client = await getClientAccountById(payload.clientId);
+      const client = await getClientAccountById(ctx.portalUser.clientId);
       const hideShipperAddress = client?.hideShipperAddress === 1;
 
       // Add hideShipperAddress to each order for waybill generation, and hide address if setting enabled
@@ -1619,17 +1457,9 @@ export const customerPortalRouter = router({
     }),
 
   // Get customer's international orders
-  getMyIntlOrders: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      const allOrders = await getOrdersByClientId(payload.clientId);
+  getMyIntlOrders: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      const allOrders = await getOrdersByClientId(ctx.portalUser.clientId);
 
       // Filter for international orders
       const orders = allOrders.filter(order =>
@@ -1639,7 +1469,7 @@ export const customerPortalRouter = router({
       );
 
       // Get client's hideShipperAddress setting
-      const client = await getClientAccountById(payload.clientId);
+      const client = await getClientAccountById(ctx.portalUser.clientId);
       const hideShipperAddress = client?.hideShipperAddress === 1;
 
       return orders.map(order => ({
@@ -1650,9 +1480,8 @@ export const customerPortalRouter = router({
     }),
 
   // Create new shipment/order
-  createShipment: publicProcedure
+  createShipment: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       shipment: z.object({
         orderNumber: z.string().optional(),
         shipperName: z.string().min(1),
@@ -1690,12 +1519,7 @@ export const customerPortalRouter = router({
         longitude: z.string().optional(),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Determine if international order
       const isInternational = input.shipment.destinationCountry.toUpperCase() !== 'UAE'
         && input.shipment.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES';
@@ -1705,7 +1529,7 @@ export const customerPortalRouter = router({
 
       // Create order
       const order = await createOrder({
-        clientId: payload.clientId,
+        clientId: ctx.portalUser.clientId,
         waybillNumber,
         ...input.shipment,
         weight: input.shipment.weight.toString(),
@@ -1772,19 +1596,13 @@ export const customerPortalRouter = router({
     }),
 
   // Get shipment details with tracking
-  getShipmentDetails: publicProcedure
+  getShipmentDetails: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       waybillNumber: z.string(),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const order = await getOrderByWaybill(input.waybillNumber);
-      if (!order || order.clientId !== payload.clientId) {
+      if (!order || order.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Shipment not found' });
       }
 
@@ -1797,17 +1615,11 @@ export const customerPortalRouter = router({
     }),
 
   // Cancel order (customer can only cancel pending_pickup orders)
-  cancelOrder: publicProcedure
+  cancelOrder: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Get the order
       const order = await getOrderById(input.orderId);
       if (!order) {
@@ -1815,7 +1627,7 @@ export const customerPortalRouter = router({
       }
 
       // Check if order belongs to this customer
-      if (order.clientId !== payload.clientId) {
+      if (order.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'You cannot cancel this order' });
       }
 
@@ -1857,16 +1669,8 @@ export const customerPortalRouter = router({
     }),
 
   // Get customer's returns and exchanges
-  getMyReturnsExchanges: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+  getMyReturnsExchanges: portalCustomerProcedure
+    .query(async ({ ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -1880,7 +1684,7 @@ export const customerPortalRouter = router({
         .select()
         .from(orders)
         .where(and(
-          eq(orders.clientId, payload.clientId),
+          eq(orders.clientId, ctx.portalUser.clientId),
           or(
             eq(orders.orderType, 'return'),
             eq(orders.orderType, 'exchange')
@@ -1889,7 +1693,7 @@ export const customerPortalRouter = router({
         .orderBy(desc(orders.createdAt));
 
       // Check if client has hideShipperAddress enabled
-      const client = await getClientAccountById(payload.clientId);
+      const client = await getClientAccountById(ctx.portalUser.clientId);
       const hideAddress = client?.hideShipperAddress === 1;
 
       // Get original waybill numbers and set privacy flags
@@ -1920,23 +1724,17 @@ export const customerPortalRouter = router({
     }),
 
   // Search order for return/exchange
-  searchOrderForReturn: publicProcedure
+  searchOrderForReturn: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       waybillNumber: z.string(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const order = await getOrderByWaybill(input.waybillNumber);
       if (!order) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found with this waybill number' });
       }
 
-      if (order.clientId !== payload.clientId) {
+      if (order.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'This order does not belong to your account' });
       }
 
@@ -1950,7 +1748,7 @@ export const customerPortalRouter = router({
       }
 
       // Check if client has hideShipperAddress enabled
-      const client = await getClientAccountById(payload.clientId);
+      const client = await getClientAccountById(ctx.portalUser.clientId);
       const hideShipperAddress = client?.hideShipperAddress === 1;
 
       // Return order with shipper address hidden if setting is enabled
@@ -1961,24 +1759,18 @@ export const customerPortalRouter = router({
     }),
 
   // Create return request
-  createReturnRequest: publicProcedure
+  createReturnRequest: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const originalOrder = await getOrderById(input.orderId);
-      if (!originalOrder || originalOrder.clientId !== payload.clientId) {
+      if (!originalOrder || originalOrder.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
       }
 
       // Check if client has hideShipperAddress enabled (for privacy on waybill)
-      const client = await getClientAccountById(payload.clientId);
+      const client = await getClientAccountById(ctx.portalUser.clientId);
       const hideConsigneeOnReturn = client?.hideShipperAddress === 1 ? 1 : 0;
 
       // Generate waybill for return
@@ -1987,7 +1779,7 @@ export const customerPortalRouter = router({
       // Create return order (swap shipper/consignee)
       // Note: On returns, the original client becomes the consignee, so we hide their address if they have privacy enabled
       const returnOrder = await createOrder({
-        clientId: payload.clientId,
+        clientId: ctx.portalUser.clientId,
         orderNumber: `RTN-${originalOrder.waybillNumber}`,
         waybillNumber: returnWaybill,
 
@@ -2033,16 +1825,15 @@ export const customerPortalRouter = router({
         statusCode: 'pending_pickup',
         statusLabel: 'RETURN PENDING PICKUP',
         description: `Return shipment created for ${originalOrder.waybillNumber}`,
-        createdBy: payload.email || 'customer',
+        createdBy: ctx.portalUser.email || 'customer',
       });
 
       return { success: true, message: `Return ${returnWaybill} created successfully`, returnOrder };
     }),
 
   // Create exchange request (return + new shipment)
-  createExchangeRequest: publicProcedure
+  createExchangeRequest: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
       newShipment: z.object({
         customerName: z.string(),
@@ -2059,19 +1850,14 @@ export const customerPortalRouter = router({
         codCurrency: z.string().default('AED'),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const originalOrder = await getOrderById(input.orderId);
-      if (!originalOrder || originalOrder.clientId !== payload.clientId) {
+      if (!originalOrder || originalOrder.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
       }
 
       // Get client account for shipper info
-      const clientAccount = await getClientAccountById(payload.clientId);
+      const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
       if (!clientAccount) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
       }
@@ -2082,7 +1868,7 @@ export const customerPortalRouter = router({
       // 1. Create return waybill (client becomes consignee, hide their address if privacy enabled)
       const returnWaybill = await generateWaybillNumber();
       const returnOrder = await createOrder({
-        clientId: payload.clientId,
+        clientId: ctx.portalUser.clientId,
         orderNumber: `EXC-RTN-${originalOrder.waybillNumber}`,
         waybillNumber: returnWaybill,
 
@@ -2123,7 +1909,7 @@ export const customerPortalRouter = router({
       // 2. Create new shipment waybill
       const newWaybill = await generateWaybillNumber();
       const newOrder = await createOrder({
-        clientId: payload.clientId,
+        clientId: ctx.portalUser.clientId,
         orderNumber: `EXC-NEW-${originalOrder.waybillNumber}`,
         waybillNumber: newWaybill,
 
@@ -2175,7 +1961,7 @@ export const customerPortalRouter = router({
         statusCode: 'pending_pickup',
         statusLabel: 'EXCHANGE RETURN PENDING',
         description: `Exchange return created for ${originalOrder.waybillNumber}`,
-        createdBy: payload.email || 'customer',
+        createdBy: ctx.portalUser.email || 'customer',
       });
 
       await createTrackingEvent({
@@ -2184,7 +1970,7 @@ export const customerPortalRouter = router({
         statusCode: 'pending_pickup',
         statusLabel: 'EXCHANGE NEW SHIPMENT PENDING',
         description: `Exchange new shipment for ${originalOrder.waybillNumber}`,
-        createdBy: payload.email || 'customer',
+        createdBy: ctx.portalUser.email || 'customer',
       });
 
       return {
@@ -2196,9 +1982,8 @@ export const customerPortalRouter = router({
     }),
 
   // Create manual return/exchange (without existing waybill)
-  createManualReturnExchange: publicProcedure
+  createManualReturnExchange: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       type: z.enum(['return', 'exchange']),
       pickupName: z.string(),
       pickupPhone: z.string(),
@@ -2226,13 +2011,8 @@ export const customerPortalRouter = router({
       exchangeCodAmount: z.string().optional(),
       exchangeCodCurrency: z.string().default('AED'),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      const clientAccount = await getClientAccountById(payload.clientId);
+    .mutation(async ({ input, ctx }) => {
+      const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
       if (!clientAccount) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
       }
@@ -2240,7 +2020,7 @@ export const customerPortalRouter = router({
       // Create return/pickup waybill
       const returnWaybill = await generateWaybillNumber();
       const returnOrder = await createOrder({
-        clientId: payload.clientId,
+        clientId: ctx.portalUser.clientId,
         orderNumber: input.type === 'return' ? `RTN-MANUAL` : `EXC-RTN-MANUAL`,
         waybillNumber: returnWaybill,
 
@@ -2281,7 +2061,7 @@ export const customerPortalRouter = router({
         statusCode: 'pending_pickup',
         statusLabel: `${input.type.toUpperCase()} PENDING PICKUP`,
         description: 'Manual return/exchange created',
-        createdBy: payload.email || 'customer',
+        createdBy: ctx.portalUser.email || 'customer',
       });
 
       let newOrder = null;
@@ -2290,7 +2070,7 @@ export const customerPortalRouter = router({
       if (input.type === 'exchange' && input.exchangeCustomerName && input.exchangeAddress && input.exchangeCity) {
         const newWaybill = await generateWaybillNumber();
         newOrder = await createOrder({
-          clientId: payload.clientId,
+          clientId: ctx.portalUser.clientId,
           orderNumber: `EXC-NEW-MANUAL`,
           waybillNumber: newWaybill,
 
@@ -2335,7 +2115,7 @@ export const customerPortalRouter = router({
             statusCode: 'pending_pickup',
             statusLabel: 'EXCHANGE NEW SHIPMENT PENDING',
             description: 'Manual exchange new shipment created',
-            createdBy: payload.email || 'customer',
+            createdBy: ctx.portalUser.email || 'customer',
           });
         }
       }
@@ -2351,22 +2131,16 @@ export const customerPortalRouter = router({
     }),
 
   // Update COD on exchange order (only if pending_pickup)
-  updateExchangeCod: publicProcedure
+  updateExchangeCod: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       orderId: z.number(),
       codRequired: z.number(), // 0 or 1
       codAmount: z.string().optional(),
       codCurrency: z.string().default('AED'),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const order = await getOrderById(input.orderId);
-      if (!order || order.clientId !== payload.clientId) {
+      if (!order || order.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
       }
 
@@ -2379,7 +2153,7 @@ export const customerPortalRouter = router({
       }
 
       // Check if client has COD enabled
-      const clientAccount = await getClientAccountById(payload.clientId);
+      const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
       if (!clientAccount || !clientAccount.codAllowed) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'COD is not enabled for your account' });
       }
@@ -2398,16 +2172,8 @@ export const customerPortalRouter = router({
     }),
 
   // Get customer analytics
-  getMyAnalytics: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+  getMyAnalytics: portalCustomerProcedure
+    .query(async ({ ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -2416,7 +2182,7 @@ export const customerPortalRouter = router({
       const { orders, codRecords } = await import('../drizzle/schema');
       const { sql, gte, and, eq } = await import('drizzle-orm');
 
-      const clientId = payload.clientId;
+      const clientId = ctx.portalUser.clientId;
       const now = new Date();
       const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const startOfWeek = new Date(now);
@@ -2593,16 +2359,8 @@ export const customerPortalRouter = router({
     }),
 
   // Get dashboard metrics for customer
-  getDashboardMetrics: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+  getDashboardMetrics: portalCustomerProcedure
+    .query(async ({ ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -2622,7 +2380,7 @@ export const customerPortalRouter = router({
         .from(orders)
         .where(
           and(
-            eq(orders.clientId, payload.clientId),
+            eq(orders.clientId, ctx.portalUser.clientId),
             gte(orders.createdAt, startOfMonth)
           )
         );
@@ -2635,7 +2393,7 @@ export const customerPortalRouter = router({
         .from(orders)
         .where(
           and(
-            eq(orders.clientId, payload.clientId),
+            eq(orders.clientId, ctx.portalUser.clientId),
             eq(orders.status, 'delivered'),
             gte(orders.createdAt, startOfMonth)
           )
@@ -2663,7 +2421,7 @@ export const customerPortalRouter = router({
         .innerJoin(orders, eq(orders.id, codRecords.shipmentId))
         .where(
           and(
-            eq(orders.clientId, payload.clientId),
+            eq(orders.clientId, ctx.portalUser.clientId),
             eq(codRecords.status, 'pending_collection')
           )
         );
@@ -2677,7 +2435,7 @@ export const customerPortalRouter = router({
           count: sql<number>`cast(count(*) as unsigned)`,
         })
         .from(orders)
-        .where(eq(orders.clientId, payload.clientId))
+        .where(eq(orders.clientId, ctx.portalUser.clientId))
         .groupBy(sql`concat(${orders.shipperCity}, ' → ', ${orders.city})`)
         .orderBy(sql`count(*) desc`)
         .limit(5);
@@ -2691,7 +2449,7 @@ export const customerPortalRouter = router({
         .from(orders)
         .where(
           and(
-            eq(orders.clientId, payload.clientId),
+            eq(orders.clientId, ctx.portalUser.clientId),
             eq(orders.status, 'delivered'),
             sql`${orders.deliveryDateReal} is not null`
           )
@@ -2727,17 +2485,11 @@ export const customerPortalRouter = router({
     }),
 
   // Get monthly report data (for PDF/Excel generation)
-  getMonthlyReport: publicProcedure
+  getMonthlyReport: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       month: z.string(), // Format: YYYY-MM
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -2756,7 +2508,7 @@ export const customerPortalRouter = router({
         .from(orders)
         .where(
           and(
-            eq(orders.clientId, payload.clientId),
+            eq(orders.clientId, ctx.portalUser.clientId),
             gte(orders.createdAt, startDate),
             lt(orders.createdAt, endDate)
           )
@@ -2766,16 +2518,8 @@ export const customerPortalRouter = router({
     }),
 
   // Get COD report data
-  getCODReport: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+  getCODReport: portalCustomerProcedure
+    .query(async ({ ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -2798,30 +2542,21 @@ export const customerPortalRouter = router({
         })
         .from(codRecords)
         .innerJoin(orders, eq(orders.id, codRecords.shipmentId))
-        .where(eq(orders.clientId, payload.clientId));
+        .where(eq(orders.clientId, ctx.portalUser.clientId));
 
       return codData;
     }),
 
   // Get saved shippers
-  getSavedShippers: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+  getSavedShippers: portalCustomerProcedure
+    .query(async ({ ctx }) => {
       const { getSavedShippersByClient } = await import('./db');
-      return await getSavedShippersByClient(payload.clientId);
+      return await getSavedShippersByClient(ctx.portalUser.clientId);
     }),
 
   // Create saved shipper
-  createSavedShipper: publicProcedure
+  createSavedShipper: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       nickname: z.string().min(1, 'Nickname is required'),
       shipperName: z.string().min(1, 'Shipper name is required'),
       shipperAddress: z.string().min(1, 'Shipper address is required'),
@@ -2829,15 +2564,10 @@ export const customerPortalRouter = router({
       shipperCountry: z.string().min(1, 'Shipper country is required'),
       shipperPhone: z.string().min(1, 'Shipper phone is required'),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { createSavedShipper } = await import('./db');
       const id = await createSavedShipper({
-        clientId: payload.clientId,
+        clientId: ctx.portalUser.clientId,
         nickname: input.nickname,
         shipperName: input.shipperName,
         shipperAddress: input.shipperAddress,
@@ -2850,35 +2580,23 @@ export const customerPortalRouter = router({
     }),
 
   // Delete saved shipper
-  deleteSavedShipper: publicProcedure
+  deleteSavedShipper: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       shipperId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { deleteSavedShipper } = await import('./db');
-      await deleteSavedShipper(input.shipperId, payload.clientId);
+      await deleteSavedShipper(input.shipperId, ctx.portalUser.clientId);
 
       return { success: true };
     }),
 
   // Customer: Update account settings (hideShipperAddress)
-  updateAccountSettings: publicProcedure
+  updateAccountSettings: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       hideShipperAddress: z.number().min(0).max(1).optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const updateData: Record<string, number> = {};
       if (input.hideShipperAddress !== undefined) {
         updateData.hideShipperAddress = input.hideShipperAddress;
@@ -2888,7 +2606,7 @@ export const customerPortalRouter = router({
         return { success: true };
       }
 
-      const result = await updateClientAccount(payload.clientId, updateData);
+      const result = await updateClientAccount(ctx.portalUser.clientId, updateData);
       if (!result) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update settings' });
       }
@@ -2902,19 +2620,13 @@ export const customerPortalRouter = router({
  */
 export const billingRouter = router({
   // Admin: Get billable shipments for a client in a period
-  getBillableShipments: publicProcedure
+  getBillableShipments: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       periodStart: z.string(),
       periodEnd: z.string(),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const { getBillableShipments } = await import('./db');
       return await getBillableShipments(
         input.clientId,
@@ -2924,20 +2636,14 @@ export const billingRouter = router({
     }),
 
   // Admin: Generate invoice for a client
-  generateInvoice: publicProcedure
+  generateInvoice: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       periodStart: z.string(), // ISO date
       periodEnd: z.string(), // ISO date
       shipmentIds: z.array(z.number()).optional(), // Optional list of specific shipments to invoice
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { generateInvoiceForClient } = await import('./db');
       const invoiceId = await generateInvoiceForClient(
         input.clientId,
@@ -2967,52 +2673,30 @@ export const billingRouter = router({
     }),
 
   // Admin: Get all invoices
-  getAllInvoices: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getAllInvoices: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getAllInvoices();
     }),
 
   // Customer: Get my invoices
-  getMyInvoices: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      return await getInvoicesByClient(payload.clientId);
+  getMyInvoices: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      return await getInvoicesByClient(ctx.portalUser.clientId);
     }),
 
   // Get invoice details with items
-  getInvoiceDetails: publicProcedure
+  getInvoiceDetails: portalProtectedProcedure
     .input(z.object({
-      token: z.string(),
       invoiceId: z.number(),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const invoice = await getInvoiceById(input.invoiceId);
       if (!invoice) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Invoice not found' });
       }
 
       // Check access: admin can see all, customer can only see their own
-      if (payload.role === 'customer' && invoice.clientId !== payload.clientId) {
+      if (ctx.portalUser.role === 'customer' && invoice.clientId !== ctx.portalUser.clientId) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
       }
 
@@ -3025,27 +2709,20 @@ export const billingRouter = router({
     }),
 
   // Admin: Update invoice status
-  updateInvoiceStatus: publicProcedure
+  updateInvoiceStatus: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       invoiceId: z.number(),
       status: z.enum(['pending', 'paid', 'overdue']),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       await updateInvoiceStatus(input.invoiceId, input.status);
 
       return { success: true };
     }),
 
   // Admin: Update invoice details
-  updateInvoice: publicProcedure
+  updateInvoice: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       invoiceId: z.number(),
       data: z.object({
         subtotal: z.string().optional(),
@@ -3058,17 +2735,12 @@ export const billingRouter = router({
         adjustmentNotes: z.string().optional(),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Mark as adjusted if there are adjustment notes
       const updateData: any = { ...input.data };
       if (input.data.adjustmentNotes) {
         updateData.isAdjusted = 1;
-        updateData.lastAdjustedBy = payload.userId;
+        updateData.lastAdjustedBy = ctx.portalUser.userId;
         updateData.lastAdjustedAt = new Date();
       }
 
@@ -3078,17 +2750,11 @@ export const billingRouter = router({
     }),
 
   // Customer: Update account settings (hideShipperAddress)
-  updateAccountSettings: publicProcedure
+  updateAccountSettings: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       hideShipperAddress: z.number().min(0).max(1).optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { updateClientAccount } = await import('./db');
 
       const updateData: any = {};
@@ -3100,7 +2766,7 @@ export const billingRouter = router({
         return { success: true };
       }
 
-      const result = await updateClientAccount(payload.clientId, updateData);
+      const result = await updateClientAccount(ctx.portalUser.clientId, updateData);
       if (!result) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to update settings' });
       }
@@ -3109,17 +2775,11 @@ export const billingRouter = router({
     }),
 
   // Admin: Delete invoice (only if pending)
-  deleteInvoice: publicProcedure
+  deleteInvoice: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       invoiceId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { deleteInvoice } = await import('./db');
       const result = await deleteInvoice(input.invoiceId);
 
@@ -3131,20 +2791,14 @@ export const billingRouter = router({
     }),
 
   // Admin: Add invoice item (manual charge like bags, discounts, etc.)
-  addInvoiceItem: publicProcedure
+  addInvoiceItem: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       invoiceId: z.number(),
       description: z.string().min(1, 'Description is required'),
       quantity: z.number().min(1).default(1),
       unitPrice: z.string(), // Can be negative for discounts
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { addInvoiceItem, recalculateInvoiceTotals, updateInvoice } = await import('./db');
 
       const itemId = await addInvoiceItem({
@@ -3162,7 +2816,7 @@ export const billingRouter = router({
       await recalculateInvoiceTotals(input.invoiceId);
       await updateInvoice(input.invoiceId, {
         isAdjusted: 1,
-        lastAdjustedBy: payload.userId,
+        lastAdjustedBy: ctx.portalUser.userId,
         lastAdjustedAt: new Date(),
       });
 
@@ -3170,18 +2824,12 @@ export const billingRouter = router({
     }),
 
   // Admin: Delete invoice item (only manual items without shipmentId)
-  deleteInvoiceItem: publicProcedure
+  deleteInvoiceItem: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       invoiceId: z.number(),
       itemId: z.number(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { deleteInvoiceItem, recalculateInvoiceTotals, updateInvoice } = await import('./db');
 
       const result = await deleteInvoiceItem(input.itemId);
@@ -3194,7 +2842,7 @@ export const billingRouter = router({
       await recalculateInvoiceTotals(input.invoiceId);
       await updateInvoice(input.invoiceId, {
         isAdjusted: 1,
-        lastAdjustedBy: payload.userId,
+        lastAdjustedBy: ctx.portalUser.userId,
         lastAdjustedAt: new Date(),
       });
 
@@ -3207,61 +2855,33 @@ export const billingRouter = router({
  */
 const codRouter = router({
   // Admin: Get all COD records
-  getAllCODRecords: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getAllCODRecords: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getAllCODRecords();
     }),
 
   // Admin: Get COD summary
-  getCODSummary: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getCODSummary: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getCODSummaryGlobal();
     }),
 
   // Admin: Get pending COD for a client
-  getPendingCODByClient: publicProcedure
+  getPendingCODByClient: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       return await getPendingCODByClient(input.clientId);
     }),
 
   // Admin: Update COD record status
-  updateCODStatus: publicProcedure
+  updateCODStatus: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       codRecordId: z.number(),
       status: z.enum(['pending_collection', 'collected', 'remitted', 'disputed', 'cancelled']),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
@@ -3287,21 +2907,15 @@ const codRouter = router({
     }),
 
   // Admin: Create COD remittance
-  createRemittance: publicProcedure
+  createRemittance: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       codRecordIds: z.array(z.number()),
       paymentMethod: z.string().optional(),
       paymentReference: z.string().optional(),
       notes: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin' || !payload.userId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       // Calculate total amount
       const codRecords = await getPendingCODByClient(input.clientId);
       const selectedRecords = codRecords.filter(r => input.codRecordIds.includes(r.id));
@@ -3344,46 +2958,32 @@ const codRouter = router({
         paymentMethod: input.paymentMethod,
         paymentReference: input.paymentReference,
         notes: input.notes,
-        createdBy: payload.userId,
+        createdBy: ctx.portalUser.userId,
       });
 
       return { remittanceId, remittanceNumber, grossAmount: grossAmount.toFixed(2), feeAmount: totalFee.toFixed(2), netAmount: netAmount.toFixed(2) };
     }),
 
   // Admin: Get all remittances
-  getAllRemittances: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getAllRemittances: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getAllRemittances();
     }),
 
   // Admin: Get remittance details
-  getRemittanceDetails: publicProcedure
+  getRemittanceDetails: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       remittanceId: z.number(),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const remittance = await getRemittanceById(input.remittanceId);
       if (!remittance) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Remittance not found' });
       }
 
       // Authorization check
-      if (payload.role !== 'admin') {
-        if (payload.role !== 'customer' || !payload.clientId || remittance.clientId !== payload.clientId) {
+      if (ctx.portalUser.role !== 'admin') {
+        if (ctx.portalUser.role !== 'customer' || !ctx.portalUser.clientId || remittance.clientId !== ctx.portalUser.clientId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
         }
       }
@@ -3394,18 +2994,12 @@ const codRouter = router({
     }),
 
   // Admin: Update remittance status
-  updateRemittanceStatus: publicProcedure
+  updateRemittanceStatus: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       remittanceId: z.number(),
       status: z.enum(['pending', 'processed', 'completed']),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const processedDate = input.status === 'processed' || input.status === 'completed' ? new Date() : undefined;
       await updateRemittanceStatus(input.remittanceId, input.status, processedDate);
 
@@ -3429,45 +3023,21 @@ const codRouter = router({
     }),
 
   // Customer: Get my COD records
-  getMyCODRecords: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      return await getCODRecordsByClient(payload.clientId);
+  getMyCODRecords: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      return await getCODRecordsByClient(ctx.portalUser.clientId);
     }),
 
   // Customer: Get my COD summary
-  getMyCODSummary: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      return await getCODSummaryByClient(payload.clientId);
+  getMyCODSummary: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      return await getCODSummaryByClient(ctx.portalUser.clientId);
     }),
 
   // Customer: Get my remittances
-  getMyRemittances: publicProcedure
-    .input(z.object({
-      token: z.string(),
-    }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'customer' || !payload.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Customer access required' });
-      }
-
-      return await getRemittancesByClient(payload.clientId);
+  getMyRemittances: portalCustomerProcedure
+    .query(async ({ ctx }) => {
+      return await getRemittancesByClient(ctx.portalUser.clientId);
     }),
 });
 
@@ -3476,19 +3046,13 @@ const codRouter = router({
  * Rate Engine Router
  */
 export const rateRouter = router({
-  listTiers: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-      }
+  listTiers: portalProtectedProcedure
+    .query(async ({ ctx }) => {
       return await getAllRateTiers();
     }),
 
-  calculate: publicProcedure
+  calculate: portalProtectedProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       serviceType: z.enum(["DOM", "SDD", "BULLET"]),
       weight: z.number(),
@@ -3497,9 +3061,8 @@ export const rateRouter = router({
       height: z.number().optional(),
       emirate: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const user = await verifyPortalToken(input.token);
-      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
       const result = await calculateShipmentRate({
         clientId: input.clientId,
@@ -3514,19 +3077,17 @@ export const rateRouter = router({
       return result;
     }),
 
-  calculateCOD: publicProcedure
+  calculateCOD: portalProtectedProcedure
     .input(z.object({
-      token: z.string(),
       codAmount: z.number(),
       clientId: z.number().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const user = await verifyPortalToken(input.token);
-      if (!user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
       let targetClientId = 0;
-      if (user.role === 'customer') {
-        targetClientId = user.clientId || 0;
+      if (ctx.portalUser.role === 'customer') {
+        targetClientId = ctx.portalUser.clientId || 0;
       } else if (input.clientId) {
         targetClientId = input.clientId;
       }
@@ -3535,33 +3096,21 @@ export const rateRouter = router({
       return { fee };
     }),
 
-  getTiers: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const user = await verifyPortalToken(input.token);
-      if (!user || user.role !== 'admin') {
-        throw new TRPCError({ code: 'UNAUTHORIZED' });
-      }
-
+  getTiers: portalAdminProcedure
+    .query(async ({ ctx }) => {
       const tiers = await getAllRateTiers();
       return tiers;
     }),
 });
 
 export const clientsRouter = router({
-  list: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
+  list: portalAdminProcedure
+    .query(async ({ ctx }) => {
       return await getAllClientAccounts();
     }),
 
-  updateTier: publicProcedure
+  updateTier: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       tierId: z.number().nullable(),
       // Custom rates (used when tierId is null and these are provided)
@@ -3570,12 +3119,7 @@ export const clientsRouter = router({
       customSddBaseRate: z.string().optional(),
       customSddPerKg: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
       const { clientAccounts } = await import('../drizzle/schema');
       const { eq } = await import('drizzle-orm');
@@ -3599,9 +3143,8 @@ export const clientsRouter = router({
       return { success: true };
     }),
 
-  updateSettings: publicProcedure
+  updateSettings: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       codAllowed: z.boolean(),
       codFeePercent: z.string().optional(),
@@ -3615,12 +3158,7 @@ export const clientsRouter = router({
       intlAllowed: z.boolean().optional(),
       intlDiscountPercent: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
       const { clientAccounts } = await import('../drizzle/schema');
       const { eq } = await import('drizzle-orm');
@@ -3647,14 +3185,8 @@ export const clientsRouter = router({
       return { success: true };
     }),
 
-  getWithTiers: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const user = await verifyPortalToken(input.token);
-      if (!user || user.role !== 'admin') {
-        throw new TRPCError({ code: 'UNAUTHORIZED' });
-      }
-
+  getWithTiers: portalAdminProcedure
+    .query(async ({ ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) return [];
 
@@ -3679,9 +3211,8 @@ export const clientsRouter = router({
       return await getAllClientAccounts();
     }),
 
-  updateZoneRates: publicProcedure
+  updateZoneRates: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       clientId: z.number(),
       zone1BaseRate: z.string().optional(),
       zone1PerKg:    z.string().optional(),
@@ -3692,12 +3223,7 @@ export const clientsRouter = router({
       sddBaseRate:   z.string().optional(),
       sddPerKg:      z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const user = await verifyPortalToken(input.token);
-      if (!user || user.role !== 'admin') {
-        throw new TRPCError({ code: 'UNAUTHORIZED' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
 
@@ -3761,9 +3287,8 @@ export const publicTrackingRouter = router({
 });
 
 const trackingRouter = router({
-  addEvent: publicProcedure
+  addEvent: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       shipmentId: z.number(),
       eventDatetime: z.string(),
       location: z.string().optional(),
@@ -3772,12 +3297,7 @@ const trackingRouter = router({
       description: z.string().optional(),
       podFileUrl: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       await createTrackingEvent({
         shipmentId: input.shipmentId,
         eventDatetime: new Date(input.eventDatetime),
@@ -3786,7 +3306,7 @@ const trackingRouter = router({
         statusLabel: input.statusLabel,
         description: input.description,
         podFileUrl: input.podFileUrl,
-        createdBy: payload.email || 'admin',
+        createdBy: ctx.portalUser.email || 'admin',
       });
 
       // Update order status
@@ -3795,7 +3315,7 @@ const trackingRouter = router({
       return { success: true };
     }),
 
-  getEvents: publicProcedure
+  getEvents: portalProtectedProcedure
     .input(z.object({ shipmentId: z.number() }))
     .query(async ({ input }) => {
       return getTrackingEventsByShipmentId(input.shipmentId);
@@ -3808,13 +3328,7 @@ const trackingRouter = router({
 const internationalRatesRouter = router({
   // Get list of all available destination countries
   countries: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-      }
-
+    .query(async ({ ctx }) => {
       const { getCountryList, loadRatesFromDB } = await import('./internationalRateEngine');
       const { getDb } = await import('./db');
       const db = await getDb();
@@ -3824,9 +3338,8 @@ const internationalRatesRouter = router({
     }),
 
   // Calculate international shipping rates
-  quote: publicProcedure
+  quote: portalProtectedProcedure
     .input(z.object({
-      token: z.string(),
       originCountry: z.string().min(1),
       destinationCountry: z.string().min(1),
       realWeightKg: z.number().positive(),
@@ -3836,12 +3349,7 @@ const internationalRatesRouter = router({
         height: z.number().positive(),
       }),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Authentication required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { quote, loadRatesFromDB, validateInput } = await import('./internationalRateEngine');
       const { getDb } = await import('./db');
       const db = await getDb();
@@ -3864,8 +3372,8 @@ const internationalRatesRouter = router({
 
       // Get client discount if applicable
       let discountPercent: number | undefined;
-      if (payload.clientId) {
-        const client = await getClientAccountById(payload.clientId);
+      if (ctx.portalUser.clientId) {
+        const client = await getClientAccountById(ctx.portalUser.clientId);
         if (client?.intlDiscountPercent) {
           discountPercent = parseFloat(client.intlDiscountPercent);
         }
@@ -3875,17 +3383,11 @@ const internationalRatesRouter = router({
     }),
 
   // Admin: Get all international rates from DB
-  getAll: publicProcedure
+  getAll: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       rateType: z.enum(['prime', 'gcc', 'premium']).optional(),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
       const { internationalRates: intlRatesTable } = await import('../drizzle/schema');
       const { eq } = await import('drizzle-orm');
@@ -3899,19 +3401,13 @@ const internationalRatesRouter = router({
     }),
 
   // Admin: Update a specific rate
-  updateRate: publicProcedure
+  updateRate: portalAdminProcedure
     .input(z.object({
-      token: z.string(),
       rateId: z.number(),
       price: z.string(),
       isActive: z.number().optional(),
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
       const { internationalRates: intlRatesTable } = await import('../drizzle/schema');
       const { eq } = await import('drizzle-orm');
@@ -3926,14 +3422,8 @@ const internationalRatesRouter = router({
     }),
 
   // Admin: Get all country maps
-  getCountryMaps: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || payload.role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-
+  getCountryMaps: portalAdminProcedure
+    .query(async ({ ctx }) => {
       const { getDb } = await import('./db');
       const { internationalCountryMaps } = await import('../drizzle/schema');
       const db = await getDb();
@@ -3949,14 +3439,8 @@ const internationalRatesRouter = router({
 
 const notificationsRouter = router({
   // Get unread notification count (for the bell badge)
-  getUnreadCount: publicProcedure
-    .input(z.object({ token: z.string() }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || !payload.clientId) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Customer access required' });
-      }
-
+  getUnreadCount: portalCustomerProcedure
+    .query(async ({ ctx }) => {
       const { getDb } = await import('./db');
       const { notifications } = await import('../drizzle/schema');
       const { eq, and, sql } = await import('drizzle-orm');
@@ -3967,7 +3451,7 @@ const notificationsRouter = router({
         .select({ count: sql<number>`cast(count(*) as unsigned)` })
         .from(notifications)
         .where(and(
-          eq(notifications.clientId, payload.clientId),
+          eq(notifications.clientId, ctx.portalUser.clientId),
           eq(notifications.isRead, 0)
         ));
 
@@ -3975,17 +3459,11 @@ const notificationsRouter = router({
     }),
 
   // List notifications (most recent first)
-  list: publicProcedure
+  list: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       limit: z.number().min(1).max(50).default(20),
     }))
-    .query(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || !payload.clientId) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Customer access required' });
-      }
-
+    .query(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
       const { notifications } = await import('../drizzle/schema');
       const { eq, desc } = await import('drizzle-orm');
@@ -3995,23 +3473,17 @@ const notificationsRouter = router({
       return await db
         .select()
         .from(notifications)
-        .where(eq(notifications.clientId, payload.clientId))
+        .where(eq(notifications.clientId, ctx.portalUser.clientId))
         .orderBy(desc(notifications.createdAt))
         .limit(input.limit);
     }),
 
   // Mark notification(s) as read
-  markAsRead: publicProcedure
+  markAsRead: portalCustomerProcedure
     .input(z.object({
-      token: z.string(),
       notificationId: z.number().optional(), // If omitted, marks ALL as read
     }))
-    .mutation(async ({ input }) => {
-      const payload = verifyPortalToken(input.token);
-      if (!payload || !payload.clientId) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Customer access required' });
-      }
-
+    .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
       const { notifications } = await import('../drizzle/schema');
       const { eq, and } = await import('drizzle-orm');
@@ -4024,13 +3496,13 @@ const notificationsRouter = router({
           .set({ isRead: 1 })
           .where(and(
             eq(notifications.id, input.notificationId),
-            eq(notifications.clientId, payload.clientId)
+            eq(notifications.clientId, ctx.portalUser.clientId)
           ));
       } else {
         // Mark all as read for this client
         await db.update(notifications)
           .set({ isRead: 1 })
-          .where(eq(notifications.clientId, payload.clientId));
+          .where(eq(notifications.clientId, ctx.portalUser.clientId));
       }
 
       return { success: true };

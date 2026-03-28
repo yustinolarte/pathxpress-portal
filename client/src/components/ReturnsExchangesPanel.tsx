@@ -16,11 +16,10 @@ import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 
 interface ReturnsExchangesPanelProps {
-    token: string;
     codAllowed?: boolean;
 }
 
-export default function ReturnsExchangesPanel({ token, codAllowed = false }: ReturnsExchangesPanelProps) {
+export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExchangesPanelProps) {
     const [searchWaybill, setSearchWaybill] = useState('');
     const [foundOrder, setFoundOrder] = useState<any>(null);
     const [isSearching, setIsSearching] = useState(false);
@@ -92,10 +91,7 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
     });
 
     // Fetch returns/exchanges for this client
-    const { data: returnsExchanges, isLoading, refetch } = trpc.portal.customer.getMyReturnsExchanges.useQuery(
-        { token },
-        { enabled: !!token }
-    );
+    const { data: returnsExchanges, isLoading, refetch } = trpc.portal.customer.getMyReturnsExchanges.useQuery();
 
     // Search order mutation
     const searchOrderMutation = trpc.portal.customer.searchOrderForReturn.useMutation({
@@ -226,7 +222,6 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             return;
         }
         updateCodMutation.mutate({
-            token,
             orderId: editCodOrder.id,
             codRequired: editCodForm.codRequired,
             codAmount: editCodForm.codRequired ? editCodForm.codAmount : undefined,
@@ -240,13 +235,12 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             return;
         }
         setIsSearching(true);
-        searchOrderMutation.mutate({ token, waybillNumber: searchWaybill.trim() });
+        searchOrderMutation.mutate({ waybillNumber: searchWaybill.trim() });
     };
 
     const handleCreateReturn = () => {
         if (!foundOrder) return;
         createReturnMutation.mutate({
-            token,
             orderId: foundOrder.id,
         });
     };
@@ -258,7 +252,6 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             return;
         }
         createExchangeMutation.mutate({
-            token,
             orderId: foundOrder.id,
             newShipment: {
                 ...exchangeForm,
@@ -299,7 +292,6 @@ export default function ReturnsExchangesPanel({ token, codAllowed = false }: Ret
             }
         }
         createManualMutation.mutate({
-            token,
             ...manualForm,
             pickupPhone: `${manualForm.pickupPhonePrefix} ${manualForm.pickupPhone}`,
             deliveryPhone: `${manualForm.deliveryPhonePrefix} ${manualForm.deliveryPhone}`,
