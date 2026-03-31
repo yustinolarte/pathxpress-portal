@@ -84,14 +84,6 @@ export default function AdminDashboard() {
   const [createClientWizardOpen, setCreateClientWizardOpen] = useState(false);
   const [createOrderDialogOpen, setCreateOrderDialogOpen] = useState(false);
 
-  // Client User Creation State
-  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
-  const [selectedClientForUser, setSelectedClientForUser] = useState<any>(null);
-  const [newUser, setNewUser] = useState({
-    email: '',
-    password: '',
-  });
-
   // Client Notes Dialog State
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [selectedClientForNotes, setSelectedClientForNotes] = useState<any>(null);
@@ -116,43 +108,12 @@ export default function AdminDashboard() {
     },
   });
 
-  const createClientUserMutation = trpc.portal.admin.createCustomerUser.useMutation({
-    onSuccess: () => {
-      toast.success('User login created successfully');
-      setCreateUserDialogOpen(false);
-      setNewUser({ email: '', password: '' });
-      setSelectedClientForUser(null);
-    },
-    onError: (error) => {
-      toast.error(`Failed to create user: ${error.message}`);
-    },
-  });
-
   const handleDeleteClient = (clientId: number) => {
     if (confirm('Are you sure you want to delete this client? This action cannot be undone.')) {
       deleteClientMutation.mutate({
         clientId,
       });
     }
-  };
-
-  const handleCreateUser = () => {
-    if (!newUser.email || !newUser.password) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-    if (newUser.password.length < 8) {
-      toast.error('Password must be at least 8 characters');
-      return;
-    }
-
-    if (!selectedClientForUser) return;
-
-    createClientUserMutation.mutate({
-      clientId: selectedClientForUser.id,
-      email: newUser.email,
-      password: newUser.password,
-    });
   };
 
   // Update client notes mutation
@@ -684,18 +645,6 @@ export default function AdminDashboard() {
                                       className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
                                     >
                                       <StickyNote className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {
-                                        setSelectedClientForUser(client);
-                                        setNewUser({ ...newUser, email: client.billingEmail });
-                                        setCreateUserDialogOpen(true);
-                                      }}
-                                      title="Create Login User"
-                                    >
-                                      <Users className="h-4 w-4" />
                                     </Button>
                                     <Button
                                       variant="ghost"
@@ -1739,62 +1688,6 @@ export default function AdminDashboard() {
             }}
           />
         )}
-
-        {/* Create User Dialog */}
-        <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
-          <DialogContent className="glass-strong !w-[90vw] !max-w-[480px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-            <div className="w-full h-1 bg-gradient-to-r from-violet-600 to-purple-600" />
-            <div className="p-6">
-              <DialogHeader className="mb-6">
-                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-violet-500/20">
-                    <UserPlus className="w-6 h-6 text-violet-400" />
-                  </div>
-                  Create User Login
-                </DialogTitle>
-                <DialogDescription>
-                  Create a login for {selectedClientForUser?.companyName}.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="userEmail">Email Address</Label>
-                  <Input
-                    id="userEmail"
-                    type="email"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    placeholder="user@example.com"
-                    className="bg-white/5 border-white/10"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="userPassword">Password</Label>
-                  <Input
-                    id="userPassword"
-                    type="password"
-                    value={newUser.password}
-                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                    placeholder="Minimum 8 characters"
-                    className="bg-white/5 border-white/10"
-                  />
-                </div>
-              </div>
-              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
-                <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateUser}
-                  disabled={createClientUserMutation.isPending}
-                  className="bg-violet-600 hover:bg-violet-700"
-                >
-                  {createClientUserMutation.isPending ? 'Creating...' : 'Create Login'}
-                </Button>
-              </DialogFooter>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Client Notes Dialog */}
         <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
