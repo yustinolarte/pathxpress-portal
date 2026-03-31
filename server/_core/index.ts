@@ -13,6 +13,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import driverApiRouter from "../driverApi";
+import botRouter from "../botRouter";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -102,6 +103,8 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Driver API (REST endpoints for mobile app)
   app.use("/api/driver", driverApiRouter);
+  // Pathx WhatsApp Bot API (REST endpoints protected by X-Bot-Key header)
+  app.use("/api/bot", botRouter);
   // tRPC API
   app.use(
     "/api/trpc",

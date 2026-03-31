@@ -24,6 +24,7 @@ import DriversSection from '@/components/DriversSection';
 import AdminCreateOrderDialog from '@/components/AdminCreateOrderDialog';
 import EditOrderDialog from '@/components/EditOrderDialog';
 import AdminInternationalShipping from '@/components/AdminInternationalShipping';
+import CreateClientWizard from '@/components/CreateClientWizard';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -80,18 +81,8 @@ export default function AdminDashboard() {
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
 
   // Create client dialog state
-  const [createClientDialogOpen, setCreateClientDialogOpen] = useState(false);
+  const [createClientWizardOpen, setCreateClientWizardOpen] = useState(false);
   const [createOrderDialogOpen, setCreateOrderDialogOpen] = useState(false);
-  const [newClient, setNewClient] = useState({
-    companyName: '',
-    contactName: '',
-    billingEmail: '',
-    phone: '',
-    billingAddress: '',
-    city: '',
-    country: 'UAE',
-    codAllowed: false,
-  });
 
   // Client User Creation State
   const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
@@ -221,6 +212,13 @@ export default function AdminDashboard() {
   // Fetch clients
   const { data: clients, isLoading: clientsLoading, refetch: refetchClients } = trpc.portal.clients.list.useQuery();
 
+  // O(1) client lookup map — avoids O(n²) array.find() per table row
+  const clientsMap = useMemo(() => {
+    const map = new Map<number, { companyName: string }>();
+    clients?.forEach(c => map.set(c.id, { companyName: c.companyName }));
+    return map;
+  }, [clients]);
+
   const { data: rateTiers } = trpc.portal.rates.listTiers.useQuery();
 
   const { data: clientAlerts } = trpc.portal.admin.getClientAlerts.useQuery(
@@ -312,26 +310,6 @@ export default function AdminDashboard() {
     }
   }, [editingClient]);
 
-  const createClientMutation = trpc.portal.admin.createClient.useMutation({
-    onSuccess: () => {
-      toast.success('Client created successfully');
-      setCreateClientDialogOpen(false);
-      setNewClient({
-        companyName: '',
-        contactName: '',
-        billingEmail: '',
-        phone: '',
-        billingAddress: '',
-        city: '',
-        country: 'UAE',
-        codAllowed: false,
-      });
-      refetchClients();
-    },
-    onError: (error) => {
-      toast.error(`Failed to create client: ${error.message}`);
-    },
-  });
 
   // Fetch all orders
   const { data: allOrders, isLoading: ordersLoading, refetch: refetchOrders } = trpc.portal.admin.getAllOrders.useQuery();
@@ -404,17 +382,6 @@ export default function AdminDashboard() {
       return orderSortDirection === 'newest' ? dateB - dateA : dateA - dateB;
     });
   }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterStatuses, orderSortDirection]);
-
-  const handleCreateClient = () => {
-    if (!newClient.companyName || !newClient.contactName || !newClient.billingEmail) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-
-    createClientMutation.mutate({
-      client: newClient,
-    });
-  };
 
   const handleLogout = () => {
     logout();
@@ -609,7 +576,7 @@ export default function AdminDashboard() {
                     <CardTitle>Client Accounts</CardTitle>
                     <CardDescription>Manage all registered client accounts</CardDescription>
                   </div>
-                  <Button onClick={() => setCreateClientDialogOpen(true)}>
+                  <Button onClick={() => setCreateClientWizardOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Add Client
                   </Button>
@@ -983,7 +950,7 @@ export default function AdminDashboard() {
 
                       // Rows
                       orders.forEach(order => {
-                        const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
+                        const clientName = clientsMap.get(order.clientId)?.companyName || 'Unknown Client';
                         const row = [
                           order.waybillNumber,
                           `"${clientName.replace(/"/g, '""')}"`, // Handle commas in name
@@ -1187,7 +1154,7 @@ export default function AdminDashboard() {
                                   </div>
                                 </TableCell>
                                 <TableCell className="font-medium text-primary">
-                                  {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
+                                  {clientsMap.get(order.clientId)?.companyName || 'Unknown'}
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex flex-col">
@@ -1753,135 +1720,12 @@ export default function AdminDashboard() {
           </DialogContent>
         </Dialog>
 
-        {/* Create Client Dialog */}
-        <Dialog open={createClientDialogOpen} onOpenChange={setCreateClientDialogOpen}>
-          <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-            <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
-            <div className="p-6">
-              <DialogHeader className="mb-6">
-                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Building2 className="w-6 h-6 text-blue-400" />
-                  </div>
-                  Add New Client
-                </DialogTitle>
-                <DialogDescription>
-                  Create a new client account for the portal
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="companyName">Company Name *</Label>
-                    <Input
-                      id="companyName"
-                      value={newClient.companyName}
-                      onChange={(e) => setNewClient({ ...newClient, companyName: e.target.value })}
-                      placeholder="Enter company name"
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="contactName">Contact Name *</Label>
-                    <Input
-                      id="contactName"
-                      value={newClient.contactName}
-                      onChange={(e) => setNewClient({ ...newClient, contactName: e.target.value })}
-                      placeholder="Enter contact name"
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="billingEmail">Billing Email *</Label>
-                    <Input
-                      id="billingEmail"
-                      type="email"
-                      value={newClient.billingEmail}
-                      onChange={(e) => setNewClient({ ...newClient, billingEmail: e.target.value })}
-                      placeholder="email@example.com"
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input
-                      id="phone"
-                      value={newClient.phone}
-                      onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
-                      placeholder="+971 XX XXX XXXX"
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="billingAddress">Billing Address</Label>
-                  <Input
-                    id="billingAddress"
-                    value={newClient.billingAddress}
-                    onChange={(e) => setNewClient({ ...newClient, billingAddress: e.target.value })}
-                    placeholder="Enter billing address"
-                    className="bg-white/5 border-white/10"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="city">City</Label>
-                    <Input
-                      id="city"
-                      value={newClient.city}
-                      onChange={(e) => setNewClient({ ...newClient, city: e.target.value })}
-                      placeholder="Enter city"
-                      className="bg-white/5 border-white/10"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="country">Country</Label>
-                    <Select
-                      value={newClient.country}
-                      onValueChange={(value) => setNewClient({ ...newClient, country: value })}
-                    >
-                      <SelectTrigger id="country" className="bg-white/5 border-white/10">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="glass-strong">
-                        <SelectItem value="UAE">United Arab Emirates</SelectItem>
-                        <SelectItem value="Saudi Arabia">Saudi Arabia</SelectItem>
-                        <SelectItem value="Qatar">Qatar</SelectItem>
-                        <SelectItem value="Kuwait">Kuwait</SelectItem>
-                        <SelectItem value="Bahrain">Bahrain</SelectItem>
-                        <SelectItem value="Oman">Oman</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg bg-white/5 border border-white/10">
-                  <Checkbox
-                    id="codAllowed"
-                    checked={newClient.codAllowed}
-                    onCheckedChange={(checked) => setNewClient({ ...newClient, codAllowed: checked as boolean })}
-                  />
-                  <Label htmlFor="codAllowed" className="cursor-pointer">
-                    Allow COD (Cash on Delivery)
-                  </Label>
-                </div>
-              </div>
-              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
-                <Button variant="outline" onClick={() => setCreateClientDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateClient}
-                  disabled={createClientMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {createClientMutation.isPending ? 'Creating...' : 'Create Client'}
-                </Button>
-              </DialogFooter>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Create Client Wizard */}
+        <CreateClientWizard
+          open={createClientWizardOpen}
+          onOpenChange={setCreateClientWizardOpen}
+          onSuccess={refetchClients}
+        />
 
         {/* Add Tracking Event Dialog */}
         {selectedShipmentId && (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { trpc } from '@/lib/trpc';
@@ -126,28 +126,33 @@ export default function CustomerDashboard() {
   // Fetch client account settings (for FOD, COD permissions)
   const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery();
 
-  // Filtered orders based on status and date, sorted newest first
-  const filteredOrders = orders?.filter((order: any) => {
-    let matchesStatus = true;
-    let matchesDate = true;
+  // Filtered orders based on status and date, sorted newest first — memoized to avoid recomputing on every render
+  const filteredOrders = useMemo(() => {
+    if (!orders) return undefined;
+    return orders
+      .filter((order: any) => {
+        let matchesStatus = true;
+        let matchesDate = true;
 
-    if (filterStatus.length > 0) {
-      matchesStatus = filterStatus.includes(order.status);
-    }
+        if (filterStatus.length > 0) {
+          matchesStatus = filterStatus.includes(order.status);
+        }
 
-    if (filterDateFrom && filterDateTo) {
-      const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
-      matchesDate = orderDate >= filterDateFrom && orderDate <= filterDateTo;
-    } else if (filterDateFrom) {
-      const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
-      matchesDate = orderDate >= filterDateFrom;
-    } else if (filterDateTo) {
-      const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
-      matchesDate = orderDate <= filterDateTo;
-    }
+        if (filterDateFrom && filterDateTo) {
+          const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
+          matchesDate = orderDate >= filterDateFrom && orderDate <= filterDateTo;
+        } else if (filterDateFrom) {
+          const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
+          matchesDate = orderDate >= filterDateFrom;
+        } else if (filterDateTo) {
+          const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
+          matchesDate = orderDate <= filterDateTo;
+        }
 
-    return matchesStatus && matchesDate;
-  })?.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return matchesStatus && matchesDate;
+      })
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [orders, filterStatus, filterDateFrom, filterDateTo]);
 
   const toggleStatusFilter = (status: string) => {
     setFilterStatus(prev =>

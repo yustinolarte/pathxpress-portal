@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, index } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -96,7 +96,9 @@ export const portalUsers = mysqlTable("portalUsers", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn"),
-});
+}, (table) => ({
+  clientIdIdx: index("portalUsers_clientId_idx").on(table.clientId),
+}));
 
 export type PortalUser = typeof portalUsers.$inferSelect;
 export type InsertPortalUser = typeof portalUsers.$inferInsert;
@@ -157,6 +159,13 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   intlDiscountPercent: varchar("intlDiscountPercent", { length: 10 }), // e.g., "10" = 10% discount on all intl rates
 
   notes: text("notes"),
+
+  // WhatsApp Bot integration fields
+  whatsappNumber: varchar("whatsappNumber", { length: 30 }),       // Client's WhatsApp number (e.g. "971501234567")
+  bulletCutoffTime: varchar("bulletCutoffTime", { length: 5 }),    // Bullet Service cut-off in Dubai time, e.g. "14:00"
+  sdCutoffTime: varchar("sdCutoffTime", { length: 5 }),            // Same-day cut-off in Dubai time, e.g. "12:00"
+  paymentLink: varchar("paymentLink", { length: 512 }),            // Direct payment URL for invoice reminders
+
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -254,7 +263,11 @@ export const orders = mysqlTable("orders", {
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  clientIdIdx: index("orders_clientId_idx").on(table.clientId),
+  statusIdx: index("orders_status_idx").on(table.status),
+  createdAtIdx: index("orders_createdAt_idx").on(table.createdAt),
+}));
 
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
@@ -273,7 +286,9 @@ export const trackingEvents = mysqlTable("trackingEvents", {
   podFileUrl: varchar("podFileUrl", { length: 500 }), // Proof of Delivery file URL
   createdBy: varchar("createdBy", { length: 50 }).default("system").notNull(), // system or admin
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  shipmentIdIdx: index("trackingEvents_shipmentId_idx").on(table.shipmentId),
+}));
 
 export type TrackingEvent = typeof trackingEvents.$inferSelect;
 export type InsertTrackingEvent = typeof trackingEvents.$inferInsert;
@@ -309,7 +324,7 @@ export type InsertRateTable = typeof rateTables.$inferInsert;
  */
 export const invoices = mysqlTable("invoices", {
   id: int("id").autoincrement().primaryKey(),
-  clientId: int("clientId").notNull(), // Foreign key to clientAccounts
+  clientId: int("clientId").notNull(), // Foreign key to clientAccounts (index below)
   invoiceNumber: varchar("invoiceNumber", { length: 100 }).notNull().unique(),
   periodFrom: timestamp("periodFrom").notNull(),
   periodTo: timestamp("periodTo").notNull(),
@@ -331,7 +346,10 @@ export const invoices = mysqlTable("invoices", {
   lastAdjustedAt: timestamp("lastAdjustedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  clientIdIdx: index("invoices_clientId_idx").on(table.clientId),
+  statusIdx: index("invoices_status_idx").on(table.status),
+}));
 
 export type Invoice = typeof invoices.$inferSelect;
 export type InsertInvoice = typeof invoices.$inferInsert;
@@ -348,7 +366,10 @@ export const invoiceItems = mysqlTable("invoiceItems", {
   unitPrice: varchar("unitPrice", { length: 50 }).notNull(),
   total: varchar("total", { length: 50 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  invoiceIdIdx: index("invoiceItems_invoiceId_idx").on(table.invoiceId),
+  shipmentIdIdx: index("invoiceItems_shipmentId_idx").on(table.shipmentId),
+}));
 
 export type InvoiceItem = typeof invoiceItems.$inferSelect;
 export type InsertInvoiceItem = typeof invoiceItems.$inferInsert;
@@ -367,7 +388,10 @@ export const codRecords = mysqlTable("codRecords", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  shipmentIdIdx: index("codRecords_shipmentId_idx").on(table.shipmentId),
+  statusIdx: index("codRecords_status_idx").on(table.status),
+}));
 
 export type CODRecord = typeof codRecords.$inferSelect;
 export type InsertCODRecord = typeof codRecords.$inferInsert;
@@ -393,7 +417,9 @@ export const codRemittances = mysqlTable("codRemittances", {
   createdBy: int("createdBy").notNull(), // Admin user ID
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  clientIdIdx: index("codRemittances_clientId_idx").on(table.clientId),
+}));
 
 export type CODRemittance = typeof codRemittances.$inferSelect;
 export type InsertCODRemittance = typeof codRemittances.$inferInsert;
@@ -481,7 +507,9 @@ export const savedShippers = mysqlTable("savedShippers", {
   shipperPhone: varchar("shipperPhone", { length: 50 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  clientIdIdx: index("savedShippers_clientId_idx").on(table.clientId),
+}));
 
 export type SavedShipper = typeof savedShippers.$inferSelect;
 export type InsertSavedShipper = typeof savedShippers.$inferInsert;
@@ -539,7 +567,9 @@ export const driverRoutes = mysqlTable("driverRoutes", {
   status: mysqlEnum("status", ["pending", "in_progress", "completed", "cancelled"]).default("pending").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => ({
+  driverIdIdx: index("driverRoutes_driverId_idx").on(table.driverId),
+}));
 
 export type DriverRoute = typeof driverRoutes.$inferSelect;
 export type InsertDriverRoute = typeof driverRoutes.$inferInsert;
@@ -561,7 +591,10 @@ export const routeOrders = mysqlTable("routeOrders", {
   pickedUpAt: timestamp("pickedUpAt"), // For pickup stops
   collectedAmount: varchar("collectedAmount", { length: 50 }), // Actual amount collected by driver
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  routeIdIdx: index("routeOrders_routeId_idx").on(table.routeId),
+  orderIdIdx: index("routeOrders_orderId_idx").on(table.orderId),
+}));
 
 export type RouteOrder = typeof routeOrders.$inferSelect;
 export type InsertRouteOrder = typeof routeOrders.$inferInsert;
@@ -653,7 +686,9 @@ export const notifications = mysqlTable("notifications", {
   link: varchar("link", { length: 255 }), // Optional deep link (e.g., "orders" or "invoices")
   isRead: int("isRead").default(0).notNull(), // 0 = unread, 1 = read
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  clientIdIdx: index("notifications_clientId_idx").on(table.clientId),
+}));
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;

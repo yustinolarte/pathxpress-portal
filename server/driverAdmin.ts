@@ -322,39 +322,24 @@ export async function createDriverRoute(data: {
         status: 'pending',
     });
 
-    // Add orders to route if provided
+    // Add orders to route if provided — batch insert instead of loop
     if (data.orderIds && data.orderIds.length > 0) {
+        const stopsToInsert: { routeId: string; orderId: number; sequence: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
         let sequence = 1;
 
         for (const orderId of data.orderIds) {
-            // Get the order
-            const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-
             if (stopMode === 'pickup_only' || stopMode === 'both') {
-                // Create PICKUP stop
-                await db.insert(routeOrders).values({
-                    routeId: data.id,
-                    orderId: orderId,
-                    sequence: sequence,
-                    type: 'pickup',
-                    status: 'pending',
-                });
+                stopsToInsert.push({ routeId: data.id, orderId, sequence, type: 'pickup', status: 'pending' });
                 sequence++;
             }
-
             if (stopMode === 'delivery_only' || stopMode === 'both') {
-                // Create DELIVERY stop
-                await db.insert(routeOrders).values({
-                    routeId: data.id,
-                    orderId: orderId,
-                    sequence: sequence,
-                    type: 'delivery',
-                    status: 'pending',
-                });
+                stopsToInsert.push({ routeId: data.id, orderId, sequence, type: 'delivery', status: 'pending' });
                 sequence++;
             }
+        }
 
-            console.log(`Order ${orderId}: stopMode="${stopMode}" -> created ${stopMode === 'both' ? 'pickup + delivery' : stopMode} stops`);
+        if (stopsToInsert.length > 0) {
+            await db.insert(routeOrders).values(stopsToInsert);
         }
     }
 
@@ -397,59 +382,35 @@ export async function addOrdersToRoute(
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    // Get current max sequence
-    const existing = await db.select().from(routeOrders).where(eq(routeOrders.routeId, routeId));
+    // Get current max sequence and existing order IDs in one query
+    const existing = await db.select({ orderId: routeOrders.orderId }).from(routeOrders).where(eq(routeOrders.routeId, routeId));
     let maxSeq = existing.length;
-    let addedCount = 0;
-    let totalStopsCreated = 0;
+    const existingOrderIds = new Set(existing.map(r => r.orderId));
+
+    const stopsToInsert: { routeId: string; orderId: number; sequence: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
 
     for (const orderData of ordersList) {
         const orderId = orderData.id;
         const stopMode = orderData.mode;
 
-        // Check if already in route (check if this order already has any stops in this route)
-        const [existingStop] = await db
-            .select()
-            .from(routeOrders)
-            .where(and(eq(routeOrders.routeId, routeId), eq(routeOrders.orderId, orderId)))
-            .limit(1);
-
-        if (!existingStop) {
-            // Get the order
-            const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
-
+        if (!existingOrderIds.has(orderId)) {
             if (stopMode === 'pickup_only' || stopMode === 'both') {
-                // Create PICKUP stop
                 maxSeq++;
-                await db.insert(routeOrders).values({
-                    routeId,
-                    orderId,
-                    sequence: maxSeq,
-                    type: 'pickup',
-                    status: 'pending',
-                });
-                totalStopsCreated++;
+                stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'pickup', status: 'pending' });
             }
-
             if (stopMode === 'delivery_only' || stopMode === 'both') {
-                // Create DELIVERY stop
                 maxSeq++;
-                await db.insert(routeOrders).values({
-                    routeId,
-                    orderId,
-                    sequence: maxSeq,
-                    type: 'delivery',
-                    status: 'pending',
-                });
-                totalStopsCreated++;
+                stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'delivery', status: 'pending' });
             }
-
-            addedCount++;
-            console.log(`Order ${orderId}: stopMode="${stopMode}" -> created stops`);
         }
     }
 
-    return { success: true, added: addedCount, stopsCreated: totalStopsCreated };
+    if (stopsToInsert.length > 0) {
+        await db.insert(routeOrders).values(stopsToInsert);
+    }
+
+    const addedCount = new Set(stopsToInsert.map(s => s.orderId)).size;
+    return { success: true, added: addedCount, stopsCreated: stopsToInsert.length };
 }
 
 // ============ DELIVERIES ============

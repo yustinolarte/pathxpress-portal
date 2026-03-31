@@ -13,7 +13,14 @@ import "./index.css";
 localStorage.removeItem('pathxpress_portal_token');
 localStorage.removeItem('pathxpress_portal_user');
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutos — evita refetch en cada foco de ventana
+      retry: 1,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;

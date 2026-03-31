@@ -141,6 +141,20 @@
       "when": 1773590297981,
       "tag": "0019_third_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1774806474354,
+      "tag": "0020_nice_scourge",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1774973848567,
+      "tag": "0021_sharp_sebastian_shaw",
+      "breakpoints": true
     }
   ]
 }

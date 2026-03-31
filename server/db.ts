@@ -1,4 +1,5 @@
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
+import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
 import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier } from "../drizzle/schema";
@@ -14,7 +15,7 @@ export async function getDb() {
       const pool = mysql.createPool({
         uri: process.env.DATABASE_URL,
         waitForConnections: true,
-        connectionLimit: 5,
+        connectionLimit: 15,
         queueLimit: 0,
         enableKeepAlive: true,
         keepAliveInitialDelay: 10000, // 10s keepalive
@@ -362,11 +363,17 @@ export async function getAllClientAccounts(): Promise<ClientAccount[]> {
   if (!db) return [];
 
   try {
-    return await db.select().from(clientAccounts).orderBy(clientAccounts.companyName);
+    return await cachedQuery('all_client_accounts', 5 * 60, () =>
+      db!.select().from(clientAccounts).orderBy(clientAccounts.companyName)
+    );
   } catch (error) {
     console.error("[Database] Failed to get client accounts:", error);
     return [];
   }
+}
+
+export function invalidateClientAccountsCache() {
+  cacheInvalidate('all_client_accounts');
 }
 
 export async function getClientAccountById(id: number): Promise<ClientAccount | null> {
@@ -533,18 +540,16 @@ export async function updateOrder(
     const { invoiceItems, codRecords } = await import("../drizzle/schema");
     const { eq, and } = await import("drizzle-orm");
 
-    // 1. Check if order exists
-    const existingOrder = await getOrderById(orderId);
+    // 1. Fetch order, invoice check, and COD record in parallel
+    const [existingOrder, invoicedItems, existingCodRecords] = await Promise.all([
+      getOrderById(orderId),
+      db.select().from(invoiceItems).where(eq(invoiceItems.shipmentId, orderId)).limit(1),
+      db.select().from(codRecords).where(eq(codRecords.shipmentId, orderId)).limit(1),
+    ]);
+
     if (!existingOrder) {
       return { success: false, error: "Order not found" };
     }
-
-    // 2. Check if order is already invoiced
-    const invoicedItems = await db
-      .select()
-      .from(invoiceItems)
-      .where(eq(invoiceItems.shipmentId, orderId))
-      .limit(1);
 
     if (invoicedItems.length > 0) {
       return {
@@ -553,16 +558,10 @@ export async function updateOrder(
       };
     }
 
-    // 3. Handle COD changes
+    // 2. Handle COD changes
     const oldCodRequired = existingOrder.codRequired === 1;
     const newCodRequired = updates.codRequired !== undefined ? updates.codRequired === 1 : oldCodRequired;
 
-    // Get existing COD record
-    const existingCodRecords = await db
-      .select()
-      .from(codRecords)
-      .where(eq(codRecords.shipmentId, orderId))
-      .limit(1);
     const existingCodRecord = existingCodRecords[0];
 
     // Case A: COD was enabled, now disabled -> Cancel COD record
@@ -1304,22 +1303,23 @@ export async function createCODRemittance(data: {
 
   const remittanceId = remittance.insertId;
 
-  // Link COD records to remittance
-  for (const codRecordId of data.codRecordIds) {
-    const [codRecord] = await db.select().from(codRecords).where(eq(codRecords.id, codRecordId)).limit(1);
+  // Link COD records to remittance — batch instead of N+1 loop
+  const allCodRecords = await db.select().from(codRecords).where(inArray(codRecords.id, data.codRecordIds));
 
-    if (codRecord) {
-      await db.insert(codRemittanceItems).values({
+  if (allCodRecords.length > 0) {
+    await db.insert(codRemittanceItems).values(
+      allCodRecords.map(codRecord => ({
         remittanceId,
-        codRecordId,
+        codRecordId: codRecord.id,
         shipmentId: codRecord.shipmentId,
         amount: codRecord.codAmount,
         currency: codRecord.codCurrency,
-      });
+      }))
+    );
 
-      // Update COD record status
-      await db.update(codRecords).set({ status: 'remitted', remittedToClientDate: new Date() }).where(eq(codRecords.id, codRecordId));
-    }
+    await db.update(codRecords)
+      .set({ status: 'remitted', remittedToClientDate: new Date() })
+      .where(inArray(codRecords.id, allCodRecords.map(r => r.id)));
   }
 
   return remittanceId;
@@ -1443,18 +1443,22 @@ export async function getCODSummaryGlobal() {
   const db = await getDb();
   if (!db) return { pending: '0', collected: '0', remitted: '0', total: '0' };
 
-  const records = await db.select().from(codRecords);
+  // Aggregate in SQL — avoids loading the entire table into memory
+  const rows = await db
+    .select({
+      status: codRecords.status,
+      total: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`,
+    })
+    .from(codRecords)
+    .groupBy(codRecords.status);
 
-  let pending = 0;
-  let collected = 0;
-  let remitted = 0;
-
-  records.forEach(r => {
-    const amount = parseFloat(r.codAmount);
-    if (r.status === 'pending_collection') pending += amount;
-    else if (r.status === 'collected') collected += amount;
-    else if (r.status === 'remitted') remitted += amount;
-  });
+  let pending = 0, collected = 0, remitted = 0;
+  for (const row of rows) {
+    const amount = parseFloat(row.total);
+    if (row.status === 'pending_collection') pending = amount;
+    else if (row.status === 'collected') collected = amount;
+    else if (row.status === 'remitted') remitted = amount;
+  }
 
   return {
     pending: pending.toFixed(2),
@@ -1758,11 +1762,9 @@ export async function getAllRateTiers(): Promise<RateTier[]> {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
-    .select()
-    .from(rateTiers)
-    .where(eq(rateTiers.isActive, 1))
-    .orderBy(rateTiers.serviceType, rateTiers.minVolume);
+  return await cachedQuery('all_rate_tiers', 60 * 60, () =>
+    db!.select().from(rateTiers).where(eq(rateTiers.isActive, 1)).orderBy(rateTiers.serviceType, rateTiers.minVolume)
+  );
 }
 
 /**

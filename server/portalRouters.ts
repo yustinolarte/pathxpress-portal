@@ -50,8 +50,10 @@ import {
   calculateCODFee,
   getAllRateTiers,
   createNotification,
+  invalidateClientAccountsCache,
 } from './db';
 import { driverRouter } from './driverRouter';
+import { notifyAdminNewOrder } from './_core/mailer';
 
 /**
  * Portal authentication router
@@ -212,6 +214,7 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create client' });
       }
 
+      invalidateClientAccountsCache();
       return client;
     }),
 
@@ -323,6 +326,7 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
       }
 
+      invalidateClientAccountsCache();
       return { success: true };
     }),
 
@@ -1594,6 +1598,11 @@ export const customerPortalRouter = router({
         console.warn('⚠️ Failed to notify Bot:', error.message);
       }
 
+      // Email notification to admin (fire-and-forget, never blocks order creation)
+      notifyAdminNewOrder(waybillNumber, input.shipment.customerName, input.shipment.customerPhone || '').catch((e: any) => {
+        console.warn('⚠️ Email notification unhandled error:', e.message);
+      });
+
       return order;
     }),
 
@@ -1651,16 +1660,12 @@ export const customerPortalRouter = router({
       const { eq } = await import('drizzle-orm');
 
       try {
-        // Delete related tracking events
-        await db.delete(trackingEvents).where(eq(trackingEvents.shipmentId, input.orderId));
-
-        // Delete related COD records
-        await db.delete(codRecords).where(eq(codRecords.shipmentId, input.orderId));
-
-        // Delete related invoice items
-        await db.delete(invoiceItems).where(eq(invoiceItems.shipmentId, input.orderId));
-
-        // Delete the order itself
+        // Delete related records in parallel, then delete the order
+        await Promise.all([
+          db.delete(trackingEvents).where(eq(trackingEvents.shipmentId, input.orderId)),
+          db.delete(codRecords).where(eq(codRecords.shipmentId, input.orderId)),
+          db.delete(invoiceItems).where(eq(invoiceItems.shipmentId, input.orderId)),
+        ]);
         await db.delete(orders).where(eq(orders.id, input.orderId));
 
         return { success: true, message: 'Order deleted successfully' };
@@ -1679,7 +1684,7 @@ export const customerPortalRouter = router({
       }
 
       const { orders } = await import('../drizzle/schema');
-      const { eq, and, or, desc } = await import('drizzle-orm');
+      const { eq, and, or, desc, inArray } = await import('drizzle-orm');
 
       // Get all returns and exchanges for this client
       const returnsExchanges = await db
@@ -1698,28 +1703,25 @@ export const customerPortalRouter = router({
       const client = await getClientAccountById(ctx.portalUser.clientId);
       const hideAddress = client?.hideShipperAddress === 1;
 
-      // Get original waybill numbers and set privacy flags
-      const result = await Promise.all(returnsExchanges.map(async (order) => {
-        let originalWaybill = null;
-        if (order.originalOrderId) {
-          const original = await getOrderById(order.originalOrderId);
-          originalWaybill = original?.waybillNumber;
-        }
+      // Batch load all related orders in one query instead of N+1
+      const relatedIds = [
+        ...returnsExchanges.map(o => o.originalOrderId).filter((id): id is number => id != null),
+        ...returnsExchanges.map(o => o.exchangeOrderId).filter((id): id is number => id != null),
+      ];
+      const relatedOrdersMap = new Map<number, { waybillNumber: string }>();
+      if (relatedIds.length > 0) {
+        const relatedOrders = await db
+          .select({ id: orders.id, waybillNumber: orders.waybillNumber })
+          .from(orders)
+          .where(inArray(orders.id, relatedIds));
+        relatedOrders.forEach(o => relatedOrdersMap.set(o.id, { waybillNumber: o.waybillNumber }));
+      }
 
-        let exchangeWaybill = null;
-        if (order.exchangeOrderId) {
-          const exchangeOrder = await getOrderById(order.exchangeOrderId);
-          exchangeWaybill = exchangeOrder?.waybillNumber;
-        }
-
-        return {
-          ...order,
-          // For returns/exchanges: shipper is the end customer (returning the package), never hide their address
-          // Only hide the consignee (merchant) address based on current setting
-          hideConsigneeAddress: hideAddress ? 1 : 0,
-          originalWaybill,
-          exchangeWaybill
-        };
+      const result = returnsExchanges.map((order) => ({
+        ...order,
+        hideConsigneeAddress: hideAddress ? 1 : 0,
+        originalWaybill: order.originalOrderId ? (relatedOrdersMap.get(order.originalOrderId)?.waybillNumber ?? null) : null,
+        exchangeWaybill: order.exchangeOrderId ? (relatedOrdersMap.get(order.exchangeOrderId)?.waybillNumber ?? null) : null,
       }));
 
       return result;

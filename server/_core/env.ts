@@ -7,4 +7,7 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  emailUser: process.env.EMAIL_USER ?? "",
+  emailAppPassword: process.env.EMAIL_APP_PASSWORD ?? "",
+  botApiKey: process.env.BOT_API_KEY ?? "",  // Shared secret for Pathx WhatsApp bot
 };
