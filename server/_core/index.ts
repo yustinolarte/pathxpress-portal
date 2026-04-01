@@ -14,6 +14,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import driverApiRouter from "../driverApi";
 import botRouter from "../botRouter";
+import shopifyIntegrationRouter from "../shopifyIntegrationApi";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -105,6 +106,8 @@ async function startServer() {
   app.use("/api/driver", driverApiRouter);
   // Pathx WhatsApp Bot API (REST endpoints protected by X-Bot-Key header)
   app.use("/api/bot", botRouter);
+  // Shopify Integration API (server-to-server, Bearer token auth)
+  app.use("/api/shopify", shopifyIntegrationRouter);
   // tRPC API
   app.use(
     "/api/trpc",
