@@ -1,7 +1,7 @@
 /**
  * REST API for Shopify integration (server-to-server)
  * Mounted at /api/shopify
- *
+ * Version: 1.0.1
  * Auth: Bearer token via SHOPIFY_INTEGRATION_SECRET env var
  * This avoids the cookie-based auth used by the tRPC portal endpoints,
  * which is not usable from external servers.
