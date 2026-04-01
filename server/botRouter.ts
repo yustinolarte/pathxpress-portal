@@ -134,9 +134,11 @@ router.put('/orders/:waybill/cod', async (req: Request, res: Response) => {
       });
     }
 
+    const amount = parseFloat(String(codAmount));
     const result = await updateOrder(order.id, {
       codAmount: String(codAmount),
       codCurrency: codCurrency ?? order.codCurrency ?? 'AED',
+      codRequired: amount > 0 ? 1 : 0,
     });
 
     if (!result.success) {

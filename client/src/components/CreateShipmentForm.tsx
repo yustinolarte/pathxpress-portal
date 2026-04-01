@@ -3,6 +3,8 @@ import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Save } from 'lucide-react';
 
 export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => void }) {
   const { user } = usePortalAuth();
@@ -50,11 +52,36 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
   const [calculatedRate, setCalculatedRate] = useState<any>(null);
   const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+  const [showSaveShipperDialog, setShowSaveShipperDialog] = useState(false);
+  const [shipperNickname, setShipperNickname] = useState('');
 
   // Fetch client settings
   const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery();
 
-  const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery();
+  const { data: savedShippers = [], refetch: refetchShippers } = trpc.portal.customer.getSavedShippers.useQuery();
+
+  const createShipperMutation = trpc.portal.customer.createSavedShipper.useMutation({
+    onSuccess: () => {
+      toast.success('Shipper information saved!');
+      setShowSaveShipperDialog(false);
+      setShipperNickname('');
+      refetchShippers();
+    },
+    onError: (err) => toast.error(err.message || 'Failed to save shipper')
+  });
+
+  const handleSaveShipper = () => {
+    if (!shipperNickname.trim()) return toast.error('Please enter a nickname');
+    const shipperAddress = [formData.shipperBuilding, formData.shipperApt ? `Apt ${formData.shipperApt}` : '', formData.shipperStreet, formData.shipperArea].filter(Boolean).join(', ');
+    createShipperMutation.mutate({
+      nickname: shipperNickname,
+      shipperName: formData.shipperName,
+      shipperAddress: shipperAddress,
+      shipperCity: formData.shipperCity,
+      shipperCountry: formData.shipperCountry,
+      shipperPhone: `${formData.shipperPhonePrefix} ${formData.shipperPhone}`,
+    });
+  };
 
   const handleLoadShipper = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const shipperId = e.target.value;
@@ -222,14 +249,36 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                 <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>outbox</span>
                 <h2 className="font-bold">Shipper Details</h2>
               </div>
-              {savedShippers.length > 0 && (
-                <select className={`${inputClass} !w-auto !py-1 !px-2 !h-8 text-xs font-bold bg-background text-primary border-primary`} defaultValue="" onChange={handleLoadShipper}>
-                    <option value="" disabled>Load Saved Address...</option>
-                    {savedShippers.map((shipper: any) => (
-                      <option key={shipper.id} value={shipper.id.toString()}>{shipper.nickname}</option>
-                    ))}
-                </select>
-              )}
+              <div className="flex items-center gap-2">
+                {savedShippers.length > 0 && (
+                  <select className={`${inputClass} !w-auto !py-1 !px-2 !h-8 text-xs font-bold bg-background text-primary border-primary`} defaultValue="" onChange={handleLoadShipper}>
+                      <option value="" disabled>Load Saved Address...</option>
+                      {savedShippers.map((shipper: any) => (
+                        <option key={shipper.id} value={shipper.id.toString()}>{shipper.nickname}</option>
+                      ))}
+                  </select>
+                )}
+                <Dialog open={showSaveShipperDialog} onOpenChange={setShowSaveShipperDialog}>
+                  <DialogTrigger asChild>
+                    <button type="button" className="flex items-center gap-1 px-3 py-1 text-xs font-bold border border-border rounded-lg bg-background hover:bg-muted transition-colors">
+                      <Save className="h-3 w-3" /> Save
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader><DialogTitle>Save Shipper</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Nickname *</label>
+                        <input className={inputClass} value={shipperNickname} onChange={e => setShipperNickname(e.target.value)} placeholder="e.g. Main Warehouse" />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 mt-4">
+                      <button type="button" className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted" onClick={() => setShowSaveShipperDialog(false)}>Cancel</button>
+                      <button type="button" className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg font-bold hover:opacity-90" onClick={handleSaveShipper}>Save</button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
