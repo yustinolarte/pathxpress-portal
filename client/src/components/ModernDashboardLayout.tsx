@@ -374,9 +374,9 @@ export default function ModernDashboardLayout({
                 </header>
 
                 {/* Dashboard Body */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-8 relative">
+                <div className="flex-1 overflow-y-auto p-4 relative">
                     <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center opacity-[0.03] pointer-events-none mix-blend-overlay" />
-                    <div className="relative z-10 w-full max-w-[1600px] mx-auto min-h-full">
+                    <div className="relative z-10 w-full max-w-[1920px] mx-auto min-h-full">
                         {children}
                     </div>
                 </div>

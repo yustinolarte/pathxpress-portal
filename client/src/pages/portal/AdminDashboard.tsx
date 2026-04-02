@@ -400,7 +400,7 @@ export default function AdminDashboard() {
       title="Admin Portal"
       onCreateShipment={() => setCreateOrderDialogOpen(true)}
     >
-      <div className="min-h-full p-4 space-y-6">
+      <div className="min-h-full p-2 space-y-6">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           {/* Overview Tab */}
