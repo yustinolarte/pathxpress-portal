@@ -35,7 +35,7 @@ import { Textarea } from '@/components/ui/textarea';
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout, loading } = usePortalAuth();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('analytics');
 
   const ALL_STATUSES = [
     'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
@@ -361,8 +361,7 @@ export default function AdminDashboard() {
   };
 
   const menuItems: ModernMenuItem[] = [
-    { icon: 'dashboard', label: 'Overview', value: 'overview' },
-    { icon: 'bar_chart', label: 'Analytics', value: 'analytics' },
+    { icon: 'dashboard', label: 'Overview', value: 'analytics' },
     { icon: 'group', label: 'Clients', value: 'clients' },
     { icon: 'package_2', label: 'All Orders', value: 'orders' },
     { icon: 'local_shipping', label: 'Drivers', value: 'drivers' },
@@ -403,57 +402,9 @@ export default function AdminDashboard() {
       <div className="min-h-full p-2 space-y-6">
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4 mt-0">
-            <h2 className="text-2xl font-bold">Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
-                    <span className="material-symbols-outlined">group</span>
-                  </div>
-                  <span className="text-xs font-bold text-muted-foreground">All time</span>
-                </div>
-                <p className="text-muted-foreground text-sm font-medium">Total Clients</p>
-                <h3 className="text-2xl font-bold mt-1">{stats.totalClients}</h3>
-                <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(stats.totalClients, 100)}%` }}></div>
-                </div>
-              </div>
-              <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="p-2.5 bg-blue-500/10 rounded-lg text-blue-500">
-                    <span className="material-symbols-outlined">package_2</span>
-                  </div>
-                  <span className="text-xs font-bold text-muted-foreground">All time</span>
-                </div>
-                <p className="text-muted-foreground text-sm font-medium">Total Orders</p>
-                <h3 className="text-2xl font-bold mt-1">{stats.totalOrders}</h3>
-                <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min((stats.totalOrders / Math.max(stats.totalOrders, 1)) * 100, 100)}%` }}></div>
-                </div>
-              </div>
-              <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="p-2.5 bg-green-500/10 rounded-lg text-green-500">
-                    <span className="material-symbols-outlined">local_shipping</span>
-                  </div>
-                  <span className="text-xs font-bold text-muted-foreground">
-                    {stats.totalOrders > 0 ? `${Math.round((stats.activeOrders / stats.totalOrders) * 100)}% of total` : 'No orders'}
-                  </span>
-                </div>
-                <p className="text-muted-foreground text-sm font-medium">Active Orders</p>
-                <h3 className="text-2xl font-bold mt-1">{stats.activeOrders}</h3>
-                <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-green-500 rounded-full" style={{ width: `${stats.totalOrders > 0 ? (stats.activeOrders / stats.totalOrders) * 100 : 0}%` }}></div>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Analytics Tab */}
+          {/* Overview + Analytics Tab */}
           <TabsContent value="analytics" className="space-y-4 mt-0">
-            <AdminAnalytics />
+            <AdminAnalytics totalClients={stats.totalClients} totalOrders={stats.totalOrders} activeOrders={stats.activeOrders} />
           </TabsContent>
 
           {/* Clients Tab */}
@@ -933,13 +884,13 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {/* Filters */}
-                <div className="flex flex-wrap gap-4 mb-6 p-4 bg-muted/30 rounded-lg border border-border/50">
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="text-sm font-medium mb-2 block">Filter by Client</label>
+                <div className="bg-card p-4 rounded-2xl border border-primary/10 flex flex-wrap items-center shadow-xl shadow-primary/5 gap-4 mb-6">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Client</span>
                     <select
                       value={orderFilterClientId}
                       onChange={(e) => setOrderFilterClientId(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                      className="h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground min-w-[160px]"
                     >
                       <option value="all">All Clients</option>
                       {clients?.map((client) => (
@@ -949,36 +900,38 @@ export default function AdminDashboard() {
                       ))}
                     </select>
                   </div>
-                  <div className="flex-1 min-w-[180px]">
-                    <label className="text-sm font-medium mb-2 block">From Date</label>
-                    <input
-                      type="date"
-                      value={orderFilterDateFrom}
-                      onChange={(e) => setOrderFilterDateFrom(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                    />
+                  <div className="hidden md:block h-8 w-[1px] bg-border"></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date range</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={orderFilterDateFrom}
+                        onChange={(e) => setOrderFilterDateFrom(e.target.value)}
+                        className="w-[140px] h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground"
+                      />
+                      <span className="text-muted-foreground text-sm">to</span>
+                      <input
+                        type="date"
+                        value={orderFilterDateTo}
+                        onChange={(e) => setOrderFilterDateTo(e.target.value)}
+                        className="w-[140px] h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground"
+                      />
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-[180px]">
-                    <label className="text-sm font-medium mb-2 block">To Date</label>
-                    <input
-                      type="date"
-                      value={orderFilterDateTo}
-                      onChange={(e) => setOrderFilterDateTo(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                    />
-                  </div>
-                  <div className="flex-1 min-w-[180px]">
-                    <label className="text-sm font-medium mb-2 block">Status</label>
+                  <div className="hidden md:block h-8 w-[1px] bg-border"></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="outline" className="w-full justify-between h-10 px-3 font-normal text-left overflow-hidden">
+                        <button className="w-[180px] h-9 border border-border rounded-lg bg-background font-medium text-foreground text-sm px-3 flex items-center justify-between hover:bg-muted/50 transition-colors">
                           <span className="truncate">
                             {orderFilterStatuses.length === ALL_STATUSES.length
                               ? "All Statuses"
                               : `${orderFilterStatuses.length} Selected`}
                           </span>
-                          <Filter className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
+                          <Filter className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-56" align="start">
                         <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
@@ -1004,19 +957,21 @@ export default function AdminDashboard() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <div className="flex-1 min-w-[180px]">
-                    <label className="text-sm font-medium mb-2 block">Sort By</label>
+                  <div className="hidden md:block h-8 w-[1px] bg-border"></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Sort</span>
                     <select
                       value={orderSortDirection}
                       onChange={(e) => setOrderSortDirection(e.target.value as 'newest' | 'oldest')}
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                      className="h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground"
                     >
                       <option value="newest">Newest First</option>
                       <option value="oldest">Oldest First</option>
                     </select>
                   </div>
                   {(orderFilterClientId !== 'all' || orderFilterDateFrom || orderFilterDateTo || orderFilterStatuses.length !== ALL_STATUSES.length) && (
-                    <div className="flex items-end">
+                    <>
+                      <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                       <button
                         onClick={() => {
                           setOrderFilterClientId('all');
@@ -1024,11 +979,11 @@ export default function AdminDashboard() {
                           setOrderFilterDateTo('');
                           setOrderFilterStatuses(ALL_STATUSES);
                         }}
-                        className="h-10 px-4 rounded-md border border-input bg-background hover:bg-accent"
+                        className="h-9 px-4 rounded-lg border border-border bg-background hover:bg-muted/50 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
                         Clear Filters
                       </button>
-                    </div>
+                    </>
                   )}
                 </div>
 

@@ -57,19 +57,19 @@ function getCityCode(city: string): string {
   return city.substring(0, 3).toUpperCase();
 }
 
-// Function to load image and convert to base64
-async function loadImageAsBase64(url: string): Promise<string> {
+// Function to load image and convert to base64, returning natural dimensions
+async function loadImageAsBase64(url: string): Promise<{ data: string; w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
+        resolve({ data: canvas.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight });
       } else {
         reject(new Error('Could not get canvas context'));
       }
@@ -125,8 +125,12 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
 
   // Try to load the logo with correct proportions
   try {
-    const logoBase64 = await loadImageAsBase64(WAYBILL_LOGO);
-    pdf.addImage(logoBase64, 'PNG', margin, y, 48, 12);
+    const logo = await loadImageAsBase64(WAYBILL_LOGO);
+    const maxW = 48, maxH = 12;
+    const ratio = Math.min(maxW / logo.w, maxH / logo.h);
+    const logoW = logo.w * ratio;
+    const logoH = logo.h * ratio;
+    pdf.addImage(logo.data, 'PNG', margin, y + (maxH - logoH) / 2, logoW, logoH);
   } catch (e) {
     // Fallback: Text logo in black
     pdf.setFontSize(18);

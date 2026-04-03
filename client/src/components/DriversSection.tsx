@@ -370,31 +370,31 @@ export default function DriversSection() {
                 <TabsList className="grid w-full grid-cols-5 bg-transparent border border-white/10 p-1.5 rounded-xl h-auto">
                     <TabsTrigger
                         value="dashboard"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <Truck className="h-4 w-4" /> Dashboard
                     </TabsTrigger>
                     <TabsTrigger
                         value="drivers"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <Users className="h-4 w-4" /> Drivers
                     </TabsTrigger>
                     <TabsTrigger
                         value="routes"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <MapPin className="h-4 w-4" /> Routes
                     </TabsTrigger>
                     <TabsTrigger
                         value="deliveries"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <Package className="h-4 w-4" /> Deliveries
                     </TabsTrigger>
                     <TabsTrigger
                         value="reports"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-red-600 data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
                     >
                         <AlertTriangle className="h-4 w-4" /> Reports
                     </TabsTrigger>
@@ -413,7 +413,7 @@ export default function DriversSection() {
                                     <span className="text-xs font-mono text-blue-400 bg-blue-500/5 px-2 py-1 rounded">ACTIVE</span>
                                 </div>
                                 <div>
-                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">
+                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-blue-400 transition-colors">
                                         {dashboardStats?.drivers.active || 0}
                                     </div>
                                     <p className="text-sm text-muted-foreground">Active Drivers</p>
@@ -431,7 +431,7 @@ export default function DriversSection() {
                                     <span className="text-xs font-mono text-green-400 bg-green-500/5 px-2 py-1 rounded">TODAY</span>
                                 </div>
                                 <div>
-                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-green-400 transition-colors">
+                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-green-400 transition-colors">
                                         {dashboardStats?.routes.today || 0}
                                     </div>
                                     <p className="text-sm text-muted-foreground">Active Routes</p>
@@ -449,7 +449,7 @@ export default function DriversSection() {
                                     <span className="text-xs font-mono text-purple-400 bg-purple-500/5 px-2 py-1 rounded">TOTAL</span>
                                 </div>
                                 <div>
-                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-purple-400 transition-colors">
+                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-purple-400 transition-colors">
                                         {dashboardStats?.deliveries.delivered || 0}
                                     </div>
                                     <p className="text-sm text-muted-foreground">Deliveries Completed</p>
@@ -467,7 +467,7 @@ export default function DriversSection() {
                                     <span className="text-xs font-mono text-red-400 bg-red-500/5 px-2 py-1 rounded">ISSUES</span>
                                 </div>
                                 <div>
-                                    <div className="text-4xl font-mono font-bold text-white mb-1 group-hover:text-red-400 transition-colors">
+                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-red-400 transition-colors">
                                         {dashboardStats?.reports.pending || 0}
                                     </div>
                                     <p className="text-sm text-muted-foreground">Pending Reports</p>
@@ -1355,25 +1355,25 @@ export default function DriversSection() {
                                 <div>
                                     <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Performance (All Time)</h4>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
                                             <div className={`text-2xl font-mono font-bold ${getSuccessRateColor(driverProfile.stats.successRate)}`}>
                                                 {driverProfile.stats.successRate}%
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Success Rate</p>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-                                            <div className="text-2xl font-mono font-bold text-white">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
+                                            <div className="text-2xl font-mono font-bold text-foreground">
                                                 {driverProfile.stats.delivered}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Delivered</p>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
-                                            <div className="text-2xl font-mono font-bold text-white">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
+                                            <div className="text-2xl font-mono font-bold text-foreground">
                                                 {driverProfile.stats.totalRoutes}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Total Routes</p>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
                                             <div className="text-2xl font-mono font-bold text-yellow-400">
                                                 {driverProfile.stats.codTotal} AED
                                             </div>
@@ -1381,19 +1381,19 @@ export default function DriversSection() {
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-3 gap-3 mt-3">
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
                                             <div className="text-lg font-mono font-bold text-orange-400">
                                                 {driverProfile.stats.attempted}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Attempted</p>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
                                             <div className="text-lg font-mono font-bold text-red-400">
                                                 {driverProfile.stats.returned}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Returned</p>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                        <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
                                             <div className="text-lg font-mono font-bold text-purple-400">
                                                 {driverProfile.stats.totalReports}
                                             </div>

@@ -50,6 +50,9 @@ function AdminRateCalculator() {
     const [length, setLength] = useState('');
     const [width, setWidth] = useState('');
     const [height, setHeight] = useState('');
+    const [quantity, setQuantity] = useState('1');
+    const [clientName, setClientName] = useState('');
+    const [clientPhone, setClientPhone] = useState('');
     const [quoteResult, setQuoteResult] = useState<any>(null);
     const [countrySearch, setCountrySearch] = useState('');
 
@@ -87,16 +90,32 @@ function AdminRateCalculator() {
                         <Select value={destinationCountry} onValueChange={setDestinationCountry}>
                             <SelectTrigger className="bg-background/50"><SelectValue placeholder="Select destination" /></SelectTrigger>
                             <SelectContent className="max-h-[300px]">
-                                <div className="p-2 sticky top-0 bg-popover">
-                                    <Input placeholder="Search..." value={countrySearch} onChange={(e) => setCountrySearch(e.target.value)} className="h-8" />
+                                <div className="p-2 sticky top-0 bg-popover z-10 relative border-b border-border">
+                                    <Input placeholder="Search..." value={countrySearch} onChange={(e) => setCountrySearch(e.target.value)} onKeyDown={(e) => e.stopPropagation()} className="h-8" />
                                 </div>
                                 {filteredCountries.map((c: string) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm">Weight (kg)</Label>
-                        <Input type="number" step="0.1" placeholder="e.g. 1.5" value={realWeightKg} onChange={(e) => setRealWeightKg(e.target.value)} className="bg-background/50" />
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                            <Label className="text-sm">Client Name</Label>
+                            <Input placeholder="e.g. Noor and Grace" value={clientName} onChange={(e) => setClientName(e.target.value)} className="bg-background/50" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm">Client Phone</Label>
+                            <Input placeholder="+971 XX XXX XXXX" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} className="bg-background/50" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                            <Label className="text-sm">Weight (kg)</Label>
+                            <Input type="number" step="0.1" placeholder="e.g. 1.5" value={realWeightKg} onChange={(e) => setRealWeightKg(e.target.value)} className="bg-background/50" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm">Quantity (packages)</Label>
+                            <Input type="number" min="1" placeholder="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="bg-background/50" />
+                        </div>
                     </div>
                     <div className="space-y-2">
                         <Label className="text-sm">Dimensions (cm)</Label>
@@ -151,6 +170,9 @@ function AdminRateCalculator() {
                             realWeightKg: parseFloat(realWeightKg),
                             dimensions: { length: parseFloat(length), width: parseFloat(width), height: parseFloat(height) },
                             options: quoteResult.options,
+                            clientName: clientName || undefined,
+                            clientPhone: clientPhone || undefined,
+                            quantity: parseInt(quantity) || 1,
                         })}
                     >
                         <Download className="mr-2 h-4 w-4" /> Download Quote PDF

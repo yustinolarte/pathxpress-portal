@@ -29,6 +29,8 @@ import {
     AlertTriangle,
     CheckCircle2,
     RotateCcw,
+    Users,
+    Activity,
 } from 'lucide-react';
 
 // Color palette for charts
@@ -55,7 +57,13 @@ const SERVICE_COLORS: Record<string, string> = {
     BULLET: '#ef4444',
 };
 
-export default function AdminAnalytics() {
+interface AdminAnalyticsProps {
+    totalClients?: number;
+    totalOrders?: number;
+    activeOrders?: number;
+}
+
+export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, activeOrders = 0 }: AdminAnalyticsProps) {
     const [drillDownDate, setDrillDownDate] = useState<string | null>(null);
     const [drillDownWaybills, setDrillDownWaybills] = useState<string[]>([]);
     const [shipmentView, setShipmentView] = useState<'30d' | '6m'>('30d');
@@ -146,6 +154,51 @@ export default function AdminAnalytics() {
 
     return (
         <div className="space-y-6">
+            {/* Overview Stats Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
+                            <Users className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-bold text-muted-foreground">All time</span>
+                    </div>
+                    <p className="text-muted-foreground text-sm font-medium">Total Clients</p>
+                    <h3 className="text-2xl font-bold mt-1">{totalClients}</h3>
+                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
+                        <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(totalClients, 100)}%` }} />
+                    </div>
+                </div>
+                <div className="bg-card p-6 rounded-2xl border border-blue-500/10 shadow-xl shadow-blue-500/5 hover:-translate-y-1 hover:border-blue-500/20 transition-all duration-300">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-2.5 bg-blue-500/10 rounded-lg text-blue-500">
+                            <Package className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-bold text-muted-foreground">All time</span>
+                    </div>
+                    <p className="text-muted-foreground text-sm font-medium">Total Orders</p>
+                    <h3 className="text-2xl font-bold mt-1">{totalOrders}</h3>
+                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }} />
+                    </div>
+                </div>
+                <div className="bg-card p-6 rounded-2xl border border-green-500/10 shadow-xl shadow-green-500/5 hover:-translate-y-1 hover:border-green-500/20 transition-all duration-300">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="p-2.5 bg-green-500/10 rounded-lg text-green-500">
+                            <Activity className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-bold text-muted-foreground">
+                            {totalOrders > 0 ? `${Math.round((activeOrders / totalOrders) * 100)}% of total` : 'No orders'}
+                        </span>
+                    </div>
+                    <p className="text-muted-foreground text-sm font-medium">Active Orders</p>
+                    <h3 className="text-2xl font-bold mt-1">{activeOrders}</h3>
+                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
+                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${totalOrders > 0 ? (activeOrders / totalOrders) * 100 : 0}%` }} />
+                    </div>
+                </div>
+            </div>
+
             {/* Summary Cards Row 1 — Shipment Volume */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Today */}

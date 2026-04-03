@@ -83,7 +83,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
                     {/* Stats Grid */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
                             <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                                 <Truck className="w-4 h-4" />
                                 <span className="text-xs uppercase font-bold">Service</span>
@@ -91,7 +91,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                             <p className="text-2xl font-semibold">{order.serviceType}</p>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
                             <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                                 <Package className="w-4 h-4" />
                                 <span className="text-xs uppercase font-bold">Pieces</span>
@@ -99,7 +99,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                             <p className="text-2xl font-semibold">{order.pieces}</p>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
                             <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                                 <Scale className="w-4 h-4" />
                                 <span className="text-xs uppercase font-bold">Weight</span>
@@ -107,7 +107,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                             <p className="text-2xl font-semibold">{order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors group">
+                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
                             <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
                                 <CreditCard className="w-4 h-4" />
                                 <span className="text-xs uppercase font-bold">COD Amount</span>
@@ -121,7 +121,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Addresses Column */}
                         <div className="space-y-6 lg:col-span-2">
-                            <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-white/5 border border-white/10">
+                            <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-muted/30 border border-border">
                                 {/* Sender */}
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 text-muted-foreground mb-4">
@@ -193,7 +193,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
                         {/* Timeline Column */}
                         <div className="lg:col-span-1">
-                            <div className="rounded-2xl bg-white/5 border border-white/10 p-6 h-full">
+                            <div className="rounded-2xl bg-muted/30 border border-border p-6 h-full">
                                 <h3 className="text-lg font-bold flex items-center gap-2 mb-6 text-foreground">
                                     <Calendar className="w-5 h-5 text-primary" /> Tracking History
                                 </h3>
@@ -208,7 +208,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                         {events.map((event, index) => (
                                             <div key={index} className="relative pl-12 pb-8 last:pb-0 group">
                                                 {/* Dot */}
-                                                <div className={`absolute left-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-[#0f1115] transition-transform group-hover:scale-110 ${index === 0 ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-muted text-muted-foreground'
+                                                <div className={`absolute left-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-background transition-transform group-hover:scale-110 ${index === 0 ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-muted text-muted-foreground'
                                                     }`}>
                                                     {index === 0 ? <Truck className="w-4 h-4 text-primary-foreground" /> : <div className="w-3 h-3 rounded-full bg-muted-foreground/50" />}
                                                 </div>
@@ -216,7 +216,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                                 <div className="space-y-1">
                                                     <div className="flex justify-between items-start">
                                                         <p className={`font-bold ${index === 0 ? 'text-primary' : 'text-foreground/80'}`}>{event.statusLabel}</p>
-                                                        <span className="text-[10px] text-muted-foreground bg-white/5 px-1.5 py-0.5 rounded">
+                                                        <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                                             {new Date(event.eventDatetime).toLocaleTimeString('en-AE', { hour: '2-digit', minute: '2-digit' })}
                                                         </span>
                                                     </div>

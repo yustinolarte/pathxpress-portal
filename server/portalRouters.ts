@@ -438,6 +438,7 @@ export const adminPortalRouter = router({
         }
       } catch (_) { /* never block the order update */ }
 
+      cacheInvalidate('admin:allOrders');
       return { success: true, order: result.order };
     }),
 
@@ -3144,6 +3145,7 @@ export const clientsRouter = router({
         })
         .where(eq(clientAccounts.id, input.clientId));
 
+      invalidateClientAccountsCache();
       return { success: true };
     }),
 
@@ -3186,6 +3188,7 @@ export const clientsRouter = router({
         })
         .where(eq(clientAccounts.id, input.clientId));
 
+      invalidateClientAccountsCache();
       return { success: true };
     }),
 
@@ -3247,6 +3250,7 @@ export const clientsRouter = router({
         })
         .where(eq(clientAccounts.id, input.clientId));
 
+      invalidateClientAccountsCache();
       return { success: true };
     }),
 });
@@ -3316,6 +3320,7 @@ const trackingRouter = router({
       // Update order status
       await updateOrderStatus(input.shipmentId, input.statusCode);
 
+      cacheInvalidate('admin:allOrders');
       return { success: true };
     }),
 
