@@ -55,9 +55,13 @@ function AdminRateCalculator() {
     const [clientPhone, setClientPhone] = useState('');
     const [quoteResult, setQuoteResult] = useState<any>(null);
     const [countrySearch, setCountrySearch] = useState('');
+    const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
 
     const quoteMutation = trpc.portal.internationalRates.quote.useMutation({
-        onSuccess: (data) => setQuoteResult(data),
+        onSuccess: (data) => {
+            setQuoteResult(data);
+            setSelectedServices(new Set(data.options.map((o: any) => o.serviceKey)));
+        },
     });
 
     const handleQuote = () => {
@@ -139,37 +143,58 @@ function AdminRateCalculator() {
                         </CardContent>
                     </Card>
                 )}
-                {quoteResult?.options?.map((opt: any) => (
-                    <Card key={opt.serviceKey} className={`glass-strong transition-all ${opt.isRecommended ? 'ring-1 ring-primary/50 border-primary/30' : 'border-white/10'}`}>
-                        {opt.isRecommended && (
-                            <div className="bg-primary/10 px-4 py-1 flex items-center gap-2">
-                                <Star className="w-3 h-3 text-primary fill-primary" /> <span className="text-xs font-semibold text-primary">Recommended</span>
-                            </div>
-                        )}
-                        <CardContent className={`${opt.isRecommended ? 'pt-3' : 'pt-5'} pb-4`}>
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <h3 className="font-bold">{opt.displayName}</h3>
-                                    <Badge variant="outline" className="text-xs mt-1">{opt.bracketUsed.value} {opt.bracketUsed.unit}</Badge>
-                                </div>
-                                <p className="text-2xl font-bold">{opt.total.toFixed(2)} <span className="text-sm text-muted-foreground">{opt.currency}</span></p>
-                            </div>
-                            <div className="mt-2 space-y-0.5">
-                                {opt.notes.map((n: string, i: number) => <p key={i} className="text-xs text-muted-foreground">• {n}</p>)}
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
+                {quoteResult?.options?.map((opt: any) => {
+                    const isSelected = selectedServices.has(opt.serviceKey);
+                    return (
+                        <label key={opt.serviceKey} className="cursor-pointer block">
+                            <Card className={`glass-strong transition-all ${isSelected ? (opt.isRecommended ? 'ring-1 ring-primary/50 border-primary/30' : 'ring-1 ring-white/20 border-white/20') : 'border-white/10 opacity-50'}`}>
+                                {opt.isRecommended && (
+                                    <div className="bg-primary/10 px-4 py-1 flex items-center gap-2">
+                                        <Star className="w-3 h-3 text-primary fill-primary" /> <span className="text-xs font-semibold text-primary">Recommended</span>
+                                    </div>
+                                )}
+                                <CardContent className={`${opt.isRecommended ? 'pt-3' : 'pt-5'} pb-4`}>
+                                    <div className="flex justify-between items-center gap-3">
+                                        <div className="flex items-start gap-3 min-w-0">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={(e) => {
+                                                    setSelectedServices(prev => {
+                                                        const next = new Set(prev);
+                                                        if (e.target.checked) next.add(opt.serviceKey);
+                                                        else next.delete(opt.serviceKey);
+                                                        return next;
+                                                    });
+                                                }}
+                                                className="accent-primary mt-1 shrink-0"
+                                            />
+                                            <div>
+                                                <h3 className="font-bold">{opt.displayName}</h3>
+                                                <Badge variant="outline" className="text-xs mt-1">{opt.bracketUsed.value} {opt.bracketUsed.unit}</Badge>
+                                            </div>
+                                        </div>
+                                        <p className="text-2xl font-bold shrink-0">{opt.total.toFixed(2)} <span className="text-sm text-muted-foreground">{opt.currency}</span></p>
+                                    </div>
+                                    <div className="mt-2 space-y-0.5 pl-6">
+                                        {opt.notes.map((n: string, i: number) => <p key={i} className="text-xs text-muted-foreground">• {n}</p>)}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </label>
+                    );
+                })}
                 {quoteResult?.options?.length > 0 && (
                     <Button
                         variant="outline"
                         className="w-full"
+                        disabled={selectedServices.size === 0}
                         onClick={() => generateQuotationPDF({
                             originCountry,
                             destinationCountry,
                             realWeightKg: parseFloat(realWeightKg),
                             dimensions: { length: parseFloat(length), width: parseFloat(width), height: parseFloat(height) },
-                            options: quoteResult.options,
+                            options: quoteResult.options.filter((opt: any) => selectedServices.has(opt.serviceKey)),
                             clientName: clientName || undefined,
                             clientPhone: clientPhone || undefined,
                             quantity: parseInt(quantity) || 1,
