@@ -33,11 +33,13 @@ import {
     MapPin,
     Download,
     Plus,
-    Trash2
+    Trash2,
+    RefreshCw
 } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { generateQuotationPDF } from '@/lib/generateQuotationPDF';
 import AdminCreateIntlOrderDialog from './AdminCreateIntlOrderDialog';
+import AddIntlTrackingEventDialog from './AddIntlTrackingEventDialog';
 
 // ─── Inline Rate Calculator (reused from customer side) ─────────────────────
 
@@ -374,6 +376,7 @@ function AdminIntlOrdersTable() {
     const [filterSearch, setFilterSearch] = useState('');
     const [newShipmentOpen, setNewShipmentOpen] = useState(false);
     const [deletingId, setDeletingId] = useState<number | null>(null);
+    const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
 
     const { data: orders, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery();
 
@@ -411,11 +414,19 @@ function AdminIntlOrdersTable() {
     const getStatusColor = (status: string) => {
         const colors: Record<string, string> = {
             pending_pickup: 'bg-yellow-500',
-            in_transit: 'bg-blue-500',
+            picked_up: 'bg-blue-500',
+            departed_origin: 'bg-sky-500',
+            in_transit: 'bg-cyan-600',
+            arrived_destination: 'bg-indigo-500',
+            customs_clearance: 'bg-orange-500',
+            customs_cleared: 'bg-teal-500',
+            customs_held: 'bg-red-400',
             out_for_delivery: 'bg-purple-500',
             delivered: 'bg-green-500',
             failed_delivery: 'bg-red-500',
+            on_hold: 'bg-orange-400',
             returned: 'bg-gray-500',
+            returned_to_sender: 'bg-rose-600',
         };
         return colors[status] || 'bg-gray-400';
     };
@@ -516,6 +527,15 @@ function AdminIntlOrdersTable() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
+                                                    onClick={() => setTrackingOrderId(order.id)}
+                                                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                                    title="Update Tracking Status"
+                                                >
+                                                    <RefreshCw className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
                                                     onClick={() => handleDelete(order.id, order.waybillNumber)}
                                                     disabled={deletingId === order.id}
                                                     className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
@@ -550,6 +570,12 @@ function AdminIntlOrdersTable() {
             clients={clients}
             countries={countries || []}
             onSuccess={() => { setNewShipmentOpen(false); refetch(); }}
+        />
+        <AddIntlTrackingEventDialog
+            open={trackingOrderId !== null}
+            onOpenChange={(open) => { if (!open) setTrackingOrderId(null); }}
+            shipmentId={trackingOrderId ?? 0}
+            onSuccess={() => { setTrackingOrderId(null); refetch(); }}
         />
         </>
     );

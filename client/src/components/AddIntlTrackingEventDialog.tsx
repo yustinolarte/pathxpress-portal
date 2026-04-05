@@ -24,91 +24,102 @@ import {
   Link2,
   Plane,
   FileCheck,
-  Bike
+  ShieldCheck,
+  ShieldAlert,
+  Globe,
+  Navigation,
+  Warehouse,
 } from 'lucide-react';
 
-// Ubicaciones predefinidas de PathXpress - 7 Emiratos de UAE
-const LOCATION_OPTIONS = [
-  // PathXpress Hubs - 7 Emirates
-  { value: 'pathxpress_hub_dubai', label: 'PathXpress Hub - Dubai', icon: Building2, group: 'hubs' },
-  { value: 'pathxpress_hub_abudhabi', label: 'PathXpress Hub - Abu Dhabi', icon: Building2, group: 'hubs' },
-  { value: 'pathxpress_hub_sharjah', label: 'PathXpress Hub - Sharjah', icon: Building2, group: 'hubs' },
-  { value: 'pathxpress_hub_ajman', label: 'PathXpress Hub - Ajman', icon: Building2, group: 'hubs' },
-  { value: 'pathxpress_hub_umm_al_quwain', label: 'PathXpress Hub - Umm Al Quwain', icon: Building2, group: 'hubs' },
-  { value: 'pathxpress_hub_ras_al_khaimah', label: 'PathXpress Hub - Ras Al Khaimah', icon: Building2, group: 'hubs' },
-  { value: 'pathxpress_hub_fujairah', label: 'PathXpress Hub - Fujairah', icon: Building2, group: 'hubs' },
+// International location options grouped by stage
+const INTL_LOCATION_OPTIONS = [
+  // Origin
+  { value: 'pathxpress_hub_dubai', label: 'PathXpress Hub – Dubai', icon: Building2, group: 'origin' },
+  { value: 'dubai_airport_dxb', label: 'Dubai Airport (DXB)', icon: Plane, group: 'origin' },
 
-  // International / Global
-  { value: 'international_hub', label: 'International Hub', icon: Building2, group: 'international' },
-  { value: 'dubai_airport', label: 'Dubai Airport', icon: Plane, group: 'international' },
-  { value: 'customs_clearance', label: 'Customs Clearance', icon: FileCheck, group: 'international' },
-  { value: 'local_courier', label: 'Local Courier Delivery', icon: Bike, group: 'international' },
+  // Transit
+  { value: 'international_transit_hub', label: 'International Transit Hub', icon: Globe, group: 'transit' },
+  { value: 'airline_belly', label: 'Airline Belly / Cargo', icon: Plane, group: 'transit' },
+  { value: 'transit_country_airport', label: 'Transit Country Airport', icon: Navigation, group: 'transit' },
 
-  // Other locations
-  { value: 'driver_vehicle', label: 'With Driver / In Vehicle', icon: Truck, group: 'other' },
+  // Destination
+  { value: 'destination_airport', label: 'Destination Country Airport', icon: Plane, group: 'destination' },
+  { value: 'customs_origin', label: 'Customs – Origin Country', icon: FileCheck, group: 'destination' },
+  { value: 'customs_destination', label: 'Customs – Destination Country', icon: FileCheck, group: 'destination' },
+  { value: 'local_delivery_partner', label: 'Local Delivery Partner (Destination)', icon: Truck, group: 'destination' },
+  { value: 'destination_warehouse', label: 'Destination Warehouse / Sorting', icon: Warehouse, group: 'destination' },
+
+  // Other
+  { value: 'return_facility', label: 'Return Facility', icon: RotateCcw, group: 'other' },
   { value: 'customer_location', label: 'Customer Location', icon: MapPin, group: 'other' },
-  { value: 'sender_location', label: 'Sender Location', icon: MapPin, group: 'other' },
   { value: 'other', label: 'Other (Specify)', icon: MapPin, group: 'other' },
 ] as const;
 
-// Status options with visual styling
-const STATUS_OPTIONS = [
+// All possible international package statuses
+const INTL_STATUS_OPTIONS = [
   { value: 'pending_pickup', label: 'Pending Pickup', icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
   { value: 'picked_up', label: 'Picked Up', icon: Package, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
-  { value: 'in_transit', label: 'In Transit', icon: Truck, color: 'text-cyan-500', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30' },
+  { value: 'departed_origin', label: 'Departed Origin', icon: Plane, color: 'text-sky-500', bg: 'bg-sky-500/10', border: 'border-sky-500/30' },
+  { value: 'in_transit', label: 'In Transit', icon: Globe, color: 'text-cyan-500', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30' },
+  { value: 'arrived_destination', label: 'Arrived Destination', icon: Navigation, color: 'text-indigo-500', bg: 'bg-indigo-500/10', border: 'border-indigo-500/30' },
+  { value: 'customs_clearance', label: 'Customs Clearance', icon: FileCheck, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
+  { value: 'customs_cleared', label: 'Customs Cleared', icon: ShieldCheck, color: 'text-teal-500', bg: 'bg-teal-500/10', border: 'border-teal-500/30' },
+  { value: 'customs_held', label: 'Held by Customs', icon: ShieldAlert, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' },
   { value: 'out_for_delivery', label: 'Out for Delivery', icon: Truck, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/30' },
   { value: 'delivered', label: 'Delivered', icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/30' },
   { value: 'failed_delivery', label: 'Failed Delivery', icon: XCircle, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30' },
-  { value: 'on_hold', label: 'On Hold', icon: Pause, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
-  { value: 'returned', label: 'Returned', icon: RotateCcw, color: 'text-gray-500', bg: 'bg-gray-500/10', border: 'border-gray-500/30' },
+  { value: 'on_hold', label: 'On Hold', icon: Pause, color: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/30' },
+  { value: 'returned', label: 'Returned', icon: RotateCcw, color: 'text-gray-400', bg: 'bg-gray-500/10', border: 'border-gray-500/30' },
   { value: 'returned_to_sender', label: 'Return to Sender', icon: RotateCcw, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/30' },
 ] as const;
 
-// Default location for each status — can still be changed by the user
+// Default location for each international status — can still be changed by the user
 const STATUS_DEFAULT_LOCATION: Record<string, string> = {
-  pending_pickup:     'sender_location',
-  picked_up:          'sender_location',
-  in_transit:         'pathxpress_hub_dubai',
-  out_for_delivery:   'driver_vehicle',
-  delivered:          'customer_location',
-  failed_delivery:    'customer_location',
-  on_hold:            'pathxpress_hub_dubai',
-  returned:           'pathxpress_hub_dubai',
-  returned_to_sender: 'sender_location',
+  pending_pickup:       'pathxpress_hub_dubai',
+  picked_up:            'pathxpress_hub_dubai',
+  departed_origin:      'dubai_airport_dxb',
+  in_transit:           'international_transit_hub',
+  arrived_destination:  'destination_airport',
+  customs_clearance:    'customs_destination',
+  customs_cleared:      'customs_destination',
+  customs_held:         'customs_destination',
+  out_for_delivery:     'local_delivery_partner',
+  delivered:            'customer_location',
+  failed_delivery:      'customer_location',
+  on_hold:              'destination_warehouse',
+  returned:             'return_facility',
+  returned_to_sender:   'pathxpress_hub_dubai',
 };
 
-// Función para obtener la fecha/hora actual en formato datetime-local
 const getCurrentDatetime = () => {
   const now = new Date();
   const dubaiOffset = 4 * 60;
   const localOffset = now.getTimezoneOffset();
   const dubaiTime = new Date(now.getTime() + (dubaiOffset + localOffset) * 60 * 1000);
-
   const year = dubaiTime.getFullYear();
   const month = String(dubaiTime.getMonth() + 1).padStart(2, '0');
   const day = String(dubaiTime.getDate()).padStart(2, '0');
   const hours = String(dubaiTime.getHours()).padStart(2, '0');
   const minutes = String(dubaiTime.getMinutes()).padStart(2, '0');
-
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-interface AddTrackingEventDialogProps {
+interface AddIntlTrackingEventDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shipmentId: number;
   onSuccess: () => void;
 }
 
-export default function AddTrackingEventDialog({
+export default function AddIntlTrackingEventDialog({
   open,
   onOpenChange,
   shipmentId,
   onSuccess,
-}: AddTrackingEventDialogProps) {
+}: AddIntlTrackingEventDialogProps) {
   const [formData, setFormData] = useState({
     eventDatetime: getCurrentDatetime(),
-    locationKey: 'pathxpress_hub_dubai', // Updated default
+    locationKey: 'pathxpress_hub_dubai',
     customLocation: '',
     statusCode: 'in_transit',
     statusLabel: 'IN TRANSIT',
@@ -120,10 +131,7 @@ export default function AddTrackingEventDialog({
 
   useEffect(() => {
     if (open) {
-      setFormData(prev => ({
-        ...prev,
-        eventDatetime: getCurrentDatetime(),
-      }));
+      setFormData(prev => ({ ...prev, eventDatetime: getCurrentDatetime() }));
     }
   }, [open]);
 
@@ -154,7 +162,7 @@ export default function AddTrackingEventDialog({
   };
 
   const handleStatusChange = (value: string) => {
-    const option = STATUS_OPTIONS.find(s => s.value === value);
+    const option = INTL_STATUS_OPTIONS.find(s => s.value === value);
     const defaultLocation = STATUS_DEFAULT_LOCATION[value];
     setFormData({
       ...formData,
@@ -169,17 +177,14 @@ export default function AddTrackingEventDialog({
       ...formData,
       locationKey: value,
       customLocation: value === 'other' ? formData.customLocation : '',
-      // Clear courier fields if switching away from local_courier
-      courierName: value === 'local_courier' ? formData.courierName : '',
-      courierTracking: value === 'local_courier' ? formData.courierTracking : '',
+      courierName: value === 'local_delivery_partner' ? formData.courierName : '',
+      courierTracking: value === 'local_delivery_partner' ? formData.courierTracking : '',
     });
   };
 
   const getLocationLabel = () => {
-    if (formData.locationKey === 'other') {
-      return formData.customLocation;
-    }
-    const location = LOCATION_OPTIONS.find(loc => loc.value === formData.locationKey);
+    if (formData.locationKey === 'other') return formData.customLocation;
+    const location = INTL_LOCATION_OPTIONS.find(loc => loc.value === formData.locationKey);
     return location?.label || '';
   };
 
@@ -191,21 +196,17 @@ export default function AddTrackingEventDialog({
       return;
     }
 
-    if (formData.locationKey === 'local_courier' && (!formData.courierName.trim() || !formData.courierTracking.trim())) {
+    if (formData.locationKey === 'local_delivery_partner' && (!formData.courierName.trim() || !formData.courierTracking.trim())) {
       toast.error('Please specify Courier Name and Tracking Number');
       return;
     }
 
     const eventDatetimeWithOffset = `${formData.eventDatetime}:00+04:00`;
 
-    // Construct description
     let finalDescription = formData.description;
-
-    if (formData.locationKey === 'local_courier') {
+    if (formData.locationKey === 'local_delivery_partner') {
       const courierInfo = `Handed over to ${formData.courierName}, Tracking: ${formData.courierTracking}`;
-      finalDescription = finalDescription
-        ? `${courierInfo}. ${finalDescription}`
-        : courierInfo;
+      finalDescription = finalDescription ? `${courierInfo}. ${finalDescription}` : courierInfo;
     }
 
     await addEventMutation.mutateAsync({
@@ -219,38 +220,36 @@ export default function AddTrackingEventDialog({
     });
   };
 
-  const selectedLocation = LOCATION_OPTIONS.find(loc => loc.value === formData.locationKey);
+  const selectedLocation = INTL_LOCATION_OPTIONS.find(loc => loc.value === formData.locationKey);
   const LocationIcon = selectedLocation?.icon || MapPin;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-        {/* Decorative Top Line */}
-        <div className="w-full h-1 bg-gradient-to-r from-emerald-600 to-teal-600" />
+      <DialogContent className="glass-strong !w-[90vw] !max-w-[760px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+        <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
 
         <div className="p-6">
-          {/* Header */}
           <DialogHeader className="mb-6">
             <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/20">
-                <Package className="w-6 h-6 text-emerald-400" />
+              <div className="p-2 rounded-lg bg-blue-500/20">
+                <Globe className="w-6 h-6 text-blue-400" />
               </div>
-              Add Tracking Event
+              Update International Tracking
             </DialogTitle>
             <DialogDescription className="mt-1">
-              Record a new milestone for shipment tracking
+              Record a new milestone for this international shipment
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Status Selection - Visual Cards */}
+            {/* Status Selection */}
             <div className="space-y-3">
               <Label className="flex items-center gap-2 text-base">
                 <AlertTriangle className="w-4 h-4 text-muted-foreground" />
                 Status *
               </Label>
               <div className="grid grid-cols-4 gap-2">
-                {STATUS_OPTIONS.map((status) => {
+                {INTL_STATUS_OPTIONS.map((status) => {
                   const Icon = status.icon;
                   const isSelected = formData.statusCode === status.value;
                   return (
@@ -261,13 +260,13 @@ export default function AddTrackingEventDialog({
                       className={`
                         p-3 rounded-lg border transition-all text-left
                         ${isSelected
-                          ? `${status.bg} ${status.border} ring-2 ring-offset-2 ring-offset-background ring-${status.color.replace('text-', '')}`
+                          ? `${status.bg} ${status.border} ring-2 ring-offset-2 ring-offset-background`
                           : 'bg-white/5 border-white/10 hover:bg-white/10'
                         }
                       `}
                     >
                       <Icon className={`w-5 h-5 mb-1 ${isSelected ? status.color : 'text-muted-foreground'}`} />
-                      <p className={`text-xs font-medium ${isSelected ? 'text-white' : 'text-muted-foreground'}`}>
+                      <p className={`text-xs font-medium leading-tight ${isSelected ? 'text-white' : 'text-muted-foreground'}`}>
                         {status.label}
                       </p>
                     </button>
@@ -278,7 +277,6 @@ export default function AddTrackingEventDialog({
 
             {/* Date/Time and Location Row */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Date & Time */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -291,12 +289,9 @@ export default function AddTrackingEventDialog({
                   required
                   className="bg-white/5 border-white/10"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Dubai Time (UTC+4)
-                </p>
+                <p className="text-xs text-muted-foreground">Dubai Time (UTC+4)</p>
               </div>
 
-              {/* Location */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-muted-foreground" />
@@ -309,11 +304,11 @@ export default function AddTrackingEventDialog({
                       <SelectValue placeholder="Select location" />
                     </div>
                   </SelectTrigger>
-                  <SelectContent className="max-h-[300px]">
+                  <SelectContent className="max-h-[320px]">
                     <div className="px-2 py-1.5 text-xs font-semibold text-primary">
-                      🏢 PathXpress Hubs
+                      🇦🇪 Origin
                     </div>
-                    {LOCATION_OPTIONS.filter(loc => loc.group === 'hubs').map((location) => {
+                    {INTL_LOCATION_OPTIONS.filter(loc => loc.group === 'origin').map((location) => {
                       const Icon = location.icon;
                       return (
                         <SelectItem key={location.value} value={location.value}>
@@ -326,9 +321,9 @@ export default function AddTrackingEventDialog({
                     })}
 
                     <div className="px-2 py-1.5 text-xs font-semibold text-primary border-t mt-1 pt-2">
-                      🌍 International / Global
+                      ✈️ Transit
                     </div>
-                    {LOCATION_OPTIONS.filter(loc => loc.group === 'international').map((location) => {
+                    {INTL_LOCATION_OPTIONS.filter(loc => loc.group === 'transit').map((location) => {
                       const Icon = location.icon;
                       return (
                         <SelectItem key={location.value} value={location.value}>
@@ -341,9 +336,24 @@ export default function AddTrackingEventDialog({
                     })}
 
                     <div className="px-2 py-1.5 text-xs font-semibold text-primary border-t mt-1 pt-2">
-                      📍 Other Locations
+                      🌍 Destination
                     </div>
-                    {LOCATION_OPTIONS.filter(loc => loc.group === 'other').map((location) => {
+                    {INTL_LOCATION_OPTIONS.filter(loc => loc.group === 'destination').map((location) => {
+                      const Icon = location.icon;
+                      return (
+                        <SelectItem key={location.value} value={location.value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-4 w-4" />
+                            {location.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+
+                    <div className="px-2 py-1.5 text-xs font-semibold text-primary border-t mt-1 pt-2">
+                      📍 Other
+                    </div>
+                    {INTL_LOCATION_OPTIONS.filter(loc => loc.group === 'other').map((location) => {
                       const Icon = location.icon;
                       return (
                         <SelectItem key={location.value} value={location.value}>
@@ -376,16 +386,16 @@ export default function AddTrackingEventDialog({
               </div>
             )}
 
-            {/* Local Courier Fields */}
-            {formData.locationKey === 'local_courier' && (
+            {/* Local Delivery Partner Fields */}
+            {formData.locationKey === 'local_delivery_partner' && (
               <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
                 <div className="space-y-2">
                   <Label className="flex items-center gap-2 text-blue-400">
                     <Truck className="w-4 h-4" />
-                    Courier Name *
+                    Courier / Partner Name *
                   </Label>
                   <Input
-                    placeholder="e.g. Aramex, DHL"
+                    placeholder="e.g. Aramex, DHL, local carrier"
                     value={formData.courierName}
                     onChange={(e) => setFormData({ ...formData, courierName: e.target.value })}
                     required
@@ -423,7 +433,7 @@ export default function AddTrackingEventDialog({
               />
             </div>
 
-            {/* POD URL - only show for delivered status */}
+            {/* POD URL - only for delivered */}
             {formData.statusCode === 'delivered' && (
               <div className="space-y-2 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
                 <Label className="flex items-center gap-2 text-green-400">
@@ -437,13 +447,10 @@ export default function AddTrackingEventDialog({
                   onChange={(e) => setPodFileUrl(e.target.value)}
                   className="bg-green-500/5 border-green-500/20"
                 />
-                <p className="text-xs text-green-400/70">
-                  Link to signature or photo proof
-                </p>
+                <p className="text-xs text-green-400/70">Link to signature or photo proof</p>
               </div>
             )}
 
-            {/* Footer */}
             <DialogFooter className="pt-4 border-t border-white/10">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
@@ -451,17 +458,17 @@ export default function AddTrackingEventDialog({
               <Button
                 type="submit"
                 disabled={addEventMutation.isPending}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-blue-600 hover:bg-blue-700"
               >
                 {addEventMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Adding...
+                    Saving...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Add Event
+                    Save Event
                   </>
                 )}
               </Button>

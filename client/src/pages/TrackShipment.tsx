@@ -31,6 +31,7 @@ export default function TrackShipment() {
       delivered: 'bg-green-500',
       failed_delivery: 'bg-red-500',
       returned: 'bg-gray-500',
+      returned_to_sender: 'bg-rose-600',
     };
     return statusMap[status] || 'bg-gray-400';
   };

@@ -45,6 +45,7 @@ const STATUS_COLORS: Record<string, string> = {
     delivered: '#10b981',
     failed_delivery: '#ef4444',
     returned: '#6b7280',
+    returned_to_sender: '#e11d48',
 };
 
 const SERVICE_COLORS: Record<string, string> = {

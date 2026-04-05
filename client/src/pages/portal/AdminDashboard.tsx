@@ -39,7 +39,7 @@ export default function AdminDashboard() {
 
   const ALL_STATUSES = [
     'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
-    'delivered', 'failed_delivery', 'on_hold', 'returned', 'exchange', 'canceled'
+    'delivered', 'failed_delivery', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled'
   ];
 
   // Client editing state
@@ -357,7 +357,7 @@ export default function AdminDashboard() {
   const stats = {
     totalClients: clients?.length || 0,
     totalOrders: orders?.length || 0,
-    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled' && o.status !== 'returned').length || 0,
+    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled' && o.status !== 'returned' && o.status !== 'returned_to_sender').length || 0,
   };
 
   const menuItems: ModernMenuItem[] = [
@@ -761,8 +761,8 @@ export default function AdminDashboard() {
                                         variant="outline"
                                         className="text-xs py-0 px-1"
                                         style={{
-                                          borderColor: o.status === 'delivered' ? '#10b981' : o.status === 'returned' ? '#6b7280' : '#f59e0b',
-                                          color: o.status === 'delivered' ? '#10b981' : o.status === 'returned' ? '#6b7280' : '#f59e0b',
+                                          borderColor: o.status === 'delivered' ? '#10b981' : (o.status === 'returned' || o.status === 'returned_to_sender') ? '#6b7280' : '#f59e0b',
+                                          color: o.status === 'delivered' ? '#10b981' : (o.status === 'returned' || o.status === 'returned_to_sender') ? '#6b7280' : '#f59e0b',
                                         }}
                                       >
                                         {o.status.replace(/_/g, ' ')}
@@ -1018,11 +1018,12 @@ export default function AdminDashboard() {
                               delivered: 'bg-green-500/80 hover:bg-green-500',
                               failed_delivery: 'bg-red-500/80 hover:bg-red-500',
                               returned: 'bg-gray-500/80 hover:bg-gray-500',
+                              returned_to_sender: 'bg-rose-600/80 hover:bg-rose-600',
                               exchange: 'bg-amber-500/80 hover:bg-amber-500',
                               canceled: 'bg-slate-500/80 hover:bg-slate-500',
                             };
 
-                            const canCreateReturn = ['failed_delivery', 'returned', 'exchange'].includes(order.status) && !order.isReturn;
+                            const canCreateReturn = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'].includes(order.status) && !order.isReturn;
 
                             return (
                               <TableRow key={order.id}>
@@ -1121,6 +1122,7 @@ export default function AdminDashboard() {
                           delivered: 'bg-green-500/80',
                           failed_delivery: 'bg-red-500/80',
                           returned: 'bg-gray-500/80',
+                          returned_to_sender: 'bg-rose-600/80',
                           exchange: 'bg-amber-500/80',
                           canceled: 'bg-slate-500/80',
                         };

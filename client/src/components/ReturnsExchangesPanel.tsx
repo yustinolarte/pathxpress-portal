@@ -318,6 +318,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             delivered: 'bg-green-500',
             failed_delivery: 'bg-red-500',
             returned: 'bg-gray-500',
+            returned_to_sender: 'bg-rose-600',
             canceled: 'bg-slate-500',
         };
         return colors[status] || 'bg-gray-400';

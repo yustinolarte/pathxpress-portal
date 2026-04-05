@@ -651,7 +651,7 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
     await db.update(orders).set({ status, lastStatusUpdate: new Date() }).where(eq(orders.id, id));
 
     // If status is a "failure" status, cancel pending COD
-    const failureStatuses = ['returned', 'failed_delivery', 'cancelled'];
+    const failureStatuses = ['returned', 'returned_to_sender', 'failed_delivery', 'cancelled'];
     if (failureStatuses.includes(status)) {
       // Find pending COD record for this shipment
       await db.update(codRecords)
@@ -855,7 +855,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         eq(orders.clientId, clientId),
         gte(orders.lastStatusUpdate, periodStart),
         lte(orders.lastStatusUpdate, periodEndFullDay),
-        inArray(orders.status, ['delivered', 'returned', 'exchange']),
+        inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
         isNull(invoiceItems.id)
       )
     );
@@ -921,7 +921,7 @@ export async function generateInvoiceForClient(
         and(
           eq(orders.clientId, clientId),
           inArray(orders.id, shipmentIds),
-          inArray(orders.status, ['delivered', 'returned', 'exchange']),
+          inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
           isNull(invoiceItems.id)
         )
       );

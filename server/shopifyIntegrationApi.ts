@@ -35,7 +35,7 @@ function integrationAuth(req: Request, res: Response, next: NextFunction) {
 
 router.post('/create-shipment', integrationAuth, async (req: Request, res: Response) => {
     try {
-        const { clientId, shipment } = req.body;
+        const { clientId, shipment, orderNumber = null } = req.body;
 
         if (!clientId || !shipment) {
             return res.status(400).json({ error: 'Missing clientId or shipment' });
@@ -45,7 +45,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             shipperName, shipperAddress, shipperCity, shipperCountry, shipperPhone,
             customerName, customerPhone, address, city, emirate, postalCode, destinationCountry,
             pieces, weight, length, width, height,
-            serviceType, specialInstructions,
+            serviceType, specialInstructions, itemsDescription,
             codRequired, codAmount, codCurrency,
             latitude, longitude,
         } = shipment;
@@ -63,6 +63,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
         const order = await createOrder({
             clientId,
             waybillNumber,
+            orderNumber: orderNumber || undefined,
             shipperName, shipperAddress, shipperCity, shipperCountry, shipperPhone,
             customerName, customerPhone, address, city,
             emirate: emirate || null,
@@ -75,6 +76,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             height: height?.toString() || null,
             serviceType: serviceType || 'DOM',
             specialInstructions: specialInstructions || '',
+            itemsDescription: itemsDescription || null,
             codRequired: codRequired || 0,
             codAmount: codAmount || null,
             codCurrency: codCurrency || 'AED',

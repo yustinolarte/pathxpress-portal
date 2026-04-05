@@ -461,11 +461,11 @@ export const adminPortalRouter = router({
       }
 
       // Check if order status allows return
-      const allowedStatuses = ['failed_delivery', 'returned', 'exchange'];
+      const allowedStatuses = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'];
       if (!allowedStatuses.includes(originalOrder.status)) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: `Cannot create return for order with status "${originalOrder.status}". Only failed_delivery, returned, or exchange orders can have returns.`
+          message: `Cannot create return for order with status "${originalOrder.status}". Only failed_delivery, returned, returned_to_sender, or exchange orders can have returns.`
         });
       }
 
@@ -687,11 +687,12 @@ export const adminPortalRouter = router({
         ? Math.round(((totalDelivered - failedFirstAttempt) / totalDelivered) * 100)
         : null;
 
-      // 11. Return Rate
+      // 11. Return Rate (includes both returned and returned_to_sender)
+      const { inArray: inArrayRet } = await import('drizzle-orm');
       const returnedCount = await db
         .select({ count: sql<number>`cast(count(*) as unsigned)` })
         .from(orders)
-        .where(eq(orders.status, 'returned'));
+        .where(inArrayRet(orders.status, ['returned', 'returned_to_sender']));
       const totalReturnOrDeliv = totalDelivered + Number(returnedCount[0]?.count || 0);
       const returnRate = totalReturnOrDeliv > 0
         ? Math.round((Number(returnedCount[0]?.count || 0) / totalReturnOrDeliv) * 100)
@@ -1104,7 +1105,7 @@ export const adminPortalRouter = router({
   updateOrderStatus: portalAdminProcedure
     .input(z.object({
       orderId: z.number(),
-      status: z.enum(['pending', 'in_progress', 'picked_up', 'delivered', 'attempted', 'returned', 'failed', 'on_hold']),
+      status: z.enum(['pending', 'in_progress', 'picked_up', 'delivered', 'attempted', 'returned', 'returned_to_sender', 'failed', 'on_hold']),
     }))
     .mutation(async ({ input, ctx }) => {
       const order = await updateOrderStatus(input.orderId, input.status);

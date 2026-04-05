@@ -104,6 +104,7 @@ export default function CustomerDashboard() {
       delivered: 'bg-green-500',
       failed_delivery: 'bg-red-500',
       returned: 'bg-gray-500',
+      returned_to_sender: 'bg-rose-600',
     };
     return colors[status] || 'bg-gray-400';
   };
@@ -508,7 +509,7 @@ export default function CustomerDashboard() {
 
   const stats = {
     totalOrders: orders?.length || 0,
-    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled' && o.status !== 'returned').length || 0,
+    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled' && o.status !== 'returned' && o.status !== 'returned_to_sender').length || 0,
   };
 
   const menuItems: ModernMenuItem[] = [
@@ -984,11 +985,27 @@ export default function CustomerDashboard() {
 
                     {/* Mobile Cards */}
                     <div className="md:hidden space-y-3 p-3">
+                      {/* Mobile Select All */}
+                      <div className="flex items-center justify-between px-1 pb-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <Checkbox
+                            checked={filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
+                            onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                          />
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            {selectedOrderIds.length > 0 ? `${selectedOrderIds.length} selected` : 'Select all'}
+                          </span>
+                        </label>
+                      </div>
                       {filteredOrders.map((order) => (
-                        <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
+                        <div key={order.id} className={`bg-background border rounded-xl p-4 space-y-3 transition-colors ${selectedOrderIds.includes(order.id) ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
                           {/* Top row: waybill + status */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2 flex-wrap">
+                              <Checkbox
+                                checked={selectedOrderIds.includes(order.id)}
+                                onCheckedChange={(checked) => handleSelectRow(order.id, checked as boolean)}
+                              />
                               <button
                                 className="font-mono font-bold text-primary text-sm underline"
                                 onClick={() => handleViewTracking(order.waybillNumber)}

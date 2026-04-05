@@ -33,6 +33,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
         failed_delivery: 'bg-red-500/80 hover:bg-red-500',
         on_hold: 'bg-orange-500/80 hover:bg-orange-500',
         returned: 'bg-gray-500/80 hover:bg-gray-500',
+        returned_to_sender: 'bg-rose-600/80 hover:bg-rose-600',
         exchange: 'bg-amber-500/80 hover:bg-amber-500',
         canceled: 'bg-slate-500/80 hover:bg-slate-500',
     };
