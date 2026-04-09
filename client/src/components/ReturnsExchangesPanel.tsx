@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -92,6 +92,23 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
     // Fetch returns/exchanges for this client
     const { data: returnsExchanges, isLoading, refetch } = trpc.portal.customer.getMyReturnsExchanges.useQuery();
+    const { data: customerAccount } = trpc.portal.customer.getMyAccount.useQuery();
+
+    // Auto-populate pickup & delivery from customer profile when dialog opens
+    useEffect(() => {
+        if (!manualDialogOpen || !customerAccount) return;
+        setManualForm(prev => {
+            if (prev.pickupName) return prev;
+            return {
+                ...prev,
+                deliveryName: customerAccount.companyName ?? '',
+                deliveryPhone: customerAccount.phone ?? '',
+                deliveryAddress: customerAccount.billingAddress ?? '',
+                deliveryCity: customerAccount.city ?? '',
+                deliveryCountry: customerAccount.country ?? 'UAE',
+            };
+        });
+    }, [manualDialogOpen, customerAccount]);
 
     // Search order mutation
     const searchOrderMutation = trpc.portal.customer.searchOrderForReturn.useMutation({
@@ -332,7 +349,21 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                     <h2 className="text-3xl font-black tracking-tight text-foreground">Returns & Exchanges</h2>
                     <p className="text-muted-foreground">Efficiently manage your reverse logistics and customer claims.</p>
                 </div>
-                <Button onClick={() => setManualDialogOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground h-12 px-6 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5">
+                <Button onClick={() => {
+                    setManualForm({
+                        type: 'return',
+                        pickupName: '', pickupPhonePrefix: '+971', pickupPhone: '',
+                        pickupAddress: '', pickupCity: '', pickupCountry: 'UAE',
+                        deliveryName: '', deliveryPhonePrefix: '+971', deliveryPhone: '',
+                        deliveryAddress: '', deliveryCity: '', deliveryCountry: 'UAE',
+                        pieces: 1, weight: '', serviceType: 'DOM', specialInstructions: '',
+                        exchangeCustomerName: '', exchangeCustomerPhonePrefix: '+971',
+                        exchangeCustomerPhone: '', exchangeAddress: '', exchangeCity: '',
+                        exchangePieces: 1, exchangeWeight: '', exchangeCodRequired: 0,
+                        exchangeCodAmount: '', exchangeCodCurrency: 'AED',
+                    });
+                    setManualDialogOpen(true);
+                }} className="bg-primary hover:bg-primary/90 text-primary-foreground h-12 px-6 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5">
                     <span className="material-symbols-outlined font-normal">add_box</span>
                     New Without Waybill
                 </Button>
@@ -889,6 +920,26 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         </div>
                                     </div>
                                 </section>
+
+                                {/* Copy shortcut */}
+                                <div className="flex justify-end -mt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setManualForm(prev => ({
+                                            ...prev,
+                                            deliveryName: prev.pickupName,
+                                            deliveryPhonePrefix: prev.pickupPhonePrefix,
+                                            deliveryPhone: prev.pickupPhone,
+                                            deliveryAddress: prev.pickupAddress,
+                                            deliveryCity: prev.pickupCity,
+                                            deliveryCountry: prev.pickupCountry,
+                                        }))}
+                                        className="px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 transition-all flex items-center gap-2"
+                                    >
+                                        <span className="material-symbols-outlined" style={{fontSize: '18px'}}>content_copy</span>
+                                        Same as Pickup
+                                    </button>
+                                </div>
 
                                 {/* Delivery Details */}
                                 <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">

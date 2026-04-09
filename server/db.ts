@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray, ne } from "drizzle-orm";
 import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
@@ -1244,7 +1244,7 @@ export async function getCODRecordsByClient(clientId: number) {
     })
     .from(codRecords)
     .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
-    .where(eq(orders.clientId, clientId))
+    .where(and(eq(orders.clientId, clientId), ne(codRecords.status, 'cancelled')))
     .orderBy(desc(codRecords.createdAt));
 
   return result.map(r => ({ ...r.codRecord, order: r.order }));
@@ -1263,6 +1263,7 @@ export async function getAllCODRecords() {
     .from(codRecords)
     .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
     .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
+    .where(ne(codRecords.status, 'cancelled'))
     .orderBy(desc(codRecords.createdAt));
 
   return result.map(r => ({ ...r.codRecord, order: r.order, client: r.client }));

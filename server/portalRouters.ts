@@ -1183,9 +1183,9 @@ export const adminPortalRouter = router({
       }
 
       const { codRecords, orders, clientAccounts } = await import('../drizzle/schema');
-      const { eq, and } = await import('drizzle-orm');
+      const { eq, and, ne } = await import('drizzle-orm');
 
-      let whereConditions = [];
+      let whereConditions = [ne(codRecords.status, 'cancelled')];
       if (input.clientId) {
         whereConditions.push(eq(orders.clientId, input.clientId));
       }
@@ -1207,7 +1207,7 @@ export const adminPortalRouter = router({
         .from(codRecords)
         .innerJoin(orders, eq(orders.id, codRecords.shipmentId))
         .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
-        .where(whereConditions.length > 0 ? and(...whereConditions) : undefined);
+        .where(and(...whereConditions));
 
       return codData;
     }),
@@ -2532,7 +2532,7 @@ export const customerPortalRouter = router({
       }
 
       const { codRecords, orders } = await import('../drizzle/schema');
-      const { eq } = await import('drizzle-orm');
+      const { eq, and, ne } = await import('drizzle-orm');
 
       const codData = await db
         .select({
@@ -2548,7 +2548,7 @@ export const customerPortalRouter = router({
         })
         .from(codRecords)
         .innerJoin(orders, eq(orders.id, codRecords.shipmentId))
-        .where(eq(orders.clientId, ctx.portalUser.clientId));
+        .where(and(eq(orders.clientId, ctx.portalUser.clientId), ne(codRecords.status, 'cancelled')));
 
       return codData;
     }),
