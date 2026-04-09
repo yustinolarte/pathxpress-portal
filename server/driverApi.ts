@@ -349,18 +349,18 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 .where(eq(driverRoutes.id, routeId));
         }
         
-        // --- Auto set routeOrder stops to in_progress ---
-        // Change all pending stops to in_progress
+        // --- Auto set delivery stops to in_progress ---
+        // Only delivery-type stops that are still pending become in_progress.
+        // Pickup stops stay 'pending' until the driver physically picks them up.
+        // Already-terminal stops (picked_up, delivered, etc.) are not touched.
         await db
             .update(routeOrders)
             .set({ status: 'in_progress' })
             .where(
                 and(
                     eq(routeOrders.routeId, routeId),
-                    or(
-                        eq(routeOrders.status, 'pending'),
-                        eq(routeOrders.status, 'picked_up')
-                    )
+                    eq(routeOrders.type, 'delivery'),
+                    eq(routeOrders.status, 'pending')
                 )
             );
 
@@ -1212,6 +1212,28 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
         });
     } catch (error) {
         console.error('Pickup error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ============ PUSH TOKENS ============
+
+router.post('/push-token', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { token, platform } = req.body as { token: string; platform?: string };
+        if (!token) return res.status(400).json({ error: 'Token is required' });
+
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        await db
+            .update(drivers)
+            .set({ pushToken: token, pushPlatform: platform || 'ios' })
+            .where(eq(drivers.id, req.driverId!));
+
+        res.json({ message: 'Push token registered' });
+    } catch (error) {
+        console.error('Register push token error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

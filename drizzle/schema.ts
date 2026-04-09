@@ -548,6 +548,8 @@ export const drivers = mysqlTable("drivers", {
   licenseNo: varchar("licenseNo", { length: 50 }),
   licenseExp: timestamp("licenseExp"),
   status: mysqlEnum("status", ["active", "inactive", "suspended"]).default("active").notNull(),
+  pushToken: varchar("pushToken", { length: 255 }),
+  pushPlatform: varchar("pushPlatform", { length: 10 }), // 'ios' | 'android' | 'web'
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

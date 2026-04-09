@@ -650,6 +650,30 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
     // Update order status
     await db.update(orders).set({ status, lastStatusUpdate: new Date() }).where(eq(orders.id, id));
 
+    // Sync routeOrders.status so the driver app reflects the change.
+    // Only update stops that are still in a non-terminal state (in_progress / pending).
+    const { routeOrders } = await import("../drizzle/schema");
+    const nonTerminalStatuses = ['pending', 'in_progress'];
+    // Map order status → routeOrder status
+    const routeOrderStatus =
+      status === 'delivered' ? 'delivered' :
+      status === 'picked_up' ? 'picked_up' :
+      status === 'attempted' ? 'attempted' :
+      status === 'returned' || status === 'returned_to_sender' ? 'returned' :
+      status === 'failed' || status === 'failed_delivery' ? 'failed' :
+      status === 'on_hold' ? 'on_hold' :
+      null; // don't sync for pending/in_progress/out_for_delivery — driver app manages those
+    if (routeOrderStatus) {
+      await db.update(routeOrders)
+        .set({ status: routeOrderStatus })
+        .where(
+          and(
+            eq(routeOrders.orderId, id),
+            inArray(routeOrders.status, nonTerminalStatuses)
+          )
+        );
+    }
+
     // If status is a "failure" status, cancel pending COD
     const failureStatuses = ['returned', 'returned_to_sender', 'failed_delivery', 'cancelled'];
     if (failureStatuses.includes(status)) {

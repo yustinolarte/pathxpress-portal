@@ -155,6 +155,13 @@
       "when": 1774973848567,
       "tag": "0021_sharp_sebastian_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1775516960149,
+      "tag": "0022_lovely_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }
