@@ -927,12 +927,11 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         type="button"
                                         onClick={() => setManualForm(prev => ({
                                             ...prev,
-                                            deliveryName: prev.pickupName,
-                                            deliveryPhonePrefix: prev.pickupPhonePrefix,
-                                            deliveryPhone: prev.pickupPhone,
-                                            deliveryAddress: prev.pickupAddress,
-                                            deliveryCity: prev.pickupCity,
-                                            deliveryCountry: prev.pickupCountry,
+                                            exchangeCustomerName: prev.pickupName,
+                                            exchangeCustomerPhonePrefix: prev.pickupPhonePrefix,
+                                            exchangeCustomerPhone: prev.pickupPhone,
+                                            exchangeAddress: prev.pickupAddress,
+                                            exchangeCity: prev.pickupCity,
                                         }))}
                                         className="px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold text-sm hover:opacity-90 transition-all flex items-center gap-2"
                                     >
