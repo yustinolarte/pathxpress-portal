@@ -540,11 +540,11 @@ export async function updateOrder(
     const { invoiceItems, codRecords } = await import("../drizzle/schema");
     const { eq, and } = await import("drizzle-orm");
 
-    // 1. Fetch order, invoice check, and COD record in parallel
-    const [existingOrder, invoicedItems, existingCodRecords] = await Promise.all([
+    // 1. Fetch order, invoice check, and ALL COD records for this shipment
+    const [existingOrder, invoicedItems, allShipmentCodRecords] = await Promise.all([
       getOrderById(orderId),
       db.select().from(invoiceItems).where(eq(invoiceItems.shipmentId, orderId)).limit(1),
-      db.select().from(codRecords).where(eq(codRecords.shipmentId, orderId)).limit(1),
+      db.select().from(codRecords).where(eq(codRecords.shipmentId, orderId)),
     ]);
 
     if (!existingOrder) {
@@ -562,26 +562,43 @@ export async function updateOrder(
     const oldCodRequired = existingOrder.codRequired === 1;
     const newCodRequired = updates.codRequired !== undefined ? updates.codRequired === 1 : oldCodRequired;
 
-    const existingCodRecord = existingCodRecords[0];
+    // Active record = any non-cancelled, non-remitted record
+    const activeRecord = allShipmentCodRecords.find(r => r.status !== 'cancelled');
+    const remittedRecord = allShipmentCodRecords.find(r => r.status === 'remitted');
 
-    // Case A: COD was enabled, now disabled -> Cancel COD record
-    if (oldCodRequired && !newCodRequired && existingCodRecord) {
-      // Only cancel if not already remitted
-      if (existingCodRecord.status === 'remitted') {
+    // Case A: COD disabled -> cancel ALL active records for this shipment
+    if (oldCodRequired && !newCodRequired) {
+      if (remittedRecord) {
         return {
           success: false,
           error: "Cannot disable COD: the amount has already been remitted to the client"
         };
       }
-      await db.update(codRecords)
-        .set({ status: 'cancelled' })
-        .where(eq(codRecords.id, existingCodRecord.id));
+      // Cancel all non-cancelled records (cleans up any duplicates too)
+      const activeIds = allShipmentCodRecords
+        .filter(r => r.status !== 'cancelled')
+        .map(r => r.id);
+      if (activeIds.length > 0) {
+        const { inArray: inArr } = await import('drizzle-orm');
+        await db.update(codRecords)
+          .set({ status: 'cancelled' })
+          .where(inArr(codRecords.id, activeIds));
+      }
     }
 
-    // Case B: COD was disabled, now enabled -> Create COD record
+    // Case B: COD enabled -> delete any stale cancelled records, then insert fresh
     if (!oldCodRequired && newCodRequired) {
       const codAmount = updates.codAmount || '0';
       const codCurrency = updates.codCurrency || 'AED';
+
+      // Clean up old cancelled records to avoid duplicates accumulating
+      const cancelledIds = allShipmentCodRecords
+        .filter(r => r.status === 'cancelled')
+        .map(r => r.id);
+      if (cancelledIds.length > 0) {
+        const { inArray: inArr } = await import('drizzle-orm');
+        await db.delete(codRecords).where(inArr(codRecords.id, cancelledIds));
+      }
 
       await db.insert(codRecords).values({
         shipmentId: orderId,
@@ -591,10 +608,9 @@ export async function updateOrder(
       });
     }
 
-    // Case C: COD was enabled and stays enabled, but amount changed -> Update COD record
-    if (oldCodRequired && newCodRequired && existingCodRecord && updates.codAmount) {
-      // Only update if not already remitted
-      if (existingCodRecord.status === 'remitted') {
+    // Case C: COD stays enabled but amount changed -> update the active record
+    if (oldCodRequired && newCodRequired && activeRecord && updates.codAmount) {
+      if (remittedRecord) {
         return {
           success: false,
           error: "Cannot modify COD amount: the amount has already been remitted to the client"
@@ -603,9 +619,9 @@ export async function updateOrder(
       await db.update(codRecords)
         .set({
           codAmount: updates.codAmount,
-          codCurrency: updates.codCurrency || existingCodRecord.codCurrency
+          codCurrency: updates.codCurrency || activeRecord.codCurrency
         })
-        .where(eq(codRecords.id, existingCodRecord.id));
+        .where(eq(codRecords.id, activeRecord.id));
     }
 
     // 4. Build update object for orders table
