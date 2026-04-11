@@ -2678,6 +2678,58 @@ export const billingRouter = router({
       return { invoiceId };
     }),
 
+  // Admin: Get billable international shipments for a client in a period
+  getBillableIntlShipments: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      periodStart: z.string(),
+      periodEnd: z.string(),
+    }))
+    .query(async ({ input }) => {
+      const { getBillableIntlShipments } = await import('./db');
+      return await getBillableIntlShipments(
+        input.clientId,
+        new Date(input.periodStart),
+        new Date(input.periodEnd)
+      );
+    }),
+
+  // Admin: Generate international invoice for a client
+  generateIntlInvoice: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      periodStart: z.string(),
+      periodEnd: z.string(),
+      shipmentIds: z.array(z.number()).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { generateIntlInvoiceForClient } = await import('./db');
+      const invoiceId = await generateIntlInvoiceForClient(
+        input.clientId,
+        new Date(input.periodStart),
+        new Date(input.periodEnd),
+        input.shipmentIds
+      );
+
+      if (!invoiceId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No international shipments found for this period' });
+      }
+
+      try {
+        const from = new Date(input.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        const to = new Date(input.periodEnd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        await createNotification(
+          input.clientId,
+          'INVOICE_GENERATED',
+          'New International Invoice Available',
+          `Your international invoice for the period ${from} – ${to} has been generated and is ready for review.`,
+          'invoices'
+        );
+      } catch (_) { /* notification errors must never break invoicing */ }
+
+      return { invoiceId };
+    }),
+
   // Admin: Get all invoices
   getAllInvoices: portalAdminProcedure
     .query(async ({ ctx }) => {

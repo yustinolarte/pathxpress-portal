@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, desc, sql, inArray, ne } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray, ne, or, notInArray } from "drizzle-orm";
 import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
@@ -884,6 +884,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
   const periodEndFullDay = new Date(periodEnd);
   periodEndFullDay.setHours(23, 59, 59, 999);
 
+  const UAE_VALUES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES'];
+
   const shipmentsData = await db
     .select({
       order: orders,
@@ -896,7 +898,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         gte(orders.lastStatusUpdate, periodStart),
         lte(orders.lastStatusUpdate, periodEndFullDay),
         inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
-        isNull(invoiceItems.id)
+        isNull(invoiceItems.id),
+        inArray(orders.destinationCountry, UAE_VALUES)
       )
     );
 
@@ -1094,6 +1097,217 @@ export async function generateInvoiceForClient(
         total: fodFee.toFixed(2),
       });
     }
+  }
+
+  return invoice.insertId;
+}
+
+// ─── International Billing ────────────────────────────────────────────────────
+
+const UAE_COUNTRIES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES'];
+
+export async function getBillableIntlShipments(clientId: number, periodStart: Date, periodEnd: Date) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { invoiceItems } = await import("../drizzle/schema");
+  const { isNull, inArray: drizzleInArray } = await import("drizzle-orm");
+  const { loadRatesFromDB, quote, normalizeCountryName } = await import('./internationalRateEngine');
+
+  const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
+  if (!client) return [];
+
+  const periodEndFullDay = new Date(periodEnd);
+  periodEndFullDay.setHours(23, 59, 59, 999);
+
+  const shipmentsData = await db
+    .select({ order: orders })
+    .from(orders)
+    .leftJoin(invoiceItems, eq(orders.id, invoiceItems.shipmentId))
+    .where(
+      and(
+        eq(orders.clientId, clientId),
+        gte(orders.lastStatusUpdate, periodStart),
+        lte(orders.lastStatusUpdate, periodEndFullDay),
+        drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
+        isNull(invoiceItems.id),
+        notInArray(orders.destinationCountry, UAE_COUNTRIES)
+      )
+    );
+
+  if (shipmentsData.length === 0) return [];
+
+  const rateData = await loadRatesFromDB(db);
+  const discountPct = client.intlDiscountPercent ? parseFloat(client.intlDiscountPercent) : undefined;
+
+  const shipmentsWithRates = await Promise.all(
+    shipmentsData.map(async (d) => {
+      const order = d.order;
+
+      // Exchange free return — second leg is free
+      if (order.orderType === 'exchange' && order.isReturn === 1) {
+        return { ...order, calculatedRate: 0 };
+      }
+
+      // Standard return with fixed fee
+      if (order.isReturn === 1 && order.orderType !== 'exchange' && client.returnFee) {
+        return { ...order, calculatedRate: parseFloat(client.returnFee) };
+      }
+
+      try {
+        const quoteResult = quote(rateData, {
+          originCountry: 'United Arab Emirates',
+          destinationCountry: order.destinationCountry,
+          realWeightKg: parseFloat(order.weight || '0.5'),
+          dimensionsCm: {
+            length: parseFloat(order.length || '10'),
+            width: parseFloat(order.width || '10'),
+            height: parseFloat(order.height || '10'),
+          },
+        }, discountPct);
+
+        const matchingOption = quoteResult.options.find(o => o.serviceKey === order.serviceType)
+          ?? quoteResult.options[0];
+        const rate = matchingOption ? (matchingOption.totalAfterDiscount ?? matchingOption.total) : 0;
+        return { ...order, calculatedRate: Math.round(rate * 100) / 100 };
+      } catch {
+        return { ...order, calculatedRate: 0 };
+      }
+    })
+  );
+
+  return shipmentsWithRates;
+}
+
+export async function generateIntlInvoiceForClient(
+  clientId: number,
+  periodStart: Date,
+  periodEnd: Date,
+  shipmentIds?: number[]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const { invoiceItems, invoices: invoicesTable } = await import("../drizzle/schema");
+  const { isNull, inArray: drizzleInArray } = await import("drizzle-orm");
+  const { loadRatesFromDB, quote } = await import('./internationalRateEngine');
+
+  let shipments: typeof orders.$inferSelect[] = [];
+
+  if (shipmentIds && shipmentIds.length > 0) {
+    const results = await db
+      .select({ order: orders })
+      .from(orders)
+      .leftJoin(invoiceItems, eq(orders.id, invoiceItems.shipmentId))
+      .where(
+        and(
+          eq(orders.clientId, clientId),
+          drizzleInArray(orders.id, shipmentIds),
+          drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
+          isNull(invoiceItems.id),
+          notInArray(orders.destinationCountry, UAE_COUNTRIES)
+        )
+      );
+    shipments = results.map(r => r.order);
+  } else {
+    const result = await getBillableIntlShipments(clientId, periodStart, periodEnd);
+    shipments = result.map(({ calculatedRate, ...order }) => order as any);
+  }
+
+  if (shipments.length === 0) return null;
+
+  const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
+  if (!client) throw new Error("Client not found");
+
+  const rateData = await loadRatesFromDB(db);
+  const discountPct = client.intlDiscountPercent ? parseFloat(client.intlDiscountPercent) : undefined;
+
+  let subtotal = 0;
+  const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number }[] = [];
+
+  for (const shipment of shipments) {
+    let totalRate = 0;
+
+    if (shipment.orderType === 'exchange' && shipment.isReturn === 1) {
+      totalRate = 0;
+    } else if (shipment.isReturn === 1 && shipment.orderType !== 'exchange' && client.returnFee) {
+      totalRate = parseFloat(client.returnFee);
+    } else {
+      try {
+        const quoteResult = quote(rateData, {
+          originCountry: 'United Arab Emirates',
+          destinationCountry: shipment.destinationCountry,
+          realWeightKg: parseFloat(shipment.weight || '0.5'),
+          dimensionsCm: {
+            length: parseFloat(shipment.length || '10'),
+            width: parseFloat(shipment.width || '10'),
+            height: parseFloat(shipment.height || '10'),
+          },
+        }, discountPct);
+
+        const matchingOption = quoteResult.options.find(o => o.serviceKey === shipment.serviceType)
+          ?? quoteResult.options[0];
+        totalRate = matchingOption ? (matchingOption.totalAfterDiscount ?? matchingOption.total) : 0;
+      } catch {
+        totalRate = 0;
+      }
+    }
+
+    subtotal += totalRate;
+    shipmentRates.push({ shipment, shippingRate: totalRate });
+  }
+
+  const now = new Date();
+  const dueDate = new Date(now);
+  dueDate.setDate(dueDate.getDate() + 30);
+
+  // Invoice number: INTLINV-YYYY-MM-NNN
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const prefix = `INTLINV-${year}-${month}-`;
+  const { sql: sqlFn } = await import('drizzle-orm');
+  const [lastInvoice] = await db
+    .select({ invoiceNumber: invoices.invoiceNumber })
+    .from(invoices)
+    .where(sqlFn`invoiceNumber LIKE ${prefix + '%'}`)
+    .orderBy(sqlFn`invoiceNumber DESC`)
+    .limit(1);
+  let nextSeq = 1;
+  if (lastInvoice?.invoiceNumber) {
+    const parts = lastInvoice.invoiceNumber.split('-');
+    const lastSeq = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+  }
+  const invoiceNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
+  const total = subtotal;
+  const [invoice] = await db.insert(invoices).values({
+    clientId,
+    invoiceNumber,
+    periodFrom: periodStart,
+    periodTo: periodEnd,
+    issueDate: now,
+    dueDate,
+    subtotal: subtotal.toFixed(2),
+    taxes: '0.00',
+    total: total.toFixed(2),
+    amountPaid: '0',
+    balance: total.toFixed(2),
+    status: 'pending',
+    currency: 'AED',
+  });
+
+  for (const { shipment, shippingRate } of shipmentRates) {
+    const weight = parseFloat(shipment.weight || '0');
+    const svcLabel = shipment.serviceType || 'INTL';
+    await db.insert(invoiceItems).values({
+      invoiceId: invoice.insertId,
+      shipmentId: shipment.id,
+      description: `${shipment.waybillNumber} - ${svcLabel} - ${weight}kg - ${shipment.destinationCountry}`,
+      quantity: 1,
+      unitPrice: shippingRate.toFixed(2),
+      total: shippingRate.toFixed(2),
+    });
   }
 
   return invoice.insertId;

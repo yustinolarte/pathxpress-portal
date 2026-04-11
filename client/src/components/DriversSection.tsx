@@ -24,6 +24,7 @@ import {
     TrendingUp, BarChart2, Search, Filter, ChevronRight, Star,
     Activity, Download
 } from 'lucide-react';
+import CreateRouteWizard from '@/components/CreateRouteWizard';
 
 // Dubai zone presets
 const ZONE_OPTIONS = [
@@ -60,7 +61,7 @@ export default function DriversSection() {
     // Dialogs
     const [createDriverDialogOpen, setCreateDriverDialogOpen] = useState(false);
     const [editDriverDialogOpen, setEditDriverDialogOpen] = useState(false);
-    const [createRouteDialogOpen, setCreateRouteDialogOpen] = useState(false);
+    const [createRouteWizardOpen, setCreateRouteWizardOpen] = useState(false);
     const [routeDetailsDialogOpen, setRouteDetailsDialogOpen] = useState(false);
     const [addOrdersDialogOpen, setAddOrdersDialogOpen] = useState(false);
     const [qrDialogOpen, setQrDialogOpen] = useState(false);
@@ -91,15 +92,6 @@ export default function DriversSection() {
         vehicleNumber: '',
         emiratesId: '',
         licenseNo: '',
-    });
-
-    const [newRoute, setNewRoute] = useState({
-        id: '',
-        date: new Date().toISOString().split('T')[0],
-        driverId: '',
-        zone: '',
-        vehicleInfo: '',
-        notes: '',
     });
 
     // Queries
@@ -185,20 +177,6 @@ export default function DriversSection() {
         onError: (error) => toast.error(error.message),
     });
 
-    const createRouteMutation = trpc.portal.drivers.createRoute.useMutation({
-        onSuccess: (_, variables) => {
-            toast.success('Route created successfully');
-            setCreateRouteDialogOpen(false);
-            // Show QR code for the newly created route
-            setQrRouteId(variables.id);
-            setQrDialogOpen(true);
-            setNewRoute({ id: '', date: new Date().toISOString().split('T')[0], driverId: '', zone: '', vehicleInfo: '', notes: '' });
-            refetchRoutes();
-            refetchStats();
-        },
-        onError: (error) => toast.error(error.message),
-    });
-
     const updateRouteStatusMutation = trpc.portal.drivers.updateRouteStatus.useMutation({
         onSuccess: () => {
             toast.success('Route status updated');
@@ -268,20 +246,6 @@ export default function DriversSection() {
         if (confirm(`Are you sure you want to delete driver "${name}"?`)) {
             deleteDriverMutation.mutate({ id });
         }
-    };
-
-    const handleCreateRoute = () => {
-        if (!newRoute.id || !newRoute.date) {
-            toast.error('Route ID and date are required');
-            return;
-        }
-        createRouteMutation.mutate({
-            id: newRoute.id,
-            date: newRoute.date,
-            driverId: newRoute.driverId && newRoute.driverId !== 'none' ? parseInt(newRoute.driverId) : undefined,
-            zone: newRoute.zone,
-            vehicleInfo: newRoute.vehicleInfo,
-        });
     };
 
     const handleUpdateReportStatus = (reportId: number, status: 'pending' | 'in_review' | 'resolved' | 'rejected') => {
@@ -569,7 +533,7 @@ export default function DriversSection() {
                                 <CardTitle>Routes</CardTitle>
                                 <CardDescription>Daily delivery routes</CardDescription>
                             </div>
-                            <Button onClick={() => setCreateRouteDialogOpen(true)}>
+                            <Button onClick={() => setCreateRouteWizardOpen(true)}>
                                 <Plus className="mr-2 h-4 w-4" /> Create Route
                             </Button>
                         </CardHeader>
@@ -1083,164 +1047,18 @@ export default function DriversSection() {
                 </DialogContent>
             </Dialog>
 
-            {/* Create Route Dialog */}
-            <Dialog open={createRouteDialogOpen} onOpenChange={setCreateRouteDialogOpen}>
-                <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600" />
-
-                    <div className="p-6">
-                        <DialogHeader className="mb-6">
-                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-blue-500/20">
-                                    <MapPin className="w-6 h-6 text-blue-400" />
-                                </div>
-                                Create Route
-                            </DialogTitle>
-                            <DialogDescription className="mt-1">
-                                Set up a new delivery route — a QR code will be generated automatically
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="flex items-center gap-2">
-                                        <Hash className="w-4 h-4 text-muted-foreground" />
-                                        Route ID *
-                                    </Label>
-                                    <Input
-                                        value={newRoute.id}
-                                        onChange={(e) => setNewRoute({ ...newRoute, id: e.target.value })}
-                                        placeholder="DXB-2025-001"
-                                        className="bg-white/5 border-white/10"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Unique identifier for this route</p>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="flex items-center gap-2">
-                                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                                        Date *
-                                    </Label>
-                                    <Input
-                                        type="date"
-                                        value={newRoute.date}
-                                        onChange={(e) => setNewRoute({ ...newRoute, date: e.target.value })}
-                                        className="bg-white/5 border-white/10"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Scheduled delivery date</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <Users className="w-4 h-4 text-muted-foreground" />
-                                    Assign Driver
-                                </Label>
-                                <Select
-                                    value={newRoute.driverId}
-                                    onValueChange={(value) => setNewRoute({ ...newRoute, driverId: value })}
-                                >
-                                    <SelectTrigger className="bg-white/5 border-white/10">
-                                        <SelectValue placeholder="Select driver (optional)" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="none">Unassigned</SelectItem>
-                                        {drivers?.filter((d: any) => d.status === 'active').map((driver: any) => (
-                                            <SelectItem key={driver.id} value={driver.id.toString()}>
-                                                <div className="flex items-center gap-2">
-                                                    <span>{driver.fullName}</span>
-                                                    <span className="text-muted-foreground">•</span>
-                                                    <span className="text-xs text-muted-foreground">{driver.vehicleNumber || 'No vehicle'}</span>
-                                                </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">Only active drivers are shown</p>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="flex items-center gap-2">
-                                        <MapPin className="w-4 h-4 text-muted-foreground" />
-                                        Zone
-                                    </Label>
-                                    <Select
-                                        value={newRoute.zone}
-                                        onValueChange={(value) => setNewRoute({ ...newRoute, zone: value === 'other' ? '' : ZONE_OPTIONS.find(z => z.value === value)?.label || value })}
-                                    >
-                                        <SelectTrigger className="bg-white/5 border-white/10">
-                                            <SelectValue placeholder="Select zone" />
-                                        </SelectTrigger>
-                                        <SelectContent className="max-h-[300px]">
-                                            {ZONE_OPTIONS.map((zone) => (
-                                                <SelectItem key={zone.value} value={zone.value}>
-                                                    {zone.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    {newRoute.zone === '' && (
-                                        <Input
-                                            value={newRoute.zone}
-                                            onChange={(e) => setNewRoute({ ...newRoute, zone: e.target.value })}
-                                            placeholder="Enter custom zone"
-                                            className="bg-white/5 border-white/10 mt-2"
-                                        />
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="flex items-center gap-2">
-                                        <Truck className="w-4 h-4 text-muted-foreground" />
-                                        Vehicle Info
-                                    </Label>
-                                    <Input
-                                        value={newRoute.vehicleInfo}
-                                        onChange={(e) => setNewRoute({ ...newRoute, vehicleInfo: e.target.value })}
-                                        placeholder="White Van - DXB 12345"
-                                        className="bg-white/5 border-white/10"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-muted-foreground" />
-                                    Notes
-                                </Label>
-                                <Textarea
-                                    value={newRoute.notes}
-                                    onChange={(e) => setNewRoute({ ...newRoute, notes: e.target.value })}
-                                    placeholder="Special instructions or notes for this route..."
-                                    rows={3}
-                                    className="bg-white/5 border-white/10 resize-none"
-                                />
-                            </div>
-
-                            <DialogFooter className="pt-4 border-t border-white/10">
-                                <Button type="button" variant="outline" onClick={() => setCreateRouteDialogOpen(false)}>Cancel</Button>
-                                <Button
-                                    onClick={handleCreateRoute}
-                                    disabled={createRouteMutation.isPending}
-                                    className="bg-blue-600 hover:bg-blue-700"
-                                >
-                                    {createRouteMutation.isPending ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                            Creating...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                                            Create Route & Generate QR
-                                        </>
-                                    )}
-                                </Button>
-                            </DialogFooter>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            {/* Create Route Wizard */}
+            <CreateRouteWizard
+                open={createRouteWizardOpen}
+                onOpenChange={setCreateRouteWizardOpen}
+                drivers={drivers || []}
+                onSuccess={(routeId) => {
+                    setQrRouteId(routeId);
+                    setQrDialogOpen(true);
+                    refetchRoutes();
+                    refetchStats();
+                }}
+            />
 
             {/* QR Code Dialog */}
             <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
