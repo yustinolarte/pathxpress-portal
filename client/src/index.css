@@ -885,3 +885,9 @@
     animation: scrollIndicator 2s ease-in-out infinite;
   }
 }
+
+/* Google Places Autocomplete dropdown — must stay clickable inside Radix Dialog */
+.pac-container {
+  pointer-events: auto !important;
+  z-index: 99999 !important;
+}

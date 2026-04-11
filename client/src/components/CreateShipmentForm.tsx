@@ -1,8 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
+import { LocationPicker, type PickedLocation, type ParsedAddress } from '@/components/LocationPicker';
+
+const SHIPMENT_CITY_MAP: Record<string, string> = {
+  'dubai': 'Dubai',
+  'abu dhabi': 'Abu Dhabi',
+  'abū ẓaby': 'Abu Dhabi',
+  'sharjah': 'Sharjah',
+  'ash shāriqah': 'Sharjah',
+  'ajman': 'Ajman',
+  "'ajmān": 'Ajman',
+  'fujairah': 'Fujairah',
+  'ras al-khaimah': 'Ras Al Khaimah',
+  "raʾs al-khaymah": 'Ras Al Khaimah',
+  'ras al khaimah': 'Ras Al Khaimah',
+  'umm al-quwain': 'Umm Al Quwain',
+  'umm al quwain': 'Umm Al Quwain',
+  'al ain': 'Abu Dhabi',
+};
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Save } from 'lucide-react';
 
@@ -52,6 +69,21 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
   const [calculatedRate, setCalculatedRate] = useState<any>(null);
   const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+  const consigneeSearchRef = useRef<HTMLInputElement>(null);
+
+  function handleAddressParsed(parsed: ParsedAddress) {
+    const matched = parsed.emirate
+      ? SHIPMENT_CITY_MAP[parsed.emirate.toLowerCase()] ?? undefined
+      : undefined;
+    setFormData(prev => ({
+      ...prev,
+      consigneeBuilding: parsed.streetNumber ?? prev.consigneeBuilding,
+      consigneeStreet: parsed.street ?? prev.consigneeStreet,
+      consigneeArea: parsed.area ?? prev.consigneeArea,
+      ...(matched ? { city: matched, emirate: matched } : {}),
+    }));
+  }
+
   const [showSaveShipperDialog, setShowSaveShipperDialog] = useState(false);
   const [shipperNickname, setShipperNickname] = useState('');
 
@@ -219,11 +251,11 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     }
   };
 
-  const inputClass = "w-full rounded-lg border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+  const inputClass = "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 md:p-8 max-w-7xl mx-auto w-full bg-background text-foreground antialiased font-sans">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+    <form onSubmit={handleSubmit} className="p-0 w-full bg-background text-foreground antialiased font-sans">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Create New Shipment</h1>
           <p className="text-muted-foreground">Fill in the details to generate a new waybill and schedule pickup.</p>
@@ -238,9 +270,9 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Sender & Receiver */}
-        <div className="xl:col-span-2 space-y-8">
+        <div className="lg:col-span-2 space-y-6">
           
           {/* Shipper Details */}
           <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
@@ -350,6 +382,19 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                     <input required className={`${inputClass} rounded-l-none`} placeholder="5x xxx xxxx" type="text" value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} />
                   </div>
                 </div>
+                <div className="md:col-span-2 space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Search Address</label>
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <input
+                      ref={consigneeSearchRef}
+                      type="text"
+                      placeholder="Type to search and auto-fill all address fields..."
+                      className={`${inputClass} pl-9 border-primary/50 focus-visible:ring-primary`}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/70">Select a suggestion to fill building, street, area and city automatically</p>
+                </div>
                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div className="space-y-1 md:col-span-1">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Building/Villa</label>
@@ -376,14 +421,16 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                 </div>
               </div>
 
-              <div className="mt-6 pt-6 border-t border-border">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Find Location</label>
-                {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') && (
-                  <div className="col-span-2">
-                    <LocationPicker onLocationPicked={setPickedLocation} />
-                  </div>
-                )}
-              </div>
+              {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') && (
+                <div className="mt-6 pt-6 border-t border-border">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Pin on Map <span className="normal-case font-normal text-muted-foreground/60">(optional — drag the pin to adjust)</span></label>
+                  <LocationPicker
+                    onLocationPicked={setPickedLocation}
+                    onAddressParsed={handleAddressParsed}
+                    searchInputRef={consigneeSearchRef}
+                  />
+                </div>
+              )}
             </div>
           </section>
 

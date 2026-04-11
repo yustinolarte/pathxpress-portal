@@ -770,18 +770,16 @@ export default function CustomerDashboard() {
                       Create New Shipment
                     </button>
                   </DialogTrigger>
-                  <DialogContent className="bg-background text-foreground !w-[98vw] !max-w-[1400px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl">
+                  <DialogContent
+                    className="bg-background text-foreground !w-[90vw] !max-w-[90vw] p-0 gap-0 border-border h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl"
+                    onInteractOutside={(e) => {
+                      if ((e.target as HTMLElement)?.closest?.('.pac-container')) {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
                     <div className="w-full h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
-                    <div className="p-6">
-                      <DialogHeader className="mb-5">
-                        <DialogTitle className="text-xl font-bold flex items-center gap-3">
-                          <Package className="w-6 h-6 text-primary" />
-                          Create New Shipment
-                        </DialogTitle>
-                        <DialogDescription>
-                          Fill in the shipment details to create a new order
-                        </DialogDescription>
-                      </DialogHeader>
+                    <div className="p-5">
                       <CreateShipmentForm
                         onSuccess={() => {
                           setCreateDialogOpen(false);

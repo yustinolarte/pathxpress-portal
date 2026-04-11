@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,28 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2, Edit3, DollarSign } from 'lucide-react';
-import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
+import { LocationPicker, type PickedLocation, type ParsedAddress } from '@/components/LocationPicker';
+
+const EMIRATE_MAP: Record<string, string> = {
+    dubai: 'Dubai',
+    'abu dhabi': 'Abu Dhabi',
+    'abū ẓaby': 'Abu Dhabi',
+    sharjah: 'Sharjah',
+    'ash shāriqah': 'Sharjah',
+    ajman: 'Ajman',
+    "'ajmān": 'Ajman',
+    'ras al-khaimah': 'RAK',
+    "raʾs al-khaymah": 'RAK',
+    'ras al khaimah': 'RAK',
+    fujairah: 'Fujairah',
+    'umm al-quwain': 'UAQ',
+    'umm al quwain': 'UAQ',
+};
+
+function matchEmirate(raw?: string): string | undefined {
+    if (!raw) return undefined;
+    return EMIRATE_MAP[raw.toLowerCase()] ?? undefined;
+}
 
 interface Client {
     id: number;
@@ -64,6 +85,16 @@ export default function AdminCreateOrderDialog({
 
     // Location pin state
     const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+    const consigneeSearchRef = useRef<HTMLInputElement>(null);
+
+    function handleAddressParsed(parsed: ParsedAddress) {
+        setFormData(prev => ({
+            ...prev,
+            address: [parsed.streetNumber, parsed.street, parsed.area].filter(Boolean).join(', ') || prev.address,
+            city: parsed.city ?? prev.city,
+            emirate: matchEmirate(parsed.emirate) ?? prev.emirate,
+        }));
+    }
 
     // Shipper override state
     const [shipperData, setShipperData] = useState({
@@ -227,7 +258,14 @@ export default function AdminCreateOrderDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10 bg-background text-foreground antialiased font-sans">
+            <DialogContent
+                className="glass-strong !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10 bg-background text-foreground antialiased font-sans"
+                onInteractOutside={(e) => {
+                    if ((e.target as HTMLElement)?.closest?.('.pac-container')) {
+                        e.preventDefault();
+                    }
+                }}
+            >
                 {/* Decorative Top Line */}
                 <div className="w-full h-1 bg-primary" />
 
@@ -300,7 +338,7 @@ export default function AdminCreateOrderDialog({
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Shipper Name *</label>
-                                                    <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperName} onChange={e => setShipperData({...shipperData, shipperName: e.target.value})} placeholder="Company Name" />
+                                                    <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={shipperData.shipperName} onChange={e => setShipperData({...shipperData, shipperName: e.target.value})} placeholder="Company Name" />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Contact Number *</label>
@@ -313,16 +351,16 @@ export default function AdminCreateOrderDialog({
                                                             <option value="+968">🇴🇲 +968</option>
                                                             <option value="+974">🇶🇦 +974</option>
                                                         </select>
-                                                        <input required className="w-full rounded-r-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperPhone} onChange={e => setShipperData({...shipperData, shipperPhone: e.target.value})} placeholder="5x xxx xxxx" />
+                                                        <input required className="w-full rounded-r-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={shipperData.shipperPhone} onChange={e => setShipperData({...shipperData, shipperPhone: e.target.value})} placeholder="5x xxx xxxx" />
                                                     </div>
                                                 </div>
                                                 <div className="md:col-span-2 space-y-1">
                                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Address *</label>
-                                                    <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperAddress} onChange={e => setShipperData({...shipperData, shipperAddress: e.target.value})} placeholder="Building, Street, Area" />
+                                                    <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={shipperData.shipperAddress} onChange={e => setShipperData({...shipperData, shipperAddress: e.target.value})} placeholder="Building, Street, Area" />
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City *</label>
-                                                    <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={shipperData.shipperCity} onChange={e => setShipperData({...shipperData, shipperCity: e.target.value})}>
+                                                    <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={shipperData.shipperCity} onChange={e => setShipperData({...shipperData, shipperCity: e.target.value})}>
                                                         <option value="">Select City</option>
                                                         {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
                                                     </select>
@@ -361,7 +399,7 @@ export default function AdminCreateOrderDialog({
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Customer Name *</label>
-                                                <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} placeholder="Full name" />
+                                                <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={formData.customerName} onChange={e => setFormData({...formData, customerName: e.target.value})} placeholder="Full name" />
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number *</label>
@@ -374,20 +412,33 @@ export default function AdminCreateOrderDialog({
                                                         <option value="+968">🇴🇲 +968</option>
                                                         <option value="+974">🇶🇦 +974</option>
                                                     </select>
-                                                    <input required className="w-full rounded-r-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} placeholder="5x xxx xxxx" />
+                                                    <input required className="w-full rounded-r-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} placeholder="5x xxx xxxx" />
                                                 </div>
                                             </div>
                                             <div className="md:col-span-2 space-y-1">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Search Address</label>
+                                                <div className="relative">
+                                                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                                                    <input
+                                                        ref={consigneeSearchRef}
+                                                        type="text"
+                                                        placeholder="Type to search and auto-fill address, city and emirate..."
+                                                        className="w-full rounded-lg border border-primary/50 bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground/40"
+                                                    />
+                                                </div>
+                                                <p className="text-[11px] text-muted-foreground/60">Select a suggestion to auto-fill the fields below</p>
+                                            </div>
+                                            <div className="md:col-span-2 space-y-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Full Address *</label>
-                                                <textarea required rows={2} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 text-foreground" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Building name, street, area..." />
+                                                <textarea required rows={2} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 text-foreground placeholder:text-muted-foreground/40" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} placeholder="Building name, street, area..." />
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City *</label>
-                                                <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="City name" />
+                                                <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="City name" />
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Emirate (For Rating) *</label>
-                                                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" value={formData.emirate} onChange={e => setFormData({...formData, emirate: e.target.value})}>
+                                                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={formData.emirate} onChange={e => setFormData({...formData, emirate: e.target.value})}>
                                                     <option value="">Select Emirate</option>
                                                     <option value="Dubai">Dubai</option>
                                                     <option value="Abu Dhabi">Abu Dhabi</option>
@@ -400,14 +451,16 @@ export default function AdminCreateOrderDialog({
                                             </div>
                                         </div>
 
-                                        <div className="mt-6 pt-6 border-t border-border">
-                                            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Find Location</label>
-                                            {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates' || formData.destinationCountry === '') && (
-                                                <div className="col-span-2">
-                                                    <LocationPicker onLocationPicked={setPickedLocation} />
-                                                </div>
-                                            )}
-                                        </div>
+                                        {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates' || formData.destinationCountry === '') && (
+                                            <div className="mt-6 pt-6 border-t border-border">
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Pin on Map <span className="normal-case font-normal text-muted-foreground/60">(optional — drag the pin to adjust)</span></label>
+                                                <LocationPicker
+                                                    onLocationPicked={setPickedLocation}
+                                                    onAddressParsed={handleAddressParsed}
+                                                    searchInputRef={consigneeSearchRef}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 </section>
 
@@ -421,21 +474,21 @@ export default function AdminCreateOrderDialog({
                                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                             <div className="space-y-1 col-span-2 lg:col-span-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Pieces</label>
-                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" min="1" type="number" required value={formData.pieces} onChange={e => setFormData({...formData, pieces: parseInt(e.target.value)||1})} />
+                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" min="1" type="number" required value={formData.pieces} onChange={e => setFormData({...formData, pieces: parseInt(e.target.value)||1})} />
                                             </div>
                                             <div className="space-y-1 col-span-2 lg:col-span-1">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Weight(kg)</label>
-                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" step="0.1" type="number" required value={formData.weight} onChange={e => setFormData({...formData, weight: parseFloat(e.target.value)||0.5})} />
+                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" step="0.1" type="number" required value={formData.weight} onChange={e => setFormData({...formData, weight: parseFloat(e.target.value)||0.5})} />
                                             </div>
                                             <div className="space-y-1 col-span-2 lg:col-span-2">
                                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Reference #</label>
-                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" type="text" value={formData.orderNumber} onChange={e => setFormData({...formData, orderNumber: e.target.value})} placeholder="Optional Order Number" />
+                                                <input className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" type="text" value={formData.orderNumber} onChange={e => setFormData({...formData, orderNumber: e.target.value})} placeholder="Optional Order Number" />
                                             </div>
                                         </div>
 
                                         <div className="space-y-1">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Special Instructions</label>
-                                            <textarea className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50" placeholder="Any delivery instructions..." rows={2} value={formData.specialInstructions} onChange={e => setFormData({...formData, specialInstructions: e.target.value})}></textarea>
+                                            <textarea className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" placeholder="Any delivery instructions..." rows={2} value={formData.specialInstructions} onChange={e => setFormData({...formData, specialInstructions: e.target.value})}></textarea>
                                         </div>
                                     </div>
                                 </section>

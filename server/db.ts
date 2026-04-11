@@ -1619,6 +1619,34 @@ export async function calculateShipmentRate(params: {
     }
   }
 
+  // DOM: use client-specific flat rate if set and no zone rates configured
+  if (params.serviceType === "DOM" && client) {
+    const domBase = client.customDomBaseRate;
+    const domPerKg = client.customDomPerKg;
+    if (domBase) {
+      const baseRate = parseFloat(domBase);
+      const additionalKgRate = domPerKg ? parseFloat(domPerKg) : 0;
+      const maxWeight = 5;
+      let chargeableWeight = params.weight;
+      if (params.length && params.width && params.height) {
+        const volumetricWeight = (params.length * params.width * params.height) / 5000;
+        chargeableWeight = Math.max(params.weight, volumetricWeight);
+      }
+      const additionalKgCharge = chargeableWeight > maxWeight
+        ? Math.ceil(chargeableWeight - maxWeight) * additionalKgRate
+        : 0;
+      return {
+        baseRate,
+        additionalKgCharge,
+        totalRate: baseRate + additionalKgCharge,
+        appliedTier: null,
+        usingManualTier: false,
+        usingCustomRates: true,
+        chargeableWeight,
+      };
+    }
+  }
+
   // SDD: use client-specific rate if set (Zone 1 only), otherwise fall through to volume tier
   if (params.serviceType === "SDD" && client) {
     const sddBase = client.customSddBaseRate;
@@ -1647,10 +1675,12 @@ export async function calculateShipmentRate(params: {
     }
   }
 
-  // BULLET: default fixed rates (no zone/tier system for bullet)
+  // BULLET: use client-specific rate if set, otherwise fixed default rates
   if (params.serviceType === "BULLET") {
-    const baseRate = 50;
-    const additionalKgRate = 5;
+    const bulletBase = client?.customBulletBaseRate;
+    const bulletPerKg = client?.customBulletPerKg;
+    const baseRate = bulletBase ? parseFloat(bulletBase) : 50;
+    const additionalKgRate = bulletPerKg ? parseFloat(bulletPerKg) : 5;
     const maxWeight = 5;
     let chargeableWeight = params.weight;
     if (params.length && params.width && params.height) {
@@ -1666,6 +1696,7 @@ export async function calculateShipmentRate(params: {
       totalRate: baseRate + additionalKgCharge,
       appliedTier: null,
       usingManualTier: false,
+      usingCustomRates: bulletBase ? true : undefined,
       chargeableWeight,
     };
   }

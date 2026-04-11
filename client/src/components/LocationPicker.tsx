@@ -1,8 +1,7 @@
 /// <reference types="@types/google.maps" />
 
 import { useEffect, useRef, useState } from 'react';
-import { MapPin, Search, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { MapPin, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -29,8 +28,19 @@ export interface PickedLocation {
     address?: string;
 }
 
+export interface ParsedAddress {
+    streetNumber?: string;
+    street?: string;
+    area?: string;
+    city?: string;
+    emirate?: string;
+}
+
 interface LocationPickerProps {
     onLocationPicked: (location: PickedLocation | null) => void;
+    onAddressParsed?: (parsed: ParsedAddress) => void;
+    /** When provided, autocomplete attaches to this external input and the internal search bar is hidden */
+    searchInputRef?: React.RefObject<HTMLInputElement>;
     initialLocation?: { lat: number; lng: number };
     className?: string;
 }
@@ -38,13 +48,13 @@ interface LocationPickerProps {
 // Dubai default center
 const DUBAI_CENTER = { lat: 25.2048, lng: 55.2708 };
 
-export function LocationPicker({ onLocationPicked, initialLocation, className }: LocationPickerProps) {
+export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputRef, initialLocation, className }: LocationPickerProps) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<google.maps.Map | null>(null);
     const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const internalInputRef = useRef<HTMLInputElement>(null);
 
     const [pickedAddress, setPickedAddress] = useState<string>('');
     const [isLoaded, setIsLoaded] = useState(false);
@@ -68,26 +78,24 @@ export function LocationPicker({ onLocationPicked, initialLocation, className }:
             });
             mapRef.current = map;
 
-            // Geocoder for reverse geocoding
             geocoderRef.current = new window.google.maps.Geocoder();
 
-            // Create draggable marker if initial location provided
             if (initialLocation) {
                 placeMarker(map, { lat: initialLocation.lat, lng: initialLocation.lng }, false);
             }
 
-            // Click on map to place/move pin
             map.addListener('click', (e: google.maps.MapMouseEvent) => {
                 if (e.latLng) {
                     placeMarker(map, e.latLng.toJSON(), true);
                 }
             });
 
-            // Places autocomplete on search input
-            if (inputRef.current) {
-                const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+            // Attach autocomplete to external ref if provided, otherwise to internal input
+            const targetInput = searchInputRef?.current ?? internalInputRef.current;
+            if (targetInput) {
+                const ac = new window.google.maps.places.Autocomplete(targetInput, {
                     componentRestrictions: { country: 'ae' },
-                    fields: ['geometry', 'formatted_address'],
+                    fields: ['geometry', 'formatted_address', 'address_components', 'name'],
                 });
                 autocompleteRef.current = ac;
                 ac.addListener('place_changed', () => {
@@ -100,6 +108,24 @@ export function LocationPicker({ onLocationPicked, initialLocation, className }:
                         if (place.formatted_address) {
                             setPickedAddress(place.formatted_address);
                         }
+                        if (onAddressParsed && place.address_components) {
+                            const get = (type: string) =>
+                                place.address_components!.find(c => c.types.includes(type))?.long_name;
+                            const area =
+                                get('sublocality_level_1') ??
+                                get('sublocality') ??
+                                get('neighborhood') ??
+                                get('route');
+                            // Use place.name as building when no street_number exists (e.g. "Maison VI Residences")
+                            const building = get('street_number') ?? (place as any).name ?? undefined;
+                            onAddressParsed({
+                                streetNumber: building,
+                                street: get('route'),
+                                area,
+                                city: get('locality') ?? get('administrative_area_level_2'),
+                                emirate: get('administrative_area_level_1'),
+                            });
+                        }
                     }
                 });
             }
@@ -110,7 +136,6 @@ export function LocationPicker({ onLocationPicked, initialLocation, className }:
     }, []);
 
     function placeMarker(map: google.maps.Map, pos: google.maps.LatLngLiteral, reverseGeocode: boolean) {
-        // Remove old marker
         if (markerRef.current) {
             markerRef.current.map = null;
         }
@@ -123,7 +148,7 @@ export function LocationPicker({ onLocationPicked, initialLocation, className }:
         });
         markerRef.current = marker;
 
-        marker.addListener('dragend', (e: any) => {
+        marker.addListener('dragend', () => {
             const p = marker.position as google.maps.LatLngLiteral;
             reverseGeocodeAndEmit(p);
         });
@@ -158,24 +183,27 @@ export function LocationPicker({ onLocationPicked, initialLocation, className }:
 
     return (
         <div className={cn('space-y-2', className)}>
-            <div className="flex items-center gap-2 text-sm font-medium">
-                <MapPin className="w-4 h-4 text-primary" />
-                Find Location
-            </div>
-
-            {/* Search bar */}
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                <Input
-                    ref={inputRef}
-                    placeholder="Search address or drop a pin on the map..."
-                    className="pl-9"
-                />
-            </div>
+            {/* Internal search bar — only shown when no external searchInputRef is provided */}
+            {!searchInputRef && (
+                <>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                        <MapPin className="w-4 h-4 text-primary" />
+                        Find Location
+                    </div>
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                        <input
+                            ref={internalInputRef}
+                            placeholder="Search address or drop a pin on the map..."
+                            className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground/50"
+                        />
+                    </div>
+                </>
+            )}
 
             {/* Map */}
             <div className="relative rounded-lg overflow-hidden border">
-                <div ref={mapContainerRef} className="h-[220px] w-full bg-muted" />
+                <div ref={mapContainerRef} className="h-[300px] w-full bg-muted" />
                 {!isLoaded && (
                     <div className="absolute inset-0 flex items-center justify-center bg-muted text-sm text-muted-foreground">
                         Loading map...
@@ -194,7 +222,7 @@ export function LocationPicker({ onLocationPicked, initialLocation, className }:
                 </div>
             ) : (
                 <p className="text-xs text-muted-foreground px-1">
-                    Click on the map or search above to place a pin — the driver will navigate directly to it.
+                    Click on the map or drop a pin — the driver will navigate directly to it.
                 </p>
             )}
         </div>
