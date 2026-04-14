@@ -247,7 +247,13 @@ export default function DriversSection() {
         if (!selectedDriver) return;
         updateDriverMutation.mutate({
             id: selectedDriver.id,
-            ...selectedDriver,
+            fullName: selectedDriver.fullName || undefined,
+            email: selectedDriver.email || undefined,
+            phone: selectedDriver.phone || undefined,
+            vehicleNumber: selectedDriver.vehicleNumber || undefined,
+            emiratesId: selectedDriver.emiratesId || undefined,
+            licenseNo: selectedDriver.licenseNo || undefined,
+            status: selectedDriver.status || undefined,
         });
     };
 
