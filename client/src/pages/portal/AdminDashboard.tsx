@@ -34,7 +34,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 const ALL_STATUSES = [
   'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
-  'delivered', 'failed_delivery', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled', 'attempted'
+  'delivered', 'failed_delivery', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled', 'delivery_attempted'
 ];
 
 export default function AdminDashboard() {
@@ -1034,6 +1034,7 @@ export default function AdminDashboard() {
                               returned_to_sender: 'bg-rose-600/80 hover:bg-rose-600',
                               exchange: 'bg-amber-500/80 hover:bg-amber-500',
                               canceled: 'bg-slate-500/80 hover:bg-slate-500',
+                              delivery_attempted: 'bg-orange-500/80 hover:bg-orange-500',
                             };
 
                             const canCreateReturn = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'].includes(order.status) && !order.isReturn;
@@ -1138,6 +1139,7 @@ export default function AdminDashboard() {
                           returned_to_sender: 'bg-rose-600/80',
                           exchange: 'bg-amber-500/80',
                           canceled: 'bg-slate-500/80',
+                          delivery_attempted: 'bg-orange-500/80',
                         };
                         return (
                           <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
