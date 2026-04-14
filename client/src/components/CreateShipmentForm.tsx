@@ -69,6 +69,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
   const [calculatedRate, setCalculatedRate] = useState<any>(null);
   const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+  const [locationError, setLocationError] = useState(false);
   const consigneeSearchRef = useRef<HTMLInputElement>(null);
 
   function handleAddressParsed(parsed: ParsedAddress) {
@@ -201,6 +202,15 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
       toast.error('Please enter a valid weight greater than 0');
       return;
     }
+
+    if (formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') {
+      if (!pickedLocation) {
+        setLocationError(true);
+        toast.error('Please use the Search Address field or click the map to confirm the delivery location.');
+        return;
+      }
+    }
+    setLocationError(false);
 
     const shipperAddress = [formData.shipperBuilding, formData.shipperApt ? `Apt ${formData.shipperApt}` : '', formData.shipperStreet, formData.shipperArea].filter(Boolean).join(', ');
     const receiverAddress = [formData.consigneeBuilding, formData.consigneeApt ? `Apt ${formData.consigneeApt}` : '', formData.consigneeStreet, formData.consigneeArea, formData.consigneeLandmark].filter(Boolean).join(', ');
@@ -422,10 +432,10 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
               </div>
 
               {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') && (
-                <div className="mt-6 pt-6 border-t border-border">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Pin on Map <span className="normal-case font-normal text-muted-foreground/60">(optional — drag the pin to adjust)</span></label>
+                <div className={`mt-6 pt-6 border-t ${locationError ? 'border-destructive' : 'border-border'}`}>
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Pin on Map <span className="text-destructive ml-0.5">*</span><span className="normal-case font-normal text-muted-foreground/60 ml-1">— use Search Address above or click the map</span></label>
                   <LocationPicker
-                    onLocationPicked={setPickedLocation}
+                    onLocationPicked={(loc) => { setPickedLocation(loc); if (loc) setLocationError(false); }}
                     onAddressParsed={handleAddressParsed}
                     searchInputRef={consigneeSearchRef}
                   />

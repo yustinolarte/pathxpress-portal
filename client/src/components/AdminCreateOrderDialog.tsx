@@ -85,6 +85,7 @@ export default function AdminCreateOrderDialog({
 
     // Location pin state
     const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+    const [locationError, setLocationError] = useState(false);
     const consigneeSearchRef = useRef<HTMLInputElement>(null);
 
     function handleAddressParsed(parsed: ParsedAddress) {
@@ -224,6 +225,15 @@ export default function AdminCreateOrderDialog({
             toast.error('Please enter a valid COD amount');
             return;
         }
+
+        if (formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') {
+            if (!pickedLocation) {
+                setLocationError(true);
+                toast.error('Please place a map pin to confirm the delivery location.');
+                return;
+            }
+        }
+        setLocationError(false);
 
         createOrderMutation.mutate({
             clientId: parseInt(selectedClientId),
@@ -452,10 +462,10 @@ export default function AdminCreateOrderDialog({
                                         </div>
 
                                         {(formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates' || formData.destinationCountry === '') && (
-                                            <div className="mt-6 pt-6 border-t border-border">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Pin on Map <span className="normal-case font-normal text-muted-foreground/60">(optional — drag the pin to adjust)</span></label>
+                                            <div className={`mt-6 pt-6 border-t ${locationError ? 'border-destructive' : 'border-border'}`}>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-3">Pin on Map <span className="text-destructive ml-0.5">*</span><span className="normal-case font-normal text-muted-foreground/60 ml-1">— use Search Address above or click the map</span></label>
                                                 <LocationPicker
-                                                    onLocationPicked={setPickedLocation}
+                                                    onLocationPicked={(loc) => { setPickedLocation(loc); if (loc) setLocationError(false); }}
                                                     onAddressParsed={handleAddressParsed}
                                                     searchInputRef={consigneeSearchRef}
                                                 />

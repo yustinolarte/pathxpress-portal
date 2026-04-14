@@ -28,6 +28,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
     const [manualDialogOpen, setManualDialogOpen] = useState(false);
     const [pickedLocationExchange, setPickedLocationExchange] = useState<PickedLocation | null>(null);
     const [pickedLocationManual, setPickedLocationManual] = useState<PickedLocation | null>(null);
+    const [exchangeLocationError, setExchangeLocationError] = useState(false);
+    const [manualLocationError, setManualLocationError] = useState(false);
 
     // Edit COD state
     const [editCodDialogOpen, setEditCodDialogOpen] = useState(false);
@@ -268,6 +270,12 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             toast.error('Please fill in all required fields for the new shipment');
             return;
         }
+        if (!pickedLocationExchange) {
+            setExchangeLocationError(true);
+            toast.error('Please place a map pin to confirm the delivery location.');
+            return;
+        }
+        setExchangeLocationError(false);
         createExchangeMutation.mutate({
             orderId: foundOrder.id,
             newShipment: {
@@ -308,6 +316,12 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                 return;
             }
         }
+        if (!pickedLocationManual) {
+            setManualLocationError(true);
+            toast.error('Please place a map pin to confirm the pickup location.');
+            return;
+        }
+        setManualLocationError(false);
         createManualMutation.mutate({
             ...manualForm,
             pickupPhone: `${manualForm.pickupPhonePrefix} ${manualForm.pickupPhone}`,
@@ -766,9 +780,9 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                 </div>
 
                                                 {/* Location Picker for Exchange */}
-                                                <div className="pt-2 border-t border-border mt-4">
-                                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-3">Delivery Map Location (optional)</Label>
-                                                    <LocationPicker onLocationPicked={setPickedLocationExchange} />
+                                                <div className={`pt-2 border-t mt-4 ${exchangeLocationError ? 'border-destructive' : 'border-border'}`}>
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-3">Delivery Map Location <span className="text-destructive ml-0.5">*</span></Label>
+                                                    <LocationPicker onLocationPicked={(loc) => { setPickedLocationExchange(loc); if (loc) setExchangeLocationError(false); }} />
                                                 </div>
                                             </div>
                                         </section>
@@ -985,10 +999,10 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                     </div>
                                 </section>
                                 
-                                <div className="pt-4 border-t border-border mt-4">
-                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Pickup Map Location (optional)</Label>
+                                <div className={`pt-4 border-t mt-4 ${manualLocationError ? 'border-destructive' : 'border-border'}`}>
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Pickup Map Location <span className="text-destructive ml-0.5">*</span></Label>
                                     <p className="text-xs text-muted-foreground mb-3">Pin the exact pickup address on the map to help the driver locate it.</p>
-                                    <LocationPicker onLocationPicked={setPickedLocationManual} />
+                                    <LocationPicker onLocationPicked={(loc) => { setPickedLocationManual(loc); if (loc) setManualLocationError(false); }} />
                                 </div>
                             </div>
 
