@@ -225,6 +225,15 @@ export default function DriversSection() {
         onError: (error) => toast.error(error.message),
     });
 
+    const removeOrderFromRouteMutation = trpc.portal.drivers.removeOrderFromRoute.useMutation({
+        onSuccess: () => {
+            toast.success('Paquete eliminado de la ruta');
+            refetchRouteDetails();
+            refetchRoutes();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
     // Handlers
     const handleCreateDriver = () => {
         if (!newDriver.username || !newDriver.password || !newDriver.fullName) {
@@ -1341,8 +1350,23 @@ export default function DriversSection() {
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex-shrink-0">
+                                                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
                                                         {getStatusBadge(delivery.status)}
+                                                        <button
+                                                            onClick={() => {
+                                                                if (confirm(`¿Eliminar el paquete ${delivery.waybillNumber} de esta ruta?`)) {
+                                                                    removeOrderFromRouteMutation.mutate({
+                                                                        routeId: routeDetails.id,
+                                                                        orderId: delivery.orderId,
+                                                                    });
+                                                                }
+                                                            }}
+                                                            disabled={removeOrderFromRouteMutation.isPending}
+                                                            className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                                        >
+                                                            <Trash2 className="w-3 h-3" />
+                                                            Eliminar
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>

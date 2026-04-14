@@ -413,6 +413,17 @@ export async function addOrdersToRoute(
     return { success: true, added: addedCount, stopsCreated: stopsToInsert.length };
 }
 
+export async function removeOrderFromRoute(routeId: string, orderId: number) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    await db.delete(routeOrders).where(
+        and(eq(routeOrders.routeId, routeId), eq(routeOrders.orderId, orderId))
+    );
+
+    return { success: true };
+}
+
 // ============ DELIVERIES ============
 
 export async function getAllDeliveries(filters?: {

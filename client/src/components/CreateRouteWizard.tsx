@@ -354,7 +354,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         )}
 
         {/* Lista de órdenes */}
-        <div className="max-h-[380px] overflow-y-auto rounded-xl border border-border">
+        <div className="max-h-[540px] overflow-y-auto rounded-xl border border-border">
           {ordersLoading ? (
             <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -559,7 +559,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong !w-[95vw] !max-w-[780px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
+      <DialogContent className="glass-strong !w-[95vw] !max-w-[920px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
         <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600 flex-shrink-0" />
 
         <div className="p-6 pb-0">

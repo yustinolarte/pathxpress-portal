@@ -172,6 +172,18 @@ export const driverRouter = router({
             return driverAdmin.getAvailableOrders();
         }),
 
+    removeOrderFromRoute: publicProcedure
+        .input(z.object({
+            routeId: z.string(),
+            orderId: z.number(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.removeOrderFromRoute(input.routeId, input.orderId);
+        }),
+
     // ============ DELIVERIES ============
 
     getAllDeliveries: publicProcedure
