@@ -32,15 +32,15 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 
+const ALL_STATUSES = [
+  'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
+  'delivered', 'failed_delivery', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled', 'attempted'
+];
+
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout, loading } = usePortalAuth();
   const [activeTab, setActiveTab] = useState('analytics');
-
-  const ALL_STATUSES = [
-    'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
-    'delivered', 'failed_delivery', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled'
-  ];
 
   // Client editing state
   const [editClientDialogOpen, setEditClientDialogOpen] = useState(false);
@@ -77,8 +77,21 @@ export default function AdminDashboard() {
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
-  const [orderFilterStatuses, setOrderFilterStatuses] = useState<string[]>(ALL_STATUSES);
+  const [orderFilterStatuses, setOrderFilterStatuses] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('orderFilterStatuses');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return ALL_STATUSES;
+  });
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
+
+  useEffect(() => {
+    localStorage.setItem('orderFilterStatuses', JSON.stringify(orderFilterStatuses));
+  }, [orderFilterStatuses]);
 
   // Create client dialog state
   const [createClientWizardOpen, setCreateClientWizardOpen] = useState(false);
