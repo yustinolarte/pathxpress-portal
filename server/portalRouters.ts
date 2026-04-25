@@ -2648,6 +2648,7 @@ export const billingRouter = router({
       periodStart: z.string(), // ISO date
       periodEnd: z.string(), // ISO date
       shipmentIds: z.array(z.number()).optional(), // Optional list of specific shipments to invoice
+      settlementPeriod: z.enum(['weekly', 'biweekly', 'monthly', 'custom']).default('custom'),
     }))
     .mutation(async ({ input, ctx }) => {
       const { generateInvoiceForClient } = await import('./db');
@@ -2655,7 +2656,8 @@ export const billingRouter = router({
         input.clientId,
         new Date(input.periodStart),
         new Date(input.periodEnd),
-        input.shipmentIds
+        input.shipmentIds,
+        input.settlementPeriod
       );
 
       if (!invoiceId) {
@@ -2701,6 +2703,7 @@ export const billingRouter = router({
       periodStart: z.string(),
       periodEnd: z.string(),
       shipmentIds: z.array(z.number()).optional(),
+      settlementPeriod: z.enum(['weekly', 'biweekly', 'monthly', 'custom']).default('custom'),
     }))
     .mutation(async ({ input }) => {
       const { generateIntlInvoiceForClient } = await import('./db');
@@ -2708,7 +2711,8 @@ export const billingRouter = router({
         input.clientId,
         new Date(input.periodStart),
         new Date(input.periodEnd),
-        input.shipmentIds
+        input.shipmentIds,
+        input.settlementPeriod
       );
 
       if (!invoiceId) {
@@ -2728,6 +2732,14 @@ export const billingRouter = router({
       } catch (_) { /* notification errors must never break invoicing */ }
 
       return { invoiceId };
+    }),
+
+  // Admin: Get billing info for a specific client (last invoice, pending balance, etc.)
+  getClientBillingInfo: portalAdminProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ input }) => {
+      const { getClientBillingInfo } = await import('./db');
+      return await getClientBillingInfo(input.clientId);
     }),
 
   // Admin: Get all invoices
@@ -3216,6 +3228,7 @@ export const clientsRouter = router({
       customBulletPerKg: z.string().optional(),
       intlAllowed: z.boolean().optional(),
       intlDiscountPercent: z.string().optional(),
+      defaultSettlementPeriod: z.enum(['weekly', 'biweekly', 'monthly', 'custom']).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
@@ -3238,6 +3251,7 @@ export const clientsRouter = router({
           customBulletPerKg: input.customBulletPerKg || null,
           intlAllowed: input.intlAllowed ? 1 : 0,
           intlDiscountPercent: input.intlDiscountPercent || null,
+          defaultSettlementPeriod: input.defaultSettlementPeriod ?? 'custom',
         })
         .where(eq(clientAccounts.id, input.clientId));
 

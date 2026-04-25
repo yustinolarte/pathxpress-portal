@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2 } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar } from 'lucide-react';
 import { APP_LOGO } from '@/const';
 import ModernDashboardLayout, { ModernMenuItem } from '@/components/ModernDashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -66,6 +66,8 @@ export default function AdminDashboard() {
     bulletAllowed: false,
     customBulletBaseRate: '',
     customBulletPerKg: '',
+    // Billing settlement
+    defaultSettlementPeriod: 'custom' as 'weekly' | 'biweekly' | 'monthly' | 'custom',
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
@@ -77,6 +79,8 @@ export default function AdminDashboard() {
   const [orderFilterClientId, setOrderFilterClientId] = useState<string>('all');
   const [orderFilterDateFrom, setOrderFilterDateFrom] = useState('');
   const [orderFilterDateTo, setOrderFilterDateTo] = useState('');
+  const [orderFilterDeliveryFrom, setOrderFilterDeliveryFrom] = useState('');
+  const [orderFilterDeliveryTo, setOrderFilterDeliveryTo] = useState('');
   const [orderFilterStatuses, setOrderFilterStatuses] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('orderFilterStatuses');
@@ -247,6 +251,7 @@ export default function AdminDashboard() {
         customBulletPerKg: editForm.customBulletPerKg,
         intlAllowed: editForm.intlAllowed,
         intlDiscountPercent: editForm.intlDiscountPercent,
+        defaultSettlementPeriod: editForm.defaultSettlementPeriod,
       });
     } catch (error) {
       // handled by onError
@@ -280,6 +285,7 @@ export default function AdminDashboard() {
         customBulletPerKg: editingClient.customBulletPerKg || '',
         intlAllowed: !!editingClient.intlAllowed,
         intlDiscountPercent: editingClient.intlDiscountPercent || '',
+        defaultSettlementPeriod: (editingClient.defaultSettlementPeriod || 'custom') as 'weekly' | 'biweekly' | 'monthly' | 'custom',
       });
     }
   }, [editingClient]);
@@ -349,13 +355,24 @@ export default function AdminDashboard() {
         if (orderDate > toDate) return false;
       }
       if (!orderFilterStatuses.includes(order.status)) return false;
+      if (orderFilterDeliveryFrom || orderFilterDeliveryTo) {
+        const statusDate = order.deliveryDateReal ?? order.lastStatusUpdate;
+        if (!statusDate) return false;
+        const d = new Date(statusDate);
+        if (orderFilterDeliveryFrom && d < new Date(orderFilterDeliveryFrom)) return false;
+        if (orderFilterDeliveryTo) {
+          const toDate = new Date(orderFilterDeliveryTo);
+          toDate.setHours(23, 59, 59, 999);
+          if (d > toDate) return false;
+        }
+      }
       return true;
     }).sort((a, b) => {
       const dateA = new Date(a.createdAt).getTime();
       const dateB = new Date(b.createdAt).getTime();
       return orderSortDirection === 'newest' ? dateB - dateA : dateA - dateB;
     });
-  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterStatuses, orderSortDirection]);
+  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterStatuses, orderFilterDeliveryFrom, orderFilterDeliveryTo, orderSortDirection]);
 
   const handleLogout = () => {
     logout();
@@ -950,6 +967,17 @@ export default function AdminDashboard() {
                         <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <div className="max-h-60 overflow-y-auto">
+                          <DropdownMenuCheckboxItem
+                            checked={orderFilterStatuses.length === ALL_STATUSES.length}
+                            onCheckedChange={(checked) => {
+                              setOrderFilterStatuses(checked ? ALL_STATUSES : []);
+                            }}
+                            onSelect={(e) => e.preventDefault()}
+                            className="font-semibold"
+                          >
+                            Select All
+                          </DropdownMenuCheckboxItem>
+                          <DropdownMenuSeparator />
                           {ALL_STATUSES.map((status) => (
                             <DropdownMenuCheckboxItem
                               key={status}
@@ -961,6 +989,7 @@ export default function AdminDashboard() {
                                     : prev.filter((s) => s !== status)
                                 );
                               }}
+                              onSelect={(e) => e.preventDefault()}
                               className="capitalize"
                             >
                               {status.replace(/_/g, ' ')}
@@ -971,6 +1000,25 @@ export default function AdminDashboard() {
                     </DropdownMenu>
                   </div>
                   <div className="hidden md:block h-8 w-[1px] bg-border"></div>
+                  <div className="hidden md:block h-8 w-[1px] bg-border"></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status Date</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={orderFilterDeliveryFrom}
+                        onChange={(e) => setOrderFilterDeliveryFrom(e.target.value)}
+                        className="w-[140px] h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground"
+                      />
+                      <span className="text-muted-foreground text-sm">to</span>
+                      <input
+                        type="date"
+                        value={orderFilterDeliveryTo}
+                        onChange={(e) => setOrderFilterDeliveryTo(e.target.value)}
+                        className="w-[140px] h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground"
+                      />
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Sort</span>
                     <select
@@ -982,7 +1030,7 @@ export default function AdminDashboard() {
                       <option value="oldest">Oldest First</option>
                     </select>
                   </div>
-                  {(orderFilterClientId !== 'all' || orderFilterDateFrom || orderFilterDateTo || orderFilterStatuses.length !== ALL_STATUSES.length) && (
+                  {(orderFilterClientId !== 'all' || orderFilterDateFrom || orderFilterDateTo || orderFilterStatuses.length !== ALL_STATUSES.length || orderFilterDeliveryFrom || orderFilterDeliveryTo) && (
                     <>
                       <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                       <button
@@ -991,6 +1039,8 @@ export default function AdminDashboard() {
                           setOrderFilterDateFrom('');
                           setOrderFilterDateTo('');
                           setOrderFilterStatuses(ALL_STATUSES);
+                          setOrderFilterDeliveryFrom('');
+                          setOrderFilterDeliveryTo('');
                         }}
                         className="h-9 px-4 rounded-lg border border-border bg-background hover:bg-muted/50 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
@@ -1018,6 +1068,7 @@ export default function AdminDashboard() {
                             <TableHead>COD</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Created</TableHead>
+                            <TableHead>Status Date</TableHead>
                             <TableHead>Actions</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1102,6 +1153,12 @@ export default function AdminDashboard() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                                <TableCell>
+                                  {(() => {
+                                    const date = order.deliveryDateReal ?? order.lastStatusUpdate;
+                                    return date ? new Date(date).toLocaleDateString() : <span className="text-muted-foreground text-sm">-</span>;
+                                  })()}
+                                </TableCell>
                                 <TableCell>
                                   <div className="flex gap-2">
                                     <Button variant="ghost" size="sm" onClick={() => { setSelectedOrder(order); setViewOrderDialogOpen(true); }} title="View Order Details">
@@ -1516,6 +1573,29 @@ export default function AdminDashboard() {
                         />
                       </div>
                     </div>
+                  </div>
+
+                  {/* Settlement Period */}
+                  <div className="p-3 rounded-xl border border-violet-500/20 bg-violet-500/5 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-violet-400" />
+                      <span className="text-sm font-bold uppercase text-violet-400 tracking-wider">Settlement Cycle</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">Default billing period applied automatically when invoicing this client.</p>
+                    <Select
+                      value={editForm.defaultSettlementPeriod}
+                      onValueChange={(v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => setEditForm({ ...editForm, defaultSettlementPeriod: v })}
+                    >
+                      <SelectTrigger className="h-9 text-sm bg-background/50 border-violet-500/20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="custom">Custom (admin chooses dates)</SelectItem>
+                        <SelectItem value="weekly">Weekly — every 7 days</SelectItem>
+                        <SelectItem value="biweekly">Biweekly — every 14 days</SelectItem>
+                        <SelectItem value="monthly">Monthly — previous calendar month</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

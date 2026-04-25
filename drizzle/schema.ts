@@ -166,6 +166,9 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   sdCutoffTime: varchar("sdCutoffTime", { length: 5 }),            // Same-day cut-off in Dubai time, e.g. "12:00"
   paymentLink: varchar("paymentLink", { length: 512 }),            // Direct payment URL for invoice reminders
 
+  // Billing settlement period preference for this client
+  defaultSettlementPeriod: mysqlEnum("defaultSettlementPeriod", ["weekly", "biweekly", "monthly", "custom"]).default("custom").notNull(),
+
   status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -337,6 +340,7 @@ export const invoices = mysqlTable("invoices", {
   amountPaid: varchar("amountPaid", { length: 50 }).default("0"),
   balance: varchar("balance", { length: 50 }).notNull(),
   status: mysqlEnum("status", ["pending", "paid", "overdue"]).default("pending").notNull(),
+  settlementPeriod: mysqlEnum("settlementPeriod", ["weekly", "biweekly", "monthly", "custom"]).default("custom").notNull(),
   paymentDate: timestamp("paymentDate"),
   paymentReference: varchar("paymentReference", { length: 255 }),
   notes: text("notes"),

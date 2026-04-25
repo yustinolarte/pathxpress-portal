@@ -37,6 +37,10 @@ export default function BillingPanel() {
   const [intlSelectAll, setIntlSelectAll] = useState(true);
   const [intlShowPreviewStep, setIntlShowPreviewStep] = useState(false);
 
+  // ─── Settlement period state ──────────────────────────────────────────────
+  const [settlementPeriod, setSettlementPeriod] = useState<'weekly' | 'biweekly' | 'monthly' | 'custom'>('custom');
+  const [intlSettlementPeriod, setIntlSettlementPeriod] = useState<'weekly' | 'biweekly' | 'monthly' | 'custom'>('custom');
+
   // ─── Shared state ─────────────────────────────────────────────────────────
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -67,6 +71,16 @@ export default function BillingPanel() {
     { enabled: !!intlSelectedClient && !!intlPeriodStart && !!intlPeriodEnd && intlGenerateDialogOpen }
   );
 
+  // Client billing info (last invoice, pending balance)
+  const { data: clientBillingInfo } = trpc.portal.billing.getClientBillingInfo.useQuery(
+    { clientId: selectedClient || 0 },
+    { enabled: !!selectedClient && generateDialogOpen }
+  );
+  const { data: intlClientBillingInfo } = trpc.portal.billing.getClientBillingInfo.useQuery(
+    { clientId: intlSelectedClient || 0 },
+    { enabled: !!intlSelectedClient && intlGenerateDialogOpen }
+  );
+
   // ─── Mutations ────────────────────────────────────────────────────────────
 
   const generateInvoice = trpc.portal.billing.generateInvoice.useMutation({
@@ -77,6 +91,7 @@ export default function BillingPanel() {
       setPeriodStart('');
       setPeriodEnd('');
       setShowPreviewStep(false);
+      setSettlementPeriod('custom');
       refetch();
     },
     onError: (error) => toast.error(error.message || 'Failed to generate invoice'),
@@ -90,6 +105,7 @@ export default function BillingPanel() {
       setIntlPeriodStart('');
       setIntlPeriodEnd('');
       setIntlShowPreviewStep(false);
+      setIntlSettlementPeriod('custom');
       refetch();
     },
     onError: (error) => toast.error(error.message || 'Failed to generate international invoice'),
@@ -124,6 +140,23 @@ export default function BillingPanel() {
       setIntlSelectedShipmentIds([]);
     }
   }, [intlBillableShipments]);
+
+  // Auto-apply client's configured settlement period when billing info loads
+  useEffect(() => {
+    if (clientBillingInfo?.defaultSettlementPeriod) {
+      const sp = clientBillingInfo.defaultSettlementPeriod;
+      setSettlementPeriod(sp);
+      applySettlementPreset(sp, clientBillingInfo.suggestedPeriodStart ?? null, setPeriodStart, setPeriodEnd);
+    }
+  }, [clientBillingInfo]);
+
+  useEffect(() => {
+    if (intlClientBillingInfo?.defaultSettlementPeriod) {
+      const sp = intlClientBillingInfo.defaultSettlementPeriod;
+      setIntlSettlementPeriod(sp);
+      applySettlementPreset(sp, intlClientBillingInfo.suggestedPeriodStart ?? null, setIntlPeriodStart, setIntlPeriodEnd);
+    }
+  }, [intlClientBillingInfo]);
 
   // ─── Filtered invoice lists ───────────────────────────────────────────────
 
@@ -274,6 +307,76 @@ export default function BillingPanel() {
   const formatDate = (date: Date | string) => new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   const formatCurrency = (amount: string, currency: string = 'AED') => `${currency} ${parseFloat(amount).toFixed(2)}`;
 
+  const toDateStr = (d: Date) => d.toISOString().split('T')[0];
+
+  const applySettlementPreset = (
+    type: 'weekly' | 'biweekly' | 'monthly' | 'custom',
+    suggestedStart: string | null,
+    setPStart: (v: string) => void,
+    setPEnd: (v: string) => void
+  ) => {
+    if (type === 'custom') return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Returns the nearest Friday on or before the given date
+    const prevFriday = (date: Date): Date => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      const diff = (d.getDay() - 5 + 7) % 7; // 0 if already Friday
+      d.setDate(d.getDate() - diff);
+      return d;
+    };
+
+    // Returns the last Friday of a given month (0-indexed)
+    const lastFridayOfMonth = (year: number, month: number): Date =>
+      prevFriday(new Date(year, month + 1, 0));
+
+    // Billing uses Friday-to-Friday periods.
+    // suggestedStart = day after the last invoice's end Friday, so go back 1 day to land on that Friday.
+    let startFriday: Date;
+    if (suggestedStart) {
+      const s = new Date(suggestedStart);
+      s.setHours(0, 0, 0, 0);
+      startFriday = new Date(s.getTime() - 86400000);
+    } else if (type === 'monthly') {
+      const y = today.getFullYear();
+      const m = today.getMonth();
+      startFriday = lastFridayOfMonth(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+    } else {
+      const days = type === 'weekly' ? 7 : 14;
+      startFriday = new Date(prevFriday(today).getTime() - days * 86400000);
+    }
+
+    let endFriday: Date;
+    if (type === 'monthly') {
+      const nm = new Date(startFriday);
+      nm.setMonth(nm.getMonth() + 1);
+      endFriday = lastFridayOfMonth(nm.getFullYear(), nm.getMonth());
+    } else {
+      const days = type === 'weekly' ? 7 : 14;
+      endFriday = new Date(startFriday.getTime() + days * 86400000);
+    }
+
+    setPStart(toDateStr(startFriday));
+    setPEnd(toDateStr(endFriday));
+  };
+
+  const settlementLabel = (p: string) => ({ weekly: 'Weekly', biweekly: 'Biweekly', monthly: 'Monthly', custom: 'Custom' }[p] ?? p);
+
+  const getDueDaysLabel = (dueDate: Date | string, status: string) => {
+    if (status === 'paid') return null;
+    const due = new Date(dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    due.setHours(0, 0, 0, 0);
+    const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
+    if (diffDays < 0) return <span className="text-red-400 text-xs font-medium">{Math.abs(diffDays)}d overdue</span>;
+    if (diffDays === 0) return <span className="text-orange-400 text-xs font-medium">Due today</span>;
+    if (diffDays <= 7) return <span className="text-yellow-400 text-xs font-medium">Due in {diffDays}d</span>;
+    return <span className="text-muted-foreground text-xs">{diffDays}d left</span>;
+  };
+
   const domPreviewTotal = useMemo(() => {
     if (!billableShipments) return 0;
     return billableShipments.filter((s: any) => selectedShipmentIds.includes(s.id)).reduce((sum: number, s: any) => sum + (s.calculatedRate || 0), 0);
@@ -344,6 +447,8 @@ export default function BillingPanel() {
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead>Period</TableHead>
+                <TableHead>Settlement</TableHead>
+                <TableHead>Shipments</TableHead>
                 <TableHead>Issue Date</TableHead>
                 <TableHead>Due Date</TableHead>
                 <TableHead>Amount</TableHead>
@@ -356,15 +461,33 @@ export default function BillingPanel() {
               {invoiceList.map((invoice) => {
                 const isOverdue = invoice.status === 'overdue';
                 const balance = parseFloat(invoice.balance || invoice.total || '0');
+                const sp = invoice.settlementPeriod || 'custom';
+                const settlementColors: Record<string, string> = {
+                  weekly: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+                  biweekly: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+                  monthly: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+                  custom: 'bg-muted/40 text-muted-foreground border-border',
+                };
                 return (
                   <TableRow key={invoice.id} className={isOverdue ? 'bg-red-500/5 hover:bg-red-500/10' : ''}>
                     <TableCell className="font-medium cursor-pointer text-blue-500 hover:text-blue-400 hover:underline" onClick={() => handlePreviewInvoice(invoice)}>
                       {invoice.invoiceNumber}
                     </TableCell>
                     <TableCell>{clients?.find(c => c.id === invoice.clientId)?.companyName || invoice.clientId}</TableCell>
-                    <TableCell className="text-sm">{formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}</TableCell>
-                    <TableCell>{formatDate(invoice.issueDate)}</TableCell>
-                    <TableCell className={isOverdue ? 'text-red-400 font-medium' : ''}>{formatDate(invoice.dueDate)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDate(invoice.periodFrom)}<br /><span className="text-muted-foreground/60">→ {formatDate(invoice.periodTo)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={`text-xs border ${settlementColors[sp]}`}>{settlementLabel(sp)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center font-mono text-sm">
+                      {invoice.shipmentCount ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-sm">{formatDate(invoice.issueDate)}</TableCell>
+                    <TableCell>
+                      <div className={isOverdue ? 'text-red-400 font-medium text-sm' : 'text-sm'}>{formatDate(invoice.dueDate)}</div>
+                      {getDueDaysLabel(invoice.dueDate, invoice.status)}
+                    </TableCell>
                     <TableCell className="font-semibold">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
                     <TableCell className={balance > 0 ? 'font-bold text-red-400' : 'text-muted-foreground'}>
                       {balance > 0 ? formatCurrency(invoice.balance || invoice.total, invoice.currency) : '—'}
@@ -437,6 +560,7 @@ export default function BillingPanel() {
     selectedIds, onToggle, onSelectAll, selectAllChecked,
     previewTotal, showPreview, setShowPreview,
     onGenerate, isPending,
+    settlement, setSettlement, billingInfo,
   }: {
     open: boolean; onOpenChange: (v: boolean) => void; isIntl: boolean;
     client: number | null; setClient: (v: number) => void;
@@ -447,6 +571,9 @@ export default function BillingPanel() {
     onSelectAll: (c: boolean) => void; selectAllChecked: boolean;
     previewTotal: number; showPreview: boolean; setShowPreview: (v: boolean) => void;
     onGenerate: () => void; isPending: boolean;
+    settlement: 'weekly' | 'biweekly' | 'monthly' | 'custom';
+    setSettlement: (v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => void;
+    billingInfo: any;
   }) => (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
@@ -483,16 +610,81 @@ export default function BillingPanel() {
               </Select>
             </div>
 
+            {/* Last billing info block */}
+            {client && billingInfo && (
+              billingInfo.lastInvoiceNumber ? (
+                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm space-y-1.5">
+                  <p className="font-semibold text-blue-400 flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> Last Invoice History
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <span className="text-muted-foreground">Last invoice:</span>
+                    <span className="font-mono font-medium">{billingInfo.lastInvoiceNumber}</span>
+                    <span className="text-muted-foreground">Issued:</span>
+                    <span>{billingInfo.lastInvoiceDate ? formatDate(billingInfo.lastInvoiceDate) : '—'}</span>
+                    <span className="text-muted-foreground">Period covered:</span>
+                    <span>{billingInfo.lastInvoicePeriodFrom ? formatDate(billingInfo.lastInvoicePeriodFrom) : '—'} → {billingInfo.lastInvoicePeriodTo ? formatDate(billingInfo.lastInvoicePeriodTo) : '—'}</span>
+                    <span className="text-muted-foreground">Pending balance:</span>
+                    <span className={parseFloat(billingInfo.pendingBalance) > 0 ? 'text-red-400 font-bold' : 'text-green-400'}>
+                      AED {parseFloat(billingInfo.pendingBalance || '0').toFixed(2)}
+                    </span>
+                    <span className="text-muted-foreground">Total invoices:</span>
+                    <span>{billingInfo.totalInvoices}</span>
+                  </div>
+                  {billingInfo.suggestedPeriodStart && (
+                    <p className="text-xs text-blue-300 mt-1">
+                      Suggested next period start: <span className="font-mono font-semibold">{billingInfo.suggestedPeriodStart}</span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-xs text-muted-foreground">
+                  No previous invoices for this client.
+                </div>
+              )
+            )}
+
+            {/* Settlement period selector */}
+            <div className="space-y-2">
+              <Label>Settlement Period</Label>
+              <Select
+                value={settlement}
+                onValueChange={(v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => {
+                  setSettlement(v);
+                  applySettlementPreset(v, billingInfo?.suggestedPeriodStart ?? null, setPStart, setPEnd);
+                }}
+              >
+                <SelectTrigger className="bg-white/5 border-white/10"><SelectValue /></SelectTrigger>
+                <SelectContent className="glass-strong">
+                  <SelectItem value="custom">Custom (manual dates)</SelectItem>
+                  <SelectItem value="weekly">Weekly (7 days)</SelectItem>
+                  <SelectItem value="biweekly">Biweekly (14 days)</SelectItem>
+                  <SelectItem value="monthly">Monthly (previous month)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Period Start</Label>
-                <Input type="date" value={pStart} onChange={(e) => setPStart(e.target.value)} className="bg-white/5 border-white/10" />
+                <Input type="date" value={pStart} onChange={(e) => { setSettlement('custom'); setPStart(e.target.value); }} className="bg-white/5 border-white/10" />
               </div>
               <div className="space-y-2">
                 <Label>Period End</Label>
-                <Input type="date" value={pEnd} onChange={(e) => setPEnd(e.target.value)} className="bg-white/5 border-white/10" />
+                <Input type="date" value={pEnd} onChange={(e) => { setSettlement('custom'); setPEnd(e.target.value); }} className="bg-white/5 border-white/10" />
               </div>
             </div>
+
+            {/* Overlap warning */}
+            {client && pStart && billingInfo?.lastInvoicePeriodTo && new Date(pStart) <= new Date(billingInfo.lastInvoicePeriodTo) && (
+              <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 text-xs text-orange-400 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  Warning: The selected start date overlaps with the previous invoice period (through {formatDate(billingInfo.lastInvoicePeriodTo)}).
+                  Shipments already billed will be excluded, but verify there are no gaps.
+                </span>
+              </div>
+            )}
 
             {/* Billable Shipments List */}
             {client && pStart && pEnd && (
@@ -544,6 +736,10 @@ export default function BillingPanel() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Client:</span>
                     <span className="font-medium">{clients?.find((c: any) => c.id === client)?.companyName}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Settlement:</span>
+                    <span className="font-medium capitalize">{settlement}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Period:</span>
@@ -629,9 +825,11 @@ export default function BillingPanel() {
               selectedIds={selectedShipmentIds} onToggle={toggleShipmentSelection}
               onSelectAll={handleSelectAll} selectAllChecked={selectAll}
               previewTotal={domPreviewTotal} showPreview={showPreviewStep} setShowPreview={setShowPreviewStep}
+              settlement={settlementPeriod} setSettlement={setSettlementPeriod}
+              billingInfo={clientBillingInfo}
               onGenerate={() => {
                 if (!selectedClient || !periodStart || !periodEnd) { toast.error('Please fill all fields'); return; }
-                generateInvoice.mutate({ clientId: selectedClient, periodStart, periodEnd, shipmentIds: selectedShipmentIds });
+                generateInvoice.mutate({ clientId: selectedClient, periodStart, periodEnd, shipmentIds: selectedShipmentIds, settlementPeriod });
               }}
               isPending={generateInvoice.isPending}
             />
@@ -653,9 +851,11 @@ export default function BillingPanel() {
               selectedIds={intlSelectedShipmentIds} onToggle={toggleIntlShipmentSelection}
               onSelectAll={handleIntlSelectAll} selectAllChecked={intlSelectAll}
               previewTotal={intlPreviewTotal} showPreview={intlShowPreviewStep} setShowPreview={setIntlShowPreviewStep}
+              settlement={intlSettlementPeriod} setSettlement={setIntlSettlementPeriod}
+              billingInfo={intlClientBillingInfo}
               onGenerate={() => {
                 if (!intlSelectedClient || !intlPeriodStart || !intlPeriodEnd) { toast.error('Please fill all fields'); return; }
-                generateIntlInvoice.mutate({ clientId: intlSelectedClient, periodStart: intlPeriodStart, periodEnd: intlPeriodEnd, shipmentIds: intlSelectedShipmentIds });
+                generateIntlInvoice.mutate({ clientId: intlSelectedClient, periodStart: intlPeriodStart, periodEnd: intlPeriodEnd, shipmentIds: intlSelectedShipmentIds, settlementPeriod: intlSettlementPeriod });
               }}
               isPending={generateIntlInvoice.isPending}
             />

@@ -884,7 +884,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
   const periodEndFullDay = new Date(periodEnd);
   periodEndFullDay.setHours(23, 59, 59, 999);
 
-  const UAE_VALUES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES'];
+  const UAE_VALUES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES', 'AE'];
 
   const shipmentsData = await db
     .select({
@@ -945,7 +945,8 @@ export async function generateInvoiceForClient(
   clientId: number,
   periodStart: Date,
   periodEnd: Date,
-  shipmentIds?: number[]
+  shipmentIds?: number[],
+  settlementPeriod: 'weekly' | 'biweekly' | 'monthly' | 'custom' = 'custom'
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1062,6 +1063,7 @@ export async function generateInvoiceForClient(
     balance: total.toFixed(2),
     status: 'pending',
     currency: 'AED',
+    settlementPeriod,
   });
 
 
@@ -1104,7 +1106,7 @@ export async function generateInvoiceForClient(
 
 // ─── International Billing ────────────────────────────────────────────────────
 
-const UAE_COUNTRIES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES'];
+const UAE_COUNTRIES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES', 'AE'];
 
 export async function getBillableIntlShipments(clientId: number, periodStart: Date, periodEnd: Date) {
   const db = await getDb();
@@ -1183,7 +1185,8 @@ export async function generateIntlInvoiceForClient(
   clientId: number,
   periodStart: Date,
   periodEnd: Date,
-  shipmentIds?: number[]
+  shipmentIds?: number[],
+  settlementPeriod: 'weekly' | 'biweekly' | 'monthly' | 'custom' = 'custom'
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1295,6 +1298,7 @@ export async function generateIntlInvoiceForClient(
     balance: total.toFixed(2),
     status: 'pending',
     currency: 'AED',
+    settlementPeriod,
   });
 
   for (const { shipment, shippingRate } of shipmentRates) {
@@ -1324,7 +1328,92 @@ export async function getAllInvoices() {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(invoices).orderBy(desc(invoices.createdAt));
+  const rows = await db
+    .select({
+      id: invoices.id,
+      clientId: invoices.clientId,
+      invoiceNumber: invoices.invoiceNumber,
+      periodFrom: invoices.periodFrom,
+      periodTo: invoices.periodTo,
+      issueDate: invoices.issueDate,
+      dueDate: invoices.dueDate,
+      currency: invoices.currency,
+      subtotal: invoices.subtotal,
+      taxes: invoices.taxes,
+      total: invoices.total,
+      amountPaid: invoices.amountPaid,
+      balance: invoices.balance,
+      status: invoices.status,
+      settlementPeriod: invoices.settlementPeriod,
+      paymentDate: invoices.paymentDate,
+      paymentReference: invoices.paymentReference,
+      notes: invoices.notes,
+      adjustmentNotes: invoices.adjustmentNotes,
+      isAdjusted: invoices.isAdjusted,
+      lastAdjustedBy: invoices.lastAdjustedBy,
+      lastAdjustedAt: invoices.lastAdjustedAt,
+      createdAt: invoices.createdAt,
+      updatedAt: invoices.updatedAt,
+      shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
+    })
+    .from(invoices)
+    .leftJoin(invoiceItems, eq(invoices.id, invoiceItems.invoiceId))
+    .groupBy(invoices.id)
+    .orderBy(desc(invoices.createdAt));
+
+  return rows;
+}
+
+export async function getClientBillingInfo(clientId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Get the client's configured settlement period
+  const [client] = await db
+    .select({ defaultSettlementPeriod: clientAccounts.defaultSettlementPeriod })
+    .from(clientAccounts)
+    .where(eq(clientAccounts.id, clientId))
+    .limit(1);
+
+  // Get the most recent invoice for this client
+  const [lastInvoice] = await db
+    .select({
+      invoiceNumber: invoices.invoiceNumber,
+      issueDate: invoices.issueDate,
+      periodFrom: invoices.periodFrom,
+      periodTo: invoices.periodTo,
+    })
+    .from(invoices)
+    .where(eq(invoices.clientId, clientId))
+    .orderBy(desc(invoices.issueDate))
+    .limit(1);
+
+  // Get pending balance and total invoice count
+  const [stats] = await db
+    .select({
+      totalInvoices: sql<number>`COUNT(*)`,
+      pendingBalance: sql<string>`COALESCE(SUM(CASE WHEN status != 'paid' THEN CAST(balance AS DECIMAL(10,2)) ELSE 0 END), 0)`,
+    })
+    .from(invoices)
+    .where(eq(invoices.clientId, clientId));
+
+  let suggestedPeriodStart: string | null = null;
+  if (lastInvoice?.periodTo) {
+    const nextDay = new Date(lastInvoice.periodTo);
+    nextDay.setDate(nextDay.getDate() + 1);
+    suggestedPeriodStart = nextDay.toISOString().split('T')[0];
+  }
+
+  return {
+    defaultSettlementPeriod: (client?.defaultSettlementPeriod ?? 'custom') as 'weekly' | 'biweekly' | 'monthly' | 'custom',
+    lastInvoiceNumber: lastInvoice?.invoiceNumber ?? null,
+    lastInvoiceDate: lastInvoice?.issueDate ?? null,
+    lastInvoicePeriodFrom: lastInvoice?.periodFrom ?? null,
+    lastInvoicePeriodTo: lastInvoice?.periodTo ?? null,
+    pendingBalance: stats?.pendingBalance?.toString() ?? '0',
+    totalInvoices: stats?.totalInvoices ?? 0,
+    suggestedPeriodStart,
+  };
 }
 
 export async function getInvoiceById(id: number) {
