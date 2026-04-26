@@ -913,17 +913,41 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         return { ...order, calculatedRate: 0 };
       }
 
-      // Standard return with fixed fee
-      if (order.isReturn === 1 && order.orderType !== 'exchange' && client.returnFee) {
-        return { ...order, calculatedRate: parseFloat(client.returnFee) };
+      const serviceType = (order.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
+      // Use emirate first; fall back to city so zone is correctly detected even when emirate field is empty
+      const emirateForZone = order.emirate || order.city || undefined;
+
+      // Standard return — use zone-based rate (charge the more expensive zone); fall back to returnFee if no zone rate
+      if (order.isReturn === 1 && order.orderType !== 'exchange') {
+        const returnRateResult = await calculateShipmentRate({
+          clientId,
+          serviceType,
+          weight: parseFloat(order.weight || '0'),
+          emirate: emirateForZone,
+        });
+        const zoneRate = returnRateResult.totalRate;
+        const fallback = client.returnFee ? parseFloat(client.returnFee) : 0;
+        return { ...order, calculatedRate: zoneRate > 0 ? zoneRate : fallback };
       }
 
-      const serviceType = (order.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
+      // For exchange delivery leg, charge the most expensive zone between pickup and delivery
+      let billingEmirate = emirateForZone;
+      if (order.orderType === 'exchange' && order.isReturn === 0 && order.originalOrderId) {
+        const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city })
+          .from(orders).where(eq(orders.id, order.originalOrderId)).limit(1);
+        if (origOrder) {
+          const pickupEmirate = origOrder.emirate || origOrder.city || undefined;
+          const pickupZone = pickupEmirate ? getZoneFromEmirate(pickupEmirate) : 1;
+          const deliveryZone = emirateForZone ? getZoneFromEmirate(emirateForZone) : 1;
+          billingEmirate = pickupZone > deliveryZone ? pickupEmirate : emirateForZone;
+        }
+      }
+
       const rateResult = await calculateShipmentRate({
         clientId,
         serviceType,
         weight: parseFloat(order.weight || '0'),
-        emirate: order.emirate || undefined,
+        emirate: billingEmirate,
       });
 
       let total = rateResult.totalRate;
@@ -992,19 +1016,42 @@ export async function generateInvoiceForClient(
   for (const shipment of shipments) {
     let totalRate = 0;
 
+    // Use emirate first; fall back to city so zone is correctly detected even when emirate field is empty
+    const emirateForZone = shipment.emirate || shipment.city || undefined;
+    const serviceType = (shipment.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
+
     // Exchange free return
     if (shipment.orderType === 'exchange' && shipment.isReturn === 1) {
       totalRate = 0;
-    // Standard return with fixed fee
-    } else if (shipment.isReturn === 1 && shipment.orderType !== 'exchange' && client.returnFee) {
-      totalRate = parseFloat(client.returnFee);
+    // Standard return — use zone-based rate (charge the more expensive zone); fall back to returnFee if no zone rate
+    } else if (shipment.isReturn === 1 && shipment.orderType !== 'exchange') {
+      const returnRateResult = await calculateShipmentRate({
+        clientId,
+        serviceType,
+        weight: parseFloat(shipment.weight || '0'),
+        emirate: emirateForZone,
+      });
+      const zoneRate = returnRateResult.totalRate;
+      const fallback = client.returnFee ? parseFloat(client.returnFee) : 0;
+      totalRate = zoneRate > 0 ? zoneRate : fallback;
     } else {
-      const serviceType = (shipment.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
+      // For exchange delivery leg, charge the most expensive zone between pickup and delivery
+      let billingEmirate = emirateForZone;
+      if (shipment.orderType === 'exchange' && shipment.isReturn === 0 && shipment.originalOrderId) {
+        const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city })
+          .from(orders).where(eq(orders.id, shipment.originalOrderId)).limit(1);
+        if (origOrder) {
+          const pickupEmirate = origOrder.emirate || origOrder.city || undefined;
+          const pickupZone = pickupEmirate ? getZoneFromEmirate(pickupEmirate) : 1;
+          const deliveryZone = emirateForZone ? getZoneFromEmirate(emirateForZone) : 1;
+          billingEmirate = pickupZone > deliveryZone ? pickupEmirate : emirateForZone;
+        }
+      }
       const rateResult = await calculateShipmentRate({
         clientId,
         serviceType,
         weight: parseFloat(shipment.weight || '0'),
-        emirate: shipment.emirate || undefined,
+        emirate: billingEmirate,
       });
       totalRate = rateResult.totalRate;
     }

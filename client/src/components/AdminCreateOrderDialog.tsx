@@ -86,6 +86,7 @@ export default function AdminCreateOrderDialog({
     // Location pin state
     const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
     const [locationError, setLocationError] = useState(false);
+    const [emirateError, setEmirateError] = useState(false);
     const consigneeSearchRef = useRef<HTMLInputElement>(null);
 
     function handleAddressParsed(parsed: ParsedAddress) {
@@ -213,6 +214,12 @@ export default function AdminCreateOrderDialog({
             toast.error('Please fill in all required consignee fields');
             return;
         }
+        if ((formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates' || formData.destinationCountry === '') && !formData.emirate) {
+            setEmirateError(true);
+            toast.error('Please select the destination emirate');
+            return;
+        }
+        setEmirateError(false);
         if (overrideShipper && (!shipperData.shipperName || !shipperData.shipperAddress || !shipperData.shipperCity || !shipperData.shipperPhone)) {
             toast.error('Please fill in all shipper fields when using custom shipper');
             return;
@@ -447,8 +454,8 @@ export default function AdminCreateOrderDialog({
                                                 <input required className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} placeholder="City name" />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Emirate (For Rating) *</label>
-                                                <select className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 placeholder:text-muted-foreground/40" value={formData.emirate} onChange={e => setFormData({...formData, emirate: e.target.value})}>
+                                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Emirate (For Rating) <span className="text-destructive">*</span></label>
+                                                <select className={`w-full rounded-lg border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 ${emirateError ? 'border-destructive ring-1 ring-destructive' : 'border-input'}`} value={formData.emirate} onChange={e => { setFormData({...formData, emirate: e.target.value}); setEmirateError(false); }}>
                                                     <option value="">Select Emirate</option>
                                                     <option value="Dubai">Dubai</option>
                                                     <option value="Abu Dhabi">Abu Dhabi</option>
