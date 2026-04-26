@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package } from 'lucide-react';
+import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package, TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight, Banknote } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -524,32 +524,155 @@ export default function BillingPanel() {
     </Card>
   );
 
-  const StatsCards = ({ invoiceList }: { invoiceList: any[] }) => (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-        <div className="flex justify-between items-start mb-3"><div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><FileText className="w-4 h-4" /></div></div>
-        <p className="text-muted-foreground text-xs font-medium">Total Invoices</p>
-        <h3 className="text-2xl font-bold mt-1">{invoiceList.length}</h3>
+  const StatsCards = ({ invoiceList }: { invoiceList: any[] }) => {
+    // ── Compute financial metrics ──
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Monthly earnings: invoices issued in the current calendar month
+    const thisMonthInvoices = invoiceList.filter(i => {
+      const d = new Date(i.issueDate);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    });
+    const thisMonthRevenue = thisMonthInvoices.reduce((s, i) => s + parseFloat(i.total || '0'), 0);
+
+    // Previous month invoices
+    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const lastMonthInvoices = invoiceList.filter(i => {
+      const d = new Date(i.issueDate);
+      return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+    });
+    const lastMonthRevenue = lastMonthInvoices.reduce((s, i) => s + parseFloat(i.total || '0'), 0);
+
+    // Month-over-month change
+    const momChange = lastMonthRevenue > 0
+      ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+      : thisMonthRevenue > 0 ? 100 : 0;
+    const momPositive = momChange >= 0;
+
+    // Total revenue (all invoices)
+    const totalRevenue = invoiceList.reduce((s, i) => s + parseFloat(i.total || '0'), 0);
+
+    // Average invoice value
+    const avgInvoice = invoiceList.length > 0 ? totalRevenue / invoiceList.length : 0;
+
+    // Collection rate (% of invoices that are paid)
+    const paidCount = invoiceList.filter(i => i.status === 'paid').length;
+    const collectionRate = invoiceList.length > 0 ? Math.round((paidCount / invoiceList.length) * 100) : 0;
+
+    // Outstanding balance (pending + overdue)
+    const outstandingBalance = invoiceList
+      .filter(i => i.status !== 'paid')
+      .reduce((s, i) => s + parseFloat(i.balance || i.total || '0'), 0);
+
+    // Overdue balance
+    const overdueBalance = invoiceList
+      .filter(i => i.status === 'overdue')
+      .reduce((s, i) => s + parseFloat(i.balance || i.total || '0'), 0);
+
+    const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(2);
+
+    return (
+      <div className="space-y-4">
+        {/* ── Primary financial indicators ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Monthly Earnings */}
+          <div className="relative bg-gradient-to-br from-emerald-500/10 via-card to-card p-5 rounded-2xl border border-emerald-500/20 shadow-xl shadow-emerald-500/5 hover:-translate-y-1 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -translate-y-8 translate-x-8" />
+            <div className="flex justify-between items-start mb-3">
+              <div className="p-2.5 bg-emerald-500/15 rounded-xl text-emerald-500">
+                <Banknote className="w-5 h-5" />
+              </div>
+              <span className="text-xs text-muted-foreground font-medium bg-muted/40 px-2 py-1 rounded-md">
+                {now.toLocaleString('en-US', { month: 'short', year: 'numeric' })}
+              </span>
+            </div>
+            <p className="text-muted-foreground text-xs font-medium">Monthly Earnings</p>
+            <h3 className="text-2xl font-bold mt-1 text-emerald-400">AED {thisMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+            <p className="text-xs text-muted-foreground mt-1">{thisMonthInvoices.length} invoice{thisMonthInvoices.length !== 1 ? 's' : ''} this month</p>
+          </div>
+
+          {/* Month vs Previous */}
+          <div className="relative bg-gradient-to-br from-blue-500/10 via-card to-card p-5 rounded-2xl border border-blue-500/20 shadow-xl shadow-blue-500/5 hover:-translate-y-1 hover:border-blue-500/30 transition-all duration-300 overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-8 translate-x-8" />
+            <div className="flex justify-between items-start mb-3">
+              <div className={`p-2.5 rounded-xl ${momPositive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'}`}>
+                {momPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+              </div>
+              <span className={`text-xs font-bold flex items-center gap-0.5 px-2 py-1 rounded-md ${momPositive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+                {momPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                {Math.abs(momChange).toFixed(1)}%
+              </span>
+            </div>
+            <p className="text-muted-foreground text-xs font-medium">vs Previous Month</p>
+            <h3 className="text-2xl font-bold mt-1">
+              AED {lastMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              {lastMonthInvoices.length} invoice{lastMonthInvoices.length !== 1 ? 's' : ''} in {new Date(prevYear, prevMonth).toLocaleString('en-US', { month: 'short' })}
+            </p>
+          </div>
+
+          {/* Total Revenue */}
+          <div className="relative bg-gradient-to-br from-violet-500/10 via-card to-card p-5 rounded-2xl border border-violet-500/20 shadow-xl shadow-violet-500/5 hover:-translate-y-1 hover:border-violet-500/30 transition-all duration-300 overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 rounded-full -translate-y-8 translate-x-8" />
+            <div className="flex justify-between items-start mb-3">
+              <div className="p-2.5 bg-violet-500/15 rounded-xl text-violet-500">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+            </div>
+            <p className="text-muted-foreground text-xs font-medium">Total Revenue</p>
+            <h3 className="text-2xl font-bold mt-1 text-violet-400">AED {totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
+            <p className="text-xs text-muted-foreground mt-1">Across {invoiceList.length} total invoices</p>
+          </div>
+        </div>
+
+        {/* ── Secondary metrics row ── */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {/* Avg Invoice */}
+          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-500"><DollarSign className="w-4 h-4" /></div></div>
+            <p className="text-muted-foreground text-[11px] font-medium">Avg Invoice</p>
+            <h3 className="text-lg font-bold mt-0.5">AED {fmt(avgInvoice)}</h3>
+          </div>
+
+          {/* Collection Rate */}
+          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-green-500/10 rounded-lg text-green-500"><CheckCircle className="w-4 h-4" /></div></div>
+            <p className="text-muted-foreground text-[11px] font-medium">Collection Rate</p>
+            <h3 className="text-lg font-bold mt-0.5">
+              <span className={collectionRate >= 80 ? 'text-green-400' : collectionRate >= 50 ? 'text-yellow-400' : 'text-red-400'}>{collectionRate}%</span>
+            </h3>
+            <p className="text-[10px] text-muted-foreground">{paidCount}/{invoiceList.length} paid</p>
+          </div>
+
+          {/* Pending Count */}
+          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Clock className="w-4 h-4" /></div></div>
+            <p className="text-muted-foreground text-[11px] font-medium">Pending</p>
+            <h3 className="text-lg font-bold mt-0.5 text-yellow-400">{invoiceList.filter(i => i.status === 'pending').length}</h3>
+          </div>
+
+          {/* Outstanding Balance */}
+          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><AlertCircle className="w-4 h-4" /></div></div>
+            <p className="text-muted-foreground text-[11px] font-medium">Outstanding</p>
+            <h3 className="text-lg font-bold mt-0.5 text-orange-400">AED {fmt(outstandingBalance)}</h3>
+          </div>
+
+          {/* Overdue Balance */}
+          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
+            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-4 h-4" /></div></div>
+            <p className="text-muted-foreground text-[11px] font-medium">Overdue</p>
+            <h3 className="text-lg font-bold mt-0.5 text-red-400">AED {fmt(overdueBalance)}</h3>
+            <p className="text-[10px] text-muted-foreground">{invoiceList.filter(i => i.status === 'overdue').length} invoice{invoiceList.filter(i => i.status === 'overdue').length !== 1 ? 's' : ''}</p>
+          </div>
+        </div>
       </div>
-      <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-        <div className="flex justify-between items-start mb-3"><div className="p-2 bg-green-500/10 rounded-lg text-green-500"><CheckCircle className="w-4 h-4" /></div></div>
-        <p className="text-muted-foreground text-xs font-medium">Paid</p>
-        <h3 className="text-2xl font-bold mt-1 text-green-400">{invoiceList.filter(i => i.status === 'paid').length}</h3>
-      </div>
-      <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-        <div className="flex justify-between items-start mb-3"><div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Clock className="w-4 h-4" /></div></div>
-        <p className="text-muted-foreground text-xs font-medium">Pending</p>
-        <h3 className="text-2xl font-bold mt-1 text-yellow-400">{invoiceList.filter(i => i.status === 'pending').length}</h3>
-      </div>
-      <div className="bg-card p-5 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-        <div className="flex justify-between items-start mb-3"><div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-4 h-4" /></div></div>
-        <p className="text-muted-foreground text-xs font-medium">Overdue Balance</p>
-        <h3 className="text-xl font-bold mt-1 text-red-400">
-          AED {invoiceList.filter(i => i.status === 'overdue').reduce((sum, i) => sum + parseFloat(i.balance || i.total || '0'), 0).toFixed(2)}
-        </h3>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // ─── Generate dialog (reusable for dom/intl) ──────────────────────────────
 
