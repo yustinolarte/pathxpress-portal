@@ -313,10 +313,22 @@ export function generateRemittancePDF(remittance: any, items: any[]) {
     doc.setFontSize(14);
     doc.text('REMITTANCE ADVICE', pageWidth / 2, 30, { align: 'center' });
 
-    // Remittance Details Box
+    // Calculate notes height to determine box size
+    let notesLines: string[] = [];
+    let notesHeight = 0;
+    if (remittance.notes) {
+        const notesMaxWidth = pageWidth - 30 - 10; // box width minus padding
+        const notesText = `Notes: ${remittance.notes}`;
+        notesLines = doc.setFont('helvetica', 'italic').setFontSize(9).splitTextToSize(notesText, notesMaxWidth) as string[];
+        notesHeight = notesLines.length * 4.5 + 4; // line height * lines + padding
+    }
+
+    // Remittance Details Box (dynamic height based on notes)
+    const baseBoxHeight = 30; // height for the info fields
+    const boxHeight = baseBoxHeight + notesHeight;
     doc.setDrawColor(200, 200, 200);
     doc.setFillColor(245, 247, 250);
-    doc.rect(15, 40, pageWidth - 30, 35, 'FD');
+    doc.rect(15, 40, pageWidth - 30, boxHeight, 'FD');
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
@@ -339,15 +351,15 @@ export function generateRemittancePDF(remittance: any, items: any[]) {
     doc.text(remittance.paymentMethod || 'N/A', 145, 56);
     doc.text(remittance.paymentReference || '-', 145, 62);
 
-    // Notes if any
-    if (remittance.notes) {
+    // Notes (wrapped text inside the box)
+    if (remittance.notes && notesLines.length > 0) {
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(9);
-        doc.text(`Notes: ${remittance.notes}`, 20, 70);
+        doc.text(notesLines, 20, 70);
     }
 
-    // Shipments Table Header
-    let yPos = 85;
+    // Shipments Table Header (positioned after the dynamic box)
+    let yPos = 40 + boxHeight + 5;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setFillColor(41, 128, 185);
