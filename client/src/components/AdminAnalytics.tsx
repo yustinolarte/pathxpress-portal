@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
     AreaChart,
@@ -21,9 +19,6 @@ import {
     TrendingDown,
     Package,
     Calendar,
-    Clock,
-    MapPin,
-    BarChart3,
     Loader2,
     DollarSign,
     AlertTriangle,
@@ -31,32 +26,15 @@ import {
     RotateCcw,
     Users,
     Activity,
+    BarChart3,
 } from 'lucide-react';
+import { statusColor, AXIS_TICK, TOOLTIP_STYLE } from '@/lib/statusStyles';
 
-// Color palette for charts
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
-
-// Status color map
-const STATUS_COLORS: Record<string, string> = {
-    pending_pickup: '#f59e0b',
-    picked_up: '#3b82f6',
-    in_transit: '#8b5cf6',
-    out_for_delivery: '#14b8a6',
-    delivered: '#10b981',
-    failed_delivery: '#ef4444',
-    returned: '#6b7280',
-    returned_to_sender: '#e11d48',
-};
-
-const SERVICE_COLORS: Record<string, string> = {
-    standard: '#3b82f6',
-    'same-day': '#10b981',
-    express: '#f59e0b',
-    bullet: '#ef4444',
-    DOM: '#3b82f6',
-    SDD: '#10b981',
-    BULLET: '#ef4444',
-};
+// Ink-dominant chart language: data is ink, red is the accent,
+// color elsewhere is functional (status) only.
+const INK_BAR = 'var(--ink)';
+const ACCENT = 'var(--primary)';
+const GRID = 'var(--line)';
 
 interface AdminAnalyticsProps {
     totalClients?: number;
@@ -112,39 +90,22 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
     const formatAED = (val: number) =>
         new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED', maximumFractionDigits: 0 }).format(val);
 
-    // FADR color
+    // FADR — green when on target, amber when borderline, red when failing
     const fadrColor = analytics.firstAttemptDeliveryRate === null
-        ? 'text-muted-foreground'
+        ? 'var(--muted-foreground)'
         : analytics.firstAttemptDeliveryRate >= 85
-            ? 'text-emerald-400'
+            ? 'var(--st-green)'
             : analytics.firstAttemptDeliveryRate >= 70
-                ? 'text-yellow-400'
-                : 'text-red-400';
+                ? 'var(--st-amber)'
+                : 'var(--primary)';
 
-    const fadrBorder = analytics.firstAttemptDeliveryRate === null
-        ? 'border-border'
-        : analytics.firstAttemptDeliveryRate >= 85
-            ? 'border-emerald-500/20'
-            : analytics.firstAttemptDeliveryRate >= 70
-                ? 'border-yellow-500/20'
-                : 'border-red-500/20';
-
-    // Return rate color
-    const returnColor = analytics.returnRate === null
-        ? 'text-muted-foreground'
+    const returnRateColor = analytics.returnRate === null
+        ? 'var(--muted-foreground)'
         : analytics.returnRate <= 5
-            ? 'text-emerald-400'
+            ? 'var(--st-green)'
             : analytics.returnRate <= 10
-                ? 'text-yellow-400'
-                : 'text-red-400';
-
-    const returnBorder = analytics.returnRate === null
-        ? 'border-border'
-        : analytics.returnRate <= 5
-            ? 'border-emerald-500/20'
-            : analytics.returnRate <= 10
-                ? 'border-yellow-500/20'
-                : 'border-red-500/20';
+                ? 'var(--st-amber)'
+                : 'var(--primary)';
 
     // Max revenue for relative bar in top clients table
     const maxRevenue = revenue?.topClients?.[0]?.totalRevenue || 1;
@@ -153,221 +114,158 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
     const maxServiceRevenue = revenue?.revenueByService?.[0]?.amount || 1;
     const totalServiceRevenue = revenue?.revenueByService?.reduce((sum, s) => sum + s.amount, 0) || 1;
 
+    const monthlyComparison = analytics.monthlyComparison || [];
+    const monthlyRevenue = revenue?.monthlyRevenue || [];
+
     return (
         <div className="space-y-6">
-            {/* Overview Stats Row */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
-                            <Users className="w-5 h-5" />
-                        </div>
-                        <span className="text-xs font-bold text-muted-foreground">All time</span>
+            {/* KPI row — network totals; receivable as the dark band card */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Total Clients</span>
+                        <span className="ic"><Users className="w-[18px] h-[18px]" /></span>
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium">Total Clients</p>
-                    <h3 className="text-2xl font-bold mt-1">{totalClients}</h3>
-                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                        <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(totalClients, 100)}%` }} />
+                    <div className="val">{totalClients}</div>
+                    <div className="sub">registered accounts</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Total Orders</span>
+                        <span className="ic"><Package className="w-[18px] h-[18px]" /></span>
+                    </div>
+                    <div className="val">{totalOrders.toLocaleString()}</div>
+                    <div className="sub">all time</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Active Orders</span>
+                        <span className="ic"><Activity className="w-[18px] h-[18px]" /></span>
+                    </div>
+                    <div className="val">{activeOrders.toLocaleString()}</div>
+                    <div className="sub">
+                        {totalOrders > 0 ? `${Math.round((activeOrders / totalOrders) * 100)}% of total in motion` : 'no orders yet'}
                     </div>
                 </div>
-                <div className="bg-card p-6 rounded-2xl border border-blue-500/10 shadow-xl shadow-blue-500/5 hover:-translate-y-1 hover:border-blue-500/20 transition-all duration-300">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2.5 bg-blue-500/10 rounded-lg text-blue-500">
-                            <Package className="w-5 h-5" />
-                        </div>
-                        <span className="text-xs font-bold text-muted-foreground">All time</span>
-                    </div>
-                    <p className="text-muted-foreground text-sm font-medium">Total Orders</p>
-                    <h3 className="text-2xl font-bold mt-1">{totalOrders}</h3>
-                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded-full" style={{ width: '100%' }} />
-                    </div>
-                </div>
-                <div className="bg-card p-6 rounded-2xl border border-green-500/10 shadow-xl shadow-green-500/5 hover:-translate-y-1 hover:border-green-500/20 transition-all duration-300">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="p-2.5 bg-green-500/10 rounded-lg text-green-500">
-                            <Activity className="w-5 h-5" />
-                        </div>
-                        <span className="text-xs font-bold text-muted-foreground">
-                            {totalOrders > 0 ? `${Math.round((activeOrders / totalOrders) * 100)}% of total` : 'No orders'}
+                <div className="kpi accent">
+                    <div className="kt">
+                        <span className="lab">Accounts Receivable</span>
+                        <span className="ic">
+                            {analytics.overdueAmount > 0
+                                ? <AlertTriangle className="w-[18px] h-[18px]" />
+                                : <DollarSign className="w-[18px] h-[18px]" />}
                         </span>
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium">Active Orders</p>
-                    <h3 className="text-2xl font-bold mt-1">{activeOrders}</h3>
-                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${totalOrders > 0 ? (activeOrders / totalOrders) * 100 : 0}%` }} />
+                    <div className="val">{formatAED(analytics.totalAccountsReceivable)}</div>
+                    <div className="sub">
+                        {analytics.overdueAmount > 0
+                            ? <>incl. <span className="money" style={{ color: 'var(--primary)' }}>{formatAED(analytics.overdueAmount)}</span> overdue</>
+                            : 'pending invoices'}
                     </div>
                 </div>
             </div>
 
-            {/* Summary Cards Row 1 — Shipment Volume */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Today */}
-                <Card className="glass-strong border-blue-500/20 overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Today</CardTitle>
-                        <Calendar className="h-4 w-4 text-blue-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-blue-400">{analytics.shipmentsToday}</div>
-                        <p className="text-xs text-muted-foreground">shipments created</p>
-                    </CardContent>
-                </Card>
-
-                {/* This Week */}
-                <Card className="glass-strong border-green-500/20 overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">This Week</CardTitle>
-                        <Package className="h-4 w-4 text-green-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-green-400">{analytics.shipmentsThisWeek}</div>
-                        <p className="text-xs text-muted-foreground">shipments this week</p>
-                    </CardContent>
-                </Card>
-
-                {/* This Month */}
-                <Card className="glass-strong border-purple-500/20 overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">This Month</CardTitle>
-                        <BarChart3 className="h-4 w-4 text-purple-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-purple-400">{analytics.shipmentsThisMonth}</div>
-                        <p className="text-xs text-muted-foreground">vs {analytics.shipmentsLastMonth} last month</p>
-                    </CardContent>
-                </Card>
-
-                {/* Growth */}
-                <Card className={`glass-strong overflow-hidden ${analytics.growthPercentage >= 0 ? 'border-emerald-500/20' : 'border-red-500/20'}`}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Month Growth</CardTitle>
-                        {analytics.growthPercentage >= 0 ? (
-                            <TrendingUp className="h-4 w-4 text-emerald-400" />
-                        ) : (
-                            <TrendingDown className="h-4 w-4 text-red-400" />
-                        )}
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-3xl font-bold ${analytics.growthPercentage >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {analytics.growthPercentage >= 0 ? '+' : ''}{analytics.growthPercentage}%
-                        </div>
-                        <p className="text-xs text-muted-foreground">compared to last month</p>
-                    </CardContent>
-                </Card>
+            {/* Volume row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Today</span>
+                        <span className="ic"><Calendar className="w-[18px] h-[18px]" /></span>
+                    </div>
+                    <div className="val">{analytics.shipmentsToday}</div>
+                    <div className="sub">shipments created</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">This Week</span>
+                        <span className="ic"><Package className="w-[18px] h-[18px]" /></span>
+                    </div>
+                    <div className="val">{analytics.shipmentsThisWeek}</div>
+                    <div className="sub">shipments this week</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">This Month</span>
+                        <span className="ic"><BarChart3 className="w-[18px] h-[18px]" /></span>
+                    </div>
+                    <div className="val">{analytics.shipmentsThisMonth}</div>
+                    <div className="sub">vs {analytics.shipmentsLastMonth} last month</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Month Growth</span>
+                        <span className="ic">
+                            {analytics.growthPercentage >= 0
+                                ? <TrendingUp className="w-[18px] h-[18px]" />
+                                : <TrendingDown className="w-[18px] h-[18px]" />}
+                        </span>
+                    </div>
+                    <div className="val">{analytics.growthPercentage >= 0 ? '+' : ''}{analytics.growthPercentage}%</div>
+                    <div className="sub">
+                        <span className={`trend ${analytics.growthPercentage >= 0 ? 'up' : 'down'}`}>
+                            {analytics.growthPercentage >= 0 ? '▲' : '▼'} {Math.abs(analytics.growthPercentage)}%
+                        </span>
+                        vs last month
+                    </div>
+                </div>
             </div>
 
-            {/* KPI Cards Row 2 — Operational & Financial */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* FADR */}
-                <Card className={`glass-strong overflow-hidden ${fadrBorder}`}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">First Attempt Delivery</CardTitle>
-                        <CheckCircle2 className={`h-4 w-4 ${fadrColor}`} />
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-3xl font-bold ${fadrColor}`}>
-                            {analytics.firstAttemptDeliveryRate !== null ? `${analytics.firstAttemptDeliveryRate}%` : '—'}
-                        </div>
-                        <p className="text-xs text-muted-foreground">FADR — target &gt;85%</p>
-                    </CardContent>
-                </Card>
-
-                {/* Return Rate */}
-                <Card className={`glass-strong overflow-hidden ${returnBorder}`}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Return Rate</CardTitle>
-                        <RotateCcw className={`h-4 w-4 ${returnColor}`} />
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-3xl font-bold ${returnColor}`}>
-                            {analytics.returnRate !== null ? `${analytics.returnRate}%` : '—'}
-                        </div>
-                        <p className="text-xs text-muted-foreground">target &lt;5%</p>
-                    </CardContent>
-                </Card>
-
-                {/* Accounts Receivable */}
-                <Card className={`glass-strong overflow-hidden ${analytics.overdueAmount > 0 ? 'border-red-500/20' : 'border-border'}`}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Accounts Receivable</CardTitle>
-                        {analytics.overdueAmount > 0 ? (
-                            <AlertTriangle className="h-4 w-4 text-red-400" />
-                        ) : (
-                            <DollarSign className="h-4 w-4 text-muted-foreground" />
-                        )}
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-foreground">
-                            {formatAED(analytics.totalAccountsReceivable)}
-                        </div>
-                        {analytics.overdueAmount > 0 && (
-                            <p className="text-xs text-red-400 mt-1">
-                                {formatAED(analytics.overdueAmount)} overdue
-                            </p>
-                        )}
-                        {analytics.overdueAmount === 0 && (
-                            <p className="text-xs text-muted-foreground">pending invoices</p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Revenue This Month */}
-                <Card className="glass-strong border-cyan-500/20 overflow-hidden">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Revenue This Month</CardTitle>
-                        <DollarSign className="h-4 w-4 text-cyan-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-cyan-400">
-                            {formatAED(analytics.revenueThisMonth)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            vs {formatAED(analytics.revenueLastMonth)} last month
-                        </p>
-                    </CardContent>
-                </Card>
+            {/* Operational quality row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">First Attempt Delivery</span>
+                        <span className="ic"><CheckCircle2 className="w-[18px] h-[18px]" style={{ color: fadrColor }} /></span>
+                    </div>
+                    <div className="val" style={{ color: fadrColor }}>
+                        {analytics.firstAttemptDeliveryRate !== null ? `${analytics.firstAttemptDeliveryRate}%` : '—'}
+                    </div>
+                    <div className="sub">FADR — target &gt;85%</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Return Rate</span>
+                        <span className="ic"><RotateCcw className="w-[18px] h-[18px]" style={{ color: returnRateColor }} /></span>
+                    </div>
+                    <div className="val" style={{ color: returnRateColor }}>
+                        {analytics.returnRate !== null ? `${analytics.returnRate}%` : '—'}
+                    </div>
+                    <div className="sub">target &lt;5%</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Revenue This Month</span>
+                        <span className="ic"><DollarSign className="w-[18px] h-[18px]" /></span>
+                    </div>
+                    <div className="val">{formatAED(analytics.revenueThisMonth)}</div>
+                    <div className="sub">vs {formatAED(analytics.revenueLastMonth)} last month</div>
+                </div>
             </div>
 
             {/* Shipment Operations Section */}
             <div>
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Package className="h-5 w-5 text-blue-400" />
-                    Shipment Operations
-                </h3>
+                <p className="eyebrow mb-2">Operations</p>
+                <h3 className="font-display text-lg font-semibold mb-4">Shipment Operations</h3>
 
                 {/* Shipment Volume — toggled 30d / 6m */}
-                <Card className="glass-strong border-border overflow-hidden mb-6">
+                <Card className="bg-card border-border overflow-hidden mb-6">
                     <CardHeader>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between flex-wrap gap-3">
                             <div>
-                                <CardTitle className="flex items-center gap-2">
-                                    <TrendingUp className="h-5 w-5 text-blue-400" />
-                                    Shipment Volume
-                                </CardTitle>
+                                <CardTitle>Shipment Volume</CardTitle>
                                 <CardDescription>
                                     {shipmentView === '30d'
                                         ? 'Last 30 days — click a point to see shipments'
                                         : 'Last 6 months'}
                                 </CardDescription>
                             </div>
-                            <div className="flex items-center gap-1 rounded-md border border-border p-1">
-                                <Button
-                                    variant={shipmentView === '30d' ? 'default' : 'ghost'}
-                                    size="sm"
-                                    onClick={() => setShipmentView('30d')}
-                                    className="h-7 px-3 text-xs"
-                                >
+                            <div className="seg">
+                                <button className={shipmentView === '30d' ? 'on' : ''} onClick={() => setShipmentView('30d')}>
                                     30 Days
-                                </Button>
-                                <Button
-                                    variant={shipmentView === '6m' ? 'default' : 'ghost'}
-                                    size="sm"
-                                    onClick={() => setShipmentView('6m')}
-                                    className="h-7 px-3 text-xs"
-                                >
+                                </button>
+                                <button className={shipmentView === '6m' ? 'on' : ''} onClick={() => setShipmentView('6m')}>
                                     6 Months
-                                </Button>
+                                </button>
                             </div>
                         </div>
                     </CardHeader>
@@ -388,63 +286,62 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                                     >
                                         <defs>
                                             <linearGradient id="colorShipments" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                                                <stop offset="5%" stopColor={ACCENT} stopOpacity={0.18} />
+                                                <stop offset="95%" stopColor={ACCENT} stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
                                         <XAxis
                                             dataKey="date"
                                             tickFormatter={formatDate}
-                                            stroke="#9ca3af"
-                                            fontSize={11}
+                                            tick={AXIS_TICK}
+                                            stroke={GRID}
+                                            tickLine={false}
                                             interval="preserveStartEnd"
                                         />
-                                        <YAxis stroke="#9ca3af" fontSize={12} />
+                                        <YAxis tick={AXIS_TICK} stroke={GRID} tickLine={false} axisLine={false} width={36} />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#1f2937',
-                                                border: '1px solid #374151',
-                                                borderRadius: '8px',
-                                            }}
+                                            contentStyle={TOOLTIP_STYLE}
                                             labelFormatter={formatDate}
                                             formatter={(value: number) => [value, 'Shipments']}
                                         />
                                         <Area
                                             type="monotone"
                                             dataKey="count"
-                                            stroke="#3b82f6"
-                                            strokeWidth={2}
+                                            stroke={ACCENT}
+                                            strokeWidth={2.5}
                                             fillOpacity={1}
                                             fill="url(#colorShipments)"
                                             name="Shipments"
+                                            activeDot={{ r: 5, fill: 'var(--card)', stroke: ACCENT, strokeWidth: 2.5 }}
                                         />
                                     </AreaChart>
                                 ) : (
-                                    <BarChart data={analytics.monthlyComparison}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <BarChart data={monthlyComparison}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
                                         <XAxis
                                             dataKey="month"
                                             tickFormatter={formatMonth}
-                                            stroke="#9ca3af"
-                                            fontSize={12}
+                                            tick={AXIS_TICK}
+                                            stroke={GRID}
+                                            tickLine={false}
                                         />
-                                        <YAxis stroke="#9ca3af" fontSize={12} />
+                                        <YAxis tick={AXIS_TICK} stroke={GRID} tickLine={false} axisLine={false} width={36} />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#1f2937',
-                                                border: '1px solid #374151',
-                                                borderRadius: '8px',
-                                            }}
+                                            contentStyle={TOOLTIP_STYLE}
+                                            cursor={{ fill: 'var(--surface-2)' }}
                                             labelFormatter={formatMonth}
                                             formatter={(value: number) => [value, 'Shipments']}
                                         />
-                                        <Bar
-                                            dataKey="count"
-                                            fill="#8b5cf6"
-                                            radius={[4, 4, 0, 0]}
-                                            name="Shipments"
-                                        />
+                                        <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={34} name="Shipments">
+                                            {monthlyComparison.map((_entry, index) => (
+                                                <Cell
+                                                    key={`m-${index}`}
+                                                    fill={index === monthlyComparison.length - 1 ? ACCENT : INK_BAR}
+                                                    fillOpacity={index === monthlyComparison.length - 1 ? 1 : 0.82}
+                                                />
+                                            ))}
+                                        </Bar>
                                     </BarChart>
                                 )}
                             </ResponsiveContainer>
@@ -455,38 +352,38 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                 {/* City Distribution + Status Distribution side by side */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                     {/* Distribution by City — horizontal bar */}
-                    <Card className="glass-strong border-border overflow-hidden">
+                    <Card className="bg-card border-border overflow-hidden">
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <MapPin className="h-5 w-5 text-green-400" />
-                                Distribution by City
-                            </CardTitle>
+                            <CardTitle>Distribution by City</CardTitle>
                             <CardDescription>Top 10 destinations</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={analytics.distributionByCity} layout="vertical">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                        <XAxis type="number" stroke="#9ca3af" fontSize={12} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                                        <XAxis type="number" tick={AXIS_TICK} stroke={GRID} tickLine={false} />
                                         <YAxis
                                             type="category"
                                             dataKey="city"
-                                            stroke="#9ca3af"
-                                            fontSize={11}
-                                            width={90}
+                                            tick={{ ...AXIS_TICK, fontSize: 11 }}
+                                            stroke={GRID}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            width={92}
                                         />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#1f2937',
-                                                border: '1px solid #374151',
-                                                borderRadius: '8px',
-                                            }}
+                                            contentStyle={TOOLTIP_STYLE}
+                                            cursor={{ fill: 'var(--surface-2)' }}
                                             formatter={(value: number) => [value, 'Shipments']}
                                         />
-                                        <Bar dataKey="count" radius={[0, 4, 4, 0]} name="Shipments">
+                                        <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={20} name="Shipments">
                                             {analytics.distributionByCity.map((_entry, index) => (
-                                                <Cell key={`city-cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                <Cell
+                                                    key={`city-cell-${index}`}
+                                                    fill={index === 0 ? ACCENT : INK_BAR}
+                                                    fillOpacity={index === 0 ? 1 : 0.82}
+                                                />
                                             ))}
                                         </Bar>
                                     </BarChart>
@@ -495,45 +392,37 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                         </CardContent>
                     </Card>
 
-                    {/* Status Distribution */}
-                    <Card className="glass-strong border-border overflow-hidden">
+                    {/* Status Distribution — functional colors */}
+                    <Card className="bg-card border-border overflow-hidden">
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Package className="h-5 w-5 text-orange-400" />
-                                Status Distribution
-                            </CardTitle>
+                            <CardTitle>Status Distribution</CardTitle>
                             <CardDescription>All shipments by status</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={analytics.statusDistribution} layout="vertical">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                        <XAxis type="number" stroke="#9ca3af" fontSize={12} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                                        <XAxis type="number" tick={AXIS_TICK} stroke={GRID} tickLine={false} />
                                         <YAxis
                                             type="category"
                                             dataKey="status"
-                                            stroke="#9ca3af"
-                                            fontSize={11}
-                                            width={100}
+                                            tick={{ ...AXIS_TICK, fontSize: 10 }}
+                                            stroke={GRID}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            width={104}
                                             tickFormatter={(value) => value.replace(/_/g, ' ')}
                                         />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: '#1f2937',
-                                                border: '1px solid #374151',
-                                                borderRadius: '8px',
-                                            }}
+                                            contentStyle={TOOLTIP_STYLE}
+                                            cursor={{ fill: 'var(--surface-2)' }}
                                             formatter={(value: number) => [value, 'Shipments']}
                                             labelFormatter={(label) => label.replace(/_/g, ' ')}
                                         />
-                                        <Bar
-                                            dataKey="count"
-                                            radius={[0, 4, 4, 0]}
-                                            name="Count"
-                                        >
+                                        <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={20} name="Count">
                                             {analytics.statusDistribution.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || COLORS[index % COLORS.length]} />
+                                                <Cell key={`cell-${index}`} fill={statusColor(entry.status)} />
                                             ))}
                                         </Bar>
                                     </BarChart>
@@ -544,38 +433,35 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                 </div>
 
                 {/* Average Delivery Time by Route */}
-                <Card className="glass-strong border-border overflow-hidden">
+                <Card className="bg-card border-border overflow-hidden">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-cyan-400" />
-                            Average Delivery Time by Route
-                        </CardTitle>
+                        <CardTitle>Average Delivery Time by Route</CardTitle>
                         <CardDescription>Top 10 routes by volume</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="h-[350px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={analytics.deliveryTimeByRoute} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
                                     <XAxis
                                         type="number"
-                                        stroke="#9ca3af"
-                                        fontSize={12}
+                                        tick={AXIS_TICK}
+                                        stroke={GRID}
+                                        tickLine={false}
                                         tickFormatter={(value) => `${value}h`}
                                     />
                                     <YAxis
                                         type="category"
                                         dataKey="route"
-                                        stroke="#9ca3af"
-                                        fontSize={11}
+                                        tick={{ ...AXIS_TICK, fontSize: 10 }}
+                                        stroke={GRID}
+                                        tickLine={false}
+                                        axisLine={false}
                                         width={150}
                                     />
                                     <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
+                                        contentStyle={TOOLTIP_STYLE}
+                                        cursor={{ fill: 'var(--surface-2)' }}
                                         formatter={(value: number, name: string) => {
                                             if (name === 'avgHours') return [`${value} hours`, 'Avg Time'];
                                             return [value, 'Shipments'];
@@ -583,8 +469,9 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                                     />
                                     <Bar
                                         dataKey="avgHours"
-                                        fill="#14b8a6"
-                                        radius={[0, 4, 4, 0]}
+                                        fill="var(--st-blue)"
+                                        radius={[0, 6, 6, 0]}
+                                        maxBarSize={20}
                                         name="Avg Delivery Time (hours)"
                                     />
                                 </BarChart>
@@ -596,13 +483,11 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
 
             {/* Revenue Dashboard Section */}
             <div>
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <DollarSign className="h-5 w-5 text-cyan-400" />
-                    Revenue Dashboard
-                </h3>
+                <p className="eyebrow mb-2">Finance</p>
+                <h3 className="font-display text-lg font-semibold mb-4">Revenue Dashboard</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Monthly Revenue Chart */}
-                    <Card className="glass-strong border-cyan-500/20 overflow-hidden">
+                    <Card className="bg-card border-border overflow-hidden">
                         <CardHeader>
                             <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
                             <CardDescription>Last 6 months (from invoices)</CardDescription>
@@ -615,34 +500,38 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                             ) : (
                                 <div className="h-[260px]">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={revenue?.monthlyRevenue || []}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                        <BarChart data={monthlyRevenue}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
                                             <XAxis
                                                 dataKey="month"
                                                 tickFormatter={formatMonth}
-                                                stroke="#9ca3af"
-                                                fontSize={12}
+                                                tick={AXIS_TICK}
+                                                stroke={GRID}
+                                                tickLine={false}
                                             />
                                             <YAxis
-                                                stroke="#9ca3af"
-                                                fontSize={11}
+                                                tick={AXIS_TICK}
+                                                stroke={GRID}
+                                                tickLine={false}
+                                                axisLine={false}
+                                                width={40}
                                                 tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
                                             />
                                             <Tooltip
-                                                contentStyle={{
-                                                    backgroundColor: '#1f2937',
-                                                    border: '1px solid #374151',
-                                                    borderRadius: '8px',
-                                                }}
+                                                contentStyle={TOOLTIP_STYLE}
+                                                cursor={{ fill: 'var(--surface-2)' }}
                                                 labelFormatter={formatMonth}
                                                 formatter={(value: number) => [formatAED(value), 'Revenue']}
                                             />
-                                            <Bar
-                                                dataKey="revenue"
-                                                fill="#14b8a6"
-                                                radius={[4, 4, 0, 0]}
-                                                name="Revenue (AED)"
-                                            />
+                                            <Bar dataKey="revenue" radius={[6, 6, 0, 0]} maxBarSize={34} name="Revenue (AED)">
+                                                {monthlyRevenue.map((_entry, index) => (
+                                                    <Cell
+                                                        key={`rev-${index}`}
+                                                        fill={index === monthlyRevenue.length - 1 ? ACCENT : INK_BAR}
+                                                        fillOpacity={index === monthlyRevenue.length - 1 ? 1 : 0.82}
+                                                    />
+                                                ))}
+                                            </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -651,7 +540,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                     </Card>
 
                     {/* Revenue by Service Type — bar list */}
-                    <Card className="glass-strong border-border overflow-hidden">
+                    <Card className="bg-card border-border overflow-hidden">
                         <CardHeader>
                             <CardTitle className="text-sm font-medium">Revenue by Service Type</CardTitle>
                             <CardDescription>Breakdown from invoice line items</CardDescription>
@@ -665,33 +554,29 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                                 <div className="space-y-3">
                                     {revenue.revenueByService.map((entry, index) => {
                                         const pct = Math.round((entry.amount / totalServiceRevenue) * 100);
-                                        const color = SERVICE_COLORS[entry.service] || COLORS[index % COLORS.length];
                                         return (
                                             <div key={entry.service} className="flex items-center gap-3">
-                                                <span className="text-xs text-muted-foreground w-5 text-right">{index + 1}</span>
+                                                <span className="font-mono text-xs text-muted-foreground w-5 text-right">{index + 1}</span>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between mb-1">
-                                                        <span className="text-sm font-medium truncate">{entry.service}</span>
-                                                        <span className="text-sm font-mono ml-2 shrink-0" style={{ color }}>
+                                                        <span className="font-display text-sm font-semibold truncate">{entry.service}</span>
+                                                        <span className="money text-sm ml-2 shrink-0">
                                                             {formatAED(entry.amount)}
                                                         </span>
                                                     </div>
-                                                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-2)' }}>
                                                         <div
                                                             className="h-full rounded-full"
                                                             style={{
                                                                 width: `${(entry.amount / maxServiceRevenue) * 100}%`,
-                                                                backgroundColor: color,
+                                                                background: index === 0 ? ACCENT : INK_BAR,
+                                                                opacity: index === 0 ? 1 : 0.82,
                                                             }}
                                                         />
                                                     </div>
                                                 </div>
-                                                <Badge variant="secondary" className="text-xs shrink-0">
-                                                    {pct}%
-                                                </Badge>
-                                                <Badge variant="outline" className="text-xs shrink-0">
-                                                    {entry.count} shp
-                                                </Badge>
+                                                <span className="pill shrink-0">{pct}%</span>
+                                                <span className="pill shrink-0">{entry.count} shp</span>
                                             </div>
                                         );
                                     })}
@@ -707,36 +592,34 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
 
                 {/* Top Clients by Revenue */}
                 {revenue?.topClients && revenue.topClients.length > 0 && (
-                    <Card className="glass-strong border-border overflow-hidden mt-6">
+                    <Card className="bg-card border-border overflow-hidden mt-6">
                         <CardHeader>
-                            <CardTitle className="text-sm font-medium flex items-center gap-2">
-                                <TrendingUp className="h-4 w-4 text-emerald-400" />
-                                Top Clients by Revenue
-                            </CardTitle>
+                            <CardTitle className="text-sm font-medium">Top Clients by Revenue</CardTitle>
                             <CardDescription>Ranked by total invoiced amount</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
                                 {revenue.topClients.map((client, index) => (
                                     <div key={client.clientId} className="flex items-center gap-3">
-                                        <span className="text-xs text-muted-foreground w-5 text-right">{index + 1}</span>
+                                        <span className="font-mono text-xs text-muted-foreground w-5 text-right">{index + 1}</span>
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between mb-1">
-                                                <span className="text-sm font-medium truncate">{client.companyName}</span>
-                                                <span className="text-sm font-mono text-emerald-400 ml-2 shrink-0">
+                                                <span className="font-display text-sm font-semibold truncate">{client.companyName}</span>
+                                                <span className="money text-sm ml-2 shrink-0" style={{ color: 'var(--st-green)' }}>
                                                     {formatAED(client.totalRevenue)}
                                                 </span>
                                             </div>
-                                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--surface-2)' }}>
                                                 <div
-                                                    className="h-full bg-emerald-500 rounded-full"
-                                                    style={{ width: `${(client.totalRevenue / maxRevenue) * 100}%` }}
+                                                    className="h-full rounded-full"
+                                                    style={{
+                                                        width: `${(client.totalRevenue / maxRevenue) * 100}%`,
+                                                        background: 'var(--st-green)',
+                                                    }}
                                                 />
                                             </div>
                                         </div>
-                                        <Badge variant="secondary" className="text-xs shrink-0">
-                                            {client.invoiceCount} inv
-                                        </Badge>
+                                        <span className="pill shrink-0">{client.invoiceCount} inv</span>
                                     </div>
                                 ))}
                             </div>
@@ -750,7 +633,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Package className="h-5 w-5 text-blue-400" />
+                            <Package className="h-5 w-5 text-primary" />
                             Shipments on {drillDownDate ? new Date(drillDownDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''}
                         </DialogTitle>
                     </DialogHeader>
@@ -760,7 +643,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                         ) : (
                             <div className="space-y-1">
                                 {drillDownWaybills.map((waybill, i) => (
-                                    <div key={i} className="px-3 py-2 rounded-md bg-muted/40 font-mono text-sm">
+                                    <div key={i} className="px-3 py-2 rounded-md bg-muted/40 wb">
                                         {waybill}
                                     </div>
                                 ))}

@@ -41,7 +41,7 @@ function StepList({ steps }: { steps: string[] }) {
 
 function Tip({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-primary/10 text-sm">
+    <div className="flex items-start gap-2 p-3 rounded-lg bg-primary/5 border border-border text-sm">
       <Lightbulb className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
       <span className="text-muted-foreground">{children}</span>
     </div>
@@ -50,8 +50,8 @@ function Tip({ children }: { children: React.ReactNode }) {
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-sm">
-      <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+    <div className="alert-soft amber !p-3 text-sm">
+      <AlertCircle className="h-4 w-4 text-[var(--st-amber)] flex-shrink-0 mt-0.5" />
       <span className="text-muted-foreground">{children}</span>
     </div>
   );
@@ -99,7 +99,7 @@ export default function CustomerPortalGuide() {
   return (
     <div className="space-y-6">
       {/* Hero header */}
-      <Card className="border border-primary/10 rounded-2xl overflow-hidden shadow-xl shadow-primary/5">
+      <Card className="border border-border rounded-2xl overflow-hidden shadow-sm">
         <div className="h-1 bg-gradient-to-r from-primary to-primary/20" />
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-3 text-2xl">
@@ -136,7 +136,7 @@ export default function CustomerPortalGuide() {
         {/* 1. Overview */}
         <AccordionItem
           value="overview"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
@@ -165,12 +165,12 @@ export default function CustomerPortalGuide() {
         {/* 2. Analytics */}
         <AccordionItem
           value="analytics"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<BarChart3 className="h-5 w-5" />}
-              colorClass="bg-blue-500/10 text-blue-500"
+              colorClass="bg-primary/10 text-primary"
               title="Analytics"
               description="Charts and KPIs for your shipment volume, revenue and on-time rates"
             />
@@ -194,12 +194,12 @@ export default function CustomerPortalGuide() {
         {/* 3. My Orders */}
         <AccordionItem
           value="orders"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<Package className="h-5 w-5" />}
-              colorClass="bg-green-500/10 text-green-500"
+              colorClass="bg-primary/10 text-primary"
               title="My Orders"
               description="View, filter, download and manage all your domestic shipments"
             />
@@ -227,12 +227,12 @@ export default function CustomerPortalGuide() {
         {/* 4. Track Shipment */}
         <AccordionItem
           value="tracking"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<Search className="h-5 w-5" />}
-              colorClass="bg-purple-500/10 text-purple-500"
+              colorClass="bg-primary/10 text-primary"
               title="Track Shipment"
               description="Real-time tracking and full scan history for any waybill"
             />
@@ -257,12 +257,12 @@ export default function CustomerPortalGuide() {
         {/* 5. Rate Calculator */}
         <AccordionItem
           value="calculator"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<Calculator className="h-5 w-5" />}
-              colorClass="bg-orange-500/10 text-orange-500"
+              colorClass="bg-primary/10 text-primary"
               title="Rate Calculator"
               description="Instant domestic shipping rate estimates for DOM and SDD services"
             />
@@ -288,12 +288,12 @@ export default function CustomerPortalGuide() {
         {/* 6. International */}
         <AccordionItem
           value="international"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<Globe className="h-5 w-5" />}
-              colorClass="bg-cyan-500/10 text-cyan-500"
+              colorClass="bg-primary/10 text-primary"
               title="International"
               description="Rate quotes and booking for cross-border shipments"
             />
@@ -319,12 +319,12 @@ export default function CustomerPortalGuide() {
         {/* 7. Returns & Exchanges */}
         <AccordionItem
           value="returns"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<RotateCcw className="h-5 w-5" />}
-              colorClass="bg-rose-500/10 text-rose-500"
+              colorClass="bg-primary/10 text-primary"
               title="Returns & Exchanges"
               description="Create reverse logistics shipments linked to original orders"
             />
@@ -350,12 +350,12 @@ export default function CustomerPortalGuide() {
         {/* 8. Invoices */}
         <AccordionItem
           value="invoices"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<FileText className="h-5 w-5" />}
-              colorClass="bg-indigo-500/10 text-indigo-500"
+              colorClass="bg-primary/10 text-primary"
               title="Invoices"
               description="View, filter and download your billing documents"
             />
@@ -381,12 +381,12 @@ export default function CustomerPortalGuide() {
         {/* 9. COD */}
         <AccordionItem
           value="cod"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<Wallet className="h-5 w-5" />}
-              colorClass="bg-amber-500/10 text-amber-500"
+              colorClass="bg-primary/10 text-primary"
               title="COD — Cash on Delivery"
               description="Track collected amounts, remittances and pending settlements"
             />
@@ -411,12 +411,12 @@ export default function CustomerPortalGuide() {
         {/* 10. Reports */}
         <AccordionItem
           value="reports"
-          className="bg-card border border-primary/10 rounded-xl px-4 shadow-sm"
+          className="bg-card border border-border rounded-xl px-4 shadow-sm"
         >
           <AccordionTrigger className="hover:no-underline py-4">
             <SectionHeader
               icon={<Download className="h-5 w-5" />}
-              colorClass="bg-teal-500/10 text-teal-500"
+              colorClass="bg-primary/10 text-primary"
               title="Reports"
               description="Download monthly order and COD reports in PDF or Excel"
             />
@@ -439,7 +439,7 @@ export default function CustomerPortalGuide() {
       </Accordion>
 
       {/* Footer support note */}
-      <Card className="border border-primary/10 rounded-xl shadow-sm">
+      <Card className="border border-border rounded-xl shadow-sm">
         <CardContent className="pt-4 pb-4">
           <p className="text-sm text-muted-foreground text-center">
             Need further assistance?{' '}
@@ -452,3 +452,4 @@ export default function CustomerPortalGuide() {
     </div>
   );
 }
+

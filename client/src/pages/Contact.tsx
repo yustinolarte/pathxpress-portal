@@ -62,7 +62,7 @@ export default function Contact() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Contact Information */}
             <div className="space-y-6 animate-slide-up">
-              <Card className="glass-strong border-border">
+              <Card className="bg-card border-border border-border">
                 <CardHeader>
                   <CardTitle className="text-2xl">{t('contact.getInTouch.title')}</CardTitle>
                   <CardDescription>
@@ -111,8 +111,8 @@ export default function Contact() {
                   </div>
 
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
-                      <MessageCircle className="w-6 h-6 text-accent" />
+                    <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
+                      <MessageCircle className="w-6 h-6 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold mb-1">{t('contact.whatsappLabel')}</h3>
@@ -124,7 +124,7 @@ export default function Contact() {
                       >
                         <Button
                           variant="outline"
-                          className="border-accent text-accent hover:bg-accent/10 glow-red-hover transition-smooth"
+                          className="border-primary text-primary hover:bg-primary/10 transition-smooth"
                         >
                           <MessageCircle className="w-4 h-4 mr-2" />
                           {t('contact.whatsapp')}
@@ -138,7 +138,7 @@ export default function Contact() {
 
             {/* Contact Form */}
             <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
-              <Card className="glass-strong border-border">
+              <Card className="bg-card border-border border-border">
                 <CardHeader>
                   <CardTitle className="text-2xl">{t('contact.form.title')}</CardTitle>
                   <CardDescription>
@@ -186,7 +186,7 @@ export default function Contact() {
                     <Button
                       type="submit"
                       size="lg"
-                      className="w-full bg-primary hover:bg-primary/90 glow-blue-hover transition-smooth"
+                      className="w-full bg-primary hover:bg-primary/90 transition-smooth"
                     >
                       {t('contact.form.submit')}
                     </Button>
@@ -202,3 +202,5 @@ export default function Contact() {
     </div>
   );
 }
+
+

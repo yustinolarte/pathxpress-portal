@@ -115,10 +115,10 @@ export default function InternationalRateForm() {
 
   if (submitted) {
     return (
-      <Card className="glass-strong border-primary animate-fade-in">
+      <Card className="bg-card border-border border-primary animate-fade-in">
         <CardContent className="py-12 text-center">
           <CheckCircle2 className="w-16 h-16 text-primary mx-auto mb-4" />
-          <h3 className="text-2xl font-bold mb-2">{t('pricing.international.success')}</h3>
+          <h3 className="font-display text-2xl font-bold tracking-tight mb-2">{t('pricing.international.success')}</h3>
           <Button
             onClick={() => setSubmitted(false)}
             variant="outline"
@@ -132,7 +132,7 @@ export default function InternationalRateForm() {
   }
 
   return (
-    <Card className="glass-strong border-border">
+    <Card className="bg-card border-border border-border">
       <CardHeader>
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 rounded-lg bg-secondary/20 flex items-center justify-center">
@@ -290,3 +290,4 @@ export default function InternationalRateForm() {
     </Card>
   );
 }
+

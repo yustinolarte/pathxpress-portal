@@ -60,7 +60,7 @@ export default function Tracking() {
           </div>
 
           {/* Tracking Form */}
-          <Card className="glass-strong border-border mb-8 animate-slide-up">
+          <Card className="bg-card border-border border-border mb-8 animate-slide-up">
             <CardContent className="pt-6">
               <form onSubmit={handleTrack} className="flex flex-col md:flex-row gap-4">
                 <Input
@@ -73,7 +73,7 @@ export default function Tracking() {
                 <Button
                   type="submit"
                   size="lg"
-                  className="h-14 px-8 bg-primary hover:bg-primary/90 glow-blue-hover transition-smooth"
+                  className="h-14 px-8 bg-primary hover:bg-primary/90 transition-smooth"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -93,7 +93,7 @@ export default function Tracking() {
           {searchId && (
             <div className="animate-fade-in">
               {isLoading && (
-                <Card className="glass-strong border-border">
+                <Card className="bg-card border-border border-border">
                   <CardContent className="py-12 text-center">
                     <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
                     <p className="text-muted-foreground">{t('tracking.searching')}</p>
@@ -102,7 +102,7 @@ export default function Tracking() {
               )}
 
               {error && (
-                <Card className="glass-strong border-destructive">
+                <Card className="bg-card border-border border-destructive">
                   <CardContent className="py-12 text-center">
                     <AlertCircle className="w-12 h-12 mx-auto mb-4 text-destructive" />
                     <h3 className="text-xl font-semibold mb-2 text-destructive">
@@ -118,7 +118,7 @@ export default function Tracking() {
               {shipment && !isLoading && (
                 <div className="space-y-6">
                   {/* Status Card */}
-                  <Card className="glass-strong border-primary/20 overflow-hidden relative">
+                  <Card className="bg-card border-border  overflow-hidden relative">
                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-cyan-400" />
                     <CardHeader className="pb-4">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -204,7 +204,7 @@ export default function Tracking() {
 
                   {/* Tracking Events Timeline */}
                   {shipment.trackingEvents && shipment.trackingEvents.length > 0 && (
-                    <Card className="glass-strong border-border">
+                    <Card className="bg-card border-border border-border">
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                           <Calendar className="w-5 h-5 text-primary" />
@@ -227,7 +227,7 @@ export default function Tracking() {
 
                               {/* Event card */}
                               <div className={`p-5 rounded-xl border transition-all duration-300 ${index === 0
-                                ? 'bg-primary/5 border-primary/20 shadow-sm'
+                                ? 'bg-primary/5 border-border shadow-sm'
                                 : 'bg-muted/10 border-border/50 hover:bg-muted/20'
                                 }`}>
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
@@ -286,11 +286,11 @@ export default function Tracking() {
                 <HelpCircle className="w-4 h-4 text-primary" />
                 <span className="text-sm font-medium text-primary">{t('tracking.faq.badge')}</span>
               </div>
-              <h2 className="text-2xl md:text-3xl font-bold mb-2">{t('tracking.faq.title')}</h2>
+              <h2 className="text-2xl md:font-display text-3xl font-bold tracking-tight mb-2">{t('tracking.faq.title')}</h2>
               <p className="text-muted-foreground">{t('tracking.faq.subtitle')}</p>
             </div>
 
-            <Card className="glass-strong border-border">
+            <Card className="bg-card border-border border-border">
               <CardContent className="pt-6">
                 <Accordion type="single" collapsible className="space-y-2">
                   <AccordionItem value="item-1" className="border-border rounded-lg px-4">
@@ -357,3 +357,5 @@ export default function Tracking() {
     </div>
   );
 }
+
+

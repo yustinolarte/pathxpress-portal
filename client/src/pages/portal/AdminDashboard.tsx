@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar } from 'lucide-react';
 import { APP_LOGO } from '@/const';
+import { statusBadgeClass } from '@/lib/statusStyles';
 import ModernDashboardLayout, { ModernMenuItem } from '@/components/ModernDashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -391,18 +392,18 @@ export default function AdminDashboard() {
   };
 
   const menuItems: ModernMenuItem[] = [
-    { icon: 'dashboard', label: 'Overview', value: 'analytics' },
-    { icon: 'group', label: 'Clients', value: 'clients' },
-    { icon: 'package_2', label: 'All Orders', value: 'orders' },
-    { icon: 'local_shipping', label: 'Drivers', value: 'drivers' },
-    { icon: 'receipt_long', label: 'Billing', value: 'billing' },
-    { icon: 'payments', label: 'COD Management', value: 'cod' },
-    { icon: 'trending_up', label: 'Rates & Pricing', value: 'rates' },
-    { icon: 'public', label: 'International', value: 'international' },
-    { icon: 'summarize', label: 'Reports', value: 'reports' },
-    { icon: 'chat', label: 'Requests', value: 'requests' },
-    { icon: 'mail', label: 'Messages', value: 'messages' },
-    { icon: 'menu_book', label: 'Guide', value: 'guide' },
+    { icon: 'dashboard', label: 'Overview', value: 'analytics', section: 'Operations' },
+    { icon: 'group', label: 'Clients', value: 'clients', section: 'Operations' },
+    { icon: 'package_2', label: 'All Orders', value: 'orders', section: 'Operations' },
+    { icon: 'local_shipping', label: 'Drivers', value: 'drivers', section: 'Operations' },
+    { icon: 'receipt_long', label: 'Billing', value: 'billing', section: 'Finance' },
+    { icon: 'payments', label: 'COD Management', value: 'cod', section: 'Finance' },
+    { icon: 'trending_up', label: 'Rates & Pricing', value: 'rates', section: 'Finance' },
+    { icon: 'public', label: 'International', value: 'international', section: 'Finance' },
+    { icon: 'summarize', label: 'Reports', value: 'reports', section: 'Inbox' },
+    { icon: 'chat', label: 'Requests', value: 'requests', section: 'Inbox' },
+    { icon: 'mail', label: 'Messages', value: 'messages', section: 'Inbox' },
+    { icon: 'menu_book', label: 'Guide', value: 'guide', section: 'Inbox' },
   ];
 
   return (
@@ -445,15 +446,15 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Overdue Invoices Alert */}
                 {clientAlerts.overdueClients.length > 0 && (
-                  <Card className="bg-red-500/5 rounded-2xl border border-red-500/20 shadow-xl shadow-primary/5">
+                  <Card className="alert-soft red rounded-2xl shadow-sm block p-0">
                     <CardHeader className="pb-2">
                       <div
                         className="flex items-center justify-between cursor-pointer"
                         onClick={() => setAlertsExpanded(prev => !prev)}
                       >
-                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-red-400">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-primary">
                           <AlertTriangle className="h-4 w-4" />
-                          {clientAlerts.overdueClients.length} client(s) with overdue invoices
+                          <span className="text-foreground"><b className="font-display">{clientAlerts.overdueClients.length} client(s)</b> with overdue invoices</span>
                         </CardTitle>
                         {alertsExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                       </div>
@@ -465,8 +466,8 @@ export default function AdminDashboard() {
                             <div key={c.clientId} className="flex items-center justify-between text-sm">
                               <span className="font-medium">{c.companyName}</span>
                               <div className="flex items-center gap-2">
-                                <Badge variant="secondary" className="text-xs">{c.invoiceCount} inv</Badge>
-                                <span className="text-red-400 font-mono">
+                                <span className="pill">{c.invoiceCount} inv</span>
+                                <span className="money text-primary">
                                   AED {c.overdueBalance.toLocaleString('en-AE', { maximumFractionDigits: 0 })}
                                 </span>
                               </div>
@@ -480,15 +481,15 @@ export default function AdminDashboard() {
 
                 {/* Inactive Clients Alert */}
                 {clientAlerts.inactiveClients.length > 0 && (
-                  <Card className="bg-yellow-500/5 rounded-2xl border border-yellow-500/20 shadow-xl shadow-primary/5">
+                  <Card className="alert-soft amber rounded-2xl shadow-sm block p-0">
                     <CardHeader className="pb-2">
                       <div
                         className="flex items-center justify-between cursor-pointer"
                         onClick={() => setAlertsExpanded(prev => !prev)}
                       >
-                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-yellow-400">
+                        <CardTitle className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--st-amber)' }}>
                           <Clock className="h-4 w-4" />
-                          {clientAlerts.inactiveClients.length} client(s) inactive 30+ days
+                          <span className="text-foreground"><b className="font-display">{clientAlerts.inactiveClients.length} client(s)</b> inactive 30+ days</span>
                         </CardTitle>
                         {alertsExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                       </div>
@@ -499,7 +500,7 @@ export default function AdminDashboard() {
                           {clientAlerts.inactiveClients.map(c => (
                             <div key={c.clientId} className="flex items-center justify-between text-sm">
                               <span className="font-medium">{c.companyName}</span>
-                              <span className="text-yellow-400 text-xs">{c.daysSinceLastOrder} days ago</span>
+                              <span className="font-mono text-xs" style={{ color: 'var(--st-amber)' }}>{c.daysSinceLastOrder} days ago</span>
                             </div>
                           ))}
                         </div>
@@ -512,10 +513,11 @@ export default function AdminDashboard() {
 
             <div className="flex gap-4">
               {/* Clients Table */}
-              <Card className={`bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 ${client360Id ? 'flex-1 min-w-0' : 'w-full'}`}>
+              <Card className={`bg-card rounded-2xl border border-border shadow-sm ${client360Id ? 'flex-1 min-w-0' : 'w-full'}`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
-                    <CardTitle>Client Accounts</CardTitle>
+                    <p className="eyebrow mb-2">Clients</p>
+                    <CardTitle className="text-xl">Client Accounts</CardTitle>
                     <CardDescription>Manage all registered client accounts</CardDescription>
                   </div>
                   <Button onClick={() => setCreateClientWizardOpen(true)}>
@@ -550,21 +552,21 @@ export default function AdminDashboard() {
                             return (
                               <TableRow
                                 key={client.id}
-                                className={isSelected ? 'bg-blue-500/10 border-blue-500/30' : ''}
+                                className={isSelected ? 'bg-primary/10' : ''}
                               >
                                 <TableCell className="font-medium">
                                   <div className="flex items-center gap-1.5">
                                     <button
-                                      className="text-left hover:text-blue-400 transition-colors"
+                                      className="text-left font-display font-semibold hover:text-primary transition-colors"
                                       onClick={() => setClient360Id(isSelected ? null : client.id)}
                                     >
                                       {client.companyName}
                                     </button>
                                     {isOverdue && (
-                                      <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" aria-label="Has overdue invoices" />
+                                      <AlertTriangle className="h-3.5 w-3.5 text-primary shrink-0" aria-label="Has overdue invoices" />
                                     )}
                                     {inactiveAlert && (
-                                      <Clock className="h-3.5 w-3.5 text-yellow-400 shrink-0" aria-label={`Inactive for ${inactiveAlert.daysSinceLastOrder} days`} />
+                                      <Clock className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--st-amber)' }} aria-label={`Inactive for ${inactiveAlert.daysSinceLastOrder} days`} />
                                     )}
                                   </div>
                                 </TableCell>
@@ -573,32 +575,27 @@ export default function AdminDashboard() {
                                 <TableCell>{client.country}</TableCell>
                                 <TableCell>
                                   {/* Segment badge — placeholder, real data comes from client360 */}
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs cursor-pointer"
+                                  <button
+                                    className="pill cursor-pointer hover:border-primary transition-colors"
                                     onClick={() => setClient360Id(isSelected ? null : client.id)}
                                     title="Click to see Client 360"
                                   >
                                     360 View
-                                  </Badge>
+                                  </button>
                                 </TableCell>
                                 <TableCell>
                                   {client.customDomBaseRate || client.customSddBaseRate ? (
-                                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30">
-                                      ✨ Custom
-                                    </Badge>
+                                    <span className="pill custom">Custom</span>
                                   ) : client.manualRateTierId ? (
-                                    <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                                      Manual Tier
-                                    </Badge>
+                                    <span className="pill">Manual Tier</span>
                                   ) : (
-                                    <span className="text-xs text-muted-foreground">Auto</span>
+                                    <span className="pill">Auto</span>
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
+                                  <span className={statusBadgeClass(client.status)}>
                                     {client.status}
-                                  </Badge>
+                                  </span>
                                 </TableCell>
                                 <TableCell>{client.codAllowed ? 'Yes' : 'No'}</TableCell>
                                 <TableCell>
@@ -623,7 +620,7 @@ export default function AdminDashboard() {
                                         setNotesDialogOpen(true);
                                       }}
                                       title="Client Notes"
-                                      className="text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+                                      className="text-muted-foreground hover:text-foreground"
                                     >
                                       <StickyNote className="h-4 w-4" />
                                     </Button>
@@ -636,7 +633,7 @@ export default function AdminDashboard() {
                                         setPasswordDialogOpen(true);
                                       }}
                                       title="Change Password"
-                                      className="text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+                                      className="text-muted-foreground hover:text-foreground"
                                     >
                                       <Key className="h-4 w-4" />
                                     </Button>
@@ -666,7 +663,7 @@ export default function AdminDashboard() {
               {/* Client 360 Side Panel */}
               {client360Id !== null && (
                 <div className="w-80 shrink-0">
-                  <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 sticky top-4">
+                  <Card className="bg-card rounded-2xl border border-border shadow-sm sticky top-4">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div>
@@ -690,16 +687,16 @@ export default function AdminDashboard() {
                           {/* Segment Badge */}
                           <div className="flex items-center gap-2">
                             {client360Data.clientSegment === 'gold' && (
-                              <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/40">Gold Client</Badge>
+                              <span className="badge2 b-amber">Gold Client</span>
                             )}
                             {client360Data.clientSegment === 'silver' && (
-                              <Badge className="bg-slate-400/20 text-slate-300 border-slate-400/40">Silver Client</Badge>
+                              <span className="badge2 b-gray">Silver Client</span>
                             )}
                             {client360Data.clientSegment === 'bronze' && (
-                              <Badge className="bg-orange-700/20 text-orange-400 border-orange-700/40">Bronze Client</Badge>
+                              <span className="badge2 b-gray">Bronze Client</span>
                             )}
                             {client360Data.clientSegment === 'new' && (
-                              <Badge variant="outline">New Client</Badge>
+                              <span className="badge2 b-blue">New Client</span>
                             )}
                             <span className="text-xs text-muted-foreground">{client360Data.currentRateTier}</span>
                           </div>
@@ -708,12 +705,12 @@ export default function AdminDashboard() {
                           <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-lg bg-muted/40 p-3">
                               <p className="text-xs text-muted-foreground">This Month</p>
-                              <p className="text-2xl font-bold text-blue-400">{client360Data.shipmentsThisMonth}</p>
+                              <p className="font-display text-2xl font-bold tracking-tight">{client360Data.shipmentsThisMonth}</p>
                               <p className="text-xs text-muted-foreground">vs {client360Data.shipmentsLastMonth} last</p>
                             </div>
                             <div className="rounded-lg bg-muted/40 p-3">
                               <p className="text-xs text-muted-foreground">Last Active</p>
-                              <p className="text-2xl font-bold">
+                              <p className="font-display text-2xl font-bold tracking-tight">
                                 {client360Data.daysSinceLastOrder !== null ? client360Data.daysSinceLastOrder : '—'}
                               </p>
                               <p className="text-xs text-muted-foreground">days ago</p>
@@ -725,7 +722,7 @@ export default function AdminDashboard() {
                             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Financial</p>
                             <div className="flex justify-between text-sm">
                               <span>Pending Invoices</span>
-                              <span className={client360Data.pendingInvoicesBalance > 0 ? 'text-yellow-400 font-mono' : 'text-muted-foreground'}>
+                              <span className={client360Data.pendingInvoicesBalance > 0 ? 'money' : 'text-muted-foreground'} style={client360Data.pendingInvoicesBalance > 0 ? { color: 'var(--st-amber)' } : undefined}>
                                 {client360Data.pendingInvoicesBalance > 0
                                   ? `AED ${client360Data.pendingInvoicesBalance.toLocaleString('en-AE', { maximumFractionDigits: 0 })}`
                                   : '—'}
@@ -734,14 +731,14 @@ export default function AdminDashboard() {
                             {client360Data.overdueInvoicesBalance > 0 && (
                               <div className="flex justify-between text-sm">
                                 <span>Overdue</span>
-                                <span className="text-red-400 font-mono">
+                                <span className="money text-primary">
                                   AED {client360Data.overdueInvoicesBalance.toLocaleString('en-AE', { maximumFractionDigits: 0 })}
                                 </span>
                               </div>
                             )}
                             <div className="flex justify-between text-sm">
                               <span>Pending COD</span>
-                              <span className={client360Data.pendingCODAmount > 0 ? 'text-orange-400 font-mono' : 'text-muted-foreground'}>
+                              <span className={client360Data.pendingCODAmount > 0 ? 'money' : 'text-muted-foreground'} style={client360Data.pendingCODAmount > 0 ? { color: 'var(--st-amber)' } : undefined}>
                                 {client360Data.pendingCODAmount > 0
                                   ? `AED ${client360Data.pendingCODAmount.toLocaleString('en-AE', { maximumFractionDigits: 0 })}`
                                   : '—'}
@@ -756,11 +753,16 @@ export default function AdminDashboard() {
                               <div className="flex items-end gap-1 h-12">
                                 {(() => {
                                   const maxVal = Math.max(...client360Data.monthlyShipmentTrend.map(m => m.count), 1);
+                                  const lastIdx = client360Data.monthlyShipmentTrend.length - 1;
                                   return client360Data.monthlyShipmentTrend.map((m, i) => (
                                     <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${m.month}: ${m.count}`}>
                                       <div
-                                        className="w-full bg-blue-500/60 rounded-sm"
-                                        style={{ height: `${(m.count / maxVal) * 44}px` }}
+                                        className="w-full rounded-sm"
+                                        style={{
+                                          height: `${(m.count / maxVal) * 44}px`,
+                                          background: i === lastIdx ? 'var(--primary)' : 'var(--ink)',
+                                          opacity: i === lastIdx ? 1 : 0.82,
+                                        }}
                                       />
                                     </div>
                                   ));
@@ -787,16 +789,9 @@ export default function AdminDashboard() {
                                     <span className="font-mono text-muted-foreground">{o.waybillNumber}</span>
                                     <div className="flex items-center gap-1">
                                       <span className="text-muted-foreground">{o.city}</span>
-                                      <Badge
-                                        variant="outline"
-                                        className="text-xs py-0 px-1"
-                                        style={{
-                                          borderColor: o.status === 'delivered' ? '#10b981' : (o.status === 'returned' || o.status === 'returned_to_sender') ? '#6b7280' : '#f59e0b',
-                                          color: o.status === 'delivered' ? '#10b981' : (o.status === 'returned' || o.status === 'returned_to_sender') ? '#6b7280' : '#f59e0b',
-                                        }}
-                                      >
+                                      <span className={`${statusBadgeClass(o.status)} !text-[10.5px] !py-0.5 !px-2`}>
                                         {o.status.replace(/_/g, ' ')}
-                                      </Badge>
+                                      </span>
                                     </div>
                                   </div>
                                 ))}
@@ -858,9 +853,10 @@ export default function AdminDashboard() {
 
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-4">
-            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+            <Card className="bg-card rounded-2xl border border-border shadow-sm">
               <CardHeader>
-                <CardTitle>All Orders</CardTitle>
+                <p className="eyebrow mb-2">Operations</p>
+                <CardTitle className="text-xl">All Orders</CardTitle>
                 <div className="flex justify-between items-center">
                   <CardDescription>View and manage all shipments</CardDescription>
                   <div className="flex gap-2">
@@ -914,9 +910,9 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent>
                 {/* Filters */}
-                <div className="bg-card p-4 rounded-2xl border border-primary/10 flex flex-wrap items-center shadow-xl shadow-primary/5 gap-4 mb-6">
+                <div className="bg-secondary p-4 rounded-xl border border-border flex flex-wrap items-center gap-4 mb-6">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Client</span>
+                    <span className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">Client</span>
                     <select
                       value={orderFilterClientId}
                       onChange={(e) => setOrderFilterClientId(e.target.value)}
@@ -932,7 +928,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date range</span>
+                    <span className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">Date range</span>
                     <div className="flex items-center gap-2">
                       <input
                         type="date"
@@ -951,7 +947,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
+                    <span className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">Status</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button className="w-[180px] h-9 border border-border rounded-lg bg-background font-medium text-foreground text-sm px-3 flex items-center justify-between hover:bg-muted/50 transition-colors">
@@ -1002,7 +998,7 @@ export default function AdminDashboard() {
                   <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                   <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status Date</span>
+                    <span className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">Status Date</span>
                     <div className="flex items-center gap-2">
                       <input
                         type="date"
@@ -1020,7 +1016,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Sort</span>
+                    <span className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">Sort</span>
                     <select
                       value={orderSortDirection}
                       onChange={(e) => setOrderSortDirection(e.target.value as 'newest' | 'oldest')}
@@ -1058,7 +1054,7 @@ export default function AdminDashboard() {
                     <div className="hidden md:block overflow-x-auto">
                       <Table>
                         <TableHeader>
-                          <TableRow>
+                          <TableRow className="[&>th]:px-1">
                             <TableHead>Waybill</TableHead>
                             <TableHead>Client</TableHead>
                             <TableHead>Consignee</TableHead>
@@ -1074,38 +1070,24 @@ export default function AdminDashboard() {
                         </TableHeader>
                         <TableBody>
                           {orders.map((order) => {
-                            const statusColors: Record<string, string> = {
-                              pending_pickup: 'bg-yellow-500/80 hover:bg-yellow-500',
-                              picked_up: 'bg-blue-500/80 hover:bg-blue-500',
-                              in_transit: 'bg-indigo-500/80 hover:bg-indigo-500',
-                              out_for_delivery: 'bg-purple-500/80 hover:bg-purple-500',
-                              delivered: 'bg-green-500/80 hover:bg-green-500',
-                              failed_delivery: 'bg-red-500/80 hover:bg-red-500',
-                              returned: 'bg-gray-500/80 hover:bg-gray-500',
-                              returned_to_sender: 'bg-rose-600/80 hover:bg-rose-600',
-                              exchange: 'bg-amber-500/80 hover:bg-amber-500',
-                              canceled: 'bg-slate-500/80 hover:bg-slate-500',
-                              delivery_attempted: 'bg-orange-500/80 hover:bg-orange-500',
-                            };
-
                             const canCreateReturn = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'].includes(order.status) && !order.isReturn;
 
                             return (
-                              <TableRow key={order.id}>
-                                <TableCell className="font-mono font-medium text-blue-500">
+                              <TableRow key={order.id} className="[&>td]:px-1">
+                                <TableCell className="wb font-medium">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {order.waybillNumber}
                                     {order.isReturn === 1 && order.orderType !== 'exchange' && (
-                                      <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
+                                      <Badge variant="outline" className="b-blue !bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs flex items-center gap-1" title="Return">
                                         <RotateCcw className="h-4 w-4" />
                                       </Badge>
                                     )}
                                     {order.orderType === 'exchange' && (
-                                      <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs flex items-center gap-1" title="Exchange">
+                                      <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs flex items-center gap-1" title="Exchange">
                                         <ArrowLeftRight className="h-4 w-4" />
                                         {order.exchangeOrderId && (
                                           <span
-                                            className="ml-1 underline cursor-pointer hover:text-amber-300"
+                                            className="ml-1 underline cursor-pointer opacity-80 hover:opacity-100"
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               const linkedOrder = allOrders?.find((o: any) => o.id === order.exchangeOrderId);
@@ -1123,7 +1105,7 @@ export default function AdminDashboard() {
                                     )}
                                   </div>
                                 </TableCell>
-                                <TableCell className="font-medium text-primary">
+                                <TableCell className="font-display font-semibold">
                                   {clientsMap.get(order.clientId)?.companyName || 'Unknown'}
                                 </TableCell>
                                 <TableCell>
@@ -1140,17 +1122,17 @@ export default function AdminDashboard() {
                                 <TableCell>{order.serviceType}</TableCell>
                                 <TableCell>
                                   {order.codRequired ? (
-                                    <Badge variant="default" className="bg-orange-500 hover:bg-orange-600">
+                                    <span className="money">
                                       {order.codAmount} {order.codCurrency}
-                                    </Badge>
+                                    </span>
                                   ) : (
-                                    <span className="text-muted-foreground text-sm">-</span>
+                                    <span className="text-muted-foreground text-sm">—</span>
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize shadow-sm`}>
+                                  <span className={`${statusBadgeClass(order.status)} capitalize`}>
                                     {order.status.replace(/_/g, ' ')}
-                                  </Badge>
+                                  </span>
                                 </TableCell>
                                 <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                                 <TableCell>
@@ -1185,42 +1167,29 @@ export default function AdminDashboard() {
                     {/* Mobile Cards */}
                     <div className="md:hidden space-y-3">
                       {orders.map((order) => {
-                        const statusColors: Record<string, string> = {
-                          pending_pickup: 'bg-yellow-500/80',
-                          picked_up: 'bg-blue-500/80',
-                          in_transit: 'bg-indigo-500/80',
-                          out_for_delivery: 'bg-purple-500/80',
-                          delivered: 'bg-green-500/80',
-                          failed_delivery: 'bg-red-500/80',
-                          returned: 'bg-gray-500/80',
-                          returned_to_sender: 'bg-rose-600/80',
-                          exchange: 'bg-amber-500/80',
-                          canceled: 'bg-slate-500/80',
-                          delivery_attempted: 'bg-orange-500/80',
-                        };
                         return (
                           <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
                             {/* Top row: waybill + status */}
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono font-bold text-blue-500 text-sm">{order.waybillNumber}</span>
+                                <span className="wb font-bold text-sm">{order.waybillNumber}</span>
                                 {order.isReturn === 1 && order.orderType !== 'exchange' && (
-                                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs">
+                                  <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
                                     <RotateCcw className="h-3 w-3 mr-1" />Return
                                   </Badge>
                                 )}
                                 {order.orderType === 'exchange' && (
-                                  <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">
+                                  <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                     <ArrowLeftRight className="h-3 w-3 mr-1" />Exchange
                                   </Badge>
                                 )}
                               </div>
-                              <Badge className={`${statusColors[order.status] || 'bg-gray-500'} border-none text-white capitalize text-xs shrink-0`}>
+                              <span className={`${statusBadgeClass(order.status)} capitalize !text-[11px] shrink-0`}>
                                 {order.status.replace(/_/g, ' ')}
-                              </Badge>
+                              </span>
                             </div>
                             {/* Client */}
-                            <div className="text-xs font-medium text-primary">
+                            <div className="text-xs font-display font-semibold">
                               {clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown'}
                             </div>
                             {/* Consignee + destination row */}
@@ -1236,12 +1205,12 @@ export default function AdminDashboard() {
                             </div>
                             {/* Service + weight + COD */}
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{order.serviceType}</span>
+                              <span className="pill">{order.serviceType}</span>
                               <span className="text-xs text-muted-foreground">{order.weight} kg</span>
                               {order.codRequired && (
-                                <Badge className="bg-orange-500 text-white border-none text-xs">
+                                <span className="money text-xs">
                                   COD {order.codAmount} {order.codCurrency}
-                                </Badge>
+                                </span>
                               )}
                             </div>
                             {/* Actions */}
@@ -1298,9 +1267,10 @@ export default function AdminDashboard() {
 
           {/* Requests Tab */}
           <TabsContent value="requests" className="space-y-4">
-            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+            <Card className="bg-card rounded-2xl border border-border shadow-sm">
               <CardHeader>
-                <CardTitle>Pickup Requests</CardTitle>
+                <p className="eyebrow mb-2">Inbound</p>
+                <CardTitle className="text-xl">Pickup Requests</CardTitle>
                 <CardDescription>View all pickup requests from the website</CardDescription>
               </CardHeader>
               <CardContent>
@@ -1361,9 +1331,10 @@ export default function AdminDashboard() {
 
           {/* Messages Tab */}
           <TabsContent value="messages" className="space-y-4">
-            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+            <Card className="bg-card rounded-2xl border border-border shadow-sm">
               <CardHeader>
-                <CardTitle>Contact Messages</CardTitle>
+                <p className="eyebrow mb-2">Inbound</p>
+                <CardTitle className="text-xl">Contact Messages</CardTitle>
                 <CardDescription>View inquiries from the Contact Us form</CardDescription>
               </CardHeader>
               <CardContent>
@@ -1418,9 +1389,10 @@ export default function AdminDashboard() {
 
           {/* Guide Tab */}
           <TabsContent value="guide" className="space-y-4">
-            <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+            <Card className="bg-card rounded-2xl border border-border shadow-sm">
               <CardHeader>
-                <CardTitle>Waybill Guide</CardTitle>
+                <p className="eyebrow mb-2">Reference</p>
+                <CardTitle className="text-xl">Waybill Guide</CardTitle>
                 <CardDescription>Instructions for printing and attaching waybills</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1447,21 +1419,21 @@ export default function AdminDashboard() {
                     <h3 className="text-lg font-medium">Key Elements</h3>
                     <div className="space-y-2">
                       <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center text-xs font-bold shrink-0">1</div>
+                        <div className="w-6 h-6 rounded-[8px] bg-primary text-white font-display flex items-center justify-center text-xs font-bold shrink-0">1</div>
                         <div>
                           <p className="font-medium text-sm">Waybill Number (Barcode)</p>
                           <p className="text-xs text-muted-foreground">Used for scanning and tracking via App and Sortation.</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center text-xs font-bold shrink-0">2</div>
+                        <div className="w-6 h-6 rounded-[8px] bg-primary text-white font-display flex items-center justify-center text-xs font-bold shrink-0">2</div>
                         <div>
                           <p className="font-medium text-sm">COD Amount</p>
                           <p className="text-xs text-muted-foreground">Clearly visible for drivers to collect payment.</p>
                         </div>
                       </div>
                       <div className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-blue-500/10 text-blue-500 flex items-center justify-center text-xs font-bold shrink-0">3</div>
+                        <div className="w-6 h-6 rounded-[8px] bg-primary text-white font-display flex items-center justify-center text-xs font-bold shrink-0">3</div>
                         <div>
                           <p className="font-medium text-sm">Routing Code</p>
                           <p className="text-xs text-muted-foreground">Destination city/area code for efficient sorting.</p>
@@ -1482,12 +1454,12 @@ export default function AdminDashboard() {
 
         {/* Edit Client Settings Dialog */}
         <Dialog open={editClientDialogOpen} onOpenChange={setEditClientDialogOpen}>
-          <DialogContent className="glass-strong !w-[95vw] !max-w-[1200px] p-0 gap-0 border-white/10">
-            <div className="w-full h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
+          <DialogContent className="bg-card border-border !w-[95vw] !max-w-[1200px] p-0 gap-0">
+            <div className="w-full h-1.5 bg-primary" />
             <div className="p-8">
               <DialogHeader>
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
                     <Pencil className="w-5 h-5" />
                   </div>
                   <div>
@@ -1499,17 +1471,17 @@ export default function AdminDashboard() {
                 </div>
               </DialogHeader>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-8 border-y border-white/10 my-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-8 border-y border-border my-6">
 
                 {/* Column 1: Pricing & Rates */}
                 <div className="space-y-6 pr-6 md:border-r border-border/30">
                   <div className="flex items-center gap-2 mb-2">
-                    <BarChart3 className="w-4 h-4 text-blue-400" />
-                    <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Pricing & Rates</h3>
+                    <BarChart3 className="w-4 h-4 text-primary" />
+                    <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-normal">Pricing & Rates</h3>
                   </div>
 
-                  <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5 space-y-2">
-                    <p className="text-xs font-semibold text-blue-400">Zone-Based Rates Active</p>
+                  <div className="p-3 rounded-xl border border-border bg-secondary space-y-2">
+                    <p className="text-xs font-display font-semibold" style={{ color: 'var(--st-blue)' }}>Zone-Based Rates Active</p>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       Shipping rates for this client are configured in the <span className="font-semibold text-foreground">Rates &amp; Pricing</span> tab using Zone 1 / Zone 2 / Zone 3 pricing based on destination emirate.
                     </p>
@@ -1520,10 +1492,10 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Column 2: Payment & COD */}
-                <div className="space-y-6 px-0 md:px-8 md:border-r border-white/10">
+                <div className="space-y-6 px-0 md:px-8 md:border-r border-border">
                   <div className="flex items-center gap-2 mb-2">
-                    <Coins className="w-4 h-4 text-emerald-400" />
-                    <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Payment & COD</h3>
+                    <Coins className="w-4 h-4" style={{ color: 'var(--st-green)' }} />
+                    <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-normal">Payment & COD</h3>
                   </div>
 
                   <div className="space-y-4">
@@ -1576,17 +1548,17 @@ export default function AdminDashboard() {
                   </div>
 
                   {/* Settlement Period */}
-                  <div className="p-3 rounded-xl border border-violet-500/20 bg-violet-500/5 space-y-2">
+                  <div className="p-3 rounded-xl border border-border bg-secondary space-y-2">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-violet-400" />
-                      <span className="text-sm font-bold uppercase text-violet-400 tracking-wider">Settlement Cycle</span>
+                      <Calendar className="w-4 h-4 text-primary" />
+                      <span className="font-mono text-[11px] uppercase text-muted-foreground tracking-[0.12em]">Settlement Cycle</span>
                     </div>
                     <p className="text-[10px] text-muted-foreground">Default billing period applied automatically when invoicing this client.</p>
                     <Select
                       value={editForm.defaultSettlementPeriod}
                       onValueChange={(v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => setEditForm({ ...editForm, defaultSettlementPeriod: v })}
                     >
-                      <SelectTrigger className="h-9 text-sm bg-background/50 border-violet-500/20">
+                      <SelectTrigger className="h-9 text-sm bg-background/50 border-border">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1602,17 +1574,17 @@ export default function AdminDashboard() {
                 {/* Column 3: Specialized Services */}
                 <div className="space-y-6 md:pl-8">
                   <div className="flex items-center gap-2 mb-2">
-                    <Zap className="w-4 h-4 text-amber-400" />
-                    <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Services</h3>
+                    <Zap className="w-4 h-4" style={{ color: 'var(--st-amber)' }} />
+                    <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-normal">Services</h3>
                   </div>
 
                   <div className="space-y-4">
                     {/* Bullet Service */}
-                    <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 space-y-4">
+                    <div className="p-4 rounded-xl border border-primary/25 bg-primary/5 space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Rocket className="w-5 h-5 text-red-500" />
-                          <span className="text-sm font-bold uppercase text-red-500 tracking-wider">Bullet (4H)</span>
+                          <Rocket className="w-5 h-5 text-primary" />
+                          <span className="font-display text-sm font-bold uppercase text-primary tracking-wider">Bullet (4H)</span>
                         </div>
                         <Checkbox
                           id="editBulletAllowed"
@@ -1622,44 +1594,44 @@ export default function AdminDashboard() {
                       </div>
                       <div className={`grid grid-cols-2 gap-4 transition-opacity ${!editForm.bulletAllowed ? 'opacity-30' : 'opacity-100'}`}>
                         <div className="space-y-2">
-                          <Label className="text-xs font-semibold text-red-500/70">Base (5kg)</Label>
+                          <Label className="text-xs font-semibold text-primary/70">Base (5kg)</Label>
                           <div className="relative">
                             <Input
-                              className="h-9 pl-8 text-sm bg-background/50 border-red-500/20"
+                              className="h-9 pl-8 text-sm bg-background/50 border-primary/20 font-mono"
                               value={editForm.customBulletBaseRate}
                               onChange={(e) => setEditForm({ ...editForm, customBulletBaseRate: e.target.value })}
                               placeholder="50.00"
                               disabled={!editForm.bulletAllowed}
                             />
-                            <span className="absolute left-2.5 top-2.5 text-[10px] text-red-500/50 font-bold">AED</span>
+                            <span className="absolute left-2.5 top-2.5 font-mono text-[10px] text-primary/50 font-bold">AED</span>
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-xs font-semibold text-red-500/70">Extra KG</Label>
+                          <Label className="text-xs font-semibold text-primary/70">Extra KG</Label>
                           <div className="relative">
                             <Input
-                              className="h-9 pl-8 text-sm bg-background/50 border-red-500/20"
+                              className="h-9 pl-8 text-sm bg-background/50 border-primary/20 font-mono"
                               value={editForm.customBulletPerKg}
                               onChange={(e) => setEditForm({ ...editForm, customBulletPerKg: e.target.value })}
                               placeholder="5.00"
                               disabled={!editForm.bulletAllowed}
                             />
-                            <span className="absolute left-2.5 top-2.5 text-[10px] text-red-500/50 font-bold">AED</span>
+                            <span className="absolute left-2.5 top-2.5 font-mono text-[10px] text-primary/50 font-bold">AED</span>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     {/* Fit on Delivery */}
-                    <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 flex items-center justify-between">
+                    <div className="p-4 rounded-xl border border-border bg-secondary flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Shirt className="w-5 h-5 text-blue-500" />
+                        <Shirt className="w-5 h-5" style={{ color: 'var(--st-blue)' }} />
                         <div className="space-y-1">
-                          <span className="text-sm font-bold uppercase text-blue-500 tracking-wider">Fit on Delivery</span>
+                          <span className="font-display text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--st-blue)' }}>Fit on Delivery</span>
                           <div className="flex items-center gap-2">
-                            <Label className="text-[10px] text-blue-500/70 font-bold uppercase">Fee (AED):</Label>
+                            <Label className="font-mono text-[10px] text-muted-foreground uppercase">Fee (AED):</Label>
                             <Input
-                              className="h-6 w-16 p-1 text-xs bg-background/50 border-blue-500/30 text-center font-mono"
+                              className="h-6 w-16 p-1 text-xs bg-background/50 border-border text-center font-mono"
                               value={editForm.fodFee}
                               onChange={(e) => setEditForm({ ...editForm, fodFee: e.target.value })}
                               placeholder="5.00"
@@ -1676,15 +1648,15 @@ export default function AdminDashboard() {
                     </div>
 
                     {/* International */}
-                    <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between">
+                    <div className="p-4 rounded-xl border border-border bg-secondary flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Globe className="w-5 h-5 text-indigo-500" />
+                        <Globe className="w-5 h-5" style={{ color: 'var(--st-blue)' }} />
                         <div className="space-y-1">
-                          <span className="text-sm font-bold uppercase text-indigo-500 tracking-wider">International</span>
+                          <span className="font-display text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--st-blue)' }}>International</span>
                           <div className="flex items-center gap-2">
-                            <Label className="text-[10px] text-indigo-500/70 font-bold uppercase">Discount (%):</Label>
+                            <Label className="font-mono text-[10px] text-muted-foreground uppercase">Discount (%):</Label>
                             <Input
-                              className="h-6 w-16 p-1 text-xs bg-background/50 border-indigo-500/30 text-center font-mono"
+                              className="h-6 w-16 p-1 text-xs bg-background/50 border-border text-center font-mono"
                               value={editForm.intlDiscountPercent}
                               onChange={(e) => setEditForm({ ...editForm, intlDiscountPercent: e.target.value })}
                               placeholder="10"
@@ -1709,7 +1681,6 @@ export default function AdminDashboard() {
                 </Button>
                 <Button
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20"
                   onClick={handleSaveClientSettings}
                   disabled={updateSettingsMutation.isPending || updateTierMutation.isPending}
                 >
@@ -1743,13 +1714,13 @@ export default function AdminDashboard() {
 
         {/* Client Notes Dialog */}
         <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
-          <DialogContent className="glass-strong !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-            <div className="w-full h-1 bg-gradient-to-r from-amber-600 to-orange-600" />
+          <DialogContent className="bg-card border-border !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0">
+            <div className="w-full h-1 bg-primary" />
             <div className="p-6">
               <DialogHeader className="mb-6">
-                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-amber-500/20">
-                    <StickyNote className="w-6 h-6 text-amber-400" />
+                <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <StickyNote className="w-6 h-6 text-primary" />
                   </div>
                   Client Notes: {selectedClientForNotes?.companyName}
                 </DialogTitle>
@@ -1764,17 +1735,16 @@ export default function AdminDashboard() {
                   value={clientNotes}
                   onChange={(e) => setClientNotes(e.target.value)}
                   placeholder="Enter notes about this client... (e.g., special arrangements, contact preferences, billing notes, etc.)"
-                  className="min-h-[200px] resize-y bg-white/5 border-white/10"
+                  className="min-h-[200px] resize-y bg-white/5 border-border"
                 />
               </div>
-              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+              <DialogFooter className="pt-6 mt-6 border-t border-border">
                 <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button
                   onClick={handleSaveNotes}
                   disabled={updateNotesMutation.isPending}
-                  className="bg-amber-500 hover:bg-amber-600"
                 >
                   {updateNotesMutation.isPending ? 'Saving...' : 'Save Notes'}
                 </Button>
@@ -1785,13 +1755,13 @@ export default function AdminDashboard() {
 
         {/* Change Password Dialog */}
         <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
-          <DialogContent className="glass-strong !w-[90vw] !max-w-[480px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-            <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600" />
+          <DialogContent className="bg-card border-border !w-[90vw] !max-w-[480px] max-h-[90vh] overflow-y-auto p-0 gap-0">
+            <div className="w-full h-1 bg-primary" />
             <div className="p-6">
               <DialogHeader className="mb-6">
-                <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <Key className="w-6 h-6 text-blue-400" />
+                <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <Key className="w-6 h-6 text-primary" />
                   </div>
                   Change Password
                 </DialogTitle>
@@ -1807,20 +1777,19 @@ export default function AdminDashboard() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Minimum 8 characters"
-                  className="bg-white/5 border-white/10"
+                  className="bg-white/5 border-border"
                 />
                 <p className="text-xs text-muted-foreground">
                   Password must be at least 8 characters long.
                 </p>
               </div>
-              <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+              <DialogFooter className="pt-6 mt-6 border-t border-border">
                 <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
                   Cancel
                 </Button>
                 <Button
                   onClick={handleChangePassword}
                   disabled={updatePasswordMutation.isPending || newPassword.length < 8}
-                  className="bg-blue-600 hover:bg-blue-700"
                 >
                   {updatePasswordMutation.isPending ? 'Updating...' : 'Update Password'}
                 </Button>
@@ -1864,3 +1833,5 @@ export default function AdminDashboard() {
     </ModernDashboardLayout>
   );
 }
+
+

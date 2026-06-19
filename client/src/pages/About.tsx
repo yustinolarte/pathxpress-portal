@@ -177,7 +177,7 @@ export default function About() {
           {/* 1. Vision & Mission Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20 max-w-5xl mx-auto">
             <AnimatedSection animation="slide-right">
-              <Card className="glass-strong border-primary/30 h-full card-hover-lift">
+              <Card className="bg-card border-border border-primary/30 h-full card-hover-lift">
                 <CardHeader>
                   <div className="w-16 h-16 rounded-xl bg-primary/20 flex items-center justify-center mb-4">
                     <Eye className="w-8 h-8 text-primary" />
@@ -193,12 +193,12 @@ export default function About() {
             </AnimatedSection>
 
             <AnimatedSection animation="slide-left" delay={0.1}>
-              <Card className="glass-strong border-secondary/30 h-full card-hover-lift">
+              <Card className="bg-card border-border border-primary/30 h-full card-hover-lift">
                 <CardHeader>
-                  <div className="w-16 h-16 rounded-xl bg-secondary/20 flex items-center justify-center mb-4">
-                    <Target className="w-8 h-8 text-secondary" />
+                  <div className="w-16 h-16 rounded-xl bg-primary/20 flex items-center justify-center mb-4">
+                    <Target className="w-8 h-8 text-primary" />
                   </div>
-                  <CardTitle className="text-2xl text-secondary">{t('about.mission.title')}</CardTitle>
+                  <CardTitle className="text-2xl text-primary">{t('about.mission.title')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-muted-foreground leading-relaxed">
@@ -213,10 +213,10 @@ export default function About() {
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
-                <Sparkles className="w-4 h-4 text-accent" />
-                <span className="text-sm font-medium text-accent">{t('about.timeline.badge')}</span>
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{t('about.timeline.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.timeline.title')}</h2>
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">{t('about.timeline.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 {t('about.timeline.subtitle')}
               </p>
@@ -228,7 +228,7 @@ export default function About() {
                   <AnimatedSection key={index} animation="slide-up" delay={index * 0.1}>
                     <div className="relative pl-8 border-l-2 border-primary/30">
                       <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-primary" />
-                      <div className="glass-strong p-6 rounded-xl hover:glass transition-smooth">
+                      <div className="bg-card border-border p-6 rounded-xl hover:glass transition-smooth">
                         <div className="flex items-center gap-3 mb-2">
                           <span className="px-3 py-1 rounded-full bg-primary/20 text-primary text-sm font-semibold">
                             {item.year}
@@ -247,7 +247,7 @@ export default function About() {
           {/* 3. Core Values */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.values.title')}</h2>
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">{t('about.values.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 {t('about.values.subtitle')}
               </p>
@@ -258,7 +258,7 @@ export default function About() {
                 const Icon = value.icon;
                 return (
                   <AnimatedSection key={index} animation="scale-in" delay={index * 0.1}>
-                    <Card className="glass-strong border-border h-full text-center card-hover-lift">
+                    <Card className="bg-card border-border border-border h-full text-center card-hover-lift">
                       <CardContent className="pt-8 pb-6">
                         <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
                           <Icon className="w-8 h-8 text-primary" />
@@ -282,10 +282,10 @@ export default function About() {
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-10">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
-                <BarChart3 className="w-4 h-4 text-secondary" />
-                <span className="text-sm font-medium text-secondary">{t('about.comparison.badge')}</span>
+                <BarChart3 className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{t('about.comparison.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">
                 {t('about.comparison.title')}
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -293,7 +293,7 @@ export default function About() {
               </p>
             </div>
 
-            <div className="glass-strong rounded-2xl overflow-hidden border border-border max-w-4xl mx-auto">
+            <div className="bg-card border-border rounded-2xl overflow-hidden border border-border max-w-4xl mx-auto">
               {/* Table Header */}
               <div className="grid grid-cols-3 bg-background/50 border-b border-border">
                 <div className="p-4 md:p-5 font-semibold text-sm uppercase tracking-wide text-foreground flex items-center gap-2">
@@ -302,7 +302,7 @@ export default function About() {
                 <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-muted-foreground">
                   {t('about.comparison.traditional')}
                 </div>
-                <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-secondary">
+                <div className="p-4 md:p-5 text-center font-semibold text-sm uppercase tracking-wide text-primary">
                   PATHXPRESS
                 </div>
               </div>
@@ -324,7 +324,7 @@ export default function About() {
                       )}
                     </div>
                     <div className="p-4 md:p-5 flex items-center justify-center">
-                      <Check className="w-5 h-5 text-secondary" />
+                      <Check className="w-5 h-5 text-primary" />
                     </div>
                   </div>
                 );
@@ -336,10 +336,10 @@ export default function About() {
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-10">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
-                <Cpu className="w-4 h-4 text-secondary" />
-                <span className="text-sm font-medium text-secondary">{t('aiPowered.badge')}</span>
+                <Cpu className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{t('aiPowered.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">
                 {t('aiPowered.title')}
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -357,10 +357,10 @@ export default function About() {
                 const Icon = feature.icon;
                 return (
                   <AnimatedSection key={index} animation="scale-in" delay={index * 0.05}>
-                    <Card className="glass-strong border-border h-full text-center card-hover-lift hover:border-secondary/50 transition-all">
+                    <Card className="bg-card border-border border-border h-full text-center card-hover-lift hover:border-primary/50 transition-all">
                       <CardContent className="pt-8 pb-6">
-                        <div className="w-14 h-14 rounded-2xl bg-secondary/10 flex items-center justify-center mx-auto mb-4">
-                          <Icon className="w-7 h-7 text-secondary" />
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                          <Icon className="w-7 h-7 text-primary" />
                         </div>
                         <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
                         <p className="text-sm text-muted-foreground">{feature.description}</p>
@@ -379,7 +379,7 @@ export default function About() {
                 <Cpu className="w-4 h-4 text-primary" />
                 <span className="text-sm font-medium text-primary">{t('about.howWeAchieve.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">
                 {t('about.howWeAchieve.title')}
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -392,7 +392,7 @@ export default function About() {
                 const Icon = item.icon;
                 return (
                   <AnimatedSection key={index} animation="slide-up" delay={index * 0.1}>
-                    <Card className="glass-strong border-primary/20 h-full card-hover-lift">
+                    <Card className="bg-card border-border  h-full card-hover-lift">
                       <CardContent className="p-6 flex items-start gap-4">
                         <div className="w-14 h-14 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
                           <Icon className="w-7 h-7 text-primary" />
@@ -413,10 +413,10 @@ export default function About() {
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="max-w-3xl mx-auto text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-6">
-                <Heart className="w-4 h-4 text-accent" />
-                <span className="text-sm font-medium text-accent">{t('about.culture.badge')}</span>
+                <Heart className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{t('about.culture.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6">{t('about.culture.title')}</h2>
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-6">{t('about.culture.title')}</h2>
               <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
                 {t('about.culture.description1')}
               </p>
@@ -428,14 +428,14 @@ export default function About() {
 
           {/* 9. CTA Section */}
           <AnimatedSection animation="scale-in">
-            <div className="text-center py-16 px-6 rounded-2xl glass-strong max-w-4xl mx-auto">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('about.cta.title')}</h2>
+            <div className="text-center py-16 px-6 rounded-2xl bg-card border-border max-w-4xl mx-auto">
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">{t('about.cta.title')}</h2>
               <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
                 {t('about.cta.description')}
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/request-quote">
-                  <Button size="lg" className="bg-primary hover:bg-primary/90 glow-blue-hover transition-smooth px-8 btn-hover-expand">
+                  <Button size="lg" className="bg-primary hover:bg-primary/90 transition-smooth px-8 btn-hover-expand">
                     {t('about.cta.getStarted')} <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
@@ -454,3 +454,5 @@ export default function About() {
     </div>
   );
 }
+
+

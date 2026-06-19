@@ -14,7 +14,7 @@ export function LegalPage({ title, content }: LegalPageProps) {
       <Header />
       <main className="pt-32 pb-20 gradient-dark min-h-screen">
         <div className="container max-w-4xl">
-          <Card className="glass-strong border-border animate-fade-in">
+          <Card className="bg-card border-border border-border animate-fade-in">
             <CardHeader>
               <CardTitle className="text-3xl">{title}</CardTitle>
             </CardHeader>
@@ -172,3 +172,4 @@ This website relies on the following technologies:
     />
   );
 }
+

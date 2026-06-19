@@ -80,10 +80,10 @@ function AdminRateCalculator() {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="glass-strong border-blue-500/20">
-                <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+            <Card className="bg-card border-border overflow-hidden">
+                <div className="w-full h-1 bg-primary" />
                 <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2"><Calculator className="w-5 h-5 text-blue-400" /> Test Calculator</CardTitle>
+                    <CardTitle className="text-lg flex items-center gap-2"><Calculator className="w-5 h-5 text-primary" /> Test Calculator</CardTitle>
                     <CardDescription>Test international rates as admin (no discount applied)</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -139,8 +139,8 @@ function AdminRateCalculator() {
 
             <div className="space-y-4">
                 {quoteMutation.error && (
-                    <Card className="glass-strong border-red-500/20">
-                        <CardContent className="py-4 flex items-center gap-3 text-red-400">
+                    <Card className="bg-card border-primary/25">
+                        <CardContent className="py-4 flex items-center gap-3 text-primary">
                             <AlertCircle className="w-5 h-5" /> {quoteMutation.error.message}
                         </CardContent>
                     </Card>
@@ -149,7 +149,7 @@ function AdminRateCalculator() {
                     const isSelected = selectedServices.has(opt.serviceKey);
                     return (
                         <label key={opt.serviceKey} className="cursor-pointer block">
-                            <Card className={`glass-strong transition-all ${isSelected ? (opt.isRecommended ? 'ring-1 ring-primary/50 border-primary/30' : 'ring-1 ring-white/20 border-white/20') : 'border-white/10 opacity-50'}`}>
+                            <Card className={`bg-card border-border transition-all ${isSelected ? (opt.isRecommended ? 'ring-1 ring-primary/50 border-primary/30' : 'ring-1 ring-white/20 border-white/20') : ' opacity-50'}`}>
                                 {opt.isRecommended && (
                                     <div className="bg-primary/10 px-4 py-1 flex items-center gap-2">
                                         <Star className="w-3 h-3 text-primary fill-primary" /> <span className="text-xs font-semibold text-primary">Recommended</span>
@@ -176,7 +176,7 @@ function AdminRateCalculator() {
                                                 <Badge variant="outline" className="text-xs mt-1">{opt.bracketUsed.value} {opt.bracketUsed.unit}</Badge>
                                             </div>
                                         </div>
-                                        <p className="text-2xl font-bold shrink-0">{opt.total.toFixed(2)} <span className="text-sm text-muted-foreground">{opt.currency}</span></p>
+                                        <p className="font-display text-2xl font-bold tracking-tight shrink-0">{opt.total.toFixed(2)} <span className="text-sm text-muted-foreground">{opt.currency}</span></p>
                                     </div>
                                     <div className="mt-2 space-y-0.5 pl-6">
                                         {opt.notes.map((n: string, i: number) => <p key={i} className="text-xs text-muted-foreground">• {n}</p>)}
@@ -206,16 +206,16 @@ function AdminRateCalculator() {
                     </Button>
                 )}
                 {quoteResult?.options?.length === 0 && (
-                    <Card className="glass-strong border-amber-500/20">
+                    <Card className="bg-card border-border">
                         <CardContent className="py-6 text-center">
-                            <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+                            <AlertCircle className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--st-amber)' }} />
                             <p className="font-semibold">No services available</p>
                             {quoteResult.reasons.map((r: string, i: number) => <p key={i} className="text-xs text-muted-foreground mt-1">• {r}</p>)}
                         </CardContent>
                     </Card>
                 )}
                 {!quoteResult && !quoteMutation.error && (
-                    <Card className="glass-strong border-dashed border-white/10">
+                    <Card className="bg-card border-border border-dashed ">
                         <CardContent className="py-12 text-center">
                             <Globe className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                             <p className="text-muted-foreground">Results will appear here</p>
@@ -290,7 +290,7 @@ function RateManagement() {
             ) : (
                 <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
                     {Object.entries(grouped).map(([group, items]) => (
-                        <Card key={group} className="glass-strong border-white/10">
+                        <Card key={group} className="bg-card border-border ">
                             <CardHeader className="py-3 px-4">
                                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                                     <Globe className="w-4 h-4 text-primary" /> {group}
@@ -354,9 +354,9 @@ function RateManagement() {
 
 function QuoteRequestsTable() {
     return (
-        <Card className="glass-strong border-white/10">
+        <Card className="bg-card border-border ">
             <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2"><FileText className="w-5 h-5 text-blue-400" /> International Quote Requests</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2"><FileText className="w-5 h-5 text-primary" /> International Quote Requests</CardTitle>
                 <CardDescription>Track incoming international shipping inquiries</CardDescription>
             </CardHeader>
             <CardContent>
@@ -411,35 +411,36 @@ function AdminIntlOrdersTable() {
         );
     }) || [];
 
+    // Functional tones: blue = moving, amber = waiting, green = done, red = problem
     const getStatusColor = (status: string) => {
-        const colors: Record<string, string> = {
-            pending_pickup: 'bg-yellow-500',
-            picked_up: 'bg-blue-500',
-            departed_origin: 'bg-sky-500',
-            in_transit: 'bg-cyan-600',
-            arrived_destination: 'bg-indigo-500',
-            customs_clearance: 'bg-orange-500',
-            customs_cleared: 'bg-teal-500',
-            customs_held: 'bg-red-400',
-            out_for_delivery: 'bg-purple-500',
-            delivered: 'bg-green-500',
-            failed_delivery: 'bg-red-500',
-            on_hold: 'bg-orange-400',
-            returned: 'bg-gray-500',
-            returned_to_sender: 'bg-rose-600',
+        const tones: Record<string, string> = {
+            pending_pickup: 'b-amber',
+            picked_up: 'b-blue',
+            departed_origin: 'b-blue',
+            in_transit: 'b-blue',
+            arrived_destination: 'b-blue',
+            customs_clearance: 'b-amber',
+            customs_cleared: 'b-blue',
+            customs_held: 'b-red',
+            out_for_delivery: 'b-blue',
+            delivered: 'b-green',
+            failed_delivery: 'b-red',
+            on_hold: 'b-amber',
+            returned: 'b-gray',
+            returned_to_sender: 'b-red',
         };
-        return colors[status] || 'bg-gray-400';
+        return `badge2 ${tones[status] || 'b-gray'}`;
     };
 
-    const getStatusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
+    const getStatusLabel = (status: string) => status.replace(/_/g, ' ');
 
     return (
         <>
-        <Card className="glass-strong border-green-500/20">
+        <Card className="bg-card border-border">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <CardTitle className="text-lg flex items-center gap-2">
-                        <Package className="w-5 h-5 text-green-400" /> International Orders
+                        <Package className="w-5 h-5 text-primary" /> International Orders
                     </CardTitle>
                     <CardDescription>View all cross-border shipments</CardDescription>
                 </div>
@@ -492,9 +493,9 @@ function AdminIntlOrdersTable() {
                                         </TableCell>
                                         <TableCell>{order.weight} kg</TableCell>
                                         <TableCell>
-                                            <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-xs">
+                                            <span className="pill">
                                                 {order.serviceType}
-                                            </Badge>
+                                            </span>
                                         </TableCell>
                                         <TableCell>
                                             {order.customsValue ? (
@@ -507,9 +508,9 @@ function AdminIntlOrdersTable() {
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className={getStatusColor(order.status)}>
+                                            <span className={`${getStatusColor(order.status)} capitalize`}>
                                                 {getStatusLabel(order.status)}
-                                            </Badge>
+                                            </span>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">
                                             {new Date(order.createdAt).toLocaleDateString()}
@@ -528,7 +529,7 @@ function AdminIntlOrdersTable() {
                                                     variant="ghost"
                                                     size="sm"
                                                     onClick={() => setTrackingOrderId(order.id)}
-                                                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                                    className="text-[var(--st-blue)] hover:opacity-80 hover:bg-[var(--st-blue-bg)]"
                                                     title="Update Tracking Status"
                                                 >
                                                     <RefreshCw className="h-4 w-4" />
@@ -538,7 +539,7 @@ function AdminIntlOrdersTable() {
                                                     size="sm"
                                                     onClick={() => handleDelete(order.id, order.waybillNumber)}
                                                     disabled={deletingId === order.id}
-                                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                                    className="text-primary hover:opacity-80 hover:bg-primary/10"
                                                     title="Delete Order"
                                                 >
                                                     {deletingId === order.id
@@ -588,18 +589,14 @@ export default function AdminInternationalShipping() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-                    <Globe className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                    <h2 className="text-2xl font-bold">International Shipping</h2>
-                    <p className="text-sm text-muted-foreground">Manage orders, rates, test calculator, and view requests</p>
-                </div>
+            <div>
+                <p className="eyebrow mb-2">International</p>
+                <h2 className="font-display text-2xl font-bold tracking-tight">International Shipping</h2>
+                <p className="text-sm text-muted-foreground">Manage orders, rates, test calculator, and view requests</p>
             </div>
 
             <Tabs value={subTab} onValueChange={setSubTab}>
-                <TabsList className="bg-background/50">
+                <TabsList className="">
                     <TabsTrigger value="orders" className="gap-2"><Package className="w-4 h-4" /> Orders</TabsTrigger>
                     <TabsTrigger value="calculator" className="gap-2"><Calculator className="w-4 h-4" /> Rate Calculator</TabsTrigger>
                     <TabsTrigger value="rates" className="gap-2"><Settings className="w-4 h-4" /> Rate Management</TabsTrigger>
@@ -625,3 +622,4 @@ export default function AdminInternationalShipping() {
         </div>
     );
 }
+

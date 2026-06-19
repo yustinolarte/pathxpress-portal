@@ -76,7 +76,8 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider
         defaultTheme="dark"
-      // switchable
+        switchable
+        storageKey="site-theme"
       >
         <TooltipProvider>
           <Toaster />

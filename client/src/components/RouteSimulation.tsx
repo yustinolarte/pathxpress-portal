@@ -397,13 +397,13 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
 
     if (isMobile) {
         return (
-            <div className={`glass-strong rounded-2xl p-6 border border-primary/20 ${className}`}>
+            <div className={`bg-card border-border rounded-2xl p-6 border  ${className}`}>
                 <div className="text-center mb-6">
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/20 mb-4">
                         <Zap className="w-4 h-4 text-primary" />
                         <span className="text-sm font-medium text-primary">{t('about.simulation.badge')}</span>
                     </div>
-                    <h3 className="text-2xl font-bold mb-2">{t('about.simulation.title')}</h3>
+                    <h3 className="font-display text-2xl font-bold tracking-tight mb-2">{t('about.simulation.title')}</h3>
                     <p className="text-muted-foreground text-sm">{t('about.simulation.subtitle')}</p>
                 </div>
 
@@ -411,36 +411,36 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                     <div className="glass rounded-xl p-4 text-center border border-muted-foreground/20">
                         <MapPin className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
                         <div className="text-lg font-bold text-muted-foreground">{t('about.simulation.traditional.title')}</div>
-                        <div className="text-2xl font-black text-muted-foreground">72 km</div>
+                        <div className="font-display text-2xl font-bold tracking-tight text-muted-foreground">72 km</div>
                         <div className="text-sm text-muted-foreground">~95 min</div>
                     </div>
-                    <div className="glass rounded-xl p-4 text-center border border-secondary/50">
-                        <Brain className="w-8 h-8 mx-auto mb-2 text-secondary" />
-                        <div className="text-lg font-bold text-secondary">PATHXPRESS</div>
-                        <div className="text-2xl font-black text-secondary">41 km</div>
-                        <div className="text-sm text-secondary">~48 min</div>
+                    <div className="glass rounded-xl p-4 text-center border border-primary/50">
+                        <Brain className="w-8 h-8 mx-auto mb-2 text-primary" />
+                        <div className="text-lg font-bold text-primary">PATHXPRESS</div>
+                        <div className="font-display text-2xl font-bold tracking-tight text-primary">41 km</div>
+                        <div className="text-sm text-primary">~48 min</div>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2">
                     <div className="glass rounded-lg p-3 text-center">
-                        <Route className="w-4 h-4 mx-auto mb-1 text-secondary" />
-                        <div className="text-lg font-bold text-secondary">31</div>
+                        <Route className="w-4 h-4 mx-auto mb-1 text-primary" />
+                        <div className="text-lg font-bold text-primary">31</div>
                         <div className="text-[10px] text-muted-foreground">{t('about.simulation.metrics.km')}</div>
                     </div>
                     <div className="glass rounded-lg p-3 text-center">
-                        <Clock className="w-4 h-4 mx-auto mb-1 text-secondary" />
-                        <div className="text-lg font-bold text-secondary">47</div>
+                        <Clock className="w-4 h-4 mx-auto mb-1 text-primary" />
+                        <div className="text-lg font-bold text-primary">47</div>
                         <div className="text-[10px] text-muted-foreground">{t('about.simulation.metrics.time')}</div>
                     </div>
                     <div className="glass rounded-lg p-3 text-center">
-                        <Fuel className="w-4 h-4 mx-auto mb-1 text-secondary" />
-                        <div className="text-lg font-bold text-secondary">6.2</div>
+                        <Fuel className="w-4 h-4 mx-auto mb-1 text-primary" />
+                        <div className="text-lg font-bold text-primary">6.2</div>
                         <div className="text-[10px] text-muted-foreground">{t('about.simulation.metrics.fuel')}</div>
                     </div>
                     <div className="glass rounded-lg p-3 text-center">
-                        <Zap className="w-4 h-4 mx-auto mb-1 text-secondary" />
-                        <div className="text-lg font-bold text-secondary">43%</div>
+                        <Zap className="w-4 h-4 mx-auto mb-1 text-primary" />
+                        <div className="text-lg font-bold text-primary">43%</div>
                         <div className="text-[10px] text-muted-foreground">{t('about.simulation.results.moreEfficient')}</div>
                     </div>
                 </div>
@@ -453,10 +453,10 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
             {/* Section Header */}
             <div className="text-center mb-10">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
-                    <Brain className="w-4 h-4 text-secondary" />
-                    <span className="text-sm font-medium text-secondary">{t('about.simulation.badge')}</span>
+                    <Brain className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium text-primary">{t('about.simulation.badge')}</span>
                 </div>
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">
+                <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">
                     {t('about.simulation.title')}
                 </h2>
                 <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -469,7 +469,7 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                 <Button
                     onClick={startSimulation}
                     disabled={isSimulating || !mapsLoaded}
-                    className="bg-secondary hover:bg-secondary/90 rounded-full px-8 py-6 text-base font-semibold shadow-lg shadow-secondary/25"
+                    className="bg-primary hover:bg-primary/90 rounded-full px-8 py-6 text-base font-semibold shadow-lg shadow-primary/25"
                 >
                     <Play className="w-5 h-5 mr-2" />
                     {t('about.simulation.startSimulation')}
@@ -495,7 +495,7 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
             {/* Maps Comparison */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
                 {/* Traditional Map Card */}
-                <div className="glass-strong rounded-3xl overflow-hidden border border-muted-foreground/20 card-hover-lift">
+                <div className="bg-card border-border rounded-3xl overflow-hidden border border-muted-foreground/20 card-hover-lift">
                     <div className="flex items-center justify-between p-5 bg-background/30 border-b border-border/50">
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 rounded-xl bg-muted-foreground/80 flex items-center justify-center">
@@ -539,7 +539,7 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                         ].map((metric, i) => (
                             <div key={i} className="text-center p-4 glass rounded-xl">
                                 <metric.icon className="w-5 h-5 mx-auto mb-2 text-muted-foreground" />
-                                <div className="text-2xl font-bold text-muted-foreground">{metric.value}</div>
+                                <div className="font-display text-2xl font-bold tracking-tight text-muted-foreground">{metric.value}</div>
                                 <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{metric.label}</div>
                             </div>
                         ))}
@@ -559,8 +559,8 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                 </div>
 
                 {/* AI Map Card */}
-                <div className="glass-strong rounded-3xl overflow-hidden border-2 border-secondary card-hover-lift" style={{ boxShadow: '0 20px 60px rgba(229, 57, 53, 0.2)' }}>
-                    <div className="flex items-center justify-between p-5 bg-background/30 border-b border-secondary/30">
+                <div className="bg-card border-border rounded-3xl overflow-hidden border-2 border-secondary card-hover-lift" style={{ boxShadow: '0 20px 60px rgba(229, 57, 53, 0.2)' }}>
+                    <div className="flex items-center justify-between p-5 bg-background/30 border-b border-primary/30">
                         <div className="flex items-center gap-3">
                             <img
                                 src="/pathxpress-logo.png"
@@ -569,7 +569,7 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                             />
                             <span className="text-xl font-bold">{t('about.simulation.ai.title')}</span>
                         </div>
-                        <span className="px-4 py-2 rounded-full bg-secondary/20 text-secondary text-xs font-semibold uppercase tracking-wide">
+                        <span className="px-4 py-2 rounded-full bg-primary/20 text-primary text-xs font-semibold uppercase tracking-wide">
                             {t('about.simulation.ai.badge')}
                         </span>
                     </div>
@@ -577,22 +577,22 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                     <div className="relative h-[400px]">
                         <div ref={aiMapRef} className="w-full h-full" style={{ background: '#0f172a' }} />
 
-                        <div className="absolute top-4 right-4 z-[1000] glass rounded-xl px-4 py-3 min-w-[160px] border border-secondary/30">
-                            <div className="text-[10px] text-secondary uppercase mb-2 tracking-wide">{t('about.simulation.metrics.progress')}</div>
-                            <div className="h-2 bg-secondary/20 rounded-full overflow-hidden">
+                        <div className="absolute top-4 right-4 z-[1000] glass rounded-xl px-4 py-3 min-w-[160px] border border-primary/30">
+                            <div className="text-[10px] text-primary uppercase mb-2 tracking-wide">{t('about.simulation.metrics.progress')}</div>
+                            <div className="h-2 bg-primary/20 rounded-full overflow-hidden">
                                 <div
                                     className="h-full bg-secondary rounded-full transition-all duration-200"
                                     style={{ width: `${aiProgress}%` }}
                                 />
                             </div>
-                            <div className="text-right text-xs text-secondary mt-1">{Math.round(aiProgress)}%</div>
+                            <div className="text-right text-xs text-primary mt-1">{Math.round(aiProgress)}%</div>
                         </div>
 
-                        <div className={`absolute bottom-4 left-4 z-[1000] glass rounded-xl px-4 py-2.5 flex items-center gap-2 text-sm border ${aiStatus === 'running' ? 'border-green-500/50' : aiStatus === 'completed' ? 'border-secondary bg-secondary/10' : 'border-transparent'
+                        <div className={`absolute bottom-4 left-4 z-[1000] glass rounded-xl px-4 py-2.5 flex items-center gap-2 text-sm border ${aiStatus === 'running' ? 'border-green-500/50' : aiStatus === 'completed' ? 'border-primary bg-primary/10' : 'border-transparent'
                             }`}>
                             {aiStatus === 'waiting' && <><Pause className="w-4 h-4 text-muted-foreground" /> {t('about.simulation.ai.waiting')}</>}
                             {aiStatus === 'running' && <><Play className="w-4 h-4 text-green-500" /> {t('about.simulation.ai.running')}</>}
-                            {aiStatus === 'completed' && <><Check className="w-4 h-4 text-secondary" /> {t('about.simulation.ai.completed')}</>}
+                            {aiStatus === 'completed' && <><Check className="w-4 h-4 text-primary" /> {t('about.simulation.ai.completed')}</>}
                         </div>
                     </div>
 
@@ -603,21 +603,21 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                             { icon: Fuel, value: currentMetrics.ai.fuel, label: t('about.simulation.metrics.fuel') },
                             { icon: Package, value: `${currentMetrics.ai.stops}/10`, label: t('about.simulation.metrics.deliveries') },
                         ].map((metric, i) => (
-                            <div key={i} className="text-center p-4 glass rounded-xl border border-secondary/20">
-                                <metric.icon className="w-5 h-5 mx-auto mb-2 text-secondary" />
-                                <div className="text-2xl font-bold text-secondary">{metric.value}</div>
+                            <div key={i} className="text-center p-4 glass rounded-xl border border-primary/20">
+                                <metric.icon className="w-5 h-5 mx-auto mb-2 text-primary" />
+                                <div className="font-display text-2xl font-bold tracking-tight text-primary">{metric.value}</div>
                                 <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{metric.label}</div>
                             </div>
                         ))}
                     </div>
 
-                    <div className="flex gap-2 p-4 overflow-x-auto border-t border-secondary/20">
+                    <div className="flex gap-2 p-4 overflow-x-auto border-t border-primary/20">
                         {[
                             t('about.simulation.features.realTimeTraffic'),
                             t('about.simulation.features.timeDistance'),
                             t('about.simulation.features.reOptimization')
                         ].map((tag, i) => (
-                            <span key={i} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-secondary/15 text-secondary text-xs whitespace-nowrap">
+                            <span key={i} className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary/15 text-primary text-xs whitespace-nowrap">
                                 <Check className="w-3 h-3" /> {tag}
                             </span>
                         ))}
@@ -626,9 +626,9 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
             </div>
 
             {/* Savings Banner */}
-            <div className="glass-strong border-2 border-secondary/50 rounded-3xl p-10 text-center" style={{ background: 'linear-gradient(135deg, rgba(229, 57, 53, 0.08), rgba(15, 23, 42, 0.95))' }}>
-                <h2 className="text-xl md:text-2xl font-bold mb-8 flex items-center justify-center gap-3">
-                    <Zap className="w-7 h-7 text-secondary" />
+            <div className="bg-card border-border border-2 border-primary/50 rounded-3xl p-10 text-center" style={{ background: 'linear-gradient(135deg, rgba(229, 57, 53, 0.08), rgba(15, 23, 42, 0.95))' }}>
+                <h2 className="text-xl md:font-display text-2xl font-bold tracking-tight mb-8 flex items-center justify-center gap-3">
+                    <Zap className="w-7 h-7 text-primary" />
                     <span>{t('about.simulation.results.title')}</span>
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -639,7 +639,7 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
                         { value: savings.percent, label: t('about.simulation.results.moreEfficient') },
                     ].map((item, i) => (
                         <div key={i} className="text-center">
-                            <div className="text-4xl md:text-5xl font-black text-secondary">{item.value}</div>
+                            <div className="text-4xl md:text-5xl font-black text-primary">{item.value}</div>
                             <div className="text-muted-foreground mt-2">{item.label}</div>
                         </div>
                     ))}
@@ -648,3 +648,4 @@ export default function RouteSimulation({ className = '' }: RouteSimulationProps
         </div>
     );
 }
+

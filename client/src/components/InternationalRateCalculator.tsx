@@ -104,16 +104,12 @@ export default function InternationalRateCalculator() {
         return <Box className="w-5 h-5" />;
     };
 
-    const getServiceColor = (key: string) => {
-        if (key.startsWith('PRIME_')) return 'border-blue-500/30 hover:border-blue-400/50';
-        if (key === 'GCC') return 'border-emerald-500/30 hover:border-emerald-400/50';
-        return 'border-purple-500/30 hover:border-purple-400/50';
-    };
+    const getServiceColor = (_key: string) => 'border-border hover:border-primary/50';
 
     const getServiceBadgeColor = (key: string) => {
-        if (key.startsWith('PRIME_')) return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-        if (key === 'GCC') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-        return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+        if (key.startsWith('PRIME_')) return 'badge2 b-blue';
+        if (key === 'GCC') return 'badge2 b-green';
+        return 'badge2 b-amber';
     };
 
     // Loading state
@@ -129,11 +125,11 @@ export default function InternationalRateCalculator() {
     if (!clientSettings || clientSettings.intlAllowed !== 1) {
         return (
             <div className="max-w-2xl mx-auto py-12">
-                <Card className="glass-strong border-amber-500/20 overflow-hidden">
-                    <div className="w-full h-1.5 bg-gradient-to-r from-amber-500 to-orange-500" />
+                <Card className="bg-card border-border overflow-hidden">
+                    <div className="w-full h-1.5 bg-primary" />
                     <CardHeader className="text-center pb-4">
-                        <div className="mx-auto w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4">
-                            <Globe className="w-8 h-8 text-amber-400" />
+                        <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
+                            <Globe className="w-8 h-8 text-primary" />
                         </div>
                         <CardTitle className="text-2xl">International Shipping</CardTitle>
                         <CardDescription className="text-base mt-2">
@@ -162,24 +158,24 @@ export default function InternationalRateCalculator() {
     return (
         <div className="space-y-8">
             <div className="flex flex-col gap-1 mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-foreground">International Calculator</h2>
+                <h2 className="font-display text-3xl font-bold tracking-tight text-foreground">International Calculator</h2>
                 <p className="text-muted-foreground text-lg max-w-2xl">Calculate shipping rates to 200+ countries worldwide and compare our global services.</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
                 {/* Form Panel */}
-                <Card className="lg:col-span-2 glass-strong border-blue-500/20 overflow-hidden">
-                    <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+                <Card className="lg:col-span-2 bg-card border-border overflow-hidden">
+                    <div className="w-full h-1 bg-primary" />
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-lg">
-                            <Calculator className="w-5 h-5 text-blue-400" /> Shipment Details
+                            <Calculator className="w-5 h-5 text-primary" /> Shipment Details
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
                         {/* Origin */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium flex items-center gap-2">
-                                <Globe className="w-3.5 h-3.5 text-blue-400" /> Origin Country
+                                <Globe className="w-3.5 h-3.5 text-primary" /> Origin Country
                             </Label>
                             <Input value={originCountry} onChange={(e) => setOriginCountry(e.target.value)} className="bg-background/50" />
                         </div>
@@ -187,7 +183,7 @@ export default function InternationalRateCalculator() {
                         {/* Destination */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium flex items-center gap-2">
-                                <Globe className="w-3.5 h-3.5 text-indigo-400" /> Destination Country
+                                <Globe className="w-3.5 h-3.5 text-primary" /> Destination Country
                             </Label>
                             <Select value={destinationCountry} onValueChange={setDestinationCountry}>
                                 <SelectTrigger className="bg-background/50">
@@ -212,7 +208,7 @@ export default function InternationalRateCalculator() {
                         {/* Weight */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium flex items-center gap-2">
-                                <Scale className="w-3.5 h-3.5 text-green-400" /> Real Weight (kg)
+                                <Scale className="w-3.5 h-3.5 text-[var(--st-green)]" /> Real Weight (kg)
                             </Label>
                             <Input
                                 type="number"
@@ -228,7 +224,7 @@ export default function InternationalRateCalculator() {
                         {/* Dimensions */}
                         <div className="space-y-2">
                             <Label className="text-sm font-medium flex items-center gap-2">
-                                <Ruler className="w-3.5 h-3.5 text-purple-400" /> Dimensions (cm)
+                                <Ruler className="w-3.5 h-3.5 text-primary" /> Dimensions (cm)
                             </Label>
                             <div className="grid grid-cols-3 gap-2">
                                 <Input type="number" step="0.1" min="0.1" placeholder="L" value={length} onChange={(e) => setLength(e.target.value)} className="bg-background/50" />
@@ -258,7 +254,7 @@ export default function InternationalRateCalculator() {
                 {/* Results Panel */}
                 <div className="lg:col-span-3 space-y-4">
                     {quoteMutation.error && (
-                        <Card className="glass-strong border-red-500/20">
+                        <Card className="bg-card border-border border-red-500/20">
                             <CardContent className="py-4 flex items-center gap-3 text-red-400">
                                 <AlertCircle className="w-5 h-5 shrink-0" />
                                 <p>{quoteMutation.error.message}</p>
@@ -269,10 +265,10 @@ export default function InternationalRateCalculator() {
                     {quoteResult && (
                         <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
                             {/* Calculation Summary */}
-                            <Card className="glass-strong border-blue-500/20">
+                            <Card className="bg-card border-border">
                                 <CardContent className="py-4">
                                     <div className="flex items-center gap-2 mb-3">
-                                        <Info className="w-4 h-4 text-blue-400" />
+                                        <Info className="w-4 h-4 text-primary" />
                                         <span className="text-sm font-medium">Weight Calculation</span>
                                     </div>
                                     <div className="grid grid-cols-3 gap-4 text-center">
@@ -284,7 +280,7 @@ export default function InternationalRateCalculator() {
                                             <p className="text-xs text-muted-foreground">Volumetric</p>
                                             <p className="text-lg font-bold">{quoteResult.calc.volKg.toFixed(2)} kg</p>
                                         </div>
-                                        <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                        <div className="p-3 rounded-lg bg-primary/10 border border-border">
                                             <p className="text-xs text-primary">Billable Weight</p>
                                             <p className="text-lg font-bold text-primary">{quoteResult.calc.billableKgRounded05.toFixed(1)} kg</p>
                                         </div>
@@ -297,10 +293,10 @@ export default function InternationalRateCalculator() {
                                 quoteResult.options.map((opt) => (
                                     <Card
                                         key={opt.serviceKey}
-                                        className={`glass-strong ${getServiceColor(opt.serviceKey)} transition-all duration-300 overflow-hidden ${opt.isRecommended ? 'ring-1 ring-primary/50' : ''}`}
+                                        className={`bg-card border-border ${getServiceColor(opt.serviceKey)} transition-all duration-300 overflow-hidden ${opt.isRecommended ? 'ring-1 ring-primary/50' : ''}`}
                                     >
                                         {opt.isRecommended && (
-                                            <div className="w-full bg-gradient-to-r from-primary/20 to-indigo-500/20 px-4 py-1.5 flex items-center gap-2">
+                                            <div className="w-full bg-primary/15 px-4 py-1.5 flex items-center gap-2">
                                                 <Star className="w-3.5 h-3.5 text-primary fill-primary" />
                                                 <span className="text-xs font-semibold text-primary">Recommended</span>
                                             </div>
@@ -308,9 +304,9 @@ export default function InternationalRateCalculator() {
                                         <CardContent className={`${opt.isRecommended ? 'pt-4' : 'pt-6'} pb-5`}>
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-start gap-3">
-                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${opt.serviceKey.startsWith('PRIME_') ? 'bg-blue-500/10 text-blue-400' :
-                                                        opt.serviceKey === 'GCC' ? 'bg-emerald-500/10 text-emerald-400' :
-                                                            'bg-purple-500/10 text-purple-400'
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${opt.serviceKey.startsWith('PRIME_') ? 'bg-[var(--st-blue-bg)] text-[var(--st-blue)]' :
+                                                        opt.serviceKey === 'GCC' ? 'bg-[var(--st-green-bg)] text-[var(--st-green)]' :
+                                                            'bg-[var(--st-amber-bg)] text-[var(--st-amber)]'
                                                         }`}>
                                                         {getServiceIcon(opt.serviceKey)}
                                                     </div>
@@ -325,13 +321,13 @@ export default function InternationalRateCalculator() {
                                                     {opt.totalAfterDiscount ? (
                                                         <>
                                                             <p className="text-sm text-muted-foreground line-through">{opt.total.toFixed(2)} {opt.currency}</p>
-                                                            <p className="text-2xl font-bold text-primary">{opt.totalAfterDiscount.toFixed(2)} <span className="text-sm">{opt.currency}</span></p>
-                                                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                                                            <p className="font-display text-2xl font-bold tracking-tight text-primary">{opt.totalAfterDiscount.toFixed(2)} <span className="text-sm">{opt.currency}</span></p>
+                                                            <Badge className="badge2 b-green !text-[11px]">
                                                                 -{opt.discountPercent}% discount
                                                             </Badge>
                                                         </>
                                                     ) : (
-                                                        <p className="text-2xl font-bold">{opt.total.toFixed(2)} <span className="text-sm text-muted-foreground">{opt.currency}</span></p>
+                                                        <p className="font-display text-2xl font-bold tracking-tight">{opt.total.toFixed(2)} <span className="text-sm text-muted-foreground">{opt.currency}</span></p>
                                                     )}
                                                 </div>
                                             </div>
@@ -361,16 +357,16 @@ export default function InternationalRateCalculator() {
                                     </Card>
                                 ))
                             ) : (
-                                <Card className="glass-strong border-amber-500/20">
+                                <Card className="bg-card border-border">
                                     <CardContent className="py-8 text-center">
-                                        <AlertCircle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
+                                        <AlertCircle className="w-10 h-10 text-[var(--st-amber)] mx-auto mb-3" />
                                         <h3 className="text-lg font-semibold mb-2">No Services Available</h3>
                                         <p className="text-muted-foreground text-sm mb-4">No international shipping services are available for this route and specifications.</p>
                                         {quoteResult.reasons.length > 0 && (
                                             <div className="text-left max-w-md mx-auto space-y-1">
                                                 {quoteResult.reasons.map((r, i) => (
                                                     <p key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                                                        <Info className="w-3 h-3 mt-0.5 shrink-0 text-amber-400" /> {r}
+                                                        <Info className="w-3 h-3 mt-0.5 shrink-0 text-[var(--st-amber)]" /> {r}
                                                     </p>
                                                 ))}
                                             </div>
@@ -383,7 +379,7 @@ export default function InternationalRateCalculator() {
 
                     {/* Empty state */}
                     {!quoteResult && !quoteMutation.error && (
-                        <Card className="glass-strong border-dashed border-white/10">
+                        <Card className="bg-card border-border border-dashed ">
                             <CardContent className="py-16 text-center">
                                 <Globe className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
                                 <h3 className="text-lg font-medium text-muted-foreground">Ready to Calculate</h3>
@@ -398,3 +394,4 @@ export default function InternationalRateCalculator() {
         </div>
     );
 }
+

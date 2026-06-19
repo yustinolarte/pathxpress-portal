@@ -264,6 +264,10 @@ export const orders = mysqlTable("orders", {
   customsDescription: text("customsDescription"),              // Description of goods for customs declaration
   hsCode: varchar("hsCode", { length: 20 }),                   // Harmonized System tariff code (optional)
 
+  // Preferred Time Delivery service fields
+  preferredDeliveryDate: varchar("preferredDeliveryDate", { length: 10 }),  // 'YYYY-MM-DD'
+  preferredDeliveryTime: varchar("preferredDeliveryTime", { length: 20 }),  // e.g. '18:00'
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -495,6 +499,34 @@ export const serviceConfig = mysqlTable("serviceConfig", {
 
 export type ServiceConfig = typeof serviceConfig.$inferSelect;
 export type InsertServiceConfig = typeof serviceConfig.$inferInsert;
+
+/**
+ * Per-client service settings — one row per (clientId, serviceCode).
+ * Controls which delivery services are available and their per-client pricing/cut-off config.
+ * serviceCodes: DOM, SDD, BULLET, EXPRESS_ZONE2, PREFERRED_TIME, PREFERRED_TIME_SDD
+ */
+export const clientServiceSettings = mysqlTable("clientServiceSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  clientId: int("clientId").notNull(),
+  serviceCode: varchar("serviceCode", { length: 30 }).notNull(),
+  isEnabled: int("isEnabled").notNull().default(0),
+  baseRate: varchar("baseRate", { length: 20 }),
+  perKgRate: varchar("perKgRate", { length: 20 }),
+  cutoffTime: varchar("cutoffTime", { length: 5 }),         // 'HH:MM' hora Dubai UTC+4
+  availableRegions: text("availableRegions"),               // JSON array de emiratos
+  deliveryWindow: varchar("deliveryWindow", { length: 100 }),
+  deliveryTime: varchar("deliveryTime", { length: 100 }),
+  displayName: varchar("displayName", { length: 100 }),
+  description: text("description"),
+  extraConfig: text("extraConfig"),                         // JSON: {timeSlots,blackoutDates} para PREFERRED_TIME / PREFERRED_TIME_SDD
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  clientServiceIdx: index("css_clientId_serviceCode_idx").on(table.clientId, table.serviceCode),
+}));
+
+export type ClientServiceSetting = typeof clientServiceSettings.$inferSelect;
+export type InsertClientServiceSetting = typeof clientServiceSettings.$inferInsert;
 
 /**
  * Saved shippers table for customer convenience

@@ -71,7 +71,7 @@ export default function EcommerceLastMileUAE() {
                         </p>
                         <div className="flex flex-col sm:flex-row gap-4 justify-center">
                             <Link href="/request-quote">
-                                <Button size="lg" className="bg-secondary hover:bg-secondary/90 glow-red-hover px-8">
+                                <Button size="lg" className="bg-primary hover:bg-primary/90 px-8">
                                     Get Started <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             </Link>
@@ -88,7 +88,7 @@ export default function EcommerceLastMileUAE() {
             {/* Features Section */}
             <section className="py-16 bg-card/30">
                 <div className="container">
-                    <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
+                    <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight text-center mb-12">
                         Complete E-commerce Delivery Stack
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -100,7 +100,7 @@ export default function EcommerceLastMileUAE() {
                         ].map((feature, index) => {
                             const Icon = feature.icon;
                             return (
-                                <Card key={index} className="glass-strong border-border hover:border-primary transition-smooth">
+                                <Card key={index} className="bg-card border-border border-border hover:border-primary transition-smooth">
                                     <CardHeader>
                                         <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center mb-4">
                                             <Icon className="w-6 h-6 text-primary" />
@@ -120,7 +120,7 @@ export default function EcommerceLastMileUAE() {
             {/* Platform Integrations */}
             <section className="py-16 gradient-dark">
                 <div className="container">
-                    <h2 className="text-3xl md:text-4xl font-bold text-center mb-6">
+                    <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight text-center mb-6">
                         Platform Integrations
                     </h2>
                     <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
@@ -128,7 +128,7 @@ export default function EcommerceLastMileUAE() {
                     </p>
                     <div className="flex flex-wrap justify-center gap-6">
                         {['Shopify', 'WooCommerce', 'Magento', 'Custom API'].map((platform) => (
-                            <div key={platform} className="glass-strong rounded-xl px-8 py-4 text-center">
+                            <div key={platform} className="bg-card border-border rounded-xl px-8 py-4 text-center">
                                 <span className="font-semibold">{platform}</span>
                             </div>
                         ))}
@@ -139,7 +139,7 @@ export default function EcommerceLastMileUAE() {
             {/* Why Choose Us */}
             <section className="py-16 bg-card/30">
                 <div className="container">
-                    <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
+                    <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight text-center mb-12">
                         Why E-commerce Brands Choose Us
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
@@ -148,7 +148,7 @@ export default function EcommerceLastMileUAE() {
                             { title: 'AI-Powered Routing', description: 'Optimized routes for faster deliveries' },
                             { title: 'Transparent Pricing', description: 'No hidden fees, volume discounts available' },
                         ].map((item, index) => (
-                            <div key={index} className="glass-strong rounded-xl p-6 text-center">
+                            <div key={index} className="bg-card border-border rounded-xl p-6 text-center">
                                 <CheckCircle2 className="w-8 h-8 text-primary mx-auto mb-4" />
                                 <h3 className="text-lg font-semibold mb-2">{item.title}</h3>
                                 <p className="text-muted-foreground text-sm">{item.description}</p>
@@ -162,7 +162,7 @@ export default function EcommerceLastMileUAE() {
             <section className="py-16 gradient-dark">
                 <div className="container">
                     <div className="max-w-3xl mx-auto">
-                        <h2 className="text-3xl md:text-4xl font-bold text-center mb-12">
+                        <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight text-center mb-12">
                             Frequently Asked Questions
                         </h2>
                         <Accordion type="single" collapsible className="space-y-4">
@@ -170,7 +170,7 @@ export default function EcommerceLastMileUAE() {
                                 <AccordionItem
                                     key={index}
                                     value={`item-${index}`}
-                                    className="glass-strong border-border rounded-lg px-6"
+                                    className="bg-card border-border border-border rounded-lg px-6"
                                 >
                                     <AccordionTrigger className="text-left font-semibold hover:text-primary">
                                         {faq.question}
@@ -190,12 +190,12 @@ export default function EcommerceLastMileUAE() {
                 <div className="container">
                     <div className="max-w-2xl mx-auto text-center">
                         <Truck className="w-12 h-12 text-primary mx-auto mb-6" />
-                        <h2 className="text-3xl font-bold mb-4">Scale Your E-commerce Delivery</h2>
+                        <h2 className="font-display text-3xl font-bold tracking-tight mb-4">Scale Your E-commerce Delivery</h2>
                         <p className="text-muted-foreground mb-8">
                             Partner with PATHXPRESS and focus on growing your business while we handle logistics.
                         </p>
                         <Link href="/request-quote">
-                            <Button size="lg" className="bg-secondary hover:bg-secondary/90">
+                            <Button size="lg" className="bg-primary hover:bg-primary/90">
                                 Get Custom Quote
                             </Button>
                         </Link>
@@ -233,3 +233,5 @@ export default function EcommerceLastMileUAE() {
         </div>
     );
 }
+
+

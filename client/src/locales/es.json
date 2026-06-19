@@ -115,6 +115,40 @@
       "point1": "Integración e-commerce",
       "point2": "Soporte multi-vendedor",
       "point3": "Rastreo en tiempo real"
+    },
+    "bullet": {
+      "title": "BULLET Express",
+      "label": "Entrega en 4 horas",
+      "point1": "Entrega en un máximo de 4 horas",
+      "point2": "Manejo y ruteo prioritario",
+      "point3": "Para tus envíos más urgentes"
+    },
+    "express": {
+      "title": "Servicio Express",
+      "label": "Emiratos lejanos",
+      "point1": "Entrega más rápida a emiratos lejanos",
+      "point2": "Ruteo prioritario a zonas remotas",
+      "point3": "Tránsito confiable entre emiratos"
+    },
+    "preferredNextDay": {
+      "title": "Hora Preferida Día Siguiente",
+      "label": "Entrega programada",
+      "point1": "Entrega al día siguiente",
+      "point2": "Elige tu franja horaria preferida",
+      "point3": "Ideal para entregas con horario sensible"
+    },
+    "preferredSameDay": {
+      "title": "Hora Preferida Mismo Día",
+      "label": "Programada · Mismo día",
+      "point1": "Entrega el mismo día",
+      "point2": "Elige tu franja horaria preferida",
+      "point3": "Tiempo mínimo de anticipación de 4 horas"
+    },
+    "customCase": {
+      "title": "¿No ves tu caso?",
+      "label": "Solución a medida",
+      "description": "Diseñamos rutas y SLA a medida para operaciones de cualquier volumen.",
+      "cta": "Hablar con ventas"
     }
   },
   "whyChooseUs": {

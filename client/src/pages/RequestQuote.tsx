@@ -61,10 +61,10 @@ export default function RequestQuote() {
         <Header />
         <main className="pt-32 pb-20 gradient-dark min-h-screen flex items-center justify-center">
           <div className="container max-w-2xl">
-            <Card className="glass-strong border-primary text-center animate-fade-in">
+            <Card className="bg-card border-border border-primary text-center animate-fade-in">
               <CardContent className="py-12">
                 <CheckCircle className="w-16 h-16 mx-auto mb-6 text-primary" />
-                <h2 className="text-3xl font-bold mb-4">{t('quoteForm.successTitle')}</h2>
+                <h2 className="font-display text-3xl font-bold tracking-tight mb-4">{t('quoteForm.successTitle')}</h2>
                 <p className="text-muted-foreground mb-8">
                   {t('quoteForm.successMessage')}
                 </p>
@@ -94,7 +94,7 @@ export default function RequestQuote() {
             <p className="text-xl text-muted-foreground">{t('quoteForm.subtitle')}</p>
           </div>
 
-          <Card className="glass-strong border-border animate-slide-up">
+          <Card className="bg-card border-border border-border animate-slide-up">
             <CardHeader>
               <CardTitle className="text-2xl">{t('quoteForm.cardTitle')}</CardTitle>
               <CardDescription>
@@ -175,7 +175,7 @@ export default function RequestQuote() {
                       <SelectTrigger className="bg-input border-border">
                         <SelectValue placeholder={t('quoteForm.selectPlaceholder')} />
                       </SelectTrigger>
-                      <SelectContent className="glass-strong">
+                      <SelectContent className="bg-card border-border">
                         <SelectItem value="same-day">{t('quoteForm.serviceTypes.sameDay')}</SelectItem>
                         <SelectItem value="domestic">{t('quoteForm.serviceTypes.domestic')}</SelectItem>
                         <SelectItem value="freight">{t('quoteForm.serviceTypes.freight')}</SelectItem>
@@ -213,7 +213,7 @@ export default function RequestQuote() {
                 <Button
                   type="submit"
                   size="lg"
-                  className="w-full bg-secondary hover:bg-secondary/90 glow-red-hover transition-smooth"
+                  className="w-full bg-primary hover:bg-primary/90 transition-smooth"
                   disabled={createQuoteMutation.isPending}
                 >
                   {createQuoteMutation.isPending ? (
@@ -235,3 +235,5 @@ export default function RequestQuote() {
     </div>
   );
 }
+
+

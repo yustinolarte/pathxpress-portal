@@ -393,7 +393,7 @@ export const adminPortalRouter = router({
     .input(z.object({
       orderId: z.number(),
       updates: z.object({
-        serviceType: z.enum(['DOM', 'SDD', 'BULLET']).optional(),
+        serviceType: z.enum(['DOM', 'SDD', 'BULLET', 'EXPRESS_ZONE2', 'PREFERRED_TIME', 'PREFERRED_TIME_SDD']).optional(),
         weight: z.string().optional(),
         pieces: z.number().optional(),
         codRequired: z.number().min(0).max(1).optional(),
@@ -405,6 +405,8 @@ export const adminPortalRouter = router({
         city: z.string().optional(),
         specialInstructions: z.string().optional(),
         fitOnDelivery: z.number().min(0).max(1).optional(),
+        preferredDeliveryDate: z.string().nullable().optional(),
+        preferredDeliveryTime: z.string().nullable().optional(),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -1303,6 +1305,9 @@ export const adminPortalRouter = router({
         // Coordinates for driver navigation
         latitude: z.string().optional(),
         longitude: z.string().optional(),
+        // Preferred Time Delivery fields
+        preferredDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        preferredDeliveryTime: z.string().optional(),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -1390,6 +1395,10 @@ export const adminPortalRouter = router({
         // Coordinates for driver navigation
         latitude: input.shipment.latitude || null,
         longitude: input.shipment.longitude || null,
+
+        // Preferred Time delivery window
+        preferredDeliveryDate: input.shipment.preferredDeliveryDate || null,
+        preferredDeliveryTime: input.shipment.preferredDeliveryTime || null,
 
         status: 'pending_pickup',
         lastStatusUpdate: new Date(),
@@ -1525,6 +1534,10 @@ export const customerPortalRouter = router({
         // Coordinates for driver navigation
         latitude: z.string().optional(),
         longitude: z.string().optional(),
+
+        // Preferred Time Delivery fields
+        preferredDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        preferredDeliveryTime: z.string().optional(),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -2005,6 +2018,9 @@ export const customerPortalRouter = router({
       weight: z.number().default(0.5),
       serviceType: z.string().default('DOM'),
       specialInstructions: z.string().optional(),
+      // Preferred Time delivery window (when serviceType is a PREFERRED_TIME variant)
+      preferredDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      preferredDeliveryTime: z.string().optional(),
       // For exchange
       exchangeCustomerName: z.string().optional(),
       exchangeCustomerPhone: z.string().optional(),
@@ -2046,6 +2062,8 @@ export const customerPortalRouter = router({
         weight: input.weight.toString(),
         serviceType: input.serviceType,
         specialInstructions: input.specialInstructions || `${input.type.toUpperCase()} - Manual creation`,
+        preferredDeliveryDate: input.preferredDeliveryDate || null,
+        preferredDeliveryTime: input.preferredDeliveryTime || null,
 
         codRequired: 0,
         isReturn: 1,
@@ -2096,6 +2114,8 @@ export const customerPortalRouter = router({
           weight: input.exchangeWeight.toString(),
           serviceType: input.serviceType,
           specialInstructions: 'EXCHANGE NEW - Manual creation',
+          preferredDeliveryDate: input.preferredDeliveryDate || null,
+          preferredDeliveryTime: input.preferredDeliveryTime || null,
 
           codRequired: clientAccount.codAllowed ? input.exchangeCodRequired : 0,
           codAmount: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodAmount || null) : null,
@@ -3124,7 +3144,7 @@ export const rateRouter = router({
   calculate: portalProtectedProcedure
     .input(z.object({
       clientId: z.number(),
-      serviceType: z.enum(["DOM", "SDD", "BULLET"]),
+      serviceType: z.enum(["DOM", "SDD", "BULLET", "EXPRESS_ZONE2", "PREFERRED_TIME", "PREFERRED_TIME_SDD"]),
       weight: z.number(),
       length: z.number().optional(),
       width: z.number().optional(),
@@ -3319,6 +3339,236 @@ export const clientsRouter = router({
 
       invalidateClientAccountsCache();
       return { success: true };
+    }),
+
+  getServiceSettings: portalAdminProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ input }) => {
+      const { getClientServiceSettings } = await import('./db');
+      const map = await getClientServiceSettings(input.clientId);
+      return Array.from(map.values());
+    }),
+
+  upsertServiceSetting: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      serviceCode: z.enum(['DOM', 'SDD', 'BULLET', 'EXPRESS_ZONE2', 'PREFERRED_TIME', 'PREFERRED_TIME_SDD']),
+      isEnabled: z.boolean(),
+      baseRate: z.string().optional(),
+      perKgRate: z.string().optional(),
+      cutoffTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+      availableRegions: z.array(z.string()).optional(),
+      deliveryWindow: z.string().optional(),
+      deliveryTime: z.string().optional(),
+      displayName: z.string().optional(),
+      description: z.string().optional(),
+      extraConfig: z.record(z.string(), z.unknown()).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR' });
+      const { clientServiceSettings } = await import('../drizzle/schema');
+      const { eq, and } = await import('drizzle-orm');
+
+      const values = {
+        clientId: input.clientId,
+        serviceCode: input.serviceCode,
+        isEnabled: input.isEnabled ? 1 : 0,
+        baseRate: input.baseRate ?? null,
+        perKgRate: input.perKgRate ?? null,
+        cutoffTime: input.cutoffTime ?? null,
+        availableRegions: input.availableRegions ? JSON.stringify(input.availableRegions) : null,
+        deliveryWindow: input.deliveryWindow ?? null,
+        deliveryTime: input.deliveryTime ?? null,
+        displayName: input.displayName ?? null,
+        description: input.description ?? null,
+        extraConfig: input.extraConfig ? JSON.stringify(input.extraConfig) : null,
+      };
+
+      const existing = await db
+        .select({ id: clientServiceSettings.id })
+        .from(clientServiceSettings)
+        .where(and(
+          eq(clientServiceSettings.clientId, input.clientId),
+          eq(clientServiceSettings.serviceCode, input.serviceCode)
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await db.update(clientServiceSettings).set(values)
+          .where(eq(clientServiceSettings.id, existing[0].id));
+      } else {
+        await db.insert(clientServiceSettings).values(values);
+      }
+
+      return { success: true };
+    }),
+});
+
+/**
+ * DOM ("Next Day") only delivers next-day within Zone 1. For Zone 2+ it is a
+ * standard multi-day service, so it shows a different name and timeframe.
+ */
+function domDefaultsForZone(zone: number): { name: string; time: string } {
+  return zone === 1
+    ? { name: 'Next Day Delivery', time: '1–2 business days' }
+    : { name: 'Standard Delivery', time: '3–7 business days' };
+}
+
+/**
+ * Default delivery time-slot windows for Preferred Time services when an admin
+ * hasn't configured custom slots. Hourly windows from 06:00 to 22:00.
+ * Preferred Time must always be booked by window, never an arbitrary minute.
+ */
+const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 16 }, (_, i) => {
+  const start = String(6 + i).padStart(2, '0');
+  const end = String(7 + i).padStart(2, '0');
+  return `${start}:00 - ${end}:00`;
+});
+
+/** Ensure a Preferred Time service always exposes time-slot windows. */
+function withPreferredSlots(code: string, extraConfig: any): any {
+  if (code !== 'PREFERRED_TIME' && code !== 'PREFERRED_TIME_SDD') return extraConfig;
+  const slots = Array.isArray(extraConfig?.timeSlots) && extraConfig.timeSlots.length > 0
+    ? extraConfig.timeSlots
+    : DEFAULT_PREFERRED_SLOTS;
+  return { ...(extraConfig ?? {}), timeSlots: slots };
+}
+
+/**
+ * Services Router — available delivery services for the authenticated customer
+ */
+export const servicesRouter = router({
+  getAvailable: portalCustomerProcedure
+    .input(z.object({
+      emirate: z.string(),
+      weight: z.number().positive(),
+    }))
+    .query(async ({ input, ctx }) => {
+      const clientId = ctx.portalUser!.clientId!;
+      const { getClientServiceSettings, getClientAccountById, isCutoffNotPassed, getZoneFromEmirate, calculateShipmentRate } = await import('./db');
+
+      const [settingsMap, client] = await Promise.all([
+        getClientServiceSettings(clientId),
+        getClientAccountById(clientId),
+      ]);
+
+      const zone = getZoneFromEmirate(input.emirate);
+
+      const SERVICE_DEFS = [
+        { code: 'DOM',            defaultName: 'Next Day Delivery',          defaultDeliveryTime: '1–2 business days', legacyEnabled: true },
+        { code: 'SDD',            defaultName: 'Same Day Delivery',          defaultDeliveryTime: null,                legacyEnabled: true },
+        { code: 'BULLET',         defaultName: 'Bullet Service (4 Hours)',   defaultDeliveryTime: 'Up to 4 hours',     legacyEnabled: (client?.bulletAllowed === 1) },
+        { code: 'EXPRESS_ZONE2',  defaultName: 'Express Service – Zone 2',   defaultDeliveryTime: 'Express delivery',  legacyEnabled: false },
+        { code: 'PREFERRED_TIME', defaultName: 'Next Day Preferred Time',     defaultDeliveryTime: 'Next day · scheduled', legacyEnabled: false },
+        { code: 'PREFERRED_TIME_SDD', defaultName: 'Same Day Preferred Time', defaultDeliveryTime: 'Same day · scheduled', legacyEnabled: false },
+      ] as const;
+
+      const results = await Promise.all(SERVICE_DEFS.map(async (svc) => {
+        const setting = settingsMap.get(svc.code);
+        const isEnabled = setting ? setting.isEnabled === 1 : svc.legacyEnabled;
+
+        // Zone-aware defaults: DOM shifts to a standard multi-day service in Zone 2+.
+        const dom = svc.code === 'DOM' ? domDefaultsForZone(zone) : null;
+        const effDefaultName = dom ? dom.name : svc.defaultName;
+        const effDefaultTime = dom ? dom.time : svc.defaultDeliveryTime;
+
+        // Zone restriction for EXPRESS_ZONE2
+        if (svc.code === 'EXPRESS_ZONE2' && zone !== 2) {
+          return {
+            code: svc.code,
+            available: false,
+            reason: 'Only available for Zone 2 destinations (RAK, Fujairah, UAQ)',
+            displayName: setting?.displayName ?? effDefaultName,
+            description: setting?.description ?? null,
+            deliveryWindow: setting?.deliveryWindow ?? null,
+            deliveryTime: setting?.deliveryTime ?? effDefaultTime,
+            price: null,
+            cutoffTime: setting?.cutoffTime ?? null,
+            extraConfig: null,
+          };
+        }
+
+        // Enabled check
+        if (!isEnabled) {
+          return {
+            code: svc.code,
+            available: false,
+            reason: 'Service not available for your account',
+            displayName: setting?.displayName ?? effDefaultName,
+            description: setting?.description ?? null,
+            deliveryWindow: setting?.deliveryWindow ?? null,
+            deliveryTime: setting?.deliveryTime ?? effDefaultTime,
+            price: null,
+            cutoffTime: setting?.cutoffTime ?? null,
+            extraConfig: null,
+          };
+        }
+
+        // Cut-off check
+        const cutoffTime = setting?.cutoffTime
+          ?? (svc.code === 'SDD' ? client?.sdCutoffTime : svc.code === 'BULLET' ? client?.bulletCutoffTime : null);
+
+        if (cutoffTime && !isCutoffNotPassed(cutoffTime)) {
+          return {
+            code: svc.code,
+            available: false,
+            reason: `Cut-off passed (${cutoffTime} Dubai time)`,
+            displayName: setting?.displayName ?? effDefaultName,
+            description: setting?.description ?? null,
+            deliveryWindow: setting?.deliveryWindow ?? null,
+            deliveryTime: setting?.deliveryTime ?? effDefaultTime,
+            price: null,
+            cutoffTime,
+            extraConfig: null,
+          };
+        }
+
+        // Calculate price
+        let price: number | null = null;
+        try {
+          const rateResult = await calculateShipmentRate({
+            clientId,
+            serviceType: svc.code as any,
+            weight: input.weight,
+            emirate: input.emirate,
+          });
+          price = rateResult.totalRate;
+        } catch {}
+
+        if (price === null || price === 0) {
+          // For new services, price must be configured
+          if (svc.code === 'EXPRESS_ZONE2' || svc.code === 'PREFERRED_TIME' || svc.code === 'PREFERRED_TIME_SDD') {
+            return {
+              code: svc.code,
+              available: false,
+              reason: 'Rate not configured for your account',
+              displayName: setting?.displayName ?? effDefaultName,
+              description: setting?.description ?? null,
+              deliveryWindow: setting?.deliveryWindow ?? null,
+              deliveryTime: setting?.deliveryTime ?? effDefaultTime,
+              price: null,
+              cutoffTime: cutoffTime ?? null,
+              extraConfig: null,
+            };
+          }
+        }
+
+        return {
+          code: svc.code,
+          available: true,
+          reason: null,
+          displayName: setting?.displayName ?? effDefaultName,
+          description: setting?.description ?? null,
+          deliveryWindow: setting?.deliveryWindow ?? null,
+          deliveryTime: setting?.deliveryTime ?? effDefaultTime,
+          price,
+          cutoffTime: cutoffTime ?? null,
+          extraConfig: withPreferredSlots(svc.code, setting?.extraConfig ? JSON.parse(setting.extraConfig) : null),
+        };
+      }));
+
+      return results;
     }),
 });
 
@@ -3594,6 +3844,7 @@ export const portalRouter = router({
   cod: codRouter,
   rates: rateRouter,
   clients: clientsRouter,
+  services: servicesRouter,
   publicTracking: publicTrackingRouter,
   tracking: trackingRouter,
   drivers: driverRouter,

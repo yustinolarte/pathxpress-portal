@@ -209,7 +209,7 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
                     Bulk Upload
                 </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-xl glass-strong max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-xl bg-card border-border max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-primary" />
@@ -336,13 +336,13 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
                                                     <TableCell>{city || '-'}</TableCell>
                                                     <TableCell>{weight}kg</TableCell>
                                                     <TableCell>
-                                                        <span className={serviceType === 'SDD' ? 'text-orange-500 font-medium' : ''}>
+                                                        <span className={serviceType === 'SDD' ? 'text-[var(--st-amber)] font-medium' : ''}>
                                                             {serviceType}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell>
                                                         {hasCOD ? (
-                                                            <span className="text-green-500 font-medium">{codAmountParsed}</span>
+                                                            <span className="money" style={{ color: 'var(--st-green)' }}>{codAmountParsed}</span>
                                                         ) : (
                                                             <span className="text-muted-foreground">-</span>
                                                         )}
@@ -387,10 +387,10 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
                                     <div className="flex flex-wrap gap-2 text-xs bg-muted/30 rounded-md p-2 border">
                                         <span className="font-medium text-muted-foreground">Driver navigation:</span>
                                         {confirmed > 0 && (
-                                            <span className="text-green-600 font-medium">✅ {confirmed} with GPS pin</span>
+                                            <span className="text-[var(--st-green)] font-medium">✅ {confirmed} with GPS pin</span>
                                         )}
                                         {noCoords > 0 && (
-                                            <span className="text-amber-500 font-medium">⚠️ {noCoords} address-only (no GPS)</span>
+                                            <span className="text-[var(--st-amber)] font-medium">⚠️ {noCoords} address-only (no GPS)</span>
                                         )}
                                     </div>
                                 );
@@ -398,13 +398,13 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
 
                             <div className="max-h-[150px] overflow-y-auto border rounded-md p-2 text-xs space-y-1">
                                 {resultsLog.filter(l => l.status === 'error').map((log, i) => (
-                                    <div key={i} className="text-red-500 flex gap-2">
+                                    <div key={i} className="text-primary flex gap-2">
                                         <span className="font-semibold">Row {log.row}:</span>
                                         <span>{log.message}</span>
                                     </div>
                                 ))}
                                 {resultsLog.filter(l => l.status === 'error').length === 0 && (
-                                    <div className="text-green-500 flex items-center gap-2">
+                                    <div className="text-[var(--st-green)] flex items-center gap-2">
                                         <CheckCircle className="w-4 h-4" /> All rows processed successfully.
                                     </div>
                                 )}
@@ -435,3 +435,4 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
         </Dialog>
     );
 }
+

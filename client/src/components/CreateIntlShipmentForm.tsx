@@ -197,17 +197,15 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
         return <Box className="w-5 h-5" />;
     };
 
-    const getServiceCardColors = (key: string, selected: boolean) => {
-        const base = selected ? 'ring-2 ring-primary shadow-lg shadow-primary/20' : 'hover:border-white/30';
-        if (key.startsWith('PRIME_')) return `border-blue-500/30 ${base}`;
-        if (key === 'GCC') return `border-emerald-500/30 ${base}`;
-        return `border-purple-500/30 ${base}`;
+    const getServiceCardColors = (_key: string, selected: boolean) => {
+        const base = selected ? 'ring-2 ring-primary shadow-lg shadow-primary/20' : 'hover:border-primary/40';
+        return `border-border ${base}`;
     };
 
     const getServiceIconBg = (key: string) => {
-        if (key.startsWith('PRIME_')) return 'bg-blue-500/10 text-blue-400';
-        if (key === 'GCC') return 'bg-emerald-500/10 text-emerald-400';
-        return 'bg-purple-500/10 text-purple-400';
+        if (key.startsWith('PRIME_')) return 'bg-[var(--st-blue-bg)] text-[var(--st-blue)]';
+        if (key === 'GCC') return 'bg-[var(--st-green-bg)] text-[var(--st-green)]';
+        return 'bg-[var(--st-amber-bg)] text-[var(--st-amber)]';
     };
 
     /* ─── Stepper ─────────────────────────────────────────────────────────── */
@@ -216,8 +214,8 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
         <div className="flex items-center gap-2 mb-6">
             {/* Step 1 */}
             <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${phase === 1
-                ? 'bg-primary/10 text-primary border border-primary/20 shadow-md shadow-primary/5'
-                : 'bg-primary/5 text-primary/70 border border-primary/10'
+                ? 'bg-primary/10 text-primary border border-border shadow-md shadow-primary/5'
+                : 'bg-primary/5 text-primary/70 border border-border'
                 }`}>
                 {phase > 1 ? <CheckCircle2 className="w-5 h-5" /> : <Calculator className="w-5 h-5" />}
                 <span>1. Quotation</span>
@@ -227,7 +225,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
 
             {/* Step 2 */}
             <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${phase === 2
-                ? 'bg-primary/10 text-primary border border-primary/20 shadow-md shadow-primary/5'
+                ? 'bg-primary/10 text-primary border border-border shadow-md shadow-primary/5'
                 : 'bg-card/50 text-muted-foreground border border-border'
                 }`}>
                 <Package className="w-5 h-5" />
@@ -242,7 +240,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
         <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Destination Country */}
-                <div className="p-5 rounded-2xl bg-card border border-primary/10 shadow-xl shadow-primary/5 space-y-4 transition-all hover:border-primary/20">
+                <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-4 transition-all hover:border-border">
                     <div className="border-b border-border pb-3">
                         <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                             <Globe className="h-5 w-5 text-primary" /> Destination
@@ -256,13 +254,13 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                                     variant="outline"
                                     role="combobox"
                                     aria-expanded={openCountry}
-                                    className="w-full justify-between bg-background border-primary/10 h-11 px-4 text-sm font-medium text-left shadow-sm hover:bg-primary/5 transition-colors"
+                                    className="w-full justify-between bg-background border-border h-11 px-4 text-sm font-medium text-left shadow-sm hover:bg-primary/5 transition-colors"
                                 >
                                     {formData.destinationCountry || <span className="text-muted-foreground">Select Country</span>}
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0 border border-primary/10 glass-strong rounded-xl shadow-2xl" align="start">
+                            <PopoverContent className="w-[300px] p-0 border border-border bg-card border-border rounded-xl shadow-2xl" align="start">
                                 <Command className="bg-transparent">
                                     <CommandInput placeholder="Search country..." className="h-10 text-sm" />
                                     <CommandList className="max-h-[300px]">
@@ -291,7 +289,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                 </div>
 
                 {/* Package Details */}
-                <div className="p-5 rounded-2xl bg-card border border-primary/10 shadow-xl shadow-primary/5 space-y-4 transition-all hover:border-primary/20">
+                <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-4 transition-all hover:border-border">
                     <div className="border-b border-border pb-3">
                         <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                             <Package className="h-5 w-5 text-primary" /> Package Details
@@ -300,16 +298,16 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Weight (kg) *</Label>
-                            <Input type="number" step="0.1" value={formData.weight} onChange={e => setFormData(f => ({ ...f, weight: e.target.value }))} className="bg-background border-primary/10 h-11 font-medium shadow-sm focus:ring-primary/20" placeholder="e.g. 1.5" />
+                            <Input type="number" step="0.1" value={formData.weight} onChange={e => setFormData(f => ({ ...f, weight: e.target.value }))} className="bg-background border-border h-11 font-medium shadow-sm focus:ring-primary/20" placeholder="e.g. 1.5" />
                         </div>
                         <div className="space-y-2">
                             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pieces *</Label>
-                            <Input type="number" min="1" value={formData.pieces} onChange={e => setFormData(f => ({ ...f, pieces: parseInt(e.target.value) || 1 }))} className="bg-background border-primary/10 h-11 font-medium shadow-sm focus:ring-primary/20" />
+                            <Input type="number" min="1" value={formData.pieces} onChange={e => setFormData(f => ({ ...f, pieces: parseInt(e.target.value) || 1 }))} className="bg-background border-border h-11 font-medium shadow-sm focus:ring-primary/20" />
                         </div>
                         <div className="col-span-2 grid grid-cols-3 gap-4">
-                            <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">L (cm)</Label><Input type="number" value={formData.length} onChange={e => setFormData(f => ({ ...f, length: e.target.value }))} placeholder="Opt" className="bg-background border-primary/10 h-11 font-medium shadow-sm focus:ring-primary/20" /></div>
-                            <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">W (cm)</Label><Input type="number" value={formData.width} onChange={e => setFormData(f => ({ ...f, width: e.target.value }))} placeholder="Opt" className="bg-background border-primary/10 h-11 font-medium shadow-sm focus:ring-primary/20" /></div>
-                            <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">H (cm)</Label><Input type="number" value={formData.height} onChange={e => setFormData(f => ({ ...f, height: e.target.value }))} placeholder="Opt" className="bg-background border-primary/10 h-11 font-medium shadow-sm focus:ring-primary/20" /></div>
+                            <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">L (cm)</Label><Input type="number" value={formData.length} onChange={e => setFormData(f => ({ ...f, length: e.target.value }))} placeholder="Opt" className="bg-background border-border h-11 font-medium shadow-sm focus:ring-primary/20" /></div>
+                            <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">W (cm)</Label><Input type="number" value={formData.width} onChange={e => setFormData(f => ({ ...f, width: e.target.value }))} placeholder="Opt" className="bg-background border-border h-11 font-medium shadow-sm focus:ring-primary/20" /></div>
+                            <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">H (cm)</Label><Input type="number" value={formData.height} onChange={e => setFormData(f => ({ ...f, height: e.target.value }))} placeholder="Opt" className="bg-background border-border h-11 font-medium shadow-sm focus:ring-primary/20" /></div>
                         </div>
                     </div>
                 </div>
@@ -333,7 +331,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
             {/* Service Selection — Cards */}
             <div className="space-y-4 pt-4">
                 <h3 className="text-lg font-black text-foreground flex items-center gap-3">
-                    <Star className="h-6 w-6 text-yellow-500 fill-yellow-500" /> Available Services
+                    <Star className="h-6 w-6 text-primary fill-primary" /> Available Services
                 </h3>
 
                 {isQuoting ? (
@@ -342,7 +340,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                         <span className="text-sm">Calculating rates...</span>
                     </div>
                 ) : !hasCalculated ? (
-                    <div className="text-center py-12 border-2 border-dashed border-primary/20 rounded-2xl bg-primary/5">
+                    <div className="text-center py-12 border-2 border-dashed border-border rounded-2xl bg-primary/5">
                         <Info className="w-10 h-10 text-primary/50 mx-auto mb-4" />
                         <p className="text-base font-medium text-muted-foreground">Enter destination and weight, then click "Calculate Rates" to see available services</p>
                     </div>
@@ -388,12 +386,12 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                                         </div>
                                     </div>
 
-                                    <div className="mt-3 pt-2 border-t border-white/10">
+                                    <div className="mt-3 pt-2 border-t border-border">
                                         {q.totalAfterDiscount ? (
                                             <div className="flex items-baseline gap-2">
                                                 <span className="text-lg font-bold text-primary">{q.totalAfterDiscount.toFixed(2)}</span>
                                                 <span className="text-xs text-muted-foreground line-through">{q.total.toFixed(2)}</span>
-                                                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px] ml-auto">-{q.discountPercent}%</Badge>
+                                                <Badge className="badge2 b-green !text-[10px] ml-auto">-{q.discountPercent}%</Badge>
                                             </div>
                                         ) : (
                                             <span className="text-lg font-bold text-foreground">{q.total.toFixed(2)}</span>
@@ -408,7 +406,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
             </div>
 
             {/* Continue Button */}
-            <div className="flex justify-end gap-4 pt-6 mt-4 border-t border-primary/10">
+            <div className="flex justify-end gap-4 pt-6 mt-4 border-t border-border">
                 <Button type="button" variant="outline" onClick={onSuccess} className="h-12 shadow-sm font-bold text-muted-foreground hover:text-foreground">Cancel</Button>
                 <Button
                     type="button"
@@ -428,7 +426,7 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
         <form onSubmit={handleSubmit} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Summary Card */}
             {selectedQuote && (
-                <div className="p-5 rounded-2xl border border-primary/20 bg-primary/5 flex flex-col sm:flex-row justify-between sm:items-center gap-4 shadow-lg shadow-primary/5">
+                <div className="p-5 rounded-2xl border border-border bg-primary/5 flex flex-col sm:flex-row justify-between sm:items-center gap-4 shadow-lg shadow-primary/5">
                     <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${getServiceIconBg(selectedQuote.serviceKey)} shadow-inner`}>
                             {getServiceIcon(selectedQuote.serviceKey)}
@@ -440,16 +438,16 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4 border-t sm:border-t-0 border-primary/10 pt-3 sm:pt-0">
+                    <div className="flex items-center gap-4 border-t sm:border-t-0 border-border pt-3 sm:pt-0">
                         <div className="text-right">
-                            <p className="text-2xl font-black text-primary font-mono tracking-tight shadow-sm">
+                            <p className="font-display text-2xl font-bold tracking-tight text-primary font-mono tracking-tight shadow-sm">
                                 {(selectedQuote.totalAfterDiscount ?? selectedQuote.total).toFixed(2)} <span className="text-sm font-semibold text-muted-foreground">{selectedQuote.currency}</span>
                             </p>
                             {selectedQuote.discountPercent && (
-                                <p className="text-xs font-bold text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full inline-block mt-1">-{selectedQuote.discountPercent}% discount</p>
+                                <p className="text-xs font-bold text-[var(--st-green)] bg-[var(--st-green-bg)] px-2 py-0.5 rounded-full inline-block mt-1">-{selectedQuote.discountPercent}% discount</p>
                             )}
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setPhase(1)} className="gap-2 text-xs font-semibold hover:bg-primary/10 border-primary/20 text-primary">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setPhase(1)} className="gap-2 text-xs font-semibold hover:bg-primary/10 border-border text-primary">
                             <Edit3 className="w-3.5 h-3.5" /> Edit
                         </Button>
                     </div>
@@ -458,18 +456,18 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* SECTION 1: SHIPPER */}
-                <div className="p-5 rounded-2xl bg-card border border-primary/10 shadow-xl shadow-primary/5 space-y-4 transition-all hover:border-primary/20">
+                <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-4 transition-all hover:border-border">
                     <div className="flex items-center justify-between border-b border-border pb-3">
                         <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                            <LayoutDashboard className="h-5 w-5 text-blue-500" /> Shipper Details
+                            <LayoutDashboard className="h-5 w-5 text-primary" /> Shipper Details
                         </h3>
                         {savedShippers.length > 0 && (
                             <Select onValueChange={(id) => {
                                 const s = savedShippers.find((x: any) => x.id.toString() === id);
                                 if (s) setFormData(f => ({ ...f, shipperName: s.shipperName, shipperAddress: s.shipperAddress, shipperCity: s.shipperCity, shipperCountry: s.shipperCountry, shipperPhone: s.shipperPhone }));
                             }}>
-                                <SelectTrigger className="w-[140px] h-8 text-xs bg-background border-primary/10 font-medium hover:bg-primary/5"><SelectValue placeholder="📋 Load Saved" /></SelectTrigger>
-                                <SelectContent className="border-primary/10 shadow-xl glass-strong">
+                                <SelectTrigger className="w-[140px] h-8 text-xs bg-background border-border font-medium hover:bg-primary/5"><SelectValue placeholder="📋 Load Saved" /></SelectTrigger>
+                                <SelectContent className="border-border shadow-xl bg-card border-border">
                                     {savedShippers.map((s: any) => (
                                         <SelectItem key={s.id} value={s.id.toString()}>{s.nickname}</SelectItem>
                                     ))}
@@ -478,21 +476,21 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                         )}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Company *</Label><Input value={formData.shipperName} onChange={e => setFormData(f => ({ ...f, shipperName: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone *</Label><Input value={formData.shipperPhone} onChange={e => setFormData(f => ({ ...f, shipperPhone: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">City *</Label><Input value={formData.shipperCity} onChange={e => setFormData(f => ({ ...f, shipperCity: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" placeholder="Dubai / Abu Dhabi" /></div>
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Country *</Label><Input value={formData.shipperCountry} disabled className="bg-muted border-primary/10 h-11 opacity-70 font-medium" /></div>
-                        <div className="col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Address *</Label><Input value={formData.shipperAddress} onChange={e => setFormData(f => ({ ...f, shipperAddress: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Company *</Label><Input value={formData.shipperName} onChange={e => setFormData(f => ({ ...f, shipperName: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone *</Label><Input value={formData.shipperPhone} onChange={e => setFormData(f => ({ ...f, shipperPhone: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">City *</Label><Input value={formData.shipperCity} onChange={e => setFormData(f => ({ ...f, shipperCity: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" placeholder="Dubai / Abu Dhabi" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Country *</Label><Input value={formData.shipperCountry} disabled className="bg-muted border-border h-11 opacity-70 font-medium" /></div>
+                        <div className="col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Address *</Label><Input value={formData.shipperAddress} onChange={e => setFormData(f => ({ ...f, shipperAddress: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
                     </div>
                     <div className="pt-3 border-t border-border flex justify-end mt-2">
                         <Dialog open={showSaveShipperDialog} onOpenChange={setShowSaveShipperDialog}>
                             <DialogTrigger asChild>
                                 <Button type="button" variant="outline" size="sm" className="gap-2 font-bold shadow-sm hover:bg-primary/5 hover:text-primary"><Save className="h-4 w-4" /> Save Shipper</Button>
                             </DialogTrigger>
-                            <DialogContent className="glass-strong border-primary/20 shadow-2xl rounded-2xl">
+                            <DialogContent className="bg-card border-border  shadow-2xl rounded-2xl">
                                 <DialogHeader><DialogTitle className="text-foreground font-black">Save Shipper</DialogTitle></DialogHeader>
                                 <div className="space-y-4 py-2">
-                                    <div className="space-y-2"><Label className="font-semibold text-muted-foreground uppercase text-xs tracking-wider">Nickname *</Label><Input value={shipperNickname} onChange={e => setShipperNickname(e.target.value)} className="bg-background border-primary/10 h-11 focus:ring-primary/20" /></div>
+                                    <div className="space-y-2"><Label className="font-semibold text-muted-foreground uppercase text-xs tracking-wider">Nickname *</Label><Input value={shipperNickname} onChange={e => setShipperNickname(e.target.value)} className="bg-background border-border h-11 focus:ring-primary/20" /></div>
                                 </div>
                                 <div className="flex justify-end gap-3 mt-4">
                                     <Button type="button" variant="outline" onClick={() => setShowSaveShipperDialog(false)}>Cancel</Button>
@@ -504,41 +502,41 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                 </div>
 
                 {/* SECTION 2: CONSIGNEE */}
-                <div className="p-5 rounded-2xl bg-card border border-primary/10 shadow-xl shadow-primary/5 space-y-4 transition-all hover:border-primary/20">
+                <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-4 transition-all hover:border-border">
                     <div className="border-b border-border pb-3">
                         <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                            <Globe className="h-5 w-5 text-green-500" /> Consignee (International)
+                            <Globe className="h-5 w-5 text-[var(--st-green)]" /> Consignee (International)
                         </h3>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customer Name *</Label><Input value={formData.customerName} onChange={e => setFormData(f => ({ ...f, customerName: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone *</Label><Input value={formData.customerPhone} onChange={e => setFormData(f => ({ ...f, customerPhone: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Customer Name *</Label><Input value={formData.customerName} onChange={e => setFormData(f => ({ ...f, customerName: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone *</Label><Input value={formData.customerPhone} onChange={e => setFormData(f => ({ ...f, customerPhone: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
                         <div className="space-y-2">
                             <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Country *</Label>
-                            <Input value={formData.destinationCountry} disabled className="bg-muted border-primary/10 h-11 opacity-70 font-medium" />
+                            <Input value={formData.destinationCountry} disabled className="bg-muted border-border h-11 opacity-70 font-medium" />
                         </div>
-                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">City/Region *</Label><Input value={formData.city} onChange={e => setFormData(f => ({ ...f, city: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
-                        <div className="col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Complete Address *</Label><Input value={formData.address} onChange={e => setFormData(f => ({ ...f, address: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">City/Region *</Label><Input value={formData.city} onChange={e => setFormData(f => ({ ...f, city: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
+                        <div className="col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Complete Address *</Label><Input value={formData.address} onChange={e => setFormData(f => ({ ...f, address: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
                     </div>
                 </div>
             </div>
 
             {/* SECTION 3: CUSTOMS */}
-            <div className="p-5 rounded-2xl bg-card border border-primary/10 shadow-xl shadow-primary/5 space-y-4 transition-all hover:border-primary/20">
+            <div className="p-5 rounded-2xl bg-card border border-border shadow-sm space-y-4 transition-all hover:border-border">
                 <div className="border-b border-border pb-3">
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                        <Calculator className="h-5 w-5 text-purple-500" /> Customs Declaration
+                        <Calculator className="h-5 w-5 text-primary" /> Customs Declaration
                     </h3>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="md:col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Goods Description *</Label><Input value={formData.customsDescription} onChange={e => setFormData(f => ({ ...f, customsDescription: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" placeholder="e.g. Cotton T-shirts, Electronics" /></div>
+                    <div className="md:col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Goods Description *</Label><Input value={formData.customsDescription} onChange={e => setFormData(f => ({ ...f, customsDescription: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" placeholder="e.g. Cotton T-shirts, Electronics" /></div>
 
-                    <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Declared Value *</Label><Input type="number" step="0.01" value={formData.customsValue} onChange={e => setFormData(f => ({ ...f, customsValue: e.target.value }))} required className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" /></div>
+                    <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Declared Value *</Label><Input type="number" step="0.01" value={formData.customsValue} onChange={e => setFormData(f => ({ ...f, customsValue: e.target.value }))} required className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" /></div>
 
                     <div className="space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Currency *</Label>
                         <Select value={formData.customsCurrency} onValueChange={v => setFormData(f => ({ ...f, customsCurrency: v }))}>
-                            <SelectTrigger className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm font-medium"><SelectValue /></SelectTrigger>
-                            <SelectContent className="glass-strong border-primary/10 rounded-xl">
+                            <SelectTrigger className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm font-medium"><SelectValue /></SelectTrigger>
+                            <SelectContent className="bg-card border-border  rounded-xl">
                                 <SelectItem value="USD">USD ($)</SelectItem>
                                 <SelectItem value="EUR">EUR (€)</SelectItem>
                                 <SelectItem value="AED">AED</SelectItem>
@@ -547,12 +545,12 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
                         </Select>
                     </div>
 
-                    <div className="md:col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">HS Code (Optional)</Label><Input value={formData.hsCode} onChange={e => setFormData(f => ({ ...f, hsCode: e.target.value }))} className="bg-background border-primary/10 h-11 focus:ring-primary/20 shadow-sm" placeholder="Harmonized System Code" /></div>
+                    <div className="md:col-span-2 space-y-2"><Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">HS Code (Optional)</Label><Input value={formData.hsCode} onChange={e => setFormData(f => ({ ...f, hsCode: e.target.value }))} className="bg-background border-border h-11 focus:ring-primary/20 shadow-sm" placeholder="Harmonized System Code" /></div>
                 </div>
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col-reverse sm:flex-row justify-between gap-4 pt-6 border-t border-primary/10 mt-6">
+            <div className="flex flex-col-reverse sm:flex-row justify-between gap-4 pt-6 border-t border-border mt-6">
                 <Button type="button" variant="outline" onClick={() => setPhase(1)} className="gap-2 h-12 shadow-sm order-1 sm:order-none font-bold text-muted-foreground hover:text-foreground">
                     <ArrowLeft className="w-4 h-4" /> Back to Quotation
                 </Button>
@@ -576,3 +574,5 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
         </div>
     );
 }
+
+

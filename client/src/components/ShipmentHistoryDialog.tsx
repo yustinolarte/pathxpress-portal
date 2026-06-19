@@ -16,7 +16,7 @@ export default function ShipmentHistoryDialog({ open, onOpenChange, shipmentId }
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogContent className="bg-card border-border max-w-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Shipment Tracking History</DialogTitle>
                     <DialogDescription>
@@ -27,7 +27,7 @@ export default function ShipmentHistoryDialog({ open, onOpenChange, shipmentId }
                 {isLoading ? (
                     <div className="py-8 text-center text-muted-foreground">Loading history...</div>
                 ) : events && events.length > 0 ? (
-                    <div className="relative border-l border-primary/20 ml-3 space-y-6 py-4">
+                    <div className="relative border-l border-border ml-3 space-y-6 py-4">
                         {events.map((event, index) => (
                             <div key={index} className="ml-6 relative">
                                 <span className={`absolute -left-[31px] top-1 h-4 w-4 rounded-full border-2 ${index === 0 ? 'bg-primary border-primary' : 'bg-background border-muted-foreground'}`} />
@@ -60,3 +60,4 @@ export default function ShipmentHistoryDialog({ open, onOpenChange, shipmentId }
         </Dialog>
     );
 }
+

@@ -99,7 +99,7 @@ export default function DashboardLayout({
               </div>
             </div>
             <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+              <h1 className="font-display text-2xl font-bold tracking-tight">{title}</h1>
               <p className="text-sm text-muted-foreground">
                 Please sign in to continue
               </p>

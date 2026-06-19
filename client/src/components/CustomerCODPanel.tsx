@@ -91,25 +91,19 @@ export default function CustomerCODPanel() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { className: string; icon: any; label: string }> = {
-      pending_collection: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending Collection' },
-      collected: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Collected' },
-      remitted: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Remitted' },
-      disputed: { className: 'bg-red-500/20 text-red-500 border-red-500/30', icon: AlertCircle, label: 'Disputed' },
-      cancelled: { className: 'bg-slate-500/20 text-slate-400 border-slate-500/30', icon: AlertCircle, label: 'Cancelled' },
-      pending: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending' },
-      processed: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Processed' },
-      completed: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Completed' },
+    const variants: Record<string, { className: string; label: string }> = {
+      pending_collection: { className: 'badge2 b-amber', label: 'Pending Collection' },
+      collected: { className: 'badge2 b-blue', label: 'Collected' },
+      remitted: { className: 'badge2 b-green', label: 'Remitted' },
+      disputed: { className: 'badge2 b-red', label: 'Disputed' },
+      cancelled: { className: 'badge2 b-gray', label: 'Cancelled' },
+      pending: { className: 'badge2 b-amber', label: 'Pending' },
+      processed: { className: 'badge2 b-blue', label: 'Processed' },
+      completed: { className: 'badge2 b-green', label: 'Completed' },
     };
 
     const config = variants[status] || variants.pending;
-    const Icon = config.icon;
-    return (
-      <Badge variant="outline" className={`flex items-center gap-1 w-fit ${config.className}`}>
-        <Icon className="w-3 h-3" />
-        {config.label}
-      </Badge>
-    );
+    return <span className={config.className}>{config.label}</span>;
   };
 
   return (
@@ -117,52 +111,52 @@ export default function CustomerCODPanel() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-foreground">Cash on Delivery</h2>
+          <h2 className="font-display text-3xl font-bold tracking-tight text-foreground">Cash on Delivery</h2>
           <p className="text-muted-foreground mt-1">Manage your COD shipments and remittances</p>
         </div>
       </div>
 
       {/* COD Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-          <div className="flex items-center justify-between mb-4 text-muted-foreground">
-            <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Pending</span>
-            <span className="material-symbols-outlined shrink-0 text-xl">schedule</span>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="kpi">
+          <div className="kt">
+            <span className="lab">Pending</span>
+            <span className="ic"><span className="material-symbols-outlined text-[18px]">schedule</span></span>
           </div>
-          <div className="text-3xl font-black text-foreground">AED {codSummary?.pending || '0'}</div>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">Awaiting delivery</p>
+          <div className="val" style={{ fontSize: 26, color: 'var(--st-amber)' }}>AED {codSummary?.pending || '0'}</div>
+          <div className="sub">Awaiting delivery</div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-blue-500/20 shadow-sm">
-          <div className="flex items-center justify-between mb-4 text-blue-500">
-            <span className="text-sm font-semibold uppercase tracking-wider">Collected</span>
-            <span className="material-symbols-outlined shrink-0 text-xl">trending_up</span>
+        <div className="kpi">
+          <div className="kt">
+            <span className="lab">Collected</span>
+            <span className="ic"><span className="material-symbols-outlined text-[18px]">trending_up</span></span>
           </div>
-          <div className="text-3xl font-black text-blue-600 dark:text-blue-400">AED {codSummary?.collected || '0'}</div>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">Awaiting remittance</p>
+          <div className="val" style={{ fontSize: 26, color: 'var(--st-blue)' }}>AED {codSummary?.collected || '0'}</div>
+          <div className="sub">Awaiting remittance</div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-green-500/20 shadow-sm">
-          <div className="flex items-center justify-between mb-4 text-green-500">
-            <span className="text-sm font-semibold uppercase tracking-wider">Remitted</span>
-            <span className="material-symbols-outlined shrink-0 text-xl">task_alt</span>
+        <div className="kpi">
+          <div className="kt">
+            <span className="lab">Remitted</span>
+            <span className="ic"><span className="material-symbols-outlined text-[18px]">task_alt</span></span>
           </div>
-          <div className="text-3xl font-black text-green-600 dark:text-green-400">AED {codSummary?.remitted || '0'}</div>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">Paid to you</p>
+          <div className="val" style={{ fontSize: 26, color: 'var(--st-green)' }}>AED {codSummary?.remitted || '0'}</div>
+          <div className="sub">Paid to you</div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-          <div className="flex items-center justify-between mb-4 text-muted-foreground">
-            <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Total COD</span>
-            <span className="material-symbols-outlined shrink-0 text-xl">payments</span>
+        <div className="kpi accent">
+          <div className="kt">
+            <span className="lab">Total COD</span>
+            <span className="ic"><span className="material-symbols-outlined text-[18px]">payments</span></span>
           </div>
-          <div className="text-3xl font-black text-foreground">AED {codSummary?.total || '0'}</div>
-          <p className="text-xs text-muted-foreground mt-2 font-medium">All time</p>
+          <div className="val" style={{ fontSize: 26 }}>AED {codSummary?.total || '0'}</div>
+          <div className="sub">All time</div>
         </div>
       </div>
 
       {/* COD Explanation */}
-      <div className="bg-primary/5 rounded-xl border border-primary/20 p-6 flex items-start gap-4">
+      <div className="bg-primary/5 rounded-xl border border-border p-6 flex items-start gap-4">
         <span className="material-symbols-outlined text-primary text-3xl shrink-0 mt-1">lightbulb</span>
         <div className="space-y-3">
           <h3 className="text-lg font-bold text-primary">About Cash on Delivery (COD)</h3>
@@ -232,12 +226,12 @@ export default function CustomerCODPanel() {
                     <TableCell className="font-bold text-primary hover:underline">{remittance.remittanceNumber}</TableCell>
                     <TableCell><span className="font-medium bg-muted py-1 px-2 rounded-md">{remittance.shipmentCount}</span></TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatCurrency(remittance.grossAmount, remittance.currency)}</TableCell>
-                    <TableCell className="text-sm text-red-500 font-medium">
+                    <TableCell className="text-sm text-muted-foreground font-mono">
                       {parseFloat(remittance.feeAmount) > 0
-                        ? `- ${formatCurrency(remittance.feeAmount, remittance.currency)}`
+                        ? `− ${formatCurrency(remittance.feeAmount, remittance.currency)}`
                         : '—'}
                     </TableCell>
-                    <TableCell className="font-black text-green-600 dark:text-green-400">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{remittance.paymentMethod || 'N/A'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(remittance.createdAt)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(remittance.processedDate)}</TableCell>
@@ -402,7 +396,7 @@ export default function CustomerCODPanel() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-4 rounded-lg border bg-card">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <Truck className="h-4 w-4 text-blue-500" />
+                    <Truck className="h-4 w-4 text-[var(--st-blue)]" />
                     Shipper Information
                   </h4>
                   <div className="space-y-2 text-sm">
@@ -423,7 +417,7 @@ export default function CustomerCODPanel() {
 
                 <div className="p-4 rounded-lg border bg-card">
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-green-500" />
+                    <MapPin className="h-4 w-4 text-[var(--st-green)]" />
                     Receiver Information
                   </h4>
                   <div className="space-y-2 text-sm">
@@ -444,12 +438,12 @@ export default function CustomerCODPanel() {
               </div>
 
               {shipmentDetails.order.codRequired === 1 && (
-                <div className="p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+                <div className="p-4 rounded-lg border border-[var(--st-green)]/30 bg-[var(--st-green-bg)]">
                   <h4 className="font-semibold mb-2 flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-green-500" />
+                    <DollarSign className="h-4 w-4 text-[var(--st-green)]" />
                     Cash on Delivery
                   </h4>
-                  <p className="text-2xl font-bold text-green-600">
+                  <p className="money text-2xl" style={{ color: 'var(--st-green)' }}>
                     {shipmentDetails.order.codCurrency} {shipmentDetails.order.codAmount}
                   </p>
                 </div>
@@ -481,9 +475,9 @@ export default function CustomerCODPanel() {
               )}
 
               {shipmentDetails.order.specialInstructions && (
-                <div className="p-4 rounded-lg border bg-yellow-500/5 border-yellow-500/30">
+                <div className="p-4 rounded-lg border bg-[var(--st-amber-bg)] border-[var(--st-amber)]/30">
                   <h4 className="font-semibold mb-2 flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-yellow-600" />
+                    <FileText className="h-4 w-4 text-[var(--st-amber)]" />
                     Special Instructions
                   </h4>
                   <p className="text-sm">{shipmentDetails.order.specialInstructions}</p>
@@ -498,3 +492,4 @@ export default function CustomerCODPanel() {
     </div>
   );
 }
+

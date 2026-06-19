@@ -37,6 +37,21 @@ interface ShipmentData {
   originalOrderId?: number | null; // Reference to original order for returns
   fitOnDelivery?: number; // 0 = no, 1 = yes - Fit on Delivery service
   itemsDescription?: string | null; // Product/item descriptions from Shopify
+  preferredDeliveryDate?: string | null; // 'YYYY-MM-DD' for PREFERRED_TIME service
+  preferredDeliveryTime?: string | null; // e.g. '18:00' for PREFERRED_TIME service
+}
+
+// Short label shown on the waybill box for each service code
+function getServiceLabel(serviceType: string): string {
+  switch (serviceType) {
+    case 'SDD': return 'SDD';
+    case 'BULLET': return 'BULLET';
+    case 'EXPRESS_ZONE2': return 'EXP2';
+    case 'PREFERRED_TIME': return 'PREF';
+    case 'PREFERRED_TIME_SDD': return 'PREF-SD';
+    case 'DOM': return 'DOM';
+    default: return serviceType ? serviceType.substring(0, 6).toUpperCase() : 'DOM';
+  }
 }
 
 // City code mapping for UAE cities
@@ -175,6 +190,22 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
     y += 8;
   }
 
+  // Preferred delivery time banner (scheduled deliveries).
+  // Driven purely by the presence of schedule data so it still prints when the
+  // order combines a scheduled window with another add-on (e.g. Fit on Delivery)
+  // or uses a service whose code isn't a PREFERRED_TIME variant.
+  if (shipment.preferredDeliveryDate || shipment.preferredDeliveryTime) {
+    const parts = [shipment.preferredDeliveryDate, shipment.preferredDeliveryTime].filter(Boolean).join('  ');
+    pdf.setFillColor(0, 0, 0);
+    pdf.rect(margin, y, pageWidth - 2 * margin, 6, 'F');
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(255, 255, 255);
+    pdf.text(`DELIVER AT: ${parts}`, pageWidth / 2, y + 4, { align: 'center' });
+    pdf.setTextColor(black);
+    y += 8;
+  }
+
   // Separator line
   pdf.setDrawColor(black);
   pdf.setLineWidth(0.5);
@@ -270,7 +301,7 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
 
   // Service type below city code
   pdf.setFontSize(8);
-  const serviceType = shipment.serviceType === 'SDD' ? 'SDD' : 'DOM';
+  const serviceType = getServiceLabel(shipment.serviceType);
   pdf.text(serviceType, routingX + 9, y + 20, { align: 'center' });
   pdf.setTextColor(black);
 

@@ -2,7 +2,7 @@ import { eq, and, gte, lte, desc, sql, inArray, ne, or, notInArray } from "drizz
 import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
-import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier } from "../drizzle/schema";
+import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -527,6 +527,8 @@ export interface OrderUpdate {
   city?: string;
   specialInstructions?: string;
   fitOnDelivery?: number;
+  preferredDeliveryDate?: string | null;
+  preferredDeliveryTime?: string | null;
 }
 
 export async function updateOrder(
@@ -639,6 +641,8 @@ export async function updateOrder(
     if (updates.city !== undefined) orderUpdates.city = updates.city;
     if (updates.specialInstructions !== undefined) orderUpdates.specialInstructions = updates.specialInstructions;
     if (updates.fitOnDelivery !== undefined) orderUpdates.fitOnDelivery = updates.fitOnDelivery;
+    if (updates.preferredDeliveryDate !== undefined) orderUpdates.preferredDeliveryDate = updates.preferredDeliveryDate;
+    if (updates.preferredDeliveryTime !== undefined) orderUpdates.preferredDeliveryTime = updates.preferredDeliveryTime;
 
     // 5. Update the order
     if (Object.keys(orderUpdates).length > 0) {
@@ -1905,9 +1909,32 @@ export function getZoneFromEmirate(emirate: string): 1 | 2 | 3 {
   return 3;
 }
 
+/**
+ * Returns true if the current Dubai time (UTC+4, no DST) is before the given cut-off.
+ */
+export function isCutoffNotPassed(cutoffHHMM: string | null | undefined): boolean {
+  if (!cutoffHHMM) return true;
+  const [h, m] = cutoffHHMM.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return true;
+  const now = new Date();
+  const dubaiMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() + 4 * 60) % 1440;
+  return dubaiMinutes < h * 60 + m;
+}
+
+/**
+ * Fetch all clientServiceSettings rows for a given clientId, keyed by serviceCode.
+ */
+export async function getClientServiceSettings(clientId: number): Promise<Map<string, ClientServiceSetting>> {
+  const db = await getDb();
+  if (!db) return new Map();
+  const rows = await db.select().from(clientServiceSettings)
+    .where(eq(clientServiceSettings.clientId, clientId));
+  return new Map(rows.map(r => [r.serviceCode, r]));
+}
+
 export async function calculateShipmentRate(params: {
   clientId: number;
-  serviceType: "DOM" | "SDD" | "BULLET";
+  serviceType: "DOM" | "SDD" | "BULLET" | "EXPRESS_ZONE2" | "PREFERRED_TIME" | "PREFERRED_TIME_SDD";
   weight: number; // in kg
   length?: number; // cm
   width?: number; // cm
@@ -2047,6 +2074,32 @@ export async function calculateShipmentRate(params: {
       appliedTier: null,
       usingManualTier: false,
       usingCustomRates: bulletBase ? true : undefined,
+      chargeableWeight,
+    };
+  }
+
+  // EXPRESS_ZONE2 and PREFERRED_TIME / PREFERRED_TIME_SDD: rate from clientServiceSettings
+  if (params.serviceType === "EXPRESS_ZONE2" || params.serviceType === "PREFERRED_TIME" || params.serviceType === "PREFERRED_TIME_SDD") {
+    const settingsMap = await getClientServiceSettings(params.clientId);
+    const setting = settingsMap.get(params.serviceType);
+    const baseRate = setting?.baseRate ? parseFloat(setting.baseRate) : 0;
+    const additionalKgRate = setting?.perKgRate ? parseFloat(setting.perKgRate) : 0;
+    const maxWeight = 5;
+    let chargeableWeight = params.weight;
+    if (params.length && params.width && params.height) {
+      const volumetricWeight = (params.length * params.width * params.height) / 5000;
+      chargeableWeight = Math.max(params.weight, volumetricWeight);
+    }
+    const additionalKgCharge = chargeableWeight > maxWeight
+      ? Math.ceil(chargeableWeight - maxWeight) * additionalKgRate
+      : 0;
+    return {
+      baseRate,
+      additionalKgCharge,
+      totalRate: baseRate + additionalKgCharge,
+      appliedTier: null,
+      usingManualTier: false,
+      usingCustomRates: true,
       chargeableWeight,
     };
   }

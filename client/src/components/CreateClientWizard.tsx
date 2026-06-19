@@ -71,7 +71,7 @@ function ServiceToggle({
   onToggle,
   icon: Icon,
   label,
-  colorClass,
+  colorClass: _colorClass,
   children,
 }: {
   enabled: boolean;
@@ -82,11 +82,11 @@ function ServiceToggle({
   children?: React.ReactNode;
 }) {
   return (
-    <div className={`rounded-xl border transition-colors ${enabled ? colorClass : 'border-border bg-background'}`}>
+    <div className={`rounded-lg border transition-colors ${enabled ? 'border-primary bg-primary/5' : 'border-border bg-background'}`}>
       <label className="flex items-center justify-between p-4 cursor-pointer">
         <div className="flex items-center gap-3">
-          <Icon className={`w-5 h-5 ${enabled ? '' : 'text-muted-foreground'}`} />
-          <span className={`font-bold text-sm uppercase tracking-wider ${enabled ? '' : 'text-muted-foreground'}`}>
+          <Icon className={`w-4 h-4 ${enabled ? 'text-primary' : 'text-muted-foreground'}`} />
+          <span className={`font-mono text-[10.5px] uppercase tracking-widest ${enabled ? 'text-foreground' : 'text-muted-foreground'}`}>
             {label}
           </span>
         </div>
@@ -250,10 +250,10 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
 
   function renderStep1() {
     return (
-      <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-primary" />
-          <span className="font-bold text-sm">Datos de la Empresa</span>
+      <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Datos de la Empresa</span>
         </div>
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -307,10 +307,10 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
 
   function renderStep2() {
     return (
-      <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-primary" />
-          <span className="font-bold text-sm">Dirección y Facturación</span>
+      <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-muted-foreground" />
+          <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Dirección y Facturación</span>
         </div>
         <div className="p-6 space-y-5">
           <Field label="Dirección de facturación" required error={errors.billingAddress}>
@@ -486,9 +486,9 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
     return (
       <div className="space-y-6">
         {/* Resumen */}
-        <div className="bg-slate-900 text-white rounded-xl p-5 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <Check className="w-3.5 h-3.5 text-green-400" /> Resumen del cliente
+        <div className="band rounded-lg p-5 space-y-3">
+          <p className="font-mono text-[10px] uppercase tracking-widest flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            <Check className="w-3.5 h-3.5" style={{ color: 'var(--st-green)' }} /> Resumen del cliente
           </p>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
@@ -508,24 +508,24 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
               <span>{form.city}, {form.country}</span>
             </div>
             {(form.codAllowed || form.bulletAllowed || form.fodAllowed || form.intlAllowed) && (
-              <div className="pt-2 border-t border-white/10 flex flex-wrap gap-2">
-                {form.codAllowed && <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-semibold">COD</span>}
-                {form.bulletAllowed && <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-semibold">Bullet 4H</span>}
-                {form.fodAllowed && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 font-semibold">FOD</span>}
-                {form.intlAllowed && <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-semibold">Internacional</span>}
+              <div className="pt-2 border-t border-border flex flex-wrap gap-2">
+                {form.codAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">COD</span>}
+                {form.bulletAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">Bullet 4H</span>}
+                {form.fodAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">FOD</span>}
+                {form.intlAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">Internacional</span>}
               </div>
             )}
           </div>
         </div>
 
         {/* Credenciales del portal */}
-        <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
-          <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center justify-between">
+        <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <KeyRound className="w-4 h-4 text-primary" />
-              <span className="font-bold text-sm">Acceso al Portal</span>
+              <KeyRound className="w-4 h-4 text-muted-foreground" />
+              <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Acceso al Portal</span>
             </div>
-            <span className="text-xs text-muted-foreground">Opcional</span>
+            <span className="font-mono text-[9.5px] uppercase tracking-widest text-muted-foreground">Opcional</span>
           </div>
           <div className="p-6 space-y-5">
             <p className="text-xs text-muted-foreground">
@@ -569,51 +569,35 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong !w-[95vw] !max-w-[780px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
-        <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600 flex-shrink-0" />
+      <DialogContent className="bg-card border-border !w-[95vw] !max-w-[780px] max-h-[95vh] overflow-y-auto p-0 gap-0 ">
+        <div className="w-full h-1 bg-primary flex-shrink-0" />
 
         <div className="p-6 pb-0">
           {/* Header */}
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded-lg bg-blue-500/10">
-              <Building2 className="w-5 h-5 text-blue-500" />
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold tracking-tight">Nuevo Cliente</h2>
-              <p className="text-xs text-muted-foreground">Completa los pasos para crear la cuenta del cliente</p>
-            </div>
+          <div className="border-b border-border pb-5 mb-6">
+            <p className="eyebrow">New Client</p>
+            <h2 className="font-display text-[28px] font-bold tracking-tight leading-none mt-3">
+              Create client account
+            </h2>
           </div>
 
-          {/* Step Indicator */}
-          <div className="flex items-center mb-8">
+          {/* Step Indicator — mono numbered */}
+          <div className="flex items-center gap-0 mb-8">
             {STEPS.map((s, idx) => {
               const isCompleted = step > s.id;
               const isActive = step === s.id;
-              const Icon = s.icon;
               return (
                 <div key={s.id} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
-                    <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                        isCompleted
-                          ? 'bg-primary text-primary-foreground'
-                          : isActive
-                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
-                          : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {isCompleted ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider ${
-                        isActive ? 'text-foreground' : isCompleted ? 'text-primary' : 'text-muted-foreground'
-                      }`}
-                    >
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className={`font-mono text-[10px] uppercase tracking-widest ${isCompleted ? 'text-primary' : isActive ? 'text-primary' : 'text-muted-foreground/40'}`}>
+                      {isCompleted ? '✓' : `0${s.id}`}
+                    </span>
+                    <span className={`text-[12px] font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground/60'}`}>
                       {s.label}
                     </span>
                   </div>
                   {idx < STEPS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-2 mb-5 rounded-full transition-all ${isCompleted ? 'bg-primary' : 'bg-muted'}`} />
+                    <div className={`flex-1 h-px mx-3 transition-all ${isCompleted ? 'bg-primary/50' : 'bg-border'}`} />
                   )}
                 </div>
               );
@@ -634,28 +618,28 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
               <button
                 onClick={handleCreate}
                 disabled={isSubmitting || !canAdvance()}
-                className="flex-1 py-4 bg-primary text-primary-foreground rounded-xl font-bold text-base hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-primary text-primary-foreground rounded-full font-semibold text-[14px] hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Creando...</>
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</>
                 ) : (
-                  <><Building2 className="w-5 h-5" /> Crear Cliente</>
+                  <><Building2 className="w-4 h-4" /> Crear Cliente</>
                 )}
               </button>
             ) : (
               <button
                 onClick={handleNext}
                 disabled={!canAdvance()}
-                className="flex-1 py-4 bg-primary text-primary-foreground rounded-xl font-bold text-base hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-primary text-primary-foreground rounded-full font-semibold text-[14px] hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Siguiente <ChevronRight className="w-5 h-5" />
+                Siguiente <ChevronRight className="w-4 h-4" />
               </button>
             )}
             {step > 1 && (
               <button
                 onClick={handleBack}
                 disabled={isSubmitting}
-                className="py-4 px-6 bg-white/10 text-foreground rounded-xl font-bold text-sm hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                className="py-3 px-5 border border-border text-foreground rounded-full font-medium text-[13px] hover:bg-muted transition-all flex items-center gap-2 disabled:opacity-50"
               >
                 <ChevronLeft className="w-4 h-4" /> Atrás
               </button>
@@ -666,3 +650,4 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
     </Dialog>
   );
 }
+

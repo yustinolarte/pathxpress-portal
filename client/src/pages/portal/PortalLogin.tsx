@@ -40,83 +40,87 @@ export default function PortalLogin() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex justify-center mb-8">
-          <img src={APP_LOGO} alt="PATHXPRESS" className="h-12" />
+    <div className="h-screen flex bg-background overflow-hidden">
+      {/* Left: brand band */}
+      <div className="hidden lg:flex flex-col justify-between w-[440px] shrink-0 p-14 relative overflow-hidden" style={{ background: 'var(--band)', color: 'var(--band-ink)' }}>
+        <div className="absolute bottom-0 right-0 font-display font-bold text-[320px] leading-none opacity-[0.07] select-none pointer-events-none">
+          X
         </div>
+        <div className="relative">
+          <img src={APP_LOGO} alt="PATHXPRESS" className="h-9 w-auto" />
+        </div>
+        <div className="relative">
+          <p className="font-mono text-[10.5px] tracking-widest uppercase mb-4" style={{color:'rgba(255,255,255,0.45)'}}>
+            Customer Portal
+          </p>
+          <h2 className="font-display text-3xl font-bold tracking-tight leading-tight mb-4">
+            Last-mile logistics,<br />built for UAE.
+          </h2>
+          <p className="text-[15px]" style={{color:'rgba(255,255,255,0.6)'}}>
+            Track shipments, manage COD, and grow your business.
+          </p>
+        </div>
+      </div>
 
-        <Card className="glass-strong border-blue-500/20">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold text-center">Customer Portal</CardTitle>
-            <CardDescription className="text-center">
-              Enter your credentials to access your account
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Email */}
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="your@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                    disabled={loading}
-                    required
-                  />
-                </div>
+      {/* Right: form */}
+      <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+        <div className="w-full max-w-[380px]">
+          {/* Mobile logo */}
+          <div className="flex lg:hidden justify-center mb-10">
+            <img src={APP_LOGO} alt="PATHXPRESS" className="h-7 w-auto" />
+          </div>
+
+          <div className="mb-8">
+            <p className="font-mono text-[10.5px] tracking-widest uppercase text-muted-foreground mb-3">Pathxpress Portal</p>
+            <h1 className="font-display text-3xl font-bold tracking-tight">Sign in</h1>
+            <p className="text-muted-foreground text-[15px] mt-2">Enter your credentials to continue</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-[13px] font-medium">Email</Label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-10 h-11 bg-secondary border-border"
+                  disabled={loading}
+                  required
+                />
               </div>
-
-              {/* Password */}
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10"
-                    disabled={loading}
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={loading}
-              >
-                {loading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </form>
-
-            {/* Help Text */}
-            <div className="mt-6 text-center text-sm text-muted-foreground">
-              <p>Need help accessing your account?</p>
-              <p className="mt-1">Contact: <a href="mailto:support@pathxpress.net" className="text-blue-400 hover:underline">support@pathxpress.net</a></p>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Back to Home */}
-        <div className="mt-6 text-center">
-          <Button
-            variant="ghost"
-            onClick={() => setLocation('/')}
-            className="text-blue-400 hover:text-blue-300"
-          >
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-[13px] font-medium">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10 h-11 bg-secondary border-border"
+                  disabled={loading}
+                  required
+                />
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full h-11 bg-primary hover:bg-primary/90 text-white rounded-full transition-smooth mt-2" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </Button>
+          </form>
+
+          <div className="mt-8 pt-6 border-t border-border text-[13px] text-muted-foreground">
+            <p>Need access? Contact <a href="mailto:support@pathxpress.net" className="text-primary hover:underline">support@pathxpress.net</a></p>
+          </div>
+
+          <Button variant="ghost" size="sm" onClick={() => setLocation('/')} className="mt-6 text-muted-foreground hover:text-foreground -ml-2">
             ← Back to Home
           </Button>
         </div>

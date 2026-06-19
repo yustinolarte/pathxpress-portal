@@ -130,13 +130,13 @@ export default function CustomerInvoices() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'paid':
-        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30"><CheckCircle className="w-3 h-3 mr-1" />Paid</Badge>;
+        return <span className="badge2 b-green">Paid</span>;
       case 'pending':
-        return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
+        return <span className="badge2 b-amber">Pending</span>;
       case 'overdue':
-        return <Badge className="bg-red-500/20 text-red-400 border-red-500/30"><AlertCircle className="w-3 h-3 mr-1" />Overdue</Badge>;
+        return <span className="badge2 b-red">Overdue</span>;
       default:
-        return <Badge>{status}</Badge>;
+        return <span className="badge2 b-gray">{status}</span>;
     }
   };
 
@@ -161,35 +161,35 @@ export default function CustomerInvoices() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-foreground">My Invoices</h2>
+          <h2 className="font-display text-3xl font-bold tracking-tight text-foreground">My Invoices</h2>
           <p className="text-muted-foreground mt-1">View and download your invoices</p>
         </div>
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-card rounded-xl p-6 border border-border hover:border-blue-500/50 transition-colors shadow-sm">
-          <p className="text-sm font-semibold text-muted-foreground mb-2">Total Invoices</p>
-          <div className="text-3xl font-black text-foreground">{invoices?.length || 0}</div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="kpi">
+          <div className="kt"><span className="lab">Total Invoices</span></div>
+          <div className="val">{invoices?.length || 0}</div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-border hover:border-green-500/50 transition-colors shadow-sm">
-          <p className="text-sm font-semibold text-muted-foreground mb-2">Paid</p>
-          <div className="text-3xl font-black text-green-600 dark:text-green-400">
+        <div className="kpi">
+          <div className="kt"><span className="lab">Paid</span></div>
+          <div className="val" style={{ color: 'var(--st-green)' }}>
             {invoices?.filter(i => i.status === 'paid').length || 0}
           </div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-border hover:border-yellow-500/50 transition-colors shadow-sm">
-          <p className="text-sm font-semibold text-muted-foreground mb-2">Outstanding</p>
-          <div className="text-3xl font-black text-yellow-600 dark:text-yellow-400">
+        <div className="kpi">
+          <div className="kt"><span className="lab">Outstanding</span></div>
+          <div className="val" style={{ fontSize: 26, color: 'var(--st-amber)' }}>
             {formatCurrency(totalOutstanding.toString())}
           </div>
         </div>
 
-        <div className="bg-card rounded-xl p-6 border border-red-500/20 hover:border-red-500/50 transition-colors shadow-sm">
-          <p className="text-sm font-semibold text-muted-foreground mb-2">Overdue Balance</p>
-          <div className="text-3xl font-black text-red-600 dark:text-red-400">
+        <div className="kpi">
+          <div className="kt"><span className="lab">Overdue Balance</span></div>
+          <div className="val" style={{ fontSize: 26, color: 'var(--primary)' }}>
             {formatCurrency(totalOverdue.toString())}
           </div>
         </div>
@@ -304,15 +304,13 @@ export default function CustomerInvoices() {
                   return (
                     <TableRow
                       key={invoice.id}
-                      className={`hover:bg-muted/50 transition-colors ${isOverdue ? 'bg-red-500/5 hover:bg-red-500/10' : ''}`}
+                      className={`hover:bg-muted/50 transition-colors ${isOverdue ? 'bg-primary/5 hover:bg-primary/10' : ''}`}
                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold">{invoice.invoiceNumber}</span>
+                          <span className="wb font-bold">{invoice.invoiceNumber}</span>
                           {invoice.isAdjusted === 1 && (
-                            <Badge variant="outline" className="text-[10px] h-5 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/30 font-bold shadow-sm">
-                              Adjusted
-                            </Badge>
+                            <span className="pill custom">Adjusted</span>
                           )}
                         </div>
                       </TableCell>
@@ -320,11 +318,11 @@ export default function CustomerInvoices() {
                         {formatDate(invoice.periodFrom)} - {formatDate(invoice.periodTo)}
                       </TableCell>
                       <TableCell className="text-sm font-medium">{formatDate(invoice.issueDate)}</TableCell>
-                      <TableCell className={`text-sm font-medium ${isOverdue ? 'text-red-500 font-bold' : ''}`}>
+                      <TableCell className={`text-sm font-medium ${isOverdue ? 'text-primary font-bold' : ''}`}>
                         {formatDate(invoice.dueDate)}
                       </TableCell>
-                      <TableCell className="font-black text-foreground">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
-                      <TableCell className={`font-bold ${balance > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      <TableCell className="money">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
+                      <TableCell className={`money ${balance > 0 ? 'text-primary' : ''}`} style={balance > 0 ? undefined : { color: 'var(--st-green)' }}>
                         {balance > 0 ? formatCurrency(balance.toString(), invoice.currency) : '—'}
                       </TableCell>
                       <TableCell>{getStatusBadge(invoice.status)}</TableCell>
@@ -333,7 +331,7 @@ export default function CustomerInvoices() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
+                            className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
                             onClick={() => setSelectedInvoiceId(invoice.id)}
                             title="View Details"
                           >
@@ -342,7 +340,7 @@ export default function CustomerInvoices() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-9 w-9 text-slate-500 hover:text-primary hover:bg-primary/10 rounded-lg"
+                            className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg"
                             onClick={() => handleDownloadPDF(invoice)}
                             title="Download PDF"
                           >
@@ -370,7 +368,7 @@ export default function CustomerInvoices() {
             <div className="space-y-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-2xl font-bold">{invoiceDetails.invoice.invoiceNumber}</h3>
+                  <h3 className="font-display text-2xl font-bold tracking-tight">{invoiceDetails.invoice.invoiceNumber}</h3>
                   <p className="text-muted-foreground">
                     Period: {formatDate(invoiceDetails.invoice.periodFrom)} - {formatDate(invoiceDetails.invoice.periodTo)}
                   </p>
@@ -416,14 +414,14 @@ export default function CustomerInvoices() {
               </div>
 
               {invoiceDetails.invoice.isAdjusted === 1 && invoiceDetails.invoice.adjustmentNotes && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="alert-soft amber !block">
                   <div className="flex items-start gap-2">
-                    <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5" />
+                    <AlertCircle className="w-5 h-5 text-[var(--st-amber)] mt-0.5" />
                     <div className="flex-1">
-                      <h4 className="font-semibold text-orange-900 mb-1">Invoice Adjustment Notice</h4>
-                      <p className="text-sm text-orange-800">{invoiceDetails.invoice.adjustmentNotes}</p>
+                      <h4 className="font-semibold text-foreground mb-1">Invoice Adjustment Notice</h4>
+                      <p className="text-sm text-muted-foreground">{invoiceDetails.invoice.adjustmentNotes}</p>
                       {invoiceDetails.invoice.lastAdjustedAt && (
-                        <p className="text-xs text-orange-600 mt-2">
+                        <p className="text-xs text-muted-foreground mt-2">
                           Adjusted on {formatDate(invoiceDetails.invoice.lastAdjustedAt)}
                         </p>
                       )}

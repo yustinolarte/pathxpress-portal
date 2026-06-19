@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { usePortalAuth } from '@/hooks/usePortalAuth';
 import { trpc } from '@/lib/trpc';
+import { statusBadgeClass } from '@/lib/statusStyles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -96,18 +97,7 @@ export default function CustomerDashboard() {
     { enabled: !!searchedWaybill, retry: false }
   );
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending_pickup: 'bg-yellow-500',
-      in_transit: 'bg-blue-500',
-      out_for_delivery: 'bg-purple-500',
-      delivered: 'bg-green-500',
-      failed_delivery: 'bg-red-500',
-      returned: 'bg-gray-500',
-      returned_to_sender: 'bg-rose-600',
-    };
-    return colors[status] || 'bg-gray-400';
-  };
+  const getStatusColor = (status: string) => statusBadgeClass(status);
 
   const getStatusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
 
@@ -513,17 +503,17 @@ export default function CustomerDashboard() {
   };
 
   const menuItems: ModernMenuItem[] = [
-    { icon: 'dashboard', label: 'Overview', value: 'overview' },
-    { icon: 'bar_chart', label: 'Analytics', value: 'analytics' },
-    { icon: 'package_2', label: 'My Orders', value: 'orders' },
-    { icon: 'swap_horiz', label: 'Returns & Exchanges', value: 'returns' },
-    { icon: 'search', label: 'Track Shipment', value: 'tracking' },
-    { icon: 'calculate', label: 'Rate Calculator', value: 'calculator' },
-    { icon: 'public', label: 'International', value: 'international' },
-    { icon: 'receipt_long', label: 'Invoices', value: 'invoices' },
-    { icon: 'payments', label: 'COD', value: 'cod' },
-    { icon: 'summarize', label: 'Reports', value: 'reports' },
-    { icon: 'menu_book', label: 'Guide', value: 'guide' },
+    { icon: 'dashboard', label: 'Overview', value: 'overview', section: 'Shipping' },
+    { icon: 'bar_chart', label: 'Analytics', value: 'analytics', section: 'Shipping' },
+    { icon: 'package_2', label: 'My Orders', value: 'orders', section: 'Shipping' },
+    { icon: 'swap_horiz', label: 'Returns & Exchanges', value: 'returns', section: 'Shipping' },
+    { icon: 'search', label: 'Track Shipment', value: 'tracking', section: 'Shipping' },
+    { icon: 'calculate', label: 'Rate Calculator', value: 'calculator', section: 'Tools' },
+    { icon: 'public', label: 'International', value: 'international', section: 'Tools' },
+    { icon: 'receipt_long', label: 'Invoices', value: 'invoices', section: 'Finance' },
+    { icon: 'payments', label: 'COD', value: 'cod', section: 'Finance' },
+    { icon: 'summarize', label: 'Reports', value: 'reports', section: 'Finance' },
+    { icon: 'menu_book', label: 'Guide', value: 'guide', section: 'Help' },
   ];
 
   return (
@@ -560,75 +550,76 @@ export default function CustomerDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4 mt-0">
-            <h2 className="text-2xl font-bold">Overview</h2>
+            <div className="mb-6">
+              <p className="eyebrow mb-2">Dashboard</p>
+              <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Overview</h2>
+            </div>
 
             {metricsLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="bg-card p-6 rounded-xl shadow-sm border border-primary/5 animate-pulse">
-                    <div className="h-4 bg-slate-700 rounded w-1/4 mb-4"></div>
-                    <div className="h-8 bg-slate-700 rounded w-1/2"></div>
+                    <div className="h-4 bg-muted rounded w-1/4 mb-4"></div>
+                    <div className="h-8 bg-muted rounded w-1/2"></div>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="space-y-8">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-border rounded-[var(--radius)] overflow-hidden border border-border">
                   {/* Total Shipments This Month */}
-                  <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="p-2.5 bg-primary/10 rounded-lg text-primary">
-                        <span className="material-symbols-outlined">inventory_2</span>
-                      </div>
-                      <span className={`text-xs font-bold flex items-center gap-1 ${monthlyChangePct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        <span className="material-symbols-outlined text-xs">{monthlyChangePct >= 0 ? 'trending_up' : 'trending_down'}</span>
-                        {monthlyChangePct >= 0 ? '+' : ''}{monthlyChangePct}% vs last month
+                  <div className="bg-card p-6 hover:bg-secondary transition-colors">
+                    <div className="flex justify-between items-center mb-6">
+                      <p className="mono-label">01 / Shipments this month</p>
+                      <span className="material-symbols-outlined text-muted-foreground text-[18px]">inventory_2</span>
+                    </div>
+                    <p className="font-display text-[42px] font-bold leading-none tracking-tight">{metrics?.totalShipmentsThisMonth || 0}</p>
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <span className={`font-mono text-[11px] ${monthlyChangePct >= 0 ? 'text-[var(--st-green)]' : 'text-primary'}`}>
+                        {monthlyChangePct >= 0 ? '▲' : '▼'} {monthlyChangePct >= 0 ? '+' : ''}{monthlyChangePct}% vs last month
                       </span>
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium">Shipments This Month</p>
-                    <h3 className="text-2xl font-bold mt-1">{metrics?.totalShipmentsThisMonth || 0}</h3>
-                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                      <div className="h-full bg-primary rounded-full" style={{ width: `${shipmentsBarWidth}%` }}></div>
+                    <div className="mt-3 h-1 w-full bg-muted overflow-hidden">
+                      <div className="h-full bg-primary" style={{ width: `${shipmentsBarWidth}%` }}></div>
                     </div>
                   </div>
 
                   {/* On-Time Delivery % */}
-                  <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="p-2.5 bg-green-500/10 rounded-lg text-green-500">
-                        <span className="material-symbols-outlined">verified</span>
-                      </div>
+                  <div className="bg-card p-6 hover:bg-secondary transition-colors">
+                    <div className="flex justify-between items-center mb-6">
+                      <p className="mono-label">02 / On-time delivery</p>
+                      <span className="material-symbols-outlined text-muted-foreground text-[18px]">verified</span>
+                    </div>
+                    <p className="font-display text-[42px] font-bold leading-none tracking-tight">{metrics?.onTimePercentage || 0}<span className="text-[24px] text-muted-foreground">%</span></p>
+                    <div className="mt-5 flex items-center justify-between gap-3">
                       {onTimeChangePct !== null ? (
-                        <span className={`text-xs font-bold flex items-center gap-1 ${onTimeChangePct >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          <span className="material-symbols-outlined text-xs">{onTimeChangePct >= 0 ? 'trending_up' : 'trending_down'}</span>
-                          {onTimeChangePct >= 0 ? '+' : ''}{onTimeChangePct}% vs last month
+                        <span className={`font-mono text-[11px] ${onTimeChangePct >= 0 ? 'text-[var(--st-green)]' : 'text-primary'}`}>
+                          {onTimeChangePct >= 0 ? '▲' : '▼'} {onTimeChangePct >= 0 ? '+' : ''}{onTimeChangePct}% vs last month
                         </span>
                       ) : (
-                        <span className="text-xs font-bold text-muted-foreground">No prev. data</span>
+                        <span className="font-mono text-[11px] text-muted-foreground">No prev. data</span>
                       )}
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium">On-Time Delivery</p>
-                    <h3 className="text-2xl font-bold mt-1">{metrics?.onTimePercentage || 0}%</h3>
-                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${metrics?.onTimePercentage || 0}%` }}></div>
+                    <div className="mt-3 h-1 w-full bg-muted overflow-hidden">
+                      <div className="h-full bg-[var(--st-green)]" style={{ width: `${metrics?.onTimePercentage || 0}%` }}></div>
                     </div>
                   </div>
 
                   {/* Pending COD */}
-                  <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="p-2.5 bg-amber-500/10 rounded-lg text-amber-500">
-                        <span className="material-symbols-outlined">payments</span>
-                      </div>
-                      <span className="text-xs font-bold text-muted-foreground">
+                  <div className="bg-card p-6 hover:bg-secondary transition-colors">
+                    <div className="flex justify-between items-center mb-6">
+                      <p className="mono-label">03 / Pending COD · AED</p>
+                      <span className="material-symbols-outlined text-muted-foreground text-[18px]">payments</span>
+                    </div>
+                    <p className="font-display text-[42px] font-bold leading-none tracking-tight">{metrics?.totalPendingCOD || '0.00'}</p>
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <span className="font-mono text-[11px] text-muted-foreground">
                         {_codOrders.length > 0 ? `${_pendingCODOrders.length}/${_codOrders.length} orders` : 'No COD orders'}
                       </span>
                     </div>
-                    <p className="text-muted-foreground text-sm font-medium">Pending COD (AED)</p>
-                    <h3 className="text-2xl font-bold mt-1">{metrics?.totalPendingCOD || '0.00'}</h3>
-                    <div className="mt-4 h-1.5 w-full bg-border rounded-full overflow-hidden">
-                      <div className="h-full bg-amber-500 rounded-full" style={{ width: `${codBarWidth}%` }}></div>
+                    <div className="mt-3 h-1 w-full bg-muted overflow-hidden">
+                      <div className="h-full bg-[var(--st-amber)]" style={{ width: `${codBarWidth}%` }}></div>
                     </div>
                   </div>
                 </div>
@@ -636,14 +627,15 @@ export default function CustomerDashboard() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Chart Section */}
                   <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300">
+                    <div className="bg-card p-6 rounded-[var(--radius)] border border-border">
                       <div className="flex items-center justify-between mb-8">
                         <div>
-                          <h2 className="text-lg font-bold text-foreground">Shipping Performance</h2>
+                          <p className="mono-label mb-1.5">Performance</p>
+                          <h2 className="font-display text-lg font-bold tracking-tight text-foreground">Shipping Performance</h2>
                           <p className="text-sm text-muted-foreground">Daily shipment volume — last {chartPeriod} days</p>
                         </div>
                         <select
-                          className="text-sm bg-background border border-primary/10 rounded-lg focus:ring-primary/20 text-foreground px-2 py-1"
+                          className="font-mono text-[11px] uppercase tracking-wider bg-background border border-border rounded-lg focus:ring-primary/20 text-foreground px-2 py-1.5"
                           value={chartPeriod}
                           onChange={(e) => setChartPeriod(Number(e.target.value) as 7 | 30)}
                         >
@@ -651,21 +643,21 @@ export default function CustomerDashboard() {
                           <option value={30}>Last 30 Days</option>
                         </select>
                       </div>
-                      <div className="flex items-end justify-between h-64 gap-1 px-2">
+                      <div className="flex items-end justify-between h-64 gap-1 px-2 border-b border-border">
                         {chartData.map((item, i) => {
                           const heightPct = chartMax > 0 ? Math.max((item.count / chartMax) * 100, item.count > 0 ? 4 : 0) : 0;
                           return (
                             <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
                               <div
-                                className="w-full bg-primary/20 rounded-t-lg relative group-hover:bg-primary transition-colors"
+                                className="w-full bg-primary/15 relative group-hover:bg-primary transition-colors"
                                 style={{ height: `${heightPct}%` }}
                               >
-                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-sm border border-primary/10">
+                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-sm border border-border">
                                   {item.count} shipments
                                 </div>
                               </div>
                               {(chartPeriod === 7 || i % 5 === 0 || i === chartData.length - 1) && (
-                                <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                                <span className="font-mono text-[10px] text-muted-foreground">{item.label}</span>
                               )}
                             </div>
                           );
@@ -674,63 +666,52 @@ export default function CustomerDashboard() {
                     </div>
 
                     {/* Secondary Stats */}
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300 flex items-center gap-4">
-                        <div className="size-12 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-500">
-                          <span className="material-symbols-outlined">timer</span>
+                    <div className="grid grid-cols-2 gap-px bg-border rounded-[var(--radius)] overflow-hidden border border-border">
+                      <div className="bg-card p-6 hover:bg-secondary transition-colors">
+                        <div className="flex items-center justify-between mb-4">
+                          <p className="mono-label">Avg. delivery time</p>
+                          <span className="material-symbols-outlined text-muted-foreground text-[18px]">timer</span>
                         </div>
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground">Avg. Delivery Time</p>
-                          <p className="text-lg font-bold text-foreground">{metrics?.averageDeliveryHours || 0} Hours</p>
-                        </div>
+                        <p className="font-display text-[28px] font-bold leading-none tracking-tight">{metrics?.averageDeliveryHours || 0}<span className="text-[15px] text-muted-foreground ml-1.5">hrs</span></p>
                       </div>
-                      <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300 flex items-center gap-4">
-                        <div className="size-12 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-500">
-                          <span className="material-symbols-outlined">route</span>
+                      <div className="bg-card p-6 hover:bg-secondary transition-colors">
+                        <div className="flex items-center justify-between mb-4">
+                          <p className="mono-label">Active shipments</p>
+                          <span className="material-symbols-outlined text-muted-foreground text-[18px]">route</span>
                         </div>
-                        <div>
-                          <p className="text-xs font-medium text-muted-foreground">Active Shipments</p>
-                          <p className="text-lg font-bold text-foreground">{stats.activeOrders}</p>
-                        </div>
+                        <p className="font-display text-[28px] font-bold leading-none tracking-tight">{stats.activeOrders}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Activity List */}
                   <div className="space-y-6">
-                    <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300 h-full">
-                      <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-bold text-foreground">Recent Shipments</h2>
-                        <button className="text-primary text-xs font-bold hover:underline" onClick={() => setActiveTab('orders')}>View All</button>
+                    <div className="bg-card p-6 rounded-[var(--radius)] border border-border h-full">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="mono-label mb-1.5">Activity</p>
+                          <h2 className="font-display text-lg font-bold tracking-tight text-foreground">Recent Shipments</h2>
+                        </div>
+                        <button className="link-arrow text-[13px]" onClick={() => setActiveTab('orders')}>
+                          View All <span className="ar">→</span>
+                        </button>
                       </div>
-                      <div className="space-y-6">
-                        {filteredOrders?.slice(0, 4).map((order) => (
-                          <div key={order.id} className="flex gap-4">
-                            <div className="relative flex flex-col items-center">
-                              <div className={`size-10 rounded-full flex items-center justify-center border ${order.status === 'delivered' ? 'bg-green-500/10 text-green-500 border-green-500/20' :
-                                order.status === 'in_transit' ? 'bg-primary/10 text-primary border-primary/20' :
-                                  order.status === 'failed_delivery' || order.status === 'returned' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                                    'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                                }`}>
-                                <span className="material-symbols-outlined text-lg">
-                                  {order.status === 'delivered' ? 'check_circle' :
-                                    order.status === 'in_transit' ? 'local_shipping' :
-                                      order.status === 'failed_delivery' || order.status === 'returned' ? 'warning' : 'schedule'}
-                                </span>
+                      <div>
+                        {filteredOrders?.slice(0, 4).map((order, idx) => (
+                          <div key={order.id} className="flex items-start gap-4 py-4 border-b border-border last:border-0">
+                            <span className="font-mono text-[11px] text-muted-foreground pt-1 w-6 shrink-0">{String(idx + 1).padStart(2, '0')}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex justify-between items-start gap-2 mb-1.5">
+                                <p className="font-mono text-[13px] font-bold text-foreground truncate">{order.waybillNumber}</p>
+                                <span className="font-mono text-[10px] text-muted-foreground shrink-0">{new Date(order.createdAt).toLocaleDateString()}</span>
                               </div>
-                              <div className="w-0.5 h-full bg-border mt-2"></div>
-                            </div>
-                            <div className="flex-1 pb-6 border-b border-border">
-                              <div className="flex justify-between items-start mb-1">
-                                <p className="text-sm font-bold text-foreground">{order.waybillNumber}</p>
-                                <span className="text-[10px] text-muted-foreground font-medium">{new Date(order.createdAt).toLocaleDateString()}</span>
-                              </div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${order.status === 'delivered' ? 'bg-green-500/10 text-green-500' :
-                                  order.status === 'in_transit' ? 'bg-primary/10 text-primary' :
-                                    order.status === 'failed_delivery' || order.status === 'returned' ? 'bg-red-500/10 text-red-500' :
-                                      'bg-yellow-500/10 text-yellow-500'
+                              <div className="flex items-center gap-2.5">
+                                <span className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${order.status === 'delivered' ? 'text-[var(--st-green)]' :
+                                  order.status === 'in_transit' ? 'text-[var(--st-blue)]' :
+                                    order.status === 'failed_delivery' || order.status === 'returned' ? 'text-primary' :
+                                      'text-[var(--st-amber)]'
                                   }`}>
+                                  <span className="w-1.5 h-1.5 rounded-sm bg-current inline-block" />
                                   {order.status.replace(/_/g, ' ')}
                                 </span>
                                 <p className="text-xs text-muted-foreground">{order.city}</p>
@@ -760,12 +741,15 @@ export default function CustomerDashboard() {
           {/* Orders Tab */}
           <TabsContent value="orders" className="flex flex-col h-full mt-0">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-              <h2 className="text-3xl font-black tracking-tight text-foreground">My Shipments</h2>
+              <div>
+                <p className="eyebrow mb-2">Shipments</p>
+                <h2 className="font-display text-[28px] font-bold tracking-tight leading-none text-foreground">My Shipments</h2>
+              </div>
               <div className="flex justify-end gap-2">
                 <BulkShipmentDialog onSuccess={refetch} />
                 <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
                   <DialogTrigger asChild>
-                    <button className="px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2 shadow-lg shadow-primary/20">
+                    <button className="px-5 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-full hover:bg-primary/90 transition-all flex items-center gap-2">
                       <span className="material-symbols-outlined text-sm">add</span>
                       Create New Shipment
                     </button>
@@ -778,7 +762,7 @@ export default function CustomerDashboard() {
                       }
                     }}
                   >
-                    <div className="w-full h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600" />
+                    <div className="w-full h-1 bg-primary" />
                     <div className="p-5">
                       <CreateShipmentForm
                         onSuccess={() => {
@@ -793,10 +777,10 @@ export default function CustomerDashboard() {
             </div>
 
             {/* Filters Bar */}
-            <div className="bg-card p-4 rounded-2xl border border-primary/10 flex flex-wrap items-center justify-between shadow-xl shadow-primary/5 gap-4 mb-6">
+            <div className="bg-card p-4 rounded-[var(--radius)] border border-border flex flex-wrap items-center justify-between shadow-sm gap-4 mb-6">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date range</span>
+                  <span className="mono-label">Date range</span>
                   <div className="flex items-center gap-2">
                     <Input
                       type="date"
@@ -815,7 +799,7 @@ export default function CustomerDashboard() {
                 </div>
                 <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                 <div className="flex items-center gap-2 relative">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
+                  <span className="mono-label">Status</span>
                   <div className="relative">
                     <button
                       onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
@@ -874,7 +858,7 @@ export default function CustomerDashboard() {
                 <button
                   onClick={handleBulkDownloadWaybills}
                   disabled={bulkDownloading || (selectedOrderIds.length === 0 && (!filterDateFrom || !filterDateTo))}
-                  className="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-primary/5 border border-transparent hover:border-primary/10 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted/50 border border-transparent hover:border-border rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkDownloading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -887,7 +871,7 @@ export default function CustomerDashboard() {
             </div>
 
             {/* Orders Table */}
-            <div className="flex-1 overflow-hidden bg-card border border-primary/10 rounded-2xl shadow-xl shadow-primary/5 flex flex-col">
+            <div className="flex-1 overflow-hidden bg-card border border-border rounded-2xl shadow-sm flex flex-col">
               <div className="p-0 overflow-y-auto">
                 {isLoadingOrders ? (
                   <p className="text-center py-8 text-muted-foreground">Loading shipments...</p>
@@ -897,27 +881,27 @@ export default function CustomerDashboard() {
                     <div className="hidden md:block overflow-x-auto">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-primary/5 hover:bg-primary/5 border-b border-primary/10">
-                            <TableHead className="w-[50px] font-bold text-foreground tracking-wide text-xs uppercase">
+                          <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border">
+                            <TableHead className="w-[50px]">
                               <Checkbox
                                 checked={filteredOrders && filteredOrders.length > 0 && selectedOrderIds.length === filteredOrders.length}
                                 onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
                               />
                             </TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Waybill</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Customer</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Destination</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Weight</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Service</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">COD</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Status</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Created</TableHead>
-                            <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Actions</TableHead>
+                            <TableHead className="">Waybill</TableHead>
+                            <TableHead className="">Customer</TableHead>
+                            <TableHead className="">Destination</TableHead>
+                            <TableHead className="">Weight</TableHead>
+                            <TableHead className="">Service</TableHead>
+                            <TableHead className="">COD</TableHead>
+                            <TableHead className="">Status</TableHead>
+                            <TableHead className="">Created</TableHead>
+                            <TableHead className="">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {filteredOrders.map((order) => (
-                            <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30 border-b border-primary/10 transition-colors group">
+                            <TableRow key={order.id} className="cursor-pointer hover:bg-muted/30 border-b border-border transition-colors group">
                               <TableCell>
                                 <Checkbox
                                   checked={selectedOrderIds.includes(order.id)}
@@ -930,12 +914,12 @@ export default function CustomerDashboard() {
                                     {order.waybillNumber}
                                   </Button>
                                   {order.isReturn === 1 && (
-                                    <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs flex items-center gap-1" title="Return">
+                                    <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs flex items-center gap-1" title="Return">
                                       <RotateCcw className="h-4 w-4" />
                                     </Badge>
                                   )}
                                   {order.fitOnDelivery === 1 && (
-                                    <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs flex items-center gap-1">
+                                    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs flex items-center gap-1">
                                       <Package className="h-3 w-3" /> FOD
                                     </Badge>
                                   )}
@@ -950,17 +934,17 @@ export default function CustomerDashboard() {
                               <TableCell>{order.serviceType}</TableCell>
                               <TableCell>
                                 {order.codRequired === 1 && order.codAmount ? (
-                                  <Badge className="bg-orange-500 text-white border-none">
+                                  <span className="money">
                                     {order.codCurrency || 'AED'} {parseFloat(order.codAmount).toFixed(2)}
-                                  </Badge>
+                                  </span>
                                 ) : (
                                   <span className="text-muted-foreground">-</span>
                                 )}
                               </TableCell>
                               <TableCell>
-                                <Badge className={`${getStatusColor(order.status)} border-none text-white shadow-sm`}>
+                                <span className={`${getStatusColor(order.status)} !text-[11px]`}>
                                   {getStatusLabel(order.status)}
-                                </Badge>
+                                </span>
                               </TableCell>
                               <TableCell>{new Date(order.createdAt).toLocaleDateString()}</TableCell>
                               <TableCell>
@@ -1011,19 +995,19 @@ export default function CustomerDashboard() {
                                 {order.waybillNumber}
                               </button>
                               {order.isReturn === 1 && (
-                                <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs">
+                                <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
                                   <RotateCcw className="h-3 w-3 mr-1" />Return
                                 </Badge>
                               )}
                               {order.fitOnDelivery === 1 && (
-                                <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
+                                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30 text-xs">
                                   <Package className="h-3 w-3 mr-1" />FOD
                                 </Badge>
                               )}
                             </div>
-                            <Badge className={`${getStatusColor(order.status)} border-none text-white text-xs shrink-0`}>
+                            <span className={`${getStatusColor(order.status)} !text-[10.5px] shrink-0`}>
                               {getStatusLabel(order.status)}
-                            </Badge>
+                            </span>
                           </div>
                           {/* Customer + destination */}
                           <div className="flex items-center justify-between text-sm">
@@ -1032,12 +1016,12 @@ export default function CustomerDashboard() {
                           </div>
                           {/* Service + weight + COD + date */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{order.serviceType}</span>
+                            <span className="pill">{order.serviceType}</span>
                             <span className="text-xs text-muted-foreground">{order.weight} kg</span>
                             {order.codRequired === 1 && order.codAmount && (
-                              <Badge className="bg-orange-500 text-white border-none text-xs">
+                              <span className="money text-xs">
                                 COD {order.codCurrency || 'AED'} {parseFloat(order.codAmount).toFixed(2)}
-                              </Badge>
+                              </span>
                             )}
                             <span className="text-xs text-muted-foreground ml-auto">{new Date(order.createdAt).toLocaleDateString()}</span>
                           </div>
@@ -1057,7 +1041,7 @@ export default function CustomerDashboard() {
                     </div>
                   </>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center bg-card/50 rounded-2xl border-2 border-dashed border-primary/20 py-20 m-4">
+                  <div className="flex-1 flex flex-col items-center justify-center bg-card/50 rounded-2xl border-2 border-dashed border-border py-20 m-4">
                     <div className="size-24 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-6">
                       <span className="material-symbols-outlined text-5xl">inventory_2</span>
                     </div>
@@ -1082,12 +1066,13 @@ export default function CustomerDashboard() {
           <TabsContent value="tracking" className="space-y-8 mt-0">
             {/* Hero Section */}
             <div className="space-y-2">
-              <h1 className="text-3xl font-black tracking-tight text-foreground">Where's your cargo?</h1>
-              <p className="text-muted-foreground max-w-xl text-lg">Enter your tracking details below to get real-time status updates and estimated delivery times for your shipment.</p>
+              <p className="eyebrow mb-1">Tracking</p>
+              <h1 className="font-display text-[28px] font-bold tracking-tight leading-none text-foreground">Where's your cargo?</h1>
+              <p className="text-muted-foreground max-w-xl text-[15px] pt-1">Enter your tracking details below to get real-time status updates and estimated delivery times for your shipment.</p>
             </div>
 
             {/* Main Tracking Card */}
-            <div className="bg-card rounded-2xl shadow-xl shadow-primary/5 border border-primary/10 overflow-hidden">
+            <div className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden">
               <div className="p-1">
                 <div className="h-48 w-full rounded-xl overflow-hidden relative">
                   <div className="absolute inset-0 bg-primary/10"></div>
@@ -1116,7 +1101,7 @@ export default function CustomerDashboard() {
                         placeholder="e.g. PX-12345"
                         value={trackingWaybill}
                         onChange={(e) => setTrackingWaybill(e.target.value)}
-                        className="block w-full pl-12 pr-4 py-4 h-14 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-lg font-medium placeholder:text-muted-foreground"
+                        className="block w-full pl-12 pr-4 py-4 h-14 bg-background border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-lg font-medium placeholder:text-muted-foreground"
                       />
                     </div>
                   </div>
@@ -1143,9 +1128,9 @@ export default function CustomerDashboard() {
                     </p>
                     <h3 className="text-4xl font-mono font-bold text-foreground tracking-tight">{trackingData.order.waybillNumber}</h3>
                   </div>
-                  <div className={`px-5 py-2.5 rounded-full border ${trackingData.order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                    trackingData.order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                      'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                  <div className={`px-5 py-2.5 rounded-full border border-transparent ${trackingData.order.status === 'delivered' ? 'bg-[var(--st-green-bg)] text-[var(--st-green)]' :
+                    trackingData.order.status === 'cancelled' ? 'bg-primary/10 text-primary' :
+                      'bg-[var(--st-blue-bg)] text-[var(--st-blue)]'
                     } flex items-center gap-2.5 shadow-sm`}>
                     {trackingData.order.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                     <span className="font-bold uppercase tracking-wide text-sm">{trackingData.order.status.replace(/_/g, ' ')}</span>
@@ -1236,7 +1221,7 @@ export default function CustomerDashboard() {
                           {event.podFileUrl && (
                             <div className="mt-3 animate-fade-in">
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-green-500" /> Proof of Delivery
+                                <CheckCircle2 className="w-3 h-3 text-[var(--st-green)]" /> Proof of Delivery
                               </p>
                               <div className="relative group/image overflow-hidden rounded-lg border border-border max-w-[240px]">
                                 <img
@@ -1268,8 +1253,8 @@ export default function CustomerDashboard() {
 
             {/* Quick Info Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-              <div className="p-6 bg-card rounded-2xl border border-primary/10 flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
+              <div className="p-6 bg-card rounded-[var(--radius)] border border-border flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[var(--st-amber-bg)] text-[var(--st-amber)] flex items-center justify-center shrink-0">
                   <span className="material-symbols-outlined">schedule</span>
                 </div>
                 <div>
@@ -1277,8 +1262,8 @@ export default function CustomerDashboard() {
                   <p className="text-sm text-muted-foreground">98% of our shipments arrive exactly when scheduled.</p>
                 </div>
               </div>
-              <div className="p-6 bg-card rounded-2xl border border-primary/10 flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-green-500/10 text-green-500 flex items-center justify-center shrink-0">
+              <div className="p-6 bg-card rounded-[var(--radius)] border border-border flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[var(--st-green-bg)] text-[var(--st-green)] flex items-center justify-center shrink-0">
                   <span className="material-symbols-outlined">security</span>
                 </div>
                 <div>
@@ -1286,8 +1271,8 @@ export default function CustomerDashboard() {
                   <p className="text-sm text-muted-foreground">Every parcel is treated with the highest standards of safety and attention.</p>
                 </div>
               </div>
-              <div className="p-6 bg-card rounded-2xl border border-primary/10 flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shrink-0">
+              <div className="p-6 bg-card rounded-[var(--radius)] border border-border flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[var(--st-blue-bg)] text-[var(--st-blue)] flex items-center justify-center shrink-0">
                   <span className="material-symbols-outlined">support_agent</span>
                 </div>
                 <div>
@@ -1299,7 +1284,7 @@ export default function CustomerDashboard() {
 
             {/* Sample Map Element */}
             {trackingData && (
-              <div className="relative w-full h-[400px] rounded-2xl overflow-hidden border border-primary/10 shadow-sm bg-card animate-in fade-in duration-500 mt-8">
+              <div className="relative w-full h-[400px] rounded-2xl overflow-hidden border border-border shadow-sm bg-card animate-in fade-in duration-500 mt-8">
                 <div className="absolute inset-0">
                   <div className="w-full h-full bg-background/50 flex items-center justify-center relative overflow-hidden">
                     <svg className="absolute inset-0 opacity-10" height="100%" width="100%" xmlns="http://www.w3.org/2000/svg">
@@ -1320,9 +1305,9 @@ export default function CustomerDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="absolute top-6 left-6 bg-card/90 backdrop-blur p-4 rounded-xl border border-primary/10 shadow-lg">
+                <div className="absolute top-6 left-6 bg-card/90 backdrop-blur p-4 rounded-xl border border-border shadow-lg">
                   <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                    <div className="w-3 h-3 rounded-full bg-[var(--st-green)] animate-pulse"></div>
                     <span className="text-xs font-bold text-foreground">Live Global Network Active</span>
                   </div>
                 </div>
@@ -1367,11 +1352,11 @@ export default function CustomerDashboard() {
                         Create International Shipment
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="glass-strong !w-[95vw] !max-w-[1200px] p-0 gap-0 border-primary/20 max-h-[90vh] overflow-y-auto rounded-3xl">
-                      <div className="w-full h-1.5 bg-gradient-to-r from-primary to-primary/50" />
+                    <DialogContent className="bg-card border-border !w-[95vw] !max-w-[1200px] p-0 gap-0 max-h-[90vh] overflow-y-auto">
+                      <div className="w-full h-1 bg-primary" />
                       <div className="p-6">
                         <DialogHeader className="mb-6">
-                          <DialogTitle className="text-2xl font-black text-foreground flex items-center gap-3 tracking-tight">
+                          <DialogTitle className="font-display text-2xl font-bold tracking-tight text-foreground flex items-center gap-3 tracking-tight">
                             <Globe className="w-7 h-7 text-primary" />
                             Create International Shipment
                           </DialogTitle>
@@ -1393,25 +1378,28 @@ export default function CustomerDashboard() {
 
                 {/* Orders Table */}
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-                  <h2 className="text-3xl font-black tracking-tight text-foreground">International Shipments</h2>
+                  <div>
+                    <p className="eyebrow mb-2">International</p>
+                    <h2 className="font-display text-[28px] font-bold tracking-tight leading-none text-foreground">International Shipments</h2>
+                  </div>
                 </div>
 
                 <div className="bg-card p-4 rounded-xl border border-primary/5 shadow-sm mb-6">
                   <div className="flex flex-wrap gap-4 items-center justify-between">
                     <div className="flex flex-wrap gap-4 items-center">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date range</span>
+                        <span className="mono-label">Date range</span>
                         <div className="flex items-center gap-2">
                           <Input
                             type="date"
-                            className="w-[140px] h-9 bg-background border-primary/10 rounded-lg text-sm"
+                            className="w-[140px] h-9 bg-background border-border rounded-lg text-sm"
                             value={intlFilterDateFrom}
                             onChange={(e) => setIntlFilterDateFrom(e.target.value)}
                           />
                           <span className="text-muted-foreground text-sm">to</span>
                           <Input
                             type="date"
-                            className="w-[140px] h-9 bg-background border-primary/10 rounded-lg text-sm"
+                            className="w-[140px] h-9 bg-background border-border rounded-lg text-sm"
                             value={intlFilterDateTo}
                             onChange={(e) => setIntlFilterDateTo(e.target.value)}
                           />
@@ -1419,12 +1407,12 @@ export default function CustomerDashboard() {
                       </div>
                       <div className="hidden md:block h-8 w-[1px] bg-border"></div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Status</span>
+                        <span className="mono-label">Status</span>
                         <Select value={intlFilterStatus} onValueChange={setIntlFilterStatus}>
-                          <SelectTrigger className="w-[180px] h-9 border-primary/10 rounded-lg bg-background font-medium">
+                          <SelectTrigger className="w-[180px] h-9 border-border rounded-lg bg-background font-medium">
                             <SelectValue placeholder="All Status" />
                           </SelectTrigger>
-                          <SelectContent className="border-primary/10">
+                          <SelectContent className="border-border">
                             <SelectItem value="all">All Status</SelectItem>
                             <SelectItem value="pending_pickup">Pending Pickup</SelectItem>
                             <SelectItem value="picked_up">Picked Up</SelectItem>
@@ -1441,7 +1429,7 @@ export default function CustomerDashboard() {
                       <button
                         onClick={handleBulkDownloadIntlWaybills}
                         disabled={bulkDownloading || (selectedIntlOrderIds.length === 0 && (!intlFilterDateFrom || !intlFilterDateTo))}
-                        className="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-primary/5 border border-transparent hover:border-primary/10 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted/50 border border-transparent hover:border-border rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {bulkDownloading ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1452,7 +1440,7 @@ export default function CustomerDashboard() {
                       </button>
                       <button
                         onClick={handleExportIntlOrders}
-                        className="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-primary/5 border border-transparent hover:border-primary/10 rounded-lg text-sm font-semibold transition-colors"
+                        className="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-muted/50 border border-transparent hover:border-border rounded-lg text-sm font-semibold transition-colors"
                       >
                         <span className="material-symbols-outlined text-lg">download</span>
                         Export
@@ -1511,9 +1499,9 @@ export default function CustomerDashboard() {
                                 </TableCell>
                                 <TableCell>{order.weight} kg</TableCell>
                                 <TableCell>
-                                  <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                                  <span className="pill">
                                     {order.serviceType}
-                                  </Badge>
+                                  </span>
                                 </TableCell>
                                 <TableCell>
                                   {order.customsValue ? (
@@ -1526,9 +1514,9 @@ export default function CustomerDashboard() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge className={getStatusColor(order.status)}>
+                                  <span className={`${getStatusColor(order.status)} !text-[11px]`}>
                                     {getStatusLabel(order.status)}
-                                  </Badge>
+                                  </span>
                                 </TableCell>
                                 <TableCell className="text-muted-foreground">
                                   {new Date(order.createdAt).toLocaleDateString()}
@@ -1574,20 +1562,20 @@ export default function CustomerDashboard() {
                 </div>
               </>
             ) : (
-              <div className="border border-yellow-500/30 bg-yellow-500/10 rounded-lg p-8 text-center max-w-2xl mx-auto mt-10">
-                <Globe className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-foreground mb-2">International Shipping</h2>
+              <div className="border border-border bg-secondary rounded-lg p-8 text-center max-w-2xl mx-auto mt-10">
+                <Globe className="h-12 w-12 text-primary mx-auto mb-4" />
+                <h2 className="font-display text-2xl font-bold tracking-tight text-foreground mb-2">International Shipping</h2>
                 <p className="text-muted-foreground mb-6">
                   International shipping allows you to send packages globally from the UAE. This feature requires account activation and specific pricing agreements.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                  <a href="mailto:support@pathxpress.net" className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded-md font-medium transition-colors">
+                  <a href="mailto:support@pathxpress.net" className="bg-primary hover:brightness-110 text-white px-6 py-2 rounded-md font-medium transition-all">
                     Contact Sales to Enable
                   </a>
                 </div>
 
                 <div className="mt-12 text-left pt-8 border-t border-border">
-                  <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><Calculator className="h-5 w-5 text-blue-400" /> Rate Calculator</h3>
+                  <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><Calculator className="h-5 w-5 text-primary" /> Rate Calculator</h3>
                   <p className="text-sm text-muted-foreground mb-4">You can still check international rates and services using our calculator:</p>
                   <InternationalRateCalculator />
                 </div>
@@ -1603,7 +1591,7 @@ export default function CustomerDashboard() {
       </div>
       {/* Tracking Dialog */}
       <Dialog open={trackingDialogOpen} onOpenChange={setTrackingDialogOpen}>
-        <DialogContent className="glass-strong border-border sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-card border-border sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Shipment Tracking</DialogTitle>
             <DialogDescription>
@@ -1615,9 +1603,9 @@ export default function CustomerDashboard() {
             <div className="space-y-4 mt-2">
               <div className="flex justify-between items-center">
                 <h3 className="font-semibold">Shipment Details</h3>
-                <Badge className={getStatusColor(trackingData?.order?.status || 'pending')}>
+                <span className={`${getStatusColor(trackingData?.order?.status || 'pending')} !text-[11px]`}>
                   {getStatusLabel(trackingData?.order?.status || 'pending')}
-                </Badge>
+                </span>
               </div>
               <div className="grid md:grid-cols-2 gap-4 text-sm bg-muted/30 p-3 rounded-lg">
                 <div><span className="text-muted-foreground">Waybill:</span> <span className="ml-2 font-medium">{trackingData?.order?.waybillNumber}</span></div>
@@ -1645,7 +1633,7 @@ export default function CustomerDashboard() {
                                   href={event.podFileUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 underline"
+                                  className="inline-flex items-center gap-2 text-sm text-primary hover:brightness-110 underline"
                                 >
                                   📄 View Proof of Delivery
                                 </a>
@@ -1673,3 +1661,7 @@ export default function CustomerDashboard() {
     </ModernDashboardLayout >
   );
 }
+
+
+
+

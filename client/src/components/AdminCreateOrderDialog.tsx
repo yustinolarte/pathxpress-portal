@@ -10,6 +10,7 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { Loader2, Package, User, MapPin, Phone, FileText, Truck, Building2, Edit3, DollarSign } from 'lucide-react';
 import { LocationPicker, type PickedLocation, type ParsedAddress } from '@/components/LocationPicker';
+import { DOMESTIC_SERVICE_TYPES, DEFAULT_PREFERRED_SLOTS, isPreferredTimeService, isSameDayPreferredService, todayStr, tomorrowStr } from '@/const';
 
 const EMIRATE_MAP: Record<string, string> = {
     dubai: 'Dubai',
@@ -81,6 +82,8 @@ export default function AdminCreateOrderDialog({
         codRequired: false,
         codAmount: '',
         fitOnDelivery: false,
+        preferredDate: '',
+        preferredTime: '',
     });
 
     // Location pin state
@@ -142,6 +145,8 @@ export default function AdminCreateOrderDialog({
                 codRequired: false,
                 codAmount: '',
                 fitOnDelivery: false,
+                preferredDate: '',
+                preferredTime: '',
             });
             setShipperData({
                 shipperName: '',
@@ -179,8 +184,8 @@ export default function AdminCreateOrderDialog({
             setCalculatedRate(null);
             return;
         }
-        const serviceType = formData.serviceType as 'DOM' | 'SDD' | 'BULLET';
-        if (serviceType === 'DOM' || serviceType === 'SDD' || serviceType === 'BULLET') {
+        const serviceType = formData.serviceType as 'DOM' | 'SDD' | 'BULLET' | 'EXPRESS_ZONE2' | 'PREFERRED_TIME' | 'PREFERRED_TIME_SDD';
+        if (DOMESTIC_SERVICE_TYPES.some((s) => s.code === serviceType)) {
             calculateRateMutation.mutate({
                 clientId: parseInt(selectedClientId),
                 serviceType,
@@ -232,6 +237,10 @@ export default function AdminCreateOrderDialog({
             toast.error('Please enter a valid COD amount');
             return;
         }
+        if (isPreferredTimeService(formData.serviceType) && (!formData.preferredDate || !formData.preferredTime)) {
+            toast.error('Please select a preferred delivery date and time window');
+            return;
+        }
 
         if (formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') {
             if (!pickedLocation) {
@@ -262,6 +271,8 @@ export default function AdminCreateOrderDialog({
                 fitOnDelivery: formData.fitOnDelivery ? 1 : 0,
                 latitude: pickedLocation?.latitude,
                 longitude: pickedLocation?.longitude,
+                preferredDeliveryDate: isPreferredTimeService(formData.serviceType) ? formData.preferredDate : undefined,
+                preferredDeliveryTime: isPreferredTimeService(formData.serviceType) ? formData.preferredTime : undefined,
                 // Shipper override fields
                 shipperOverride: overrideShipper,
                 shipperName: overrideShipper ? shipperData.shipperName : undefined,
@@ -276,7 +287,7 @@ export default function AdminCreateOrderDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
-                className="glass-strong !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10 bg-background text-foreground antialiased font-sans"
+                className="bg-card border-border !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0  bg-background text-foreground antialiased font-sans"
                 onInteractOutside={(e) => {
                     if ((e.target as HTMLElement)?.closest?.('.pac-container')) {
                         e.preventDefault();
@@ -524,30 +535,49 @@ export default function AdminCreateOrderDialog({
                                         <div className="space-y-4">
                                             <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Service Type</label>
                                             <div className="space-y-3">
-                                                <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.serviceType === 'DOM' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
-                                                    <input className="text-primary focus:ring-primary w-4 h-4 rounded-full border border-primary bg-transparent" name="admin_service_type" type="radio" checked={formData.serviceType === 'DOM'} onChange={() => setFormData({...formData, serviceType: 'DOM'})} />
-                                                    <div className="ml-3">
-                                                        <div className="font-bold text-sm">Domestic Express</div>
-                                                        <div className="text-[11px] text-muted-foreground">Standard Next Day</div>
-                                                    </div>
-                                                </label>
-                                                <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.serviceType === 'SDD' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
-                                                    <input className="text-primary focus:ring-primary w-4 h-4 rounded-full border border-primary bg-transparent" name="admin_service_type" type="radio" checked={formData.serviceType === 'SDD'} onChange={() => setFormData({...formData, serviceType: 'SDD'})} />
-                                                    <div className="ml-3">
-                                                        <div className="font-bold text-sm">Same Day (SDD)</div>
-                                                        <div className="text-[11px] text-muted-foreground">Delivered today</div>
-                                                    </div>
-                                                </label>
-                                                {selectedClient.bulletAllowed === 1 && (
-                                                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${formData.serviceType === 'BULLET' ? 'border-red-500 bg-red-500/10' : 'border-border hover:bg-muted'}`}>
-                                                        <input className="text-red-500 focus:ring-red-500 w-4 h-4 rounded-full border border-red-500 bg-transparent" name="admin_service_type" type="radio" checked={formData.serviceType === 'BULLET'} onChange={() => setFormData({...formData, serviceType: 'BULLET'})} />
-                                                        <div className="ml-3">
-                                                            <div className="font-bold text-sm text-red-500">🚀 Bullet Service</div>
-                                                            <div className="text-[11px] text-muted-foreground">Premium 4-Hour Delivery</div>
-                                                        </div>
-                                                    </label>
-                                                )}
+                                                {DOMESTIC_SERVICE_TYPES.map((svc) => {
+                                                    const isSelected = formData.serviceType === svc.code;
+                                                    const isRed = svc.accent === 'red';
+                                                    return (
+                                                        <label key={svc.code} className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${isSelected ? (isRed ? 'border-red-500 bg-red-500/10' : 'border-primary bg-primary/10') : 'border-border hover:bg-muted'}`}>
+                                                            <input className={`w-4 h-4 rounded-full border bg-transparent ${isRed ? 'text-red-500 focus:ring-red-500 border-red-500' : 'text-primary focus:ring-primary border-primary'}`} name="admin_service_type" type="radio" checked={isSelected} onChange={() => setFormData({...formData, serviceType: svc.code})} />
+                                                            <div className="ml-3">
+                                                                <div className={`font-bold text-sm ${isRed ? 'text-red-500' : ''}`}>{svc.label}</div>
+                                                                <div className="text-[11px] text-muted-foreground">{svc.sublabel}</div>
+                                                            </div>
+                                                        </label>
+                                                    );
+                                                })}
                                             </div>
+
+                                            {isPreferredTimeService(formData.serviceType) && (
+                                                <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Delivery Date</label>
+                                                        <Input
+                                                            type="date"
+                                                            min={isSameDayPreferredService(formData.serviceType) ? todayStr() : tomorrowStr()}
+                                                            max={isSameDayPreferredService(formData.serviceType) ? todayStr() : undefined}
+                                                            value={formData.preferredDate}
+                                                            onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })}
+                                                            className="bg-background border-border"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Time Window</label>
+                                                        <select
+                                                            value={formData.preferredTime}
+                                                            onChange={(e) => setFormData({ ...formData, preferredTime: e.target.value })}
+                                                            className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                        >
+                                                            <option value="">Select time window</option>
+                                                            {DEFAULT_PREFERRED_SLOTS.map((slot) => (
+                                                                <option key={slot} value={slot}>{slot}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="pt-4 border-t border-border space-y-4">
@@ -614,7 +644,7 @@ export default function AdminCreateOrderDialog({
                                                 )}
                                                 <div className="flex justify-between items-end pt-4 border-t border-white/20">
                                                     <span className="text-lg font-bold">Total Payable</span>
-                                                    <span className="text-2xl font-black text-blue-400">{(calculatedRate.totalRate + calculatedCODFee + (formData.fitOnDelivery ? ((selectedClient as any)?.fodFee ? Number((selectedClient as any).fodFee) : 5.00) : 0)).toFixed(2)} AED</span>
+                                                    <span className="font-display text-2xl font-bold tracking-tight text-foreground">{(calculatedRate.totalRate + calculatedCODFee + (formData.fitOnDelivery ? ((selectedClient as any)?.fodFee ? Number((selectedClient as any).fodFee) : 5.00) : 0)).toFixed(2)} AED</span>
                                                 </div>
                                             </>
                                         ) : (
@@ -643,3 +673,4 @@ export default function AdminCreateOrderDialog({
         </Dialog>
     );
 }
+

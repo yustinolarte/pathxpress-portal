@@ -15,6 +15,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock,
+  CalendarClock,
   Shield,
   Headphones,
   MapPin,
@@ -88,6 +89,50 @@ export default function Services() {
         t('services.lastMile.point1'),
         t('services.lastMile.point2'),
         t('services.lastMile.point3'),
+      ],
+    },
+    {
+      icon: Zap,
+      title: t('services.bullet.title'),
+      label: t('services.bullet.label'),
+      color: 'primary',
+      points: [
+        t('services.bullet.point1'),
+        t('services.bullet.point2'),
+        t('services.bullet.point3'),
+      ],
+    },
+    {
+      icon: Route,
+      title: t('services.express.title'),
+      label: t('services.express.label'),
+      color: 'primary',
+      points: [
+        t('services.express.point1'),
+        t('services.express.point2'),
+        t('services.express.point3'),
+      ],
+    },
+    {
+      icon: CalendarClock,
+      title: t('services.preferredNextDay.title'),
+      label: t('services.preferredNextDay.label'),
+      color: 'primary',
+      points: [
+        t('services.preferredNextDay.point1'),
+        t('services.preferredNextDay.point2'),
+        t('services.preferredNextDay.point3'),
+      ],
+    },
+    {
+      icon: Clock,
+      title: t('services.preferredSameDay.title'),
+      label: t('services.preferredSameDay.label'),
+      color: 'primary',
+      points: [
+        t('services.preferredSameDay.point1'),
+        t('services.preferredSameDay.point2'),
+        t('services.preferredSameDay.point3'),
       ],
     },
   ];
@@ -169,7 +214,7 @@ export default function Services() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/request-quote">
-                <Button size="lg" className="bg-primary hover:bg-primary/90 glow-blue-hover transition-smooth btn-hover-expand">
+                <Button size="lg" className="bg-primary hover:bg-primary/90 transition-smooth btn-hover-expand">
                   {t('services.hero.getStarted')} <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
@@ -184,7 +229,7 @@ export default function Services() {
           {/* Services Grid */}
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('services.whatWeOffer.title')}</h2>
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">{t('services.whatWeOffer.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 {t('services.whatWeOffer.subtitle')}
               </p>
@@ -193,12 +238,12 @@ export default function Services() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {services.map((service, index) => {
                 const Icon = service.icon;
-                const colorClass = service.color === 'secondary' ? 'text-secondary' : service.color === 'accent' ? 'text-accent' : 'text-primary';
-                const bgClass = service.color === 'secondary' ? 'bg-secondary/20' : service.color === 'accent' ? 'bg-accent/20' : 'bg-primary/20';
+                const colorClass = 'text-primary';
+                const bgClass = 'bg-primary/20';
 
                 return (
                   <AnimatedSection key={index} animation="slide-up" delay={index * 0.1}>
-                    <Card className="glass-strong border-border hover:border-primary transition-smooth group card-hover-lift h-full flex flex-col">
+                    <Card className="bg-card border-border border-border hover:border-primary transition-smooth group card-hover-lift h-full flex flex-col">
                       <CardHeader>
                         <div className={`w-14 h-14 rounded-xl ${bgClass} flex items-center justify-center mb-4 group-hover:scale-110 transition-smooth`}>
                           <Icon className={`w-7 h-7 ${colorClass}`} />
@@ -234,10 +279,10 @@ export default function Services() {
           <AnimatedSection animation="fade-in" className="mb-20">
             <div className="text-center mb-12">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass mb-4">
-                <Zap className="w-4 h-4 text-accent" />
-                <span className="text-sm font-medium text-accent">{t('services.howItWorks.badge')}</span>
+                <Zap className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">{t('services.howItWorks.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('services.howItWorks.title')}</h2>
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">{t('services.howItWorks.title')}</h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
                 {t('services.howItWorks.subtitle')}
               </p>
@@ -254,7 +299,7 @@ export default function Services() {
                         <div className="hidden lg:block absolute top-10 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-primary/50 to-transparent" />
                       )}
 
-                      <div className="text-center p-6 rounded-xl glass hover:glass-strong transition-smooth group">
+                      <div className="text-center p-6 rounded-xl glass hover:bg-card border-border transition-smooth group">
                         {/* Step number */}
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center">
                           {item.step}
@@ -280,7 +325,7 @@ export default function Services() {
                 <Brain className="w-4 h-4 text-purple-400" />
                 <span className="text-sm font-medium text-purple-400">{t('aiPowered.badge')}</span>
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4 bg-gradient-to-r from-white via-purple-200 to-primary bg-clip-text text-transparent">
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">
                 {t('aiPowered.title')}
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -299,7 +344,7 @@ export default function Services() {
                 const Icon = item.icon;
                 return (
                   <AnimatedSection key={index} animation="scale-in" delay={index * 0.1}>
-                    <div className="text-center p-4 rounded-xl glass hover:glass-strong transition-smooth group card-hover-lift h-full">
+                    <div className="text-center p-4 rounded-xl glass hover:bg-card border-border transition-smooth group card-hover-lift h-full">
                       <div className={`w-12 h-12 rounded-full ${item.bg} flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-smooth`}>
                         <Icon className={`w-6 h-6 ${item.color}`} />
                       </div>
@@ -315,7 +360,7 @@ export default function Services() {
             </div>
 
             {/* Why Lower Prices - Compact */}
-            <div className="mt-8 p-6 rounded-xl glass-strong border border-green-500/20">
+            <div className="mt-8 p-6 rounded-xl bg-card border-border border border-green-500/20">
               <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
@@ -327,7 +372,7 @@ export default function Services() {
                   </div>
                 </div>
                 <div className="glass rounded-xl p-4 text-center">
-                  <div className="text-3xl font-bold bg-gradient-to-r from-green-400 to-primary bg-clip-text text-transparent">-40%</div>
+                  <div className="font-display text-3xl font-bold tracking-tight text-primary">-40%</div>
                   <p className="text-xs text-muted-foreground">{t('aiPowered.operationalCosts')}</p>
                 </div>
               </div>
@@ -336,10 +381,10 @@ export default function Services() {
 
           {/* Benefits Section */}
           <AnimatedSection animation="slide-up" className="mb-20">
-            <Card className="glass-strong border-border overflow-hidden">
+            <Card className="bg-card border-border border-border overflow-hidden">
               <div className="grid grid-cols-1 lg:grid-cols-2">
                 <CardContent className="p-8 lg:p-12 flex flex-col justify-center">
-                  <h2 className="text-3xl md:text-4xl font-bold mb-6">{t('services.whyChoose.title')}</h2>
+                  <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-6">{t('services.whyChoose.title')}</h2>
                   <p className="text-muted-foreground mb-8">
                     {t('services.whyChoose.description')}
                   </p>
@@ -365,7 +410,7 @@ export default function Services() {
                 <div className="hidden lg:flex items-center justify-center p-12 bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/10">
                   <div className="relative">
                     <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl scale-150" />
-                    <div className="relative glass-strong rounded-2xl p-8">
+                    <div className="relative bg-card border-border rounded-2xl p-8">
                       <Truck className="w-32 h-32 text-primary mx-auto" />
                     </div>
                   </div>
@@ -376,14 +421,14 @@ export default function Services() {
 
           {/* CTA Section */}
           <AnimatedSection animation="fade-in">
-            <div className="text-center py-12 px-6 rounded-2xl glass-strong">
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('services.cta.title')}</h2>
+            <div className="text-center py-12 px-6 rounded-2xl bg-card border-border">
+              <h2 className="text-3xl md:font-display text-4xl font-bold tracking-tight mb-4">{t('services.cta.title')}</h2>
               <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
                 {t('services.cta.description')}
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/request-quote">
-                  <Button size="lg" className="bg-secondary hover:bg-secondary/90 glow-red-hover transition-smooth px-8 btn-hover-expand">
+                  <Button size="lg" className="bg-primary hover:bg-primary/90 transition-smooth px-8 btn-hover-expand">
                     {t('services.cta.requestQuote')}
                   </Button>
                 </Link>
@@ -402,3 +447,5 @@ export default function Services() {
     </div>
   );
 }
+
+

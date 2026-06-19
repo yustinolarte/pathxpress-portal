@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
+import { statusBadgeClass } from '@/lib/statusStyles';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,6 +15,7 @@ import { toast } from 'sonner';
 import { Search, Plus, RotateCcw, ArrowLeftRight, Package, Download, DollarSign } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
+import { DOMESTIC_SERVICE_TYPES, DEFAULT_PREFERRED_SLOTS, isPreferredTimeService, isSameDayPreferredService, todayStr, tomorrowStr } from '@/const';
 
 interface ReturnsExchangesPanelProps {
     codAllowed?: boolean;
@@ -79,6 +81,9 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         weight: '',
         serviceType: 'DOM',
         specialInstructions: '',
+        // Preferred Time delivery window
+        preferredDate: '',
+        preferredTime: '',
         // For exchange - new shipment details
         exchangeCustomerName: '',
         exchangeCustomerPhonePrefix: '+971',
@@ -193,6 +198,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                 weight: '',
                 serviceType: 'DOM',
                 specialInstructions: '',
+                preferredDate: '',
+                preferredTime: '',
                 exchangeCustomerName: '',
                 exchangeCustomerPhonePrefix: '+971',
                 exchangeCustomerPhone: '',
@@ -316,12 +323,17 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                 return;
             }
         }
+        if (isPreferredTimeService(manualForm.serviceType) && (!manualForm.preferredDate || !manualForm.preferredTime)) {
+            toast.error('Please select a preferred delivery date and time window');
+            return;
+        }
         if (!pickedLocationManual) {
             setManualLocationError(true);
             toast.error('Please place a map pin to confirm the pickup location.');
             return;
         }
         setManualLocationError(false);
+        const isPreferred = isPreferredTimeService(manualForm.serviceType);
         createManualMutation.mutate({
             ...manualForm,
             pickupPhone: `${manualForm.pickupPhonePrefix} ${manualForm.pickupPhone}`,
@@ -331,6 +343,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             exchangeCodRequired: manualForm.exchangeCodRequired,
             exchangeCodAmount: manualForm.exchangeCodRequired ? manualForm.exchangeCodAmount : undefined,
             exchangeCodCurrency: manualForm.exchangeCodCurrency,
+            preferredDeliveryDate: isPreferred ? manualForm.preferredDate : undefined,
+            preferredDeliveryTime: isPreferred ? manualForm.preferredTime : undefined,
             // @ts-ignore
             exchangeCustomerPhone: `${manualForm.exchangeCustomerPhonePrefix} ${manualForm.exchangeCustomerPhone}`,
             // @ts-ignore
@@ -340,27 +354,14 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         });
     };
 
-    const getStatusColor = (status: string) => {
-        const colors: Record<string, string> = {
-            pending_pickup: 'bg-yellow-500',
-            picked_up: 'bg-blue-500',
-            in_transit: 'bg-indigo-500',
-            out_for_delivery: 'bg-purple-500',
-            delivered: 'bg-green-500',
-            failed_delivery: 'bg-red-500',
-            returned: 'bg-gray-500',
-            returned_to_sender: 'bg-rose-600',
-            canceled: 'bg-slate-500',
-        };
-        return colors[status] || 'bg-gray-400';
-    };
+    const getStatusColor = (status: string) => statusBadgeClass(status);
 
     return (
         <div className="space-y-8">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div className="flex flex-col gap-1">
-                    <h2 className="text-3xl font-black tracking-tight text-foreground">Returns & Exchanges</h2>
+                    <h2 className="font-display text-3xl font-bold tracking-tight text-foreground">Returns & Exchanges</h2>
                     <p className="text-muted-foreground">Efficiently manage your reverse logistics and customer claims.</p>
                 </div>
                 <Button onClick={() => {
@@ -371,6 +372,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                         deliveryName: '', deliveryPhonePrefix: '+971', deliveryPhone: '',
                         deliveryAddress: '', deliveryCity: '', deliveryCountry: 'UAE',
                         pieces: 1, weight: '', serviceType: 'DOM', specialInstructions: '',
+                        preferredDate: '', preferredTime: '',
                         exchangeCustomerName: '', exchangeCustomerPhonePrefix: '+971',
                         exchangeCustomerPhone: '', exchangeAddress: '', exchangeCity: '',
                         exchangePieces: 1, exchangeWeight: '', exchangeCodRequired: 0,
@@ -384,7 +386,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             </div>
 
             {/* Search Section */}
-            <section className="bg-card rounded-2xl shadow-xl shadow-primary/5 border border-primary/10 overflow-hidden hover:shadow-2xl hover:border-primary/20 transition-all duration-300">
+            <section className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden hover:shadow-2xl hover:border-border transition-all duration-300">
                 <div className="p-8">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
@@ -406,7 +408,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                     value={searchWaybill}
                                     onChange={(e) => setSearchWaybill(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                                    className="w-full pl-12 pr-4 h-14 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm font-medium"
+                                    className="w-full pl-12 pr-4 h-14 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm font-medium"
                                 />
                             </div>
                         </div>
@@ -433,9 +435,9 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                             <div className="flex justify-between items-start mb-6">
                                 <div>
                                     <h4 className="font-bold text-lg">{foundOrder.waybillNumber}</h4>
-                                    <Badge className={`${getStatusColor(foundOrder.status)} border-none text-white mt-1 shadow-sm`}>
+                                    <span className={`${getStatusColor(foundOrder.status)} mt-1`}>
                                         {foundOrder.status.replace(/_/g, ' ').toUpperCase()}
-                                    </Badge>
+                                    </span>
                                 </div>
                                 <div className="text-right text-sm text-muted-foreground font-medium bg-background px-3 py-1 rounded-full border border-border">
                                     {new Date(foundOrder.createdAt).toLocaleDateString()}
@@ -461,7 +463,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         setCreateType('return');
                                         setCreateDialogOpen(true);
                                     }}
-                                    className="bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl h-12 px-6 flex-1 shadow-sm"
+                                    className="rounded-xl h-12 px-6 flex-1 shadow-sm"
                                 >
                                     <RotateCcw className="mr-2 h-4 w-4" />
                                     Create Return
@@ -472,7 +474,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         setCreateDialogOpen(true);
                                     }}
                                     variant="outline"
-                                    className="border-amber-500/50 text-amber-600 dark:text-amber-500 hover:bg-amber-500/10 rounded-xl h-12 px-6 flex-1 bg-background"
+                                    className="rounded-xl h-12 px-6 flex-1 bg-background"
                                 >
                                     <ArrowLeftRight className="mr-2 h-4 w-4" />
                                     Create Exchange
@@ -484,7 +486,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             </section>
 
             {/* Returns/Exchanges List */}
-            <section className="bg-card rounded-2xl shadow-xl shadow-primary/5 border border-primary/10 overflow-hidden min-h-[400px]">
+            <section className="bg-card rounded-2xl shadow-sm border border-border overflow-hidden min-h-[400px]">
                 <div className="p-6 border-b border-primary/5 flex justify-between items-center bg-primary/5">
                     <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
                         <span className="material-symbols-outlined text-primary">swap_horiz</span>
@@ -501,28 +503,28 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                     ) : returnsExchanges && returnsExchanges.length > 0 ? (
                         <Table>
                             <TableHeader>
-                                <TableRow className="bg-primary/5 hover:bg-primary/5 border-b border-primary/10">
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Waybill</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Type</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Original</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">From → To</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Status</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Date</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase">Source</TableHead>
-                                    <TableHead className="font-bold text-foreground tracking-wide text-xs uppercase text-right min-w-[100px]">Actions</TableHead>
+                                <TableRow className="bg-primary/5 hover:bg-primary/5 border-b border-border">
+                                    <TableHead className="">Waybill</TableHead>
+                                    <TableHead className="">Type</TableHead>
+                                    <TableHead className="">Original</TableHead>
+                                    <TableHead className="">From → To</TableHead>
+                                    <TableHead className="">Status</TableHead>
+                                    <TableHead className="">Date</TableHead>
+                                    <TableHead className="">Source</TableHead>
+                                    <TableHead className="text-right min-w-[100px]">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {returnsExchanges.map((order: any) => (
-                                    <TableRow key={order.id} className="cursor-pointer hover:bg-white/5 border-b border-primary/10 transition-colors group">
+                                    <TableRow key={order.id} className="cursor-pointer hover:bg-white/5 border-b border-border transition-colors group">
                                         <TableCell>
                                             <span className="font-mono font-medium text-foreground">{order.waybillNumber}</span>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={
                                                 order.orderType === 'return'
-                                                    ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30 font-semibold'
-                                                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 font-semibold'
+                                                    ? '!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent font-semibold'
+                                                    : '!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent font-semibold'
                                             }>
                                                 {order.orderType === 'return' ? (
                                                     <><span className="material-symbols-outlined text-[14px] mr-1">keyboard_return</span> Return</>
@@ -532,7 +534,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                             </Badge>
                                             {order.orderType === 'exchange' && order.exchangeWaybill && (
                                                 <div className="mt-2">
-                                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border-amber-200/50 cursor-pointer shadow-sm transition-colors"
+                                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5 !bg-[var(--st-amber-bg)] !text-[var(--st-amber)] cursor-pointer shadow-sm transition-colors"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             navigator.clipboard.writeText(order.exchangeWaybill);
@@ -556,20 +558,20 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className={`${getStatusColor(order.status)} border-none text-white shadow-sm`}>
+                                            <span className={getStatusColor(order.status)}>
                                                 {order.status.replace(/_/g, ' ').toUpperCase()}
-                                            </Badge>
+                                            </span>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground font-medium text-sm">
                                             {new Date(order.createdAt).toLocaleDateString()}
                                         </TableCell>
                                         <TableCell>
                                             {order.source === 'shopify' ? (
-                                                <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/30 text-[10px] h-5 px-1.5 font-bold shadow-sm">
+                                                <Badge variant="outline" className="!bg-[var(--st-green-bg)] !text-[var(--st-green)] !border-transparent text-[10px] h-5 px-1.5 font-bold shadow-sm">
                                                     <span className="material-symbols-outlined text-[12px] mr-0.5">storefront</span> Shopify
                                                 </Badge>
                                             ) : (
-                                                <Badge variant="outline" className="bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30 text-[10px] h-5 px-1.5 font-bold shadow-sm">
+                                                <Badge variant="outline" className="!bg-[var(--st-gray-bg)] !text-[var(--st-gray)] !border-transparent text-[10px] h-5 px-1.5 font-bold shadow-sm">
                                                     <span className="material-symbols-outlined text-[12px] mr-0.5">person</span> Manual
                                                 </Badge>
                                             )}
@@ -582,7 +584,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                         size="icon"
                                                         onClick={(e) => { e.stopPropagation(); handleEditCod(order); }}
                                                         title={order.codRequired ? 'Edit COD' : 'Add COD'}
-                                                        className="h-8 w-8 text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 hover:bg-green-500/10"
+                                                        className="h-8 w-8 text-[var(--st-green)] hover:opacity-80 hover:bg-[var(--st-green-bg)]"
                                                     >
                                                         <span className="material-symbols-outlined text-[18px]">payments</span>
                                                     </Button>
@@ -592,7 +594,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                     size="icon"
                                                     onClick={(e) => { e.stopPropagation(); generateWaybillPDF(order); }}
                                                     title="Download Waybill"
-                                                    className="h-8 w-8 text-slate-500 hover:text-primary hover:bg-primary/10"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
                                                 >
                                                     <span className="material-symbols-outlined text-[18px]">download</span>
                                                 </Button>
@@ -603,16 +605,16 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                             </TableBody>
                         </Table>
                     ) : (
-                        <div className="flex flex-col items-center justify-center text-center p-16 py-24 bg-background/30 rounded-xl border border-dashed border-primary/20 m-6">
-                            <div className="w-24 h-24 rounded-full bg-primary/5 border border-primary/10 flex items-center justify-center mb-6">
+                        <div className="flex flex-col items-center justify-center text-center p-16 py-24 bg-background/30 rounded-xl border border-dashed border-border m-6">
+                            <div className="w-24 h-24 rounded-full bg-primary/5 border border-border flex items-center justify-center mb-6">
                                 <span className="material-symbols-outlined text-primary/40 text-6xl">inventory_2</span>
                             </div>
-                            <h4 className="text-2xl font-black text-foreground mb-2">No returns or exchanges yet</h4>
+                            <h4 className="font-display text-2xl font-bold tracking-tight text-foreground mb-2">No returns or exchanges yet</h4>
                             <p className="text-muted-foreground max-w-sm mx-auto mb-8 font-medium">
                                 When you create a return or an exchange request, they will appear here so you can track their status.
                             </p>
                             <div className="flex gap-3">
-                                <Button variant="outline" className="border-primary/20 hover:bg-primary/5 text-foreground font-bold h-12 px-6 rounded-xl">
+                                <Button variant="outline" className="border-border hover:bg-primary/5 text-foreground font-bold h-12 px-6 rounded-xl">
                                     <span className="material-symbols-outlined mr-2 text-primary">download</span> Download Guide
                                 </Button>
                                 <Button variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 font-bold h-12 px-6 rounded-xl border-none">
@@ -626,9 +628,9 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 transition-all duration-300">
+                <div className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:-translate-y-1 transition-all duration-300">
                     <div className="flex items-center justify-between mb-6">
-                        <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--st-amber-bg)] flex items-center justify-center text-[var(--st-amber)]">
                             <span className="material-symbols-outlined text-2xl">pending_actions</span>
                         </div>
                         <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase bg-background px-2 py-1 rounded-md border border-border">Pending</span>
@@ -637,10 +639,10 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                     <p className="text-sm text-muted-foreground font-medium">Pending Approvals</p>
                 </div>
 
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
-                    <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
+                <div className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
+                    <div className="absolute -right-6 -top-6 w-24 h-24 bg-[var(--st-blue-bg)] rounded-full blur-2xl"></div>
                     <div className="flex items-center justify-between mb-6 relative">
-                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--st-blue-bg)] flex items-center justify-center text-[var(--st-blue)]">
                             <span className="material-symbols-outlined text-2xl">local_shipping</span>
                         </div>
                         <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase bg-background px-2 py-1 rounded-md border border-border">In Transit</span>
@@ -649,10 +651,10 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                     <p className="text-sm text-muted-foreground font-medium relative">Active Shipments</p>
                 </div>
 
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
-                    <div className="absolute w-24 h-24 bg-green-500/10 rounded-full blur-2xl -bottom-6 -right-6"></div>
+                <div className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:-translate-y-1 transition-all duration-300 relative overflow-hidden">
+                    <div className="absolute w-24 h-24 bg-[var(--st-green-bg)] rounded-full blur-2xl -bottom-6 -right-6"></div>
                     <div className="flex items-center justify-between mb-6 relative">
-                        <div className="w-12 h-12 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500">
+                        <div className="w-12 h-12 rounded-xl bg-[var(--st-green-bg)] flex items-center justify-center text-[var(--st-green)]">
                             <span className="material-symbols-outlined text-2xl">verified</span>
                         </div>
                         <span className="text-[10px] font-black tracking-widest text-muted-foreground uppercase bg-background px-2 py-1 rounded-md border border-border">Completed</span>
@@ -827,12 +829,12 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         </section>
                                     )}
 
-                                    <section className="bg-slate-900 text-white rounded-xl shadow-xl p-6 relative overflow-hidden">
+                                    <section className="band rounded-xl shadow-xl p-6 relative overflow-hidden">
                                         <h2 className="font-bold mb-4 flex items-center gap-2 relative z-10">
-                                            <span className="material-symbols-outlined text-blue-400">info</span>
+                                            <span className="material-symbols-outlined text-primary">info</span>
                                             Important
                                         </h2>
-                                        <p className="text-sm text-slate-300 relative z-10 leading-relaxed">
+                                        <p className="text-sm opacity-70 relative z-10 leading-relaxed">
                                             Please verify all details before confirming. Return shipping fees will be deducted from your prepaid balance according to your agreed rate card.
                                         </p>
                                         <div className="mt-8 flex flex-col gap-3 relative z-10">
@@ -874,7 +876,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                             {/* Left Column: Pickup & Delivery Forms */}
                             <div className="xl:col-span-2 space-y-8">
-                                <div className="bg-primary/5 border border-primary/20 p-4 rounded-xl flex items-center justify-between">
+                                <div className="bg-primary/5 border border-border p-4 rounded-xl flex items-center justify-between">
                                     <div>
                                         <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">Operation Type</Label>
                                         <div className="flex gap-4">
@@ -893,7 +895,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                 {/* Pickup Details */}
                                 <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
                                     <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>outbox</span>
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings:"'FILL' 1"}}>outbox</span>
                                         <h2 className="font-bold">Pickup Details (From)</h2>
                                     </div>
                                     <div className="p-6">
@@ -957,7 +959,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                 {/* Delivery Details */}
                                 <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
                                     <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>move_to_inbox</span>
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings:"'FILL' 1"}}>move_to_inbox</span>
                                         <h2 className="font-bold">Delivery Details (To)</h2>
                                     </div>
                                     <div className="p-6">
@@ -1010,7 +1012,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                             <div className="space-y-8">
                                 <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
                                     <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings: "'FILL' 1"}}>inventory</span>
+                                        <span className="material-symbols-outlined text-primary" style={{fontVariationSettings:"'FILL' 1"}}>inventory</span>
                                         <h2 className="font-bold">Package Information</h2>
                                     </div>
                                     <div className="p-6 space-y-4">
@@ -1031,10 +1033,39 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                 onChange={(e) => setManualForm({ ...manualForm, serviceType: e.target.value })}
                                                 className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
                                             >
-                                                <option value="DOM">Domestic</option>
-                                                <option value="SDD">Same Day</option>
+                                                {DOMESTIC_SERVICE_TYPES.map((svc) => (
+                                                    <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                ))}
                                             </select>
                                         </div>
+                                        {isPreferredTimeService(manualForm.serviceType) && (
+                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Delivery Date</Label>
+                                                    <Input
+                                                        type="date"
+                                                        min={isSameDayPreferredService(manualForm.serviceType) ? todayStr() : tomorrowStr()}
+                                                        max={isSameDayPreferredService(manualForm.serviceType) ? todayStr() : undefined}
+                                                        value={manualForm.preferredDate}
+                                                        onChange={(e) => setManualForm({ ...manualForm, preferredDate: e.target.value })}
+                                                        className="bg-background border-border"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Time Window</Label>
+                                                    <select
+                                                        value={manualForm.preferredTime}
+                                                        onChange={(e) => setManualForm({ ...manualForm, preferredTime: e.target.value })}
+                                                        className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                    >
+                                                        <option value="">Select time window</option>
+                                                        {DEFAULT_PREFERRED_SLOTS.map((slot) => (
+                                                            <option key={slot} value={slot}>{slot}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="space-y-1">
                                             <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Instructions</Label>
                                             <Textarea value={manualForm.specialInstructions} onChange={(e) => setManualForm({ ...manualForm, specialInstructions: e.target.value })} placeholder="Any special instructions..." rows={2} className="bg-background border-border" />
@@ -1044,9 +1075,9 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
                                 {manualForm.type === 'exchange' && (
                                     <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
-                                        <div className="px-6 py-4 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
-                                            <span className="material-symbols-outlined text-amber-500">local_shipping</span>
-                                            <h2 className="font-bold text-amber-600 dark:text-amber-500">New Item Shipment (To Customer)</h2>
+                                        <div className="px-6 py-4 bg-[var(--st-amber-bg)] border-b border-[var(--st-amber)]/20 flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-[var(--st-amber)]">local_shipping</span>
+                                            <h2 className="font-bold text-[var(--st-amber)]">New Item Shipment (To Customer)</h2>
                                         </div>
                                         <div className="p-6 space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
@@ -1095,8 +1126,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
                                             {codAllowed && (
                                                 <div className="pt-4 mt-4 border-t border-border">
-                                                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${manualForm.exchangeCodRequired === 1 ? 'border-amber-500 bg-amber-500/10' : 'border-border hover:bg-muted'}`}>
-                                                        <input className="text-amber-500 focus:ring-amber-500 w-4 h-4" type="checkbox" checked={manualForm.exchangeCodRequired === 1} onChange={(e) => setManualForm({ ...manualForm, exchangeCodRequired: e.target.checked ? 1 : 0 })} />
+                                                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${manualForm.exchangeCodRequired === 1 ? 'border-[var(--st-amber)] bg-[var(--st-amber-bg)]' : 'border-border hover:bg-muted'}`}>
+                                                        <input className="accent-[var(--st-amber)] w-4 h-4" type="checkbox" checked={manualForm.exchangeCodRequired === 1} onChange={(e) => setManualForm({ ...manualForm, exchangeCodRequired: e.target.checked ? 1 : 0 })} />
                                                         <div className="ml-3">
                                                             <div className="font-bold text-sm">Require COD on New Item</div>
                                                             <div className="text-[11px] text-muted-foreground">Collect payment for exchange processing</div>
@@ -1125,9 +1156,9 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                     </section>
                                 )}
 
-                                <section className="bg-slate-900 text-white rounded-xl shadow-xl p-6 relative overflow-hidden">
+                                <section className="band rounded-xl shadow-xl p-6 relative overflow-hidden">
                                     <h2 className="font-bold mb-4 flex items-center gap-2 relative z-10">
-                                        <span className="material-symbols-outlined text-blue-400">check_circle</span>
+                                        <span className="material-symbols-outlined text-primary">check_circle</span>
                                         Confirm
                                     </h2>
                                     <div className="mt-8 flex flex-col gap-3 relative z-10">
@@ -1153,12 +1184,12 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
             {/* Edit COD Dialog */}
             <Dialog open={editCodDialogOpen} onOpenChange={setEditCodDialogOpen}>
-                <DialogContent className="glass-strong !w-[95vw] !max-w-[500px] p-0 gap-0 border-white/10 max-h-[90vh] overflow-y-auto">
-                    <div className="w-full h-1.5 bg-gradient-to-r from-green-500 to-emerald-600" />
+                <DialogContent className="bg-card border-border !w-[95vw] !max-w-[500px] p-0 gap-0  max-h-[90vh] overflow-y-auto">
+                    <div className="w-full h-1.5 bg-primary" />
                     <div className="p-6">
                         <DialogHeader className="mb-5">
                             <DialogTitle className="text-xl font-bold flex items-center gap-3">
-                                <DollarSign className="h-6 w-6 text-green-500" />
+                                <DollarSign className="h-6 w-6 text-primary" />
                                 {editCodOrder?.codRequired ? 'Edit COD' : 'Add COD'}
                             </DialogTitle>
                             <DialogDescription>
@@ -1173,13 +1204,13 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                     id="edit-cod-toggle"
                                     checked={editCodForm.codRequired === 1}
                                     onChange={(e) => setEditCodForm({ ...editCodForm, codRequired: e.target.checked ? 1 : 0 })}
-                                    className="rounded bg-white/5 border-white/10"
+                                    className="rounded bg-white/5 border-border"
                                 />
                                 <Label htmlFor="edit-cod-toggle" className="cursor-pointer text-foreground">Enable COD</Label>
                             </div>
 
                             {editCodForm.codRequired === 1 && (
-                                <div className="grid grid-cols-2 gap-3 p-4 bg-white/5 rounded-lg border border-white/10">
+                                <div className="grid grid-cols-2 gap-3 p-4 bg-white/5 rounded-lg border border-border">
                                     <div>
                                         <Label className="text-xs">Amount *</Label>
                                         <Input
@@ -1189,7 +1220,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                             value={editCodForm.codAmount}
                                             onChange={(e) => setEditCodForm({ ...editCodForm, codAmount: e.target.value })}
                                             placeholder="0.00"
-                                            className="bg-white/5 border-white/10 font-mono"
+                                            className="bg-white/5 border-border font-mono"
                                         />
                                     </div>
                                     <div>
@@ -1198,7 +1229,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                             value={editCodForm.codCurrency}
                                             onValueChange={(value) => setEditCodForm({ ...editCodForm, codCurrency: value })}
                                         >
-                                            <SelectTrigger className="bg-white/5 border-white/10">
+                                            <SelectTrigger className="bg-white/5 border-border">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -1212,14 +1243,13 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                             )}
                         </div>
 
-                        <DialogFooter className="mt-6 border-t border-white/10 pt-4">
-                            <Button variant="outline" onClick={() => setEditCodDialogOpen(false)} className="bg-white/5 border-white/10 hover:bg-white/10">
+                        <DialogFooter className="mt-6 border-t border-border pt-4">
+                            <Button variant="outline" onClick={() => setEditCodDialogOpen(false)} className="bg-white/5 border-border hover:bg-white/10">
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handleSaveCod}
                                 disabled={updateCodMutation.isPending}
-                                className="bg-green-500 hover:bg-green-600"
                             >
                                 {updateCodMutation.isPending ? 'Saving...' : 'Save COD'}
                             </Button>
@@ -1230,3 +1260,6 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         </div>
     );
 }
+
+
+

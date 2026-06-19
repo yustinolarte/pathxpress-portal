@@ -127,14 +127,14 @@ export default function CustomerReports({ companyName }: CustomerReportsProps) {
 
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Reports & Exports</h2>
+            <h2 className="font-display text-2xl font-bold tracking-tight">Reports & Exports</h2>
 
             <div className="grid md:grid-cols-2 gap-6">
                 {/* Monthly Orders Report */}
-                <Card className="glass-strong border-blue-500/20">
+                <Card className="bg-card border-border">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <FileText className="h-5 w-5 text-blue-400" />
+                            <FileText className="h-5 w-5 text-primary" />
                             Monthly Orders Report
                         </CardTitle>
                         <CardDescription>
@@ -182,10 +182,10 @@ export default function CustomerReports({ companyName }: CustomerReportsProps) {
                 </Card>
 
                 {/* COD Report */}
-                <Card className="glass-strong border-yellow-500/20">
+                <Card className="bg-card border-border">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <FileText className="h-5 w-5 text-yellow-400" />
+                            <FileText className="h-5 w-5 text-primary" />
                             COD Report
                         </CardTitle>
                         <CardDescription>
@@ -222,10 +222,10 @@ export default function CustomerReports({ companyName }: CustomerReportsProps) {
             </div>
 
             {/* Export All Orders */}
-            <Card className="glass-strong border-green-500/20">
+            <Card className="bg-card border-border">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <Download className="h-5 w-5 text-green-400" />
+                        <Download className="h-5 w-5 text-primary" />
                         Export All Orders
                     </CardTitle>
                     <CardDescription>
@@ -300,3 +300,4 @@ export default function CustomerReports({ companyName }: CustomerReportsProps) {
         </div>
     );
 }
+

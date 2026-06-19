@@ -76,14 +76,14 @@ export default function CustomerRateCalculator() {
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col gap-1 mb-8">
-        <h2 className="text-3xl font-black tracking-tight text-foreground">Rate Calculator</h2>
+        <h2 className="font-display text-3xl font-bold tracking-tight text-foreground">Rate Calculator</h2>
         <p className="text-muted-foreground text-lg max-w-2xl">Compare domestic shipping services and calculate estimated costs for your parcels instantly.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Calculator Section */}
-        <div className="lg:col-span-2 bg-card rounded-2xl shadow-xl shadow-primary/5 border border-primary/10 overflow-hidden">
-          <div className="p-8 border-b border-primary/10 bg-primary/5">
+        <div className="lg:col-span-2 bg-card rounded-2xl shadow-sm border border-border overflow-hidden">
+          <div className="p-8 border-b border-border bg-primary/5">
             <h3 className="text-xl font-bold flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">calculate</span>
               Shipment Details
@@ -101,7 +101,7 @@ export default function CustomerRateCalculator() {
                     <span className="material-symbols-outlined text-muted-foreground group-focus-within:text-primary transition-colors text-lg">local_shipping</span>
                   </div>
                   <Select value={serviceType} onValueChange={(value: 'DOM' | 'SDD' | 'BULLET') => setServiceType(value)}>
-                    <SelectTrigger className="w-full pl-10 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
+                    <SelectTrigger className="w-full pl-10 h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -112,12 +112,12 @@ export default function CustomerRateCalculator() {
                   </Select>
                 </div>
                 {serviceType === 'SDD' && (
-                  <p className="text-xs text-amber-500 font-medium ml-1">
+                  <p className="text-xs font-medium ml-1" style={{ color: 'var(--st-amber)' }}>
                     Cut-off time subject to assigned schedule | Max 10kg
                   </p>
                 )}
                 {serviceType === 'BULLET' && (
-                  <p className="text-xs text-amber-500 font-medium ml-1">
+                  <p className="text-xs font-medium ml-1" style={{ color: 'var(--st-amber)' }}>
                     Express hours delivery | City limits
                   </p>
                 )}
@@ -131,12 +131,12 @@ export default function CustomerRateCalculator() {
                     <span className="material-symbols-outlined text-muted-foreground group-focus-within:text-primary transition-colors text-lg">scale</span>
                   </div>
                   <Input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="0.0"
                     value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    className="w-full pl-10 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); setWeight(v); }}
+                    className="w-full pl-10 h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
                   />
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                     <span className="text-sm text-muted-foreground font-bold">KG</span>
@@ -150,7 +150,7 @@ export default function CustomerRateCalculator() {
               <div className="space-y-3">
                 <Label className="text-sm font-bold text-foreground ml-1">Destination Emirate <span className="text-muted-foreground font-normal">(for zone-based pricing)</span></Label>
                 <Select value={emirate} onValueChange={setEmirate}>
-                  <SelectTrigger className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
+                  <SelectTrigger className="w-full h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium">
                     <SelectValue placeholder="Select emirate..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -167,7 +167,7 @@ export default function CustomerRateCalculator() {
             )}
 
             {/* Dimensions (Volumetric Weight) */}
-            <div className="space-y-3 pt-6 border-t border-primary/10">
+            <div className="space-y-3 pt-6 border-t border-border">
               <div className="flex justify-between items-end mb-4">
                 <Label className="text-sm font-bold text-foreground ml-1">Dimensions <span className="text-muted-foreground font-normal">(Optional for precise quoting)</span></Label>
               </div>
@@ -176,10 +176,12 @@ export default function CustomerRateCalculator() {
                 <div className="relative group">
                   <span className="absolute -top-2.5 left-3 bg-card px-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest z-10">Length</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={dimL}
-                    onChange={(e) => setDimL(e.target.value)}
-                    className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setDimL(v); }}
+                    className="w-full h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
                     placeholder="0"
                   />
                   <span className="absolute right-3 top-3 text-xs text-muted-foreground font-bold">CM</span>
@@ -187,10 +189,12 @@ export default function CustomerRateCalculator() {
                 <div className="relative group">
                   <span className="absolute -top-2.5 left-3 bg-card px-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest z-10">Width</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={dimW}
-                    onChange={(e) => setDimW(e.target.value)}
-                    className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setDimW(v); }}
+                    className="w-full h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
                     placeholder="0"
                   />
                   <span className="absolute right-3 top-3 text-xs text-muted-foreground font-bold">CM</span>
@@ -198,10 +202,12 @@ export default function CustomerRateCalculator() {
                 <div className="relative group">
                   <span className="absolute -top-2.5 left-3 bg-card px-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest z-10">Height</span>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={dimH}
-                    onChange={(e) => setDimH(e.target.value)}
-                    className="w-full h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
+                    onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setDimH(v); }}
+                    className="w-full h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium text-center"
                     placeholder="0"
                   />
                   <span className="absolute right-3 top-3 text-xs text-muted-foreground font-bold">CM</span>
@@ -209,7 +215,7 @@ export default function CustomerRateCalculator() {
               </div>
 
               {getVolumetricWeight() > 0 && (
-                <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/10 flex items-center justify-between">
+                <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-border flex items-center justify-between">
                   <p className="text-sm font-medium text-muted-foreground">Volumetric Weight</p>
                   <p className="font-bold">{getVolumetricWeight().toFixed(2)} kg</p>
                 </div>
@@ -217,8 +223,8 @@ export default function CustomerRateCalculator() {
             </div>
 
             {/* COD Options */}
-            <div className="space-y-4 pt-6 border-t border-primary/10">
-              <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-primary/10 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => setCodRequired(!codRequired)}>
+            <div className="space-y-4 pt-6 border-t border-border">
+              <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-border hover:border-primary/30 transition-colors cursor-pointer" onClick={() => setCodRequired(!codRequired)}>
                 <Checkbox
                   id="cod"
                   checked={codRequired}
@@ -241,12 +247,12 @@ export default function CustomerRateCalculator() {
                       <span className="text-muted-foreground font-bold">AED</span>
                     </div>
                     <Input
-                      type="number"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       placeholder="0.00"
                       value={codAmount}
-                      onChange={(e) => setCodAmount(e.target.value)}
-                      className="w-full max-w-sm pl-12 h-12 bg-background/50 border-2 border-primary/10 rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
+                      onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); setCodAmount(v); }}
+                      className="w-full max-w-sm pl-12 h-12 bg-background/50 border-2 border-border rounded-xl focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
                     />
                   </div>
                 </div>
@@ -271,50 +277,50 @@ export default function CustomerRateCalculator() {
 
             {/* Results Component Integrated Here for Mobile, or absolute for Desktop */}
             {calculatedRate && (
-              <div className="mt-8 p-6 bg-gradient-to-br from-green-500/10 to-emerald-500/5 rounded-2xl border-2 border-green-500/20 shadow-lg animate-in slide-in-from-bottom-4">
-                <div className="flex items-center gap-3 text-green-600 dark:text-green-500 font-black text-xl mb-6">
-                  <span className="material-symbols-outlined text-3xl">check_circle</span>
+              <div className="mt-8 p-6 rounded-2xl band shadow-lg animate-in slide-in-from-bottom-4">
+                <div className="flex items-center gap-3 font-display font-bold text-xl mb-6">
+                  <span className="material-symbols-outlined text-3xl text-primary">check_circle</span>
                   <span>Quote Summary</span>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex justify-between items-center text-sm">
-                    <span className="font-semibold text-muted-foreground">
+                    <span className="font-semibold opacity-70">
                       Base Rate (0-{calculatedRate.appliedTier?.maxWeight || 5}kg)
                     </span>
-                    <span className="font-bold text-foreground">{calculatedRate.baseRate.toFixed(2)} AED</span>
+                    <span className="money">{calculatedRate.baseRate.toFixed(2)} AED</span>
                   </div>
 
                   {calculatedRate.additionalKgCharge > 0 && (
                     <div className="flex justify-between items-center text-sm">
-                      <span className="font-semibold text-muted-foreground">
+                      <span className="font-semibold opacity-70">
                         Overweight Charge
                       </span>
-                      <span className="font-bold text-foreground">+{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
+                      <span className="money">+{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
                     </div>
                   )}
 
                   {codRequired && calculatedCODFee > 0 && (
                     <div className="flex justify-between items-center text-sm">
-                      <span className="font-semibold text-muted-foreground">COD Processing Fee</span>
-                      <span className="font-bold text-amber-500">
+                      <span className="font-semibold opacity-70">COD Processing Fee</span>
+                      <span className="money" style={{ color: 'var(--st-amber)' }}>
                         +{calculatedCODFee.toFixed(2)} AED
                       </span>
                     </div>
                   )}
 
-                  <div className="h-px w-full bg-green-500/20 my-4"></div>
+                  <div className="h-px w-full bg-current opacity-15 my-4"></div>
 
                   <div className="flex justify-between items-end">
                     <div>
-                      <span className="font-black uppercase tracking-widest text-xs text-green-600/70 dark:text-green-500/70 block mb-1">Total Shipping Cost</span>
-                      <span className="text-4xl font-black text-green-600 dark:text-green-500 shadow-sm">
+                      <span className="font-mono uppercase tracking-widest text-xs opacity-60 block mb-1">Total Shipping Cost</span>
+                      <span className="font-display text-4xl font-bold tracking-tight">
                         {(calculatedRate.totalRate + calculatedCODFee).toFixed(2)}
                       </span>
-                      <span className="text-lg font-bold text-green-600/70 dark:text-green-500/70 ml-1">AED</span>
+                      <span className="text-lg font-bold opacity-60 ml-1">AED</span>
                     </div>
                     {calculatedRate.usingManualTier && (
-                      <div className="px-3 py-1 bg-blue-500/10 text-blue-500 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                      <div className="px-3 py-1 bg-white/10 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1">
                         <span className="material-symbols-outlined text-xs">verified</span> Standard Tier
                       </div>
                     )}
@@ -339,52 +345,52 @@ export default function CustomerRateCalculator() {
             </p>
             <ul className="space-y-3">
               <li className="flex items-center gap-3 text-sm font-medium text-foreground">
-                <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                <span className="material-symbols-outlined text-[var(--st-green)] text-[18px]">check_circle</span>
                 Next-business-day delivery in UAE
               </li>
               <li className="flex items-center gap-3 text-sm font-medium text-foreground">
-                <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                <span className="material-symbols-outlined text-[var(--st-green)] text-[18px]">check_circle</span>
                 Base weight: 5kg
               </li>
               <li className="flex items-center gap-3 text-sm font-medium text-foreground">
-                <span className="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                <span className="material-symbols-outlined text-[var(--st-green)] text-[18px]">check_circle</span>
                 Volume-based discounts
               </li>
             </ul>
           </div>
 
-          <div className="bg-card rounded-2xl p-6 shadow-xl shadow-primary/5 border border-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
+          <div className="bg-card rounded-2xl p-6 shadow-sm border border-border hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
             <div className="absolute -right-6 -top-6 w-24 h-24 bg-primary/10 rounded-full blur-2xl"></div>
             <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-6 relative">
               <span className="material-symbols-outlined text-2xl">bolt</span>
             </div>
             <h3 className="text-xl font-bold mb-2">Same-Day Delivery</h3>
             <p className="text-sm text-muted-foreground mb-4">Urgent shipments delivered on the same day within city limits.</p>
-            <div className="space-y-3 pt-4 border-t border-primary/10 relative">
+            <div className="space-y-3 pt-4 border-t border-border relative">
               <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Same Day Guarantee</div>
               <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Guaranteed delivery until 11:30 PM</div>
               <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Premium Support</div>
             </div>
           </div>
 
-          <div className="bg-card rounded-2xl p-6 shadow-xl shadow-primary/5 border border-primary/10 hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
-            <div className="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl"></div>
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-6 relative">
+          <div className="bg-card rounded-2xl p-6 shadow-sm border border-border hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 relative overflow-hidden">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-primary/10 rounded-full blur-2xl"></div>
+            <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-6 relative">
               <span className="material-symbols-outlined text-2xl">rocket_launch</span>
             </div>
             <h3 className="text-xl font-bold mb-2">Bullet Service</h3>
             <p className="text-sm text-muted-foreground mb-4">Ultra-fast express delivery within hours, city limits.</p>
-            <div className="space-y-3 pt-4 border-t border-amber-500/10 relative">
-              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-amber-500 text-lg">check_circle</span> Express Hours Delivery</div>
-              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-amber-500 text-lg">check_circle</span> Priority Handling</div>
-              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-amber-500 text-lg">check_circle</span> Real-Time Tracking</div>
+            <div className="space-y-3 pt-4 border-t border-border relative">
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Express Hours Delivery</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Priority Handling</div>
+              <div className="flex items-center gap-3 text-sm text-foreground"><span className="material-symbols-outlined text-primary text-lg">check_circle</span> Real-Time Tracking</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Footer Info */}
-      <div className="flex items-center gap-4 bg-primary/5 border border-primary/10 p-5 rounded-xl shadow-sm">
+      <div className="flex items-center gap-4 bg-primary/5 border border-border p-5 rounded-xl shadow-sm">
         <span className="material-symbols-outlined text-primary text-xl">info</span>
         <p className="text-sm text-muted-foreground font-medium">
           Rates are estimated based on provided details. Actual charges may vary after physical inspection and weight verification at the hub.
@@ -393,3 +399,4 @@ export default function CustomerRateCalculator() {
     </div>
   );
 }
+

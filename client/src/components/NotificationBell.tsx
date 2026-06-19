@@ -74,9 +74,9 @@ export default function NotificationBell() {
 
     const getTypeColor = (type: string) => {
         switch (type) {
-            case 'ORDER_UPDATE': return 'text-blue-400';
-            case 'INVOICE_GENERATED': return 'text-emerald-400';
-            case 'COD_UPDATE': return 'text-amber-400';
+            case 'ORDER_UPDATE': return 'text-[var(--st-blue)]';
+            case 'INVOICE_GENERATED': return 'text-[var(--st-green)]';
+            case 'COD_UPDATE': return 'text-[var(--st-amber)]';
             default: return 'text-muted-foreground';
         }
     };
@@ -86,7 +86,7 @@ export default function NotificationBell() {
             {/* Bell Button */}
             <button
                 onClick={() => setOpen(!open)}
-                className="p-2.5 rounded-xl bg-background text-muted-foreground hover:text-primary transition-colors relative border border-primary/10 hover:border-primary/30"
+                className="p-2.5 rounded-xl bg-background text-muted-foreground hover:text-primary transition-colors relative border border-border hover:border-primary/30"
             >
                 <span className="material-symbols-outlined">notifications</span>
                 {unreadCount > 0 && (
@@ -98,9 +98,9 @@ export default function NotificationBell() {
 
             {/* Dropdown */}
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-primary/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                     {/* Header */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-primary/10">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                         <h3 className="text-sm font-semibold">Notifications</h3>
                         {unreadCount > 0 && (
                             <button
@@ -152,3 +152,4 @@ export default function NotificationBell() {
         </div>
     );
 }
+

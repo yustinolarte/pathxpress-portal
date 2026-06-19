@@ -43,7 +43,7 @@ export default function TrackShipment() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Header */}
-      <header className="border-b border-white/10 bg-black/20 backdrop-blur-sm">
+      <header className="border-b border-border bg-black/20 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src={APP_LOGO} alt="Logo" className="h-8 w-8" />
@@ -63,7 +63,7 @@ export default function TrackShipment() {
       <main className="container mx-auto px-4 py-12">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Search Section */}
-          <Card className="glass-strong border-white/10">
+          <Card className="bg-card border-border border-border">
             <CardHeader className="text-center">
               <div className="flex justify-center mb-4">
                 <div className="p-4 rounded-full bg-blue-500/20">
@@ -81,7 +81,7 @@ export default function TrackShipment() {
                   placeholder="Enter waybill number (e.g., PX20240001)"
                   value={waybillNumber}
                   onChange={(e) => setWaybillNumber(e.target.value)}
-                  className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-gray-400"
+                  className="flex-1 bg-white/5 border-border text-white placeholder:text-gray-400"
                 />
                 <Button type="submit" disabled={isLoading} className="bg-blue-600 hover:bg-blue-700">
                   <Search className="h-4 w-4 mr-2" />
@@ -93,7 +93,7 @@ export default function TrackShipment() {
 
           {/* Error State */}
           {error && (
-            <Card className="glass-strong border-red-500/20 bg-red-500/10">
+            <Card className="bg-card border-border border-red-500/20 bg-red-500/10">
               <CardContent className="pt-6">
                 <p className="text-center text-red-300">
                   {error.message || 'Shipment not found. Please check your waybill number and try again.'}
@@ -106,7 +106,7 @@ export default function TrackShipment() {
           {data && (
             <div className="space-y-6">
               {/* Shipment Info Card */}
-              <Card className="glass-strong border-white/10">
+              <Card className="bg-card border-border border-border">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-white">Shipment Details</CardTitle>
@@ -171,7 +171,7 @@ export default function TrackShipment() {
               </Card>
 
               {/* Tracking Timeline */}
-              <Card className="glass-strong border-white/10">
+              <Card className="bg-card border-border border-border">
                 <CardHeader>
                   <CardTitle className="text-white">Tracking History</CardTitle>
                   <CardDescription className="text-gray-300">
@@ -225,7 +225,7 @@ export default function TrackShipment() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 bg-black/20 backdrop-blur-sm mt-12">
+      <footer className="border-t border-border bg-black/20 backdrop-blur-sm mt-12">
         <div className="container mx-auto px-4 py-6 text-center text-gray-400 text-sm">
           <p>© 2025 {APP_TITLE}. All rights reserved.</p>
           <p className="mt-2">Need help? Contact us at support@pathxpress.net or +971 522803433</p>
@@ -234,3 +234,5 @@ export default function TrackShipment() {
     </div>
   );
 }
+
+

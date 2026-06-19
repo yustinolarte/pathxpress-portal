@@ -345,7 +345,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
         {/* Banner de seleccionados */}
         {selectedOrders.length > 0 && (
-          <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 flex items-center gap-2">
+          <div className="p-3 rounded-lg bg-primary/10 border border-border flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
             <span className="text-sm text-primary font-medium">
               {selectedOrders.length} orden{selectedOrders.length > 1 ? 'es' : ''} seleccionada{selectedOrders.length > 1 ? 's' : ''}
@@ -481,7 +481,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
           </p>
 
           {/* Ruta */}
-          <div className="space-y-1 text-sm border-b border-white/10 pb-3">
+          <div className="space-y-1 text-sm border-b border-border pb-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Ruta</p>
             <div className="flex justify-between">
               <span className="text-slate-400">ID</span>
@@ -500,7 +500,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
           </div>
 
           {/* Conductor */}
-          <div className="space-y-1 text-sm border-b border-white/10 pb-3">
+          <div className="space-y-1 text-sm border-b border-border pb-3">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Conductor</p>
             <div className="flex justify-between">
               <span className="text-slate-400">Conductor</span>
@@ -559,7 +559,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong !w-[95vw] !max-w-[920px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
+      <DialogContent className="bg-card border-border !w-[95vw] !max-w-[920px] max-h-[95vh] overflow-y-auto p-0 gap-0 ">
         <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600 flex-shrink-0" />
 
         <div className="p-6 pb-0">
@@ -656,3 +656,4 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
     </Dialog>
   );
 }
+

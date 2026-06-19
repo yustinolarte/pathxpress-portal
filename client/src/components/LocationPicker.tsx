@@ -40,13 +40,44 @@ interface LocationPickerProps {
     onLocationPicked: (location: PickedLocation | null) => void;
     onAddressParsed?: (parsed: ParsedAddress) => void;
     /** When provided, autocomplete attaches to this external input and the internal search bar is hidden */
-    searchInputRef?: React.RefObject<HTMLInputElement>;
+    searchInputRef?: React.RefObject<HTMLInputElement | null>;
     initialLocation?: { lat: number; lng: number };
     className?: string;
 }
 
 // Dubai default center
 const DUBAI_CENTER = { lat: 25.2048, lng: 55.2708 };
+
+/**
+ * Parse Google address_components into our form fields. Shared by the
+ * Autocomplete path (search) and the reverse-geocode path (map click / drag),
+ * so dropping a pin auto-fills the same fields a search would.
+ * @param fallbackName place.name from Autocomplete (e.g. "Maison VI Residences");
+ *   reverse-geocoding has no equivalent, so for villas without a street number
+ *   the building field is left empty for manual entry.
+ */
+function parseAddressComponents(
+    components: google.maps.GeocoderAddressComponent[],
+    fallbackName?: string,
+): ParsedAddress {
+    const get = (type: string) =>
+        components.find(c => c.types.includes(type))?.long_name;
+    const area =
+        get('sublocality_level_1') ??
+        get('sublocality') ??
+        get('neighborhood') ??
+        get('route');
+    // Prefer the selected place's name (e.g. "Maison VI Residences"), then a named
+    // premise, then a street/plot number. Villas usually have none → left empty.
+    const building = fallbackName ?? get('premise') ?? get('street_number') ?? undefined;
+    return {
+        streetNumber: building,
+        street: get('route'),
+        area,
+        city: get('locality') ?? get('administrative_area_level_2'),
+        emirate: get('administrative_area_level_1'),
+    };
+}
 
 export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputRef, initialLocation, className }: LocationPickerProps) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -95,7 +126,7 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
             if (targetInput) {
                 const ac = new window.google.maps.places.Autocomplete(targetInput, {
                     componentRestrictions: { country: 'ae' },
-                    fields: ['geometry', 'formatted_address', 'address_components', 'name'],
+                    fields: ['geometry', 'formatted_address', 'address_components', 'name', 'types'],
                 });
                 autocompleteRef.current = ac;
                 ac.addListener('place_changed', () => {
@@ -104,27 +135,18 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
                         const pos = place.geometry.location.toJSON();
                         map.setCenter(pos);
                         map.setZoom(17);
-                        placeMarker(map, pos, true);
+                        // Autocomplete already carries the full address — place the pin without a
+                        // reverse-geocode, which would otherwise overwrite the building name.
+                        placeMarker(map, pos, false);
                         if (place.formatted_address) {
                             setPickedAddress(place.formatted_address);
                         }
                         if (onAddressParsed && place.address_components) {
-                            const get = (type: string) =>
-                                place.address_components!.find(c => c.types.includes(type))?.long_name;
-                            const area =
-                                get('sublocality_level_1') ??
-                                get('sublocality') ??
-                                get('neighborhood') ??
-                                get('route');
-                            // Use place.name as building when no street_number exists (e.g. "Maison VI Residences")
-                            const building = get('street_number') ?? (place as any).name ?? undefined;
-                            onAddressParsed({
-                                streetNumber: building,
-                                street: get('route'),
-                                area,
-                                city: get('locality') ?? get('administrative_area_level_2'),
-                                emirate: get('administrative_area_level_1'),
-                            });
+                            // Use the place's own name as the building only for a named
+                            // building/POI, not when a plain street/route was selected.
+                            const namedTypes = ['premise', 'subpremise', 'establishment', 'point_of_interest'];
+                            const buildingName = place.types?.some(t => namedTypes.includes(t)) ? place.name : undefined;
+                            onAddressParsed(parseAddressComponents(place.address_components, buildingName));
                         }
                     }
                 });
@@ -166,9 +188,19 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
             return;
         }
         geocoderRef.current.geocode({ location: pos }, (results, status) => {
-            const addr = status === 'OK' && results?.[0] ? results[0].formatted_address : undefined;
+            const ok = status === 'OK' && results?.length ? results : undefined;
+            const addr = ok?.[0]?.formatted_address;
             if (addr) setPickedAddress(addr);
             onLocationPicked({ latitude: String(pos.lat), longitude: String(pos.lng), address: addr });
+            if (onAddressParsed && ok) {
+                // Reverse geocoding returns several results (most specific first). A single
+                // result often misses route/sublocality, so merge components across all of
+                // them and let parseAddressComponents pick the first match per field.
+                const merged = ok.flatMap(r => r.address_components ?? []);
+                // A dropped pin can't reliably name a building (Google returns plot numbers
+                // like "p12"), so leave building/villa empty for the customer to enter.
+                onAddressParsed({ ...parseAddressComponents(merged), streetNumber: undefined });
+            }
         });
     }
 

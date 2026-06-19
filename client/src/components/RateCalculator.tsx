@@ -138,7 +138,7 @@ export default function RateCalculator() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       {/* Calculator Form */}
-      <Card className="glass-strong border-border">
+      <Card className="bg-card border-border border-border">
         <CardHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
@@ -158,7 +158,7 @@ export default function RateCalculator() {
               <SelectTrigger id="origin" className={errors.originEmirate ? 'border-red-500' : ''}>
                 <SelectValue placeholder={t('pricing.calculator.originEmirate')} />
               </SelectTrigger>
-              <SelectContent className="glass-strong">
+              <SelectContent className="bg-card border-border">
                 {emirates.map((emirate) => (
                   <SelectItem key={emirate} value={emirate}>
                     {t(`pricing.calculator.emirates.${emirate}`)}
@@ -176,7 +176,7 @@ export default function RateCalculator() {
               <SelectTrigger id="destination" className={errors.destinationEmirate ? 'border-red-500' : ''}>
                 <SelectValue placeholder={t('pricing.calculator.destinationEmirate')} />
               </SelectTrigger>
-              <SelectContent className="glass-strong">
+              <SelectContent className="bg-card border-border">
                 {emirates.map((emirate) => (
                   <SelectItem key={emirate} value={emirate}>
                     {t(`pricing.calculator.emirates.${emirate}`)}
@@ -229,12 +229,11 @@ export default function RateCalculator() {
             <Label htmlFor="weight">{t('pricing.calculator.actualWeight')}</Label>
             <Input
               id="weight"
-              type="number"
-              step="0.1"
-              min="0.1"
+              type="text"
+              inputMode="decimal"
               placeholder="0.0"
               value={actualWeight}
-              onChange={(e) => setActualWeight(e.target.value)}
+              onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); setActualWeight(v); }}
               className={errors.actualWeight ? 'border-red-500' : ''}
             />
             {errors.actualWeight && <p className="text-xs text-red-500">{errors.actualWeight}</p>}
@@ -246,36 +245,36 @@ export default function RateCalculator() {
             <div className="grid grid-cols-3 gap-2">
               <div>
                 <Input
-                  type="number"
-                  step="1"
-                  min="1"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder={t('pricing.calculator.length')}
                   value={length}
-                  onChange={(e) => setLength(e.target.value)}
+                  onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setLength(v); }}
                   className={errors.length ? 'border-red-500' : ''}
                 />
                 {errors.length && <p className="text-xs text-red-500 mt-1">{errors.length}</p>}
               </div>
               <div>
                 <Input
-                  type="number"
-                  step="1"
-                  min="1"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder={t('pricing.calculator.width')}
                   value={width}
-                  onChange={(e) => setWidth(e.target.value)}
+                  onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setWidth(v); }}
                   className={errors.width ? 'border-red-500' : ''}
                 />
                 {errors.width && <p className="text-xs text-red-500 mt-1">{errors.width}</p>}
               </div>
               <div>
                 <Input
-                  type="number"
-                  step="1"
-                  min="1"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder={t('pricing.calculator.height')}
                   value={height}
-                  onChange={(e) => setHeight(e.target.value)}
+                  onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setHeight(v); }}
                   className={errors.height ? 'border-red-500' : ''}
                 />
                 {errors.height && <p className="text-xs text-red-500 mt-1">{errors.height}</p>}
@@ -296,7 +295,7 @@ export default function RateCalculator() {
       {/* Result Display */}
       <div>
         {result ? (
-          <Card className="glass-strong border-primary animate-fade-in">
+          <Card className="bg-card border-border border-primary animate-fade-in">
             <CardHeader>
               <CardTitle className="text-3xl text-primary">
                 {result.totalPrice.toFixed(2)} AED
@@ -342,7 +341,7 @@ export default function RateCalculator() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="glass-strong border-border h-full flex items-center justify-center">
+          <Card className="bg-card border-border border-border h-full flex items-center justify-center">
             <CardContent className="text-center py-12">
               <Calculator className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
               <p className="text-muted-foreground">
@@ -355,3 +354,4 @@ export default function RateCalculator() {
     </div>
   );
 }
+

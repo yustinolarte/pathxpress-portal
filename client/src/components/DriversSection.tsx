@@ -315,65 +315,65 @@ export default function DriversSection() {
     };
 
     const getStatusBadge = (status: string) => {
-        const statusColors: Record<string, string> = {
-            active: 'bg-green-500/20 text-green-400 border-green-500/30',
-            inactive: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-            suspended: 'bg-red-500/20 text-red-400 border-red-500/30',
-            pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-            in_progress: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-            completed: 'bg-green-500/20 text-green-400 border-green-500/30',
-            cancelled: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-            delivered: 'bg-green-500/20 text-green-400 border-green-500/30',
-            attempted: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-            returned: 'bg-red-500/20 text-red-400 border-red-500/30',
-            in_review: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-            resolved: 'bg-green-500/20 text-green-400 border-green-500/30',
-            rejected: 'bg-red-500/20 text-red-400 border-red-500/30',
+        const statusTones: Record<string, string> = {
+            active: 'b-green',
+            inactive: 'b-gray',
+            suspended: 'b-red',
+            pending: 'b-amber',
+            in_progress: 'b-blue',
+            completed: 'b-green',
+            cancelled: 'b-gray',
+            delivered: 'b-green',
+            attempted: 'b-amber',
+            returned: 'b-red',
+            in_review: 'b-blue',
+            resolved: 'b-green',
+            rejected: 'b-red',
         };
         return (
-            <Badge variant="outline" className={statusColors[status] || 'bg-gray-500/20'}>
-                {status.replace('_', ' ').toUpperCase()}
-            </Badge>
+            <span className={`badge2 ${statusTones[status] || 'b-gray'}`}>
+                {status.replace('_', ' ')}
+            </span>
         );
     };
 
     const getSuccessRateColor = (rate: number) => {
-        if (rate >= 90) return 'text-green-400';
-        if (rate >= 70) return 'text-yellow-400';
-        return 'text-red-400';
+        if (rate >= 90) return 'text-[var(--st-green)]';
+        if (rate >= 70) return 'text-[var(--st-amber)]';
+        return 'text-primary';
     };
 
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-5 bg-transparent border border-white/10 p-1.5 rounded-xl h-auto">
+                <TabsList className="grid w-full grid-cols-5 h-auto">
                     <TabsTrigger
                         value="dashboard"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3"
                     >
                         <Truck className="h-4 w-4" /> Dashboard
                     </TabsTrigger>
                     <TabsTrigger
                         value="drivers"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3"
                     >
                         <Users className="h-4 w-4" /> Drivers
                     </TabsTrigger>
                     <TabsTrigger
                         value="routes"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3"
                     >
                         <MapPin className="h-4 w-4" /> Routes
                     </TabsTrigger>
                     <TabsTrigger
                         value="deliveries"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3"
                     >
                         <Package className="h-4 w-4" /> Deliveries
                     </TabsTrigger>
                     <TabsTrigger
                         value="reports"
-                        className="flex items-center gap-2 py-3 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md data-[state=inactive]:hover:bg-white/5 data-[state=inactive]:hover:text-white transition-all duration-300"
+                        className="flex items-center gap-2 py-3"
                     >
                         <AlertTriangle className="h-4 w-4" /> Reports
                     </TabsTrigger>
@@ -382,83 +382,47 @@ export default function DriversSection() {
                 {/* Dashboard Tab */}
                 <TabsContent value="dashboard" className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-blue-600" />
-                            <CardContent className="pt-6">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
-                                        <Users className="w-5 h-5" />
-                                    </div>
-                                    <span className="text-xs font-mono text-blue-400 bg-blue-500/5 px-2 py-1 rounded">ACTIVE</span>
-                                </div>
-                                <div>
-                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-blue-400 transition-colors">
-                                        {dashboardStats?.drivers.active || 0}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">Active Drivers</p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <div className="kpi">
+                            <div className="kt">
+                                <span className="lab">Active Drivers</span>
+                                <span className="ic"><Users className="w-[18px] h-[18px]" /></span>
+                            </div>
+                            <div className="val">{dashboardStats?.drivers.active || 0}</div>
+                            <div className="sub">on duty now</div>
+                        </div>
 
-                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-500 to-green-600" />
-                            <CardContent className="pt-6">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-2 rounded-lg bg-green-500/10 text-green-500">
-                                        <MapPin className="w-5 h-5" />
-                                    </div>
-                                    <span className="text-xs font-mono text-green-400 bg-green-500/5 px-2 py-1 rounded">TODAY</span>
-                                </div>
-                                <div>
-                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-green-400 transition-colors">
-                                        {dashboardStats?.routes.today || 0}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">Active Routes</p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <div className="kpi">
+                            <div className="kt">
+                                <span className="lab">Active Routes</span>
+                                <span className="ic"><MapPin className="w-[18px] h-[18px]" /></span>
+                            </div>
+                            <div className="val">{dashboardStats?.routes.today || 0}</div>
+                            <div className="sub">today</div>
+                        </div>
 
-                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-purple-600" />
-                            <CardContent className="pt-6">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
-                                        <Package className="w-5 h-5" />
-                                    </div>
-                                    <span className="text-xs font-mono text-purple-400 bg-purple-500/5 px-2 py-1 rounded">TOTAL</span>
-                                </div>
-                                <div>
-                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-purple-400 transition-colors">
-                                        {dashboardStats?.deliveries.delivered || 0}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">Deliveries Completed</p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <div className="kpi">
+                            <div className="kt">
+                                <span className="lab">Deliveries Completed</span>
+                                <span className="ic"><Package className="w-[18px] h-[18px]" /></span>
+                            </div>
+                            <div className="val">{dashboardStats?.deliveries.delivered || 0}</div>
+                            <div className="sub">total</div>
+                        </div>
 
-                        <Card className="glass-strong border-white/10 overflow-hidden relative group">
-                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-red-600" />
-                            <CardContent className="pt-6">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="p-2 rounded-lg bg-red-500/10 text-red-500">
-                                        <AlertTriangle className="w-5 h-5" />
-                                    </div>
-                                    <span className="text-xs font-mono text-red-400 bg-red-500/5 px-2 py-1 rounded">ISSUES</span>
-                                </div>
-                                <div>
-                                    <div className="text-4xl font-mono font-bold text-foreground mb-1 group-hover:text-red-400 transition-colors">
-                                        {dashboardStats?.reports.pending || 0}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">Pending Reports</p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <div className="kpi accent">
+                            <div className="kt">
+                                <span className="lab">Pending Reports</span>
+                                <span className="ic"><AlertTriangle className="w-[18px] h-[18px]" /></span>
+                            </div>
+                            <div className="val">{dashboardStats?.reports.pending || 0}</div>
+                            <div className="sub">require review</div>
+                        </div>
                     </div>
                 </TabsContent>
 
                 {/* Drivers Tab */}
                 <TabsContent value="drivers" className="space-y-4">
-                    <Card className="glass-strong">
+                    <Card className="bg-card border-border">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Drivers</CardTitle>
@@ -489,7 +453,7 @@ export default function DriversSection() {
                                                 <TableCell className="font-mono">{driver.username}</TableCell>
                                                 <TableCell>
                                                     <button
-                                                        className="font-medium hover:text-blue-400 flex items-center gap-1 transition-colors"
+                                                        className="font-medium hover:text-primary flex items-center gap-1 transition-colors"
                                                         onClick={() => openDriverProfile(driver)}
                                                     >
                                                         {driver.fullName}
@@ -507,7 +471,7 @@ export default function DriversSection() {
                                                             title="View performance"
                                                             onClick={() => openDriverProfile(driver)}
                                                         >
-                                                            <Activity className="h-4 w-4 text-blue-400" />
+                                                            <Activity className="h-4 w-4 text-[var(--st-blue)]" />
                                                         </Button>
                                                         <Button
                                                             variant="ghost"
@@ -542,7 +506,7 @@ export default function DriversSection() {
 
                 {/* Routes Tab */}
                 <TabsContent value="routes" className="space-y-4">
-                    <Card className="glass-strong">
+                    <Card className="bg-card border-border">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
                                 <CardTitle>Routes</CardTitle>
@@ -561,12 +525,12 @@ export default function DriversSection() {
                                         type="date"
                                         value={routeFilterDate}
                                         onChange={(e) => setRouteFilterDate(e.target.value)}
-                                        className="bg-white/5 border-white/10 h-8 text-sm"
+                                        className="bg-white/5 border-border h-8 text-sm"
                                         placeholder="Filter by date"
                                     />
                                 </div>
                                 <Select value={routeFilterStatus} onValueChange={setRouteFilterStatus}>
-                                    <SelectTrigger className="bg-white/5 border-white/10 h-8 w-[140px] text-sm">
+                                    <SelectTrigger className="bg-white/5 border-border h-8 w-[140px] text-sm">
                                         <SelectValue placeholder="All statuses" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -583,7 +547,7 @@ export default function DriversSection() {
                                         value={routeFilterDriver}
                                         onChange={(e) => setRouteFilterDriver(e.target.value)}
                                         placeholder="Search driver..."
-                                        className="bg-white/5 border-white/10 h-8 text-sm"
+                                        className="bg-white/5 border-border h-8 text-sm"
                                     />
                                 </div>
                                 {(routeFilterDate || routeFilterStatus !== 'all' || routeFilterDriver) && (
@@ -623,7 +587,7 @@ export default function DriversSection() {
                                                 <TableCell>{route.zone || '-'}</TableCell>
                                                 <TableCell>
                                                     <div className="flex items-center gap-1">
-                                                        <span className="text-green-400 font-medium">{route.deliveryStats?.delivered || 0}</span>
+                                                        <span className="text-[var(--st-green)] font-medium">{route.deliveryStats?.delivered || 0}</span>
                                                         <span className="text-muted-foreground">/</span>
                                                         <span className="font-medium">{route.deliveryStats?.total || 0}</span>
                                                     </div>
@@ -636,12 +600,12 @@ export default function DriversSection() {
                                                 <TableCell>
                                                     <div className="flex flex-wrap gap-1">
                                                         {route.codTotal > 0 && (
-                                                            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                                                            <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                 <DollarSign className="w-3 h-3 mr-0.5" />{route.codTotal} AED
                                                             </Badge>
                                                         )}
                                                         {route.returnCount > 0 && (
-                                                            <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
+                                                            <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                 <RotateCcw className="w-3 h-3 mr-0.5" />{route.returnCount} Return{route.returnCount > 1 ? 's' : ''}
                                                             </Badge>
                                                         )}
@@ -656,7 +620,7 @@ export default function DriversSection() {
                                                                 variant="ghost"
                                                                 size="sm"
                                                                 title="Mark In Progress"
-                                                                className="h-6 w-6 p-0 text-blue-400 hover:text-blue-300"
+                                                                className="h-6 w-6 p-0 text-[var(--st-blue)] hover:opacity-80"
                                                                 onClick={() => updateRouteStatusMutation.mutate({ routeId: route.id, status: 'in_progress' })}
                                                             >
                                                                 <ChevronRight className="h-3 w-3" />
@@ -667,7 +631,7 @@ export default function DriversSection() {
                                                                 variant="ghost"
                                                                 size="sm"
                                                                 title="Mark Completed"
-                                                                className="h-6 w-6 p-0 text-green-400 hover:text-green-300"
+                                                                className="h-6 w-6 p-0 text-[var(--st-green)] hover:opacity-80"
                                                                 onClick={() => updateRouteStatusMutation.mutate({ routeId: route.id, status: 'completed' })}
                                                             >
                                                                 <CheckCircle className="h-3 w-3" />
@@ -683,7 +647,7 @@ export default function DriversSection() {
                                                             title="Show QR Code"
                                                             onClick={() => openQRForRoute(route.id)}
                                                         >
-                                                            <QrCode className="h-4 w-4 text-purple-400" />
+                                                            <QrCode className="h-4 w-4 text-primary" />
                                                         </Button>
                                                         <Button
                                                             variant="ghost"
@@ -719,7 +683,7 @@ export default function DriversSection() {
 
                 {/* Deliveries Tab */}
                 <TabsContent value="deliveries" className="space-y-4">
-                    <Card className="glass-strong">
+                    <Card className="bg-card border-border">
                         <CardHeader>
                             <CardTitle>Deliveries</CardTitle>
                             <CardDescription>All delivery items from routes</CardDescription>
@@ -733,11 +697,11 @@ export default function DriversSection() {
                                         value={deliveryFilterWaybill}
                                         onChange={(e) => setDeliveryFilterWaybill(e.target.value)}
                                         placeholder="Search waybill..."
-                                        className="bg-white/5 border-white/10 h-8 text-sm"
+                                        className="bg-white/5 border-border h-8 text-sm"
                                     />
                                 </div>
                                 <Select value={deliveryFilterStatus} onValueChange={setDeliveryFilterStatus}>
-                                    <SelectTrigger className="bg-white/5 border-white/10 h-8 w-[150px] text-sm">
+                                    <SelectTrigger className="bg-white/5 border-border h-8 w-[150px] text-sm">
                                         <SelectValue placeholder="All statuses" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -812,7 +776,7 @@ export default function DriversSection() {
 
                 {/* Reports Tab */}
                 <TabsContent value="reports" className="space-y-4">
-                    <Card className="glass-strong">
+                    <Card className="bg-card border-border">
                         <CardHeader>
                             <CardTitle>Driver Reports</CardTitle>
                             <CardDescription>Issues reported by drivers</CardDescription>
@@ -886,13 +850,13 @@ export default function DriversSection() {
 
             {/* Create Driver Dialog */}
             <Dialog open={createDriverDialogOpen} onOpenChange={setCreateDriverDialogOpen}>
-                <DialogContent className="glass-strong !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600" />
+                <DialogContent className="bg-card border-border !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+                    <div className="w-full h-1 bg-primary" />
                     <div className="p-6">
                         <DialogHeader className="mb-6">
-                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-blue-500/20">
-                                    <UserPlus className="w-6 h-6 text-blue-400" />
+                            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                    <UserPlus className="w-6 h-6 text-primary" />
                                 </div>
                                 Add New Driver
                             </DialogTitle>
@@ -906,7 +870,7 @@ export default function DriversSection() {
                                         value={newDriver.username}
                                         onChange={(e) => setNewDriver({ ...newDriver, username: e.target.value })}
                                         placeholder="driver1"
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -916,7 +880,7 @@ export default function DriversSection() {
                                         value={newDriver.password}
                                         onChange={(e) => setNewDriver({ ...newDriver, password: e.target.value })}
                                         placeholder="••••••••"
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                             </div>
@@ -926,7 +890,7 @@ export default function DriversSection() {
                                     value={newDriver.fullName}
                                     onChange={(e) => setNewDriver({ ...newDriver, fullName: e.target.value })}
                                     placeholder="John Doe"
-                                    className="bg-white/5 border-white/10"
+                                    className="bg-white/5 border-border"
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
@@ -937,7 +901,7 @@ export default function DriversSection() {
                                         value={newDriver.email}
                                         onChange={(e) => setNewDriver({ ...newDriver, email: e.target.value })}
                                         placeholder="john@example.com"
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -946,7 +910,7 @@ export default function DriversSection() {
                                         value={newDriver.phone}
                                         onChange={(e) => setNewDriver({ ...newDriver, phone: e.target.value })}
                                         placeholder="+971 50 123 4567"
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                             </div>
@@ -957,7 +921,7 @@ export default function DriversSection() {
                                         value={newDriver.vehicleNumber}
                                         onChange={(e) => setNewDriver({ ...newDriver, vehicleNumber: e.target.value })}
                                         placeholder="DXB-12345"
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -966,14 +930,14 @@ export default function DriversSection() {
                                         value={newDriver.emiratesId}
                                         onChange={(e) => setNewDriver({ ...newDriver, emiratesId: e.target.value })}
                                         placeholder="784-XXXX-XXXXXXX-X"
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                             </div>
                         </div>
-                        <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+                        <DialogFooter className="pt-6 mt-6 border-t border-border">
                             <Button variant="outline" onClick={() => setCreateDriverDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleCreateDriver} disabled={createDriverMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
+                            <Button onClick={handleCreateDriver} disabled={createDriverMutation.isPending}>
                                 {createDriverMutation.isPending ? 'Creating...' : 'Create Driver'}
                             </Button>
                         </DialogFooter>
@@ -983,13 +947,13 @@ export default function DriversSection() {
 
             {/* Edit Driver Dialog */}
             <Dialog open={editDriverDialogOpen} onOpenChange={setEditDriverDialogOpen}>
-                <DialogContent className="glass-strong !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-indigo-600 to-purple-600" />
+                <DialogContent className="bg-card border-border !w-[90vw] !max-w-[600px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+                    <div className="w-full h-1 bg-primary" />
                     <div className="p-6">
                         <DialogHeader className="mb-6">
-                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-indigo-500/20">
-                                    <Edit className="w-6 h-6 text-indigo-400" />
+                            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                    <Edit className="w-6 h-6 text-primary" />
                                 </div>
                                 Edit Driver
                             </DialogTitle>
@@ -1002,7 +966,7 @@ export default function DriversSection() {
                                     <Input
                                         value={selectedDriver.fullName}
                                         onChange={(e) => setSelectedDriver({ ...selectedDriver, fullName: e.target.value })}
-                                        className="bg-white/5 border-white/10"
+                                        className="bg-white/5 border-border"
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -1012,7 +976,7 @@ export default function DriversSection() {
                                             type="email"
                                             value={selectedDriver.email || ''}
                                             onChange={(e) => setSelectedDriver({ ...selectedDriver, email: e.target.value })}
-                                            className="bg-white/5 border-white/10"
+                                            className="bg-white/5 border-border"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -1020,7 +984,7 @@ export default function DriversSection() {
                                         <Input
                                             value={selectedDriver.phone || ''}
                                             onChange={(e) => setSelectedDriver({ ...selectedDriver, phone: e.target.value })}
-                                            className="bg-white/5 border-white/10"
+                                            className="bg-white/5 border-border"
                                         />
                                     </div>
                                 </div>
@@ -1030,7 +994,7 @@ export default function DriversSection() {
                                         <Input
                                             value={selectedDriver.vehicleNumber || ''}
                                             onChange={(e) => setSelectedDriver({ ...selectedDriver, vehicleNumber: e.target.value })}
-                                            className="bg-white/5 border-white/10"
+                                            className="bg-white/5 border-border"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -1039,10 +1003,10 @@ export default function DriversSection() {
                                             value={selectedDriver.status}
                                             onValueChange={(value) => setSelectedDriver({ ...selectedDriver, status: value })}
                                         >
-                                            <SelectTrigger className="bg-white/5 border-white/10">
+                                            <SelectTrigger className="bg-white/5 border-border">
                                                 <SelectValue />
                                             </SelectTrigger>
-                                            <SelectContent className="glass-strong">
+                                            <SelectContent className="bg-card border-border">
                                                 <SelectItem value="active">Active</SelectItem>
                                                 <SelectItem value="inactive">Inactive</SelectItem>
                                                 <SelectItem value="suspended">Suspended</SelectItem>
@@ -1052,9 +1016,9 @@ export default function DriversSection() {
                                 </div>
                             </div>
                         )}
-                        <DialogFooter className="pt-6 mt-6 border-t border-white/10">
+                        <DialogFooter className="pt-6 mt-6 border-t border-border">
                             <Button variant="outline" onClick={() => setEditDriverDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleUpdateDriver} disabled={updateDriverMutation.isPending} className="bg-indigo-600 hover:bg-indigo-700">
+                            <Button onClick={handleUpdateDriver} disabled={updateDriverMutation.isPending}>
                                 {updateDriverMutation.isPending ? 'Saving...' : 'Save Changes'}
                             </Button>
                         </DialogFooter>
@@ -1077,13 +1041,13 @@ export default function DriversSection() {
 
             {/* QR Code Dialog */}
             <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-                <DialogContent className="glass-strong !w-[90vw] !max-w-[420px] p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-purple-600 to-pink-600" />
+                <DialogContent className="bg-card border-border !w-[90vw] !max-w-[420px] p-0 gap-0 ">
+                    <div className="w-full h-1 bg-primary" />
                     <div className="p-6">
                         <DialogHeader className="mb-6">
                             <DialogTitle className="text-xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-purple-500/20">
-                                    <QrCode className="w-5 h-5 text-purple-400" />
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                    <QrCode className="w-5 h-5 text-primary" />
                                 </div>
                                 Route QR Code
                             </DialogTitle>
@@ -1119,7 +1083,7 @@ export default function DriversSection() {
                                     Copy ID
                                 </Button>
                                 <Button
-                                    className="flex-1 bg-purple-600 hover:bg-purple-700"
+                                    className="flex-1"
                                     onClick={() => {
                                         // Print the QR
                                         const printWindow = window.open('', '_blank');
@@ -1148,13 +1112,13 @@ export default function DriversSection() {
 
             {/* Driver Profile Dialog */}
             <Dialog open={driverProfileDialogOpen} onOpenChange={(open) => { setDriverProfileDialogOpen(open); if (!open) setProfileDriverId(null); }}>
-                <DialogContent className="glass-strong !w-[95vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600" />
+                <DialogContent className="bg-card border-border !w-[95vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+                    <div className="w-full h-1 bg-primary" />
                     <div className="p-6">
                         <DialogHeader className="mb-6">
-                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-blue-500/20">
-                                    <Activity className="w-6 h-6 text-blue-400" />
+                            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                    <Activity className="w-6 h-6 text-primary" />
                                 </div>
                                 Driver Profile
                             </DialogTitle>
@@ -1167,7 +1131,7 @@ export default function DriversSection() {
                         ) : driverProfile ? (
                             <div className="space-y-6">
                                 {/* Driver Info */}
-                                <div className="flex items-start justify-between gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                                <div className="flex items-start justify-between gap-4 p-4 rounded-xl bg-white/5 border border-border">
                                     <div>
                                         <h3 className="text-xl font-bold">{driverProfile.driver.fullName}</h3>
                                         <p className="text-sm text-muted-foreground font-mono">{driverProfile.driver.username}</p>
@@ -1207,7 +1171,7 @@ export default function DriversSection() {
                                             <p className="text-xs text-muted-foreground mt-1">Total Routes</p>
                                         </div>
                                         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
-                                            <div className="text-2xl font-mono font-bold text-yellow-400">
+                                            <div className="text-2xl font-mono font-bold text-[var(--st-amber)]">
                                                 {driverProfile.stats.codTotal} AED
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">COD Total</p>
@@ -1215,19 +1179,19 @@ export default function DriversSection() {
                                     </div>
                                     <div className="grid grid-cols-3 gap-3 mt-3">
                                         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
-                                            <div className="text-lg font-mono font-bold text-orange-400">
+                                            <div className="text-lg font-mono font-bold text-[var(--st-amber)]">
                                                 {driverProfile.stats.attempted}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Attempted</p>
                                         </div>
                                         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
-                                            <div className="text-lg font-mono font-bold text-red-400">
+                                            <div className="text-lg font-mono font-bold text-primary">
                                                 {driverProfile.stats.returned}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Returned</p>
                                         </div>
                                         <div className="p-3 rounded-lg bg-muted/30 border border-border text-center">
-                                            <div className="text-lg font-mono font-bold text-purple-400">
+                                            <div className="text-lg font-mono font-bold text-[var(--st-blue)]">
                                                 {driverProfile.stats.totalReports}
                                             </div>
                                             <p className="text-xs text-muted-foreground mt-1">Reports Filed</p>
@@ -1236,9 +1200,9 @@ export default function DriversSection() {
                                 </div>
 
                                 {/* Last 30 days */}
-                                <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 flex items-center gap-3">
-                                    <BarChart2 className="w-4 h-4 text-blue-400 flex-shrink-0" />
-                                    <span className="text-sm text-blue-300">
+                                <div className="p-3 rounded-lg bg-secondary border border-border flex items-center gap-3">
+                                    <BarChart2 className="w-4 h-4 text-[var(--st-blue)] flex-shrink-0" />
+                                    <span className="text-sm text-muted-foreground">
                                         <span className="font-bold">{driverProfile.stats.recentRoutes}</span> routes in the last 30 days •{' '}
                                         <span className="font-bold">{driverProfile.stats.totalPieces}</span> total pieces handled
                                     </span>
@@ -1250,7 +1214,7 @@ export default function DriversSection() {
                                         <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Recent Routes</h4>
                                         <div className="space-y-2">
                                             {driverProfile.recentRoutes.map((r: any) => (
-                                                <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
+                                                <div key={r.id} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-border">
                                                     <div className="flex items-center gap-3">
                                                         <span className="font-mono text-sm font-medium">{r.id}</span>
                                                         {r.zone && <span className="text-xs text-muted-foreground">{r.zone}</span>}
@@ -1274,14 +1238,14 @@ export default function DriversSection() {
 
             {/* Route Details Dialog */}
             <Dialog open={routeDetailsDialogOpen} onOpenChange={setRouteDetailsDialogOpen}>
-                <DialogContent className="glass-strong !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-indigo-600 to-purple-600" />
+                <DialogContent className="bg-card border-border !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+                    <div className="w-full h-1 bg-primary" />
 
                     <div className="p-6">
                         <DialogHeader className="mb-4">
-                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-indigo-500/20">
-                                    <MapPin className="w-6 h-6 text-indigo-400" />
+                            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                    <MapPin className="w-6 h-6 text-primary" />
                                 </div>
                                 Route: {routeDetails?.id}
                             </DialogTitle>
@@ -1297,9 +1261,9 @@ export default function DriversSection() {
                                 onClick={() => openQRForRoute(routeDetails?.id || '')}
                                 className="gap-2"
                             >
-                                <QrCode className="h-4 w-4 text-purple-400" /> Show QR
+                                <QrCode className="h-4 w-4 text-primary" /> Show QR
                             </Button>
-                            <Button onClick={() => setAddOrdersDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+                            <Button onClick={() => setAddOrdersDialogOpen(true)}>
                                 <Plus className="mr-2 h-4 w-4" /> Add Orders
                             </Button>
                         </div>
@@ -1313,31 +1277,31 @@ export default function DriversSection() {
                                         return (
                                             <div
                                                 key={delivery.id}
-                                                className="rounded-lg border bg-white/5 border-white/10 p-4"
+                                                className="rounded-lg border bg-white/5 border-border p-4"
                                             >
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap mb-1">
                                                             <span className="font-mono font-medium text-sm">{delivery.waybillNumber}</span>
-                                                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
+                                                            <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
                                                                 <Building2 className="w-3 h-3 mr-1" />{delivery.companyName}
                                                             </Badge>
                                                             {isReturn && (
-                                                                <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     <RotateCcw className="w-3 h-3 mr-1" />Return
                                                                 </Badge>
                                                             )}
                                                             {isExchange && (
-                                                                <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     Exchange
                                                                 </Badge>
                                                             )}
                                                             {delivery.codRequired ? (
-                                                                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     <DollarSign className="w-3 h-3 mr-0.5" />COD {delivery.codAmount} AED
                                                                 </Badge>
                                                             ) : (
-                                                                <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepaid</Badge>
+                                                                <Badge variant="outline" className="!bg-[var(--st-green-bg)] !text-[var(--st-green)] !border-transparent text-xs">Prepaid</Badge>
                                                             )}
                                                         </div>
 
@@ -1368,7 +1332,7 @@ export default function DriversSection() {
                                                                 }
                                                             }}
                                                             disabled={removeOrderFromRouteMutation.isPending}
-                                                            className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
                                                         >
                                                             <Trash2 className="w-3 h-3" />
                                                             Eliminar
@@ -1392,14 +1356,14 @@ export default function DriversSection() {
                 setAddOrdersDialogOpen(open);
                 if (!open) setSelectedOrderIds([]);
             }}>
-                <DialogContent className="glass-strong !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-                    <div className="w-full h-1 bg-gradient-to-r from-emerald-600 to-teal-600" />
+                <DialogContent className="bg-card border-border !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+                    <div className="w-full h-1 bg-primary" />
 
                     <div className="p-6">
                         <DialogHeader className="mb-4">
-                            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-emerald-500/20">
-                                    <Package className="w-6 h-6 text-emerald-400" />
+                            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-primary/10">
+                                    <Package className="w-6 h-6 text-primary" />
                                 </div>
                                 Add Orders to Route
                             </DialogTitle>
@@ -1409,8 +1373,8 @@ export default function DriversSection() {
                         </DialogHeader>
 
                         {selectedOrderIds.length > 0 && (
-                            <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
-                                <span className="text-sm text-emerald-400">
+                            <div className="mb-4 p-3 rounded-lg bg-[var(--st-green-bg)] border border-[var(--st-green)]/25 flex items-center justify-between">
+                                <span className="text-sm text-[var(--st-green)]">
                                     <CheckCircle2 className="w-4 h-4 inline mr-1" />
                                     {selectedOrderIds.length} order{selectedOrderIds.length > 1 ? 's' : ''} selected
                                 </span>
@@ -1431,8 +1395,8 @@ export default function DriversSection() {
                                                 className={`
                                                     rounded-lg border p-4 cursor-pointer transition-all
                                                     ${isSelected
-                                                        ? 'bg-emerald-500/10 border-emerald-500/30 ring-1 ring-emerald-500/30'
-                                                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                                                        ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30'
+                                                        : 'bg-white/5 border-border hover:bg-white/10'
                                                     }
                                                 `}
                                             >
@@ -1447,26 +1411,26 @@ export default function DriversSection() {
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap mb-1">
                                                             <span className="font-mono font-medium text-sm">{order.waybillNumber}</span>
-                                                            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
+                                                            <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
                                                                 <Building2 className="w-3 h-3 mr-1" />{order.companyName}
                                                             </Badge>
                                                             {isReturn && (
-                                                                <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     <RotateCcw className="w-3 h-3 mr-1" />Return
                                                                 </Badge>
                                                             )}
                                                             {isExchange && (
-                                                                <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     <RefreshCw className="w-3 h-3 mr-1" />Exchange
                                                                 </Badge>
                                                             )}
                                                             {order.serviceType === 'same-day' && (
-                                                                <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-primary/10 !text-primary !border-transparent text-xs">
                                                                     ⚡ Same Day
                                                                 </Badge>
                                                             )}
                                                             {order.serviceType === 'express' && (
-                                                                <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     ⚡ Express
                                                                 </Badge>
                                                             )}
@@ -1485,11 +1449,11 @@ export default function DriversSection() {
                                                             </span>
                                                             <span>{order.pieces} pc{order.pieces > 1 ? 's' : ''} • {order.weight} kg</span>
                                                             {order.codRequired ? (
-                                                                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
+                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
                                                                     <DollarSign className="w-3 h-3 mr-0.5" />COD {order.codAmount} AED
                                                                 </Badge>
                                                             ) : (
-                                                                <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepaid</Badge>
+                                                                <Badge variant="outline" className="!bg-[var(--st-green-bg)] !text-[var(--st-green)] !border-transparent text-xs">Prepaid</Badge>
                                                             )}
                                                         </div>
                                                     </div>
@@ -1499,7 +1463,7 @@ export default function DriversSection() {
                                                             value={orderModes[order.id] || 'both'}
                                                             onValueChange={(value: any) => setOrderModes(prev => ({ ...prev, [order.id]: value }))}
                                                         >
-                                                            <SelectTrigger className="h-8 w-[160px] bg-white/5 border-white/10 text-xs">
+                                                            <SelectTrigger className="h-8 w-[160px] bg-white/5 border-border text-xs">
                                                                 <SelectValue />
                                                             </SelectTrigger>
                                                             <SelectContent>
@@ -1519,12 +1483,11 @@ export default function DriversSection() {
                             )}
                         </div>
 
-                        <DialogFooter className="pt-4 mt-4 border-t border-white/10">
+                        <DialogFooter className="pt-4 mt-4 border-t border-border">
                             <Button type="button" variant="outline" onClick={() => setAddOrdersDialogOpen(false)}>Cancel</Button>
                             <Button
                                 onClick={handleAddOrdersToRoute}
                                 disabled={selectedOrderIds.length === 0 || addOrdersToRouteMutation.isPending}
-                                className="bg-emerald-600 hover:bg-emerald-700"
                             >
                                 {addOrdersToRouteMutation.isPending ? (
                                     <>
@@ -1545,3 +1508,4 @@ export default function DriversSection() {
         </div>
     );
 }
+

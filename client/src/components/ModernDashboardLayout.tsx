@@ -32,7 +32,7 @@ import { useLocation } from "wouter";
 function ThemeToggleItem() {
     const { theme, toggleTheme } = useTheme();
     return (
-        <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer hover:bg-primary/10">
+        <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
             {theme === "dark"
                 ? <Sun className="mr-2 h-4 w-4" />
                 : <Moon className="mr-2 h-4 w-4" />}
@@ -45,6 +45,10 @@ export interface ModernMenuItem {
     icon: string;
     label: string;
     value: string;
+    /** Mono uppercase group label rendered above the first item of each section */
+    section?: string;
+    /** Pending-count badge rendered at the end of the row */
+    badge?: number;
 }
 
 interface ModernDashboardLayoutProps {
@@ -194,7 +198,7 @@ export default function ModernDashboardLayout({
                             </div>
                         </div>
                         <div className="text-center space-y-2">
-                            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+                            <h1 className="font-display text-2xl font-bold tracking-tight">{title}</h1>
                             <p className="text-sm text-muted-foreground">
                                 Please sign in to continue
                             </p>
@@ -230,100 +234,123 @@ export default function ModernDashboardLayout({
             <aside className={`
                 ${isMobile
                     ? `fixed inset-y-0 left-0 z-50 w-72 transition-transform duration-300 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`
-                    : `${isCollapsed ? 'w-20' : 'w-64'} transition-all duration-300 flex-shrink-0`
+                    : `${isCollapsed ? 'w-[72px]' : 'w-60'} transition-all duration-300 flex-shrink-0`
                 }
-                border-r border-primary/10 bg-card flex flex-col justify-between p-4 overflow-y-auto
+                border-r border-border bg-card flex flex-col justify-between p-3 overflow-y-auto
             `}>
-                <div className="space-y-8">
-                    <div className={`flex items-center gap-3 px-2 mb-2 ${isCollapsed && !isMobile ? 'justify-center' : ''}`}>
-                        <img src="/favicon.png" alt={title} className="h-10 w-10 object-contain rounded-lg shrink-0" />
+                <div className="space-y-6">
+                    {/* Brand */}
+                    <div className={`flex items-center gap-3 px-2 pt-2 pb-1 ${isCollapsed && !isMobile ? 'justify-center' : ''}`}>
+                        <img src="/favicon.png" alt={title} className="h-8 w-8 object-contain rounded-lg shrink-0" />
                         {(!isCollapsed || isMobile) && (
                             <div className="overflow-hidden">
-                                <h1 className="text-sm font-bold tracking-tight truncate">{title}</h1>
-                                <p className="text-[10px] text-red-500 font-medium uppercase tracking-wider truncate">{user.role}</p>
+                                <h1 className="text-[13px] font-bold tracking-tight truncate">{title}</h1>
+                                <p className="font-mono text-[10px] text-primary uppercase tracking-widest truncate">{user.role}</p>
                             </div>
                         )}
                     </div>
-                    <nav className="space-y-1">
-                        {menuItems.map((item) => {
+
+                    {/* Navigation */}
+                    <nav className="space-y-0.5">
+                        {menuItems.map((item, index) => {
                             const isActive = activeItem === item.value;
+                            const showSection = item.section && (index === 0 || menuItems[index - 1].section !== item.section);
                             return (
-                                <button
-                                    key={item.value}
-                                    onClick={() => {
-                                        onItemClick(item.value);
-                                        if (isMobile) setMobileMenuOpen(false);
-                                    }}
-                                    className={`w-full flex items-center px-3 py-2.5 rounded-lg transition-colors text-left ${isCollapsed && !isMobile ? 'justify-center' : 'gap-3'} ${isActive
-                                        ? 'bg-red-500/10 text-red-600 dark:text-red-500 font-medium'
-                                        : 'text-muted-foreground hover:bg-red-500/5 hover:text-red-600 dark:hover:text-red-500'
-                                        }`}
-                                    title={isCollapsed ? item.label : undefined}
-                                >
-                                    <span className="material-symbols-outlined shrink-0">{item.icon}</span>
-                                    {(!isCollapsed || isMobile) && <span className="text-sm truncate">{item.label}</span>}
-                                </button>
+                                <div key={item.value}>
+                                    {showSection && (!isCollapsed || isMobile) && (
+                                        <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground px-2.5 pt-4 pb-1.5 select-none">
+                                            {item.section}
+                                        </p>
+                                    )}
+                                    {showSection && isCollapsed && !isMobile && index !== 0 && (
+                                        <div className="border-t border-border my-2 mx-2" />
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            onItemClick(item.value);
+                                            if (isMobile) setMobileMenuOpen(false);
+                                        }}
+                                        className={`w-full flex items-center px-2.5 py-2 rounded-lg transition-colors text-left relative ${isCollapsed && !isMobile ? 'justify-center' : 'gap-2.5'} ${isActive
+                                            ? 'bg-primary/10 text-primary font-semibold'
+                                            : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+                                            }`}
+                                        title={isCollapsed ? item.label : undefined}
+                                    >
+                                        {isActive && !isCollapsed && (
+                                            <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary" />
+                                        )}
+                                        <span className="material-symbols-outlined shrink-0 text-[20px]">{item.icon}</span>
+                                        {(!isCollapsed || isMobile) && <span className="text-[13.5px] truncate flex-1">{item.label}</span>}
+                                        {(!isCollapsed || isMobile) && typeof item.badge === 'number' && item.badge > 0 && (
+                                            <span className="font-mono text-[10.5px] font-bold bg-primary text-white rounded-full px-[7px] py-px shrink-0">
+                                                {item.badge}
+                                            </span>
+                                        )}
+                                    </button>
+                                </div>
                             );
                         })}
                     </nav>
                 </div>
-                <div className="mt-auto space-y-4 pt-4 border-t border-primary/10">
+
+                {/* Sidebar Footer */}
+                <div className="mt-auto space-y-3 pt-4 border-t border-border">
                     {!isMobile && (
                         <button
                             onClick={() => setIsCollapsed(!isCollapsed)}
-                            className={`w-full flex items-center p-2 text-muted-foreground hover:bg-primary/5 hover:text-primary rounded-xl transition-colors ${isCollapsed ? 'justify-center' : 'gap-3'}`}
+                            className={`w-full flex items-center px-2.5 py-2 text-muted-foreground hover:bg-secondary hover:text-foreground rounded-lg transition-colors ${isCollapsed ? 'justify-center' : 'gap-2.5'}`}
                         >
-                            <span className="material-symbols-outlined">
+                            <span className="material-symbols-outlined text-[20px]">
                                 {isCollapsed ? 'chevron_right' : 'chevron_left'}
                             </span>
-                            {!isCollapsed && <span className="text-sm font-medium">Collapse</span>}
+                            {!isCollapsed && <span className="text-[13px]">Collapse</span>}
                         </button>
                     )}
 
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <button className={`flex items-center p-2 bg-primary/5 rounded-xl w-full text-left hover:bg-primary/10 transition-colors ${isCollapsed && !isMobile ? 'justify-center' : 'gap-3'}`}>
-                                <Avatar className="size-10 shrink-0 border border-primary/20">
-                                    <AvatarFallback className="text-xs font-medium bg-primary/20 text-primary">
+                            <button className={`flex items-center px-2 py-2 bg-secondary rounded-xl w-full text-left hover:bg-secondary/80 transition-colors ${isCollapsed && !isMobile ? 'justify-center' : 'gap-2.5'}`}>
+                                <Avatar className="size-8 shrink-0 border border-border">
+                                    <AvatarFallback className="text-xs font-bold bg-primary/10 text-primary">
                                         {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
                                 {(!isCollapsed || isMobile) && (
                                     <>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold truncate text-foreground">
+                                            <p className="text-[13px] font-semibold truncate">
                                                 {user?.name || user?.email?.split('@')[0] || "-"}
                                             </p>
-                                            <p className="text-xs text-muted-foreground truncate">
+                                            <p className="text-[11px] text-muted-foreground truncate">
                                                 {user?.email || "-"}
                                             </p>
                                         </div>
-                                        <span className="material-symbols-outlined text-muted-foreground text-sm shrink-0">unfold_more</span>
+                                        <span className="material-symbols-outlined text-muted-foreground text-[18px] shrink-0">unfold_more</span>
                                     </>
                                 )}
                             </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56 glass-strong border-primary/20">
+                        <DropdownMenuContent align="end" className="w-56 bg-card border-border">
                             <DropdownMenuLabel className="font-normal">
-                                <div className="flex flex-col space-y-1">
-                                    <p className="text-sm font-medium leading-none">{user?.name || user?.email?.split('@')[0]}</p>
-                                    <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                                <div className="flex flex-col space-y-0.5">
+                                    <p className="text-[13px] font-semibold leading-none">{user?.name || user?.email?.split('@')[0]}</p>
+                                    <p className="text-[11px] leading-none text-muted-foreground">{user?.email}</p>
                                 </div>
                             </DropdownMenuLabel>
-                            <DropdownMenuSeparator className="bg-primary/10" />
+                            <DropdownMenuSeparator />
                             {isCustomer && (
-                                <DropdownMenuItem onClick={() => setWaybillSettingsOpen(true)} className="cursor-pointer hover:bg-primary/10">
+                                <DropdownMenuItem onClick={() => setWaybillSettingsOpen(true)} className="cursor-pointer">
                                     <FileText className="mr-2 h-4 w-4" />
                                     <span>Waybill Settings</span>
                                 </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)} className="cursor-pointer hover:bg-primary/10">
+                            <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)} className="cursor-pointer">
                                 <Key className="mr-2 h-4 w-4" />
                                 <span>Change Password</span>
                             </DropdownMenuItem>
                             <ThemeToggleItem />
-                            <DropdownMenuSeparator className="bg-primary/10" />
-                            <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive hover:bg-destructive/10">
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive focus:text-destructive">
                                 <LogOut className="mr-2 h-4 w-4" />
                                 <span>Sign out</span>
                             </DropdownMenuItem>
@@ -334,22 +361,22 @@ export default function ModernDashboardLayout({
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col overflow-hidden bg-background">
-                {/* Header */}
-                <header className="h-14 md:h-20 bg-card border-b border-primary/10 px-4 md:px-8 flex items-center justify-between shrink-0 gap-3">
+                {/* Topbar */}
+                <header className="h-[68px] bg-card border-b border-border px-4 md:px-6 flex items-center justify-between shrink-0 gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                         {isMobile && (
                             <button
                                 onClick={() => setMobileMenuOpen(true)}
-                                className="p-2 -ml-1 rounded-lg hover:bg-primary/10 transition-colors shrink-0"
+                                className="p-2 -ml-1 rounded-lg hover:bg-muted transition-colors shrink-0"
                                 aria-label="Open menu"
                             >
                                 <span className="material-symbols-outlined">menu</span>
                             </button>
                         )}
-                        <div className="relative w-full max-w-xs md:max-w-sm lg:w-96">
-                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">search</span>
+                        <div className="relative w-full max-w-xs md:max-w-sm lg:w-80">
+                            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[18px]">search</span>
                             <input
-                                className="w-full pl-10 pr-4 py-2 md:py-2.5 bg-background border border-primary/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm transition-all text-foreground"
+                                className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-full focus:outline-none focus:ring-2 focus:ring-primary/30 text-[13.5px] transition-all text-foreground"
                                 placeholder="Press Enter to Track..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -358,25 +385,22 @@ export default function ModernDashboardLayout({
                             />
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                        {isCustomer && (
-                            <NotificationBell />
-                        )}
-                        <div className="h-8 w-[1px] bg-border mx-2 hidden sm:block"></div>
+                    <div className="flex items-center gap-3">
+                        {isCustomer && <NotificationBell />}
+                        <div className="h-6 w-px bg-border hidden sm:block" />
                         <div className="text-right hidden sm:block">
-                            <p className="text-xs font-medium text-muted-foreground">System Status</p>
-                            <p className="text-sm font-bold text-green-500 flex items-center gap-1 justify-end">
-                                <span className="size-2 rounded-full bg-green-500 animate-pulse"></span>
-                                All Systems Operational
+                            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">System Status</p>
+                            <p className="text-[12.5px] font-bold text-[var(--st-green)] flex items-center gap-1 justify-end">
+                                <span className="size-1.5 rounded-full bg-[var(--st-green)]" />
+                                Operational
                             </p>
                         </div>
                     </div>
                 </header>
 
                 {/* Dashboard Body */}
-                <div className="flex-1 overflow-y-auto p-4 relative">
-                    <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop')] bg-cover bg-center opacity-[0.03] pointer-events-none mix-blend-overlay" />
-                    <div className="relative z-10 w-full max-w-[1920px] mx-auto min-h-full">
+                <div className="flex-1 overflow-y-auto p-5">
+                    <div className="w-full max-w-[1920px] mx-auto min-h-full">
                         {children}
                     </div>
                 </div>
@@ -385,7 +409,7 @@ export default function ModernDashboardLayout({
 
             {/* Change Password Dialog */}
             <Dialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen}>
-                <DialogContent className="sm:max-w-md glass-strong border-primary/20">
+                <DialogContent className="sm:max-w-md bg-card border-border">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Key className="h-5 w-5 text-primary" />
@@ -404,7 +428,7 @@ export default function ModernDashboardLayout({
                                 value={currentPassword}
                                 onChange={(e) => setCurrentPassword(e.target.value)}
                                 placeholder="Enter current password"
-                                className="bg-background/50 border-primary/20"
+                                className="bg-background border-border"
                             />
                         </div>
                         <div className="space-y-2">
@@ -415,7 +439,7 @@ export default function ModernDashboardLayout({
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 placeholder="Enter new password (min 8 characters)"
-                                className="bg-background/50 border-primary/20"
+                                className="bg-background border-border"
                             />
                         </div>
                         <div className="space-y-2">
@@ -426,12 +450,12 @@ export default function ModernDashboardLayout({
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 placeholder="Confirm new password"
-                                className="bg-background/50 border-primary/20"
+                                className="bg-background border-border"
                             />
                         </div>
                     </div>
                     <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setPasswordDialogOpen(false)} className="border-primary/20 hover:bg-primary/10">
+                        <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
                             Cancel
                         </Button>
                         <Button
@@ -450,7 +474,7 @@ export default function ModernDashboardLayout({
             {/* Waybill Settings Dialog (for customers) */}
             {isCustomer && (
                 <Dialog open={waybillSettingsOpen} onOpenChange={setWaybillSettingsOpen}>
-                    <DialogContent className="sm:max-w-md glass-strong border-primary/20">
+                    <DialogContent className="sm:max-w-md bg-card border-border">
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2">
                                 <FileText className="h-5 w-5 text-primary" />
@@ -461,7 +485,7 @@ export default function ModernDashboardLayout({
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
-                            <div className="flex items-start justify-between p-4 rounded-xl border border-primary/20 bg-background/50 hover:bg-primary/5 transition-colors">
+                            <div className="flex items-start justify-between p-4 rounded-xl border border-border bg-secondary hover:bg-muted transition-colors">
                                 <div className="space-y-1 flex-1 pr-4">
                                     <Label htmlFor="hideShipperAddressToggle" className="text-base font-medium cursor-pointer">
                                         Hide Shipper Address
@@ -480,13 +504,13 @@ export default function ModernDashboardLayout({
                                         checked={hideShipperAddress}
                                         onCheckedChange={handleToggleHideAddress}
                                         disabled={isSavingWaybillSettings}
-                                        className="h-5 w-5 border-primary/50 data-[state=checked]:bg-primary"
+                                        className="h-5 w-5 border-border data-[state=checked]:bg-primary"
                                     />
                                 </div>
                             </div>
                         </div>
                         <div className="flex justify-end">
-                            <Button variant="outline" onClick={() => setWaybillSettingsOpen(false)} className="border-primary/20 hover:bg-primary/10">
+                            <Button variant="outline" onClick={() => setWaybillSettingsOpen(false)}>
                                 Close
                             </Button>
                         </div>

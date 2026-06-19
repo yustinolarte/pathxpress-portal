@@ -1,6 +1,4 @@
 import { trpc } from '@/lib/trpc';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
     AreaChart,
     Area,
@@ -13,36 +11,17 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    Legend,
     ResponsiveContainer
 } from 'recharts';
 import {
-    TrendingUp,
-    TrendingDown,
-    Package,
-    Calendar,
-    Clock,
-    MapPin,
-    BarChart3,
     Loader2,
-    CheckCircle,
-    DollarSign
 } from 'lucide-react';
+import { statusColor, CHART_PALETTE, AXIS_TICK, TOOLTIP_STYLE } from '@/lib/statusStyles';
 
-// Color palette for charts
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
-
-// Status color map
-const STATUS_COLORS: Record<string, string> = {
-    pending_pickup: '#f59e0b',
-    picked_up: '#3b82f6',
-    in_transit: '#8b5cf6',
-    out_for_delivery: '#14b8a6',
-    delivered: '#10b981',
-    failed_delivery: '#ef4444',
-    returned: '#6b7280',
-    returned_to_sender: '#e11d48',
-};
+// Ink-dominant chart language: data is ink, red is the accent.
+const INK_BAR = 'var(--ink)';
+const ACCENT = 'var(--primary)';
+const GRID = 'var(--line)';
 
 export default function CustomerAnalytics() {
     const { data: analytics, isLoading } = trpc.portal.customer.getMyAnalytics.useQuery(
@@ -91,93 +70,68 @@ export default function CustomerAnalytics() {
             </header>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-                {/* Today */}
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <p className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">Today</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-3xl font-bold text-foreground leading-tight">{analytics.shipmentsToday}</p>
-                        <p className="text-muted-foreground text-sm font-medium">shipments</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                <div className="kpi">
+                    <div className="kt"><span className="lab">Today</span></div>
+                    <div className="val">{analytics.shipmentsToday}</div>
+                    <div className="sub">shipments</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt"><span className="lab">This Week</span></div>
+                    <div className="val">{analytics.shipmentsThisWeek}</div>
+                    <div className="sub">shipments</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt"><span className="lab">This Month</span></div>
+                    <div className="val">{analytics.shipmentsThisMonth}</div>
+                    <div className="sub">vs {analytics.shipmentsLastMonth} last month</div>
+                </div>
+                <div className="kpi">
+                    <div className="kt"><span className="lab">Growth</span></div>
+                    <div className="val">{analytics.growthPercentage >= 0 ? '+' : ''}{analytics.growthPercentage}%</div>
+                    <div className="sub">
+                        <span className={`trend ${analytics.growthPercentage >= 0 ? 'up' : 'down'}`}>
+                            {analytics.growthPercentage >= 0 ? '▲' : '▼'} {Math.abs(analytics.growthPercentage)}%
+                        </span>
+                        vs last month
                     </div>
                 </div>
-
-                {/* This Week */}
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <p className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">This Week</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-3xl font-bold text-foreground leading-tight">{analytics.shipmentsThisWeek}</p>
-                        <p className="text-muted-foreground text-sm font-medium">shipments</p>
-                    </div>
-                </div>
-
-                {/* This Month */}
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <p className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">This Month</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-3xl font-bold text-foreground leading-tight">{analytics.shipmentsThisMonth} <span className="text-muted-foreground font-medium text-lg">vs {analytics.shipmentsLastMonth}</span></p>
-                    </div>
-                </div>
-
-                {/* Growth */}
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <p className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">Growth</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-3xl font-bold text-foreground leading-tight">{analytics.growthPercentage >= 0 ? '+' : ''}{analytics.growthPercentage}%</p>
-                    </div>
-                    <div className={`mt-4 flex items-center text-sm font-bold ${analytics.growthPercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        <span className="material-symbols-outlined text-xs mr-1">{analytics.growthPercentage >= 0 ? 'trending_up' : 'trending_down'}</span>
-                        <span>vs last month</span>
-                    </div>
-                </div>
-
-                {/* Delivery Success Rate */}
-                <div className="bg-card p-6 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-                    <p className="text-muted-foreground text-sm font-semibold uppercase tracking-wider mb-2">Success Rate</p>
-                    <div className="flex items-baseline gap-2">
-                        <p className="text-3xl font-bold text-cyan-500 leading-tight">{analytics.deliverySuccessRate}%</p>
-                    </div>
-                    <div className="mt-4 flex items-center text-muted-foreground text-sm font-medium">
-                        <span className="material-symbols-outlined text-xs mr-1">check_circle</span>
-                        <span>delivered successfully</span>
-                    </div>
+                <div className="kpi">
+                    <div className="kt"><span className="lab">Success Rate</span></div>
+                    <div className="val" style={{ color: 'var(--st-green)' }}>{analytics.deliverySuccessRate}%</div>
+                    <div className="sub">delivered successfully</div>
                 </div>
             </div>
 
             {/* COD Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-primary/5 p-6 rounded-xl border border-primary/10 flex items-center gap-5">
-                    <div className="h-12 w-12 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                        <span className="material-symbols-outlined">pending_actions</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Pending COD</span>
+                        <span className="ic"><span className="material-symbols-outlined text-[18px]">pending_actions</span></span>
                     </div>
-                    <div>
-                        <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">Pending COD</p>
-                        <p className="text-2xl font-black text-foreground">AED {analytics.codSummary.pending}</p>
-                    </div>
+                    <div className="val" style={{ fontSize: 26 }}>AED {analytics.codSummary.pending}</div>
                 </div>
-                <div className="bg-primary/5 p-6 rounded-xl border border-primary/10 flex items-center gap-5">
-                    <div className="h-12 w-12 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                        <span className="material-symbols-outlined">account_balance_wallet</span>
+                <div className="kpi">
+                    <div className="kt">
+                        <span className="lab">Collected COD</span>
+                        <span className="ic"><span className="material-symbols-outlined text-[18px]">account_balance_wallet</span></span>
                     </div>
-                    <div>
-                        <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">Collected COD</p>
-                        <p className="text-2xl font-black text-foreground">AED {analytics.codSummary.collected}</p>
-                    </div>
+                    <div className="val" style={{ fontSize: 26 }}>AED {analytics.codSummary.collected}</div>
                 </div>
-                <div className="bg-primary/5 p-6 rounded-xl border border-primary/10 flex items-center gap-5">
-                    <div className="h-12 w-12 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                        <span className="material-symbols-outlined">payments</span>
+                <div className="kpi accent">
+                    <div className="kt">
+                        <span className="lab">Remitted to You</span>
+                        <span className="ic"><span className="material-symbols-outlined text-[18px]">payments</span></span>
                     </div>
-                    <div>
-                        <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">Remitted to You</p>
-                        <p className="text-2xl font-black text-foreground">AED {analytics.codSummary.remitted}</p>
-                    </div>
+                    <div className="val" style={{ fontSize: 26 }}>AED {analytics.codSummary.remitted}</div>
                 </div>
             </div>
 
             {/* Charts Row 1 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 {/* Daily Shipments Chart */}
-                <div className="bg-card p-8 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300">
+                <div className="bg-card p-8 rounded-2xl border border-border shadow-sm hover:border-border transition-all duration-300">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-foreground mb-1">Shipments Per Day</h3>
@@ -190,35 +144,30 @@ export default function CustomerAnalytics() {
                                 <AreaChart data={analytics.shipmentsPerDay}>
                                     <defs>
                                         <linearGradient id="colorShipmentsCustomer" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#2e5bff" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#2e5bff" stopOpacity={0} />
+                                            <stop offset="5%" stopColor={ACCENT} stopOpacity={0.18} />
+                                            <stop offset="95%" stopColor={ACCENT} stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
                                     <XAxis
                                         dataKey="date"
                                         tickFormatter={formatDate}
-                                        stroke="#9ca3af"
-                                        fontSize={10}
+                                        tick={AXIS_TICK}
+                                        stroke={GRID}
+                                        tickLine={false}
                                         interval="preserveStartEnd"
                                     />
-                                    <YAxis stroke="#9ca3af" fontSize={12} />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
-                                        labelFormatter={formatDate}
-                                    />
+                                    <YAxis tick={AXIS_TICK} stroke={GRID} tickLine={false} axisLine={false} width={36} />
+                                    <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={formatDate} />
                                     <Area
                                         type="monotone"
                                         dataKey="count"
-                                        stroke="#2e5bff"
-                                        strokeWidth={2}
+                                        stroke={ACCENT}
+                                        strokeWidth={2.5}
                                         fillOpacity={1}
                                         fill="url(#colorShipmentsCustomer)"
                                         name="Shipments"
+                                        activeDot={{ r: 5, fill: 'var(--card)', stroke: ACCENT, strokeWidth: 2.5 }}
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -227,7 +176,7 @@ export default function CustomerAnalytics() {
                 </div>
 
                 {/* Monthly Comparison Chart */}
-                <div className="bg-card p-8 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300">
+                <div className="bg-card p-8 rounded-2xl border border-border shadow-sm hover:border-border transition-all duration-300">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-foreground mb-1">Monthly Comparison</h3>
@@ -238,28 +187,25 @@ export default function CustomerAnalytics() {
                         <div className="h-[280px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={analytics.monthlyComparison}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
                                     <XAxis
                                         dataKey="month"
                                         tickFormatter={formatMonth}
-                                        stroke="#9ca3af"
-                                        fontSize={12}
+                                        tick={AXIS_TICK}
+                                        stroke={GRID}
+                                        tickLine={false}
                                     />
-                                    <YAxis stroke="#9ca3af" fontSize={12} />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
-                                        labelFormatter={formatMonth}
-                                    />
-                                    <Bar
-                                        dataKey="count"
-                                        fill="#6366f1"
-                                        radius={[4, 4, 0, 0]}
-                                        name="Shipments"
-                                    />
+                                    <YAxis tick={AXIS_TICK} stroke={GRID} tickLine={false} axisLine={false} width={36} />
+                                    <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'var(--surface-2)' }} labelFormatter={formatMonth} />
+                                    <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={34} name="Shipments">
+                                        {analytics.monthlyComparison.map((_entry, index) => (
+                                            <Cell
+                                                key={`m-${index}`}
+                                                fill={index === analytics.monthlyComparison.length - 1 ? ACCENT : INK_BAR}
+                                                fillOpacity={index === analytics.monthlyComparison.length - 1 ? 1 : 0.82}
+                                            />
+                                        ))}
+                                    </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -270,7 +216,7 @@ export default function CustomerAnalytics() {
             {/* Charts Row 2 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 {/* Distribution by City */}
-                <div className="bg-card p-8 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300">
+                <div className="bg-card p-8 rounded-2xl border border-border shadow-sm hover:border-border transition-all duration-300">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-foreground mb-1">Top Destinations</h3>
@@ -288,21 +234,14 @@ export default function CustomerAnalytics() {
                                         labelLine={false}
                                         label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                                         outerRadius={90}
-                                        fill="#10b981"
                                         dataKey="count"
                                         nameKey="city"
                                     >
                                         {analytics.distributionByCity.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            <Cell key={`cell-${index}`} fill={CHART_PALETTE[index % CHART_PALETTE.length]} />
                                         ))}
                                     </Pie>
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
-                                    />
+                                    <Tooltip contentStyle={TOOLTIP_STYLE} />
                                 </PieChart>
                             </ResponsiveContainer>
                         </div>
@@ -310,7 +249,7 @@ export default function CustomerAnalytics() {
                 </div>
 
                 {/* Status Distribution */}
-                <div className="bg-card p-8 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300">
+                <div className="bg-card p-8 rounded-2xl border border-border shadow-sm hover:border-border transition-all duration-300">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-foreground mb-1">Status Distribution</h3>
@@ -321,32 +260,27 @@ export default function CustomerAnalytics() {
                         <div className="h-[280px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={analytics.statusDistribution} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                    <XAxis type="number" stroke="#9ca3af" fontSize={12} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
+                                    <XAxis type="number" tick={AXIS_TICK} stroke={GRID} tickLine={false} />
                                     <YAxis
                                         type="category"
                                         dataKey="status"
-                                        stroke="#9ca3af"
-                                        fontSize={10}
-                                        width={90}
+                                        tick={{ ...AXIS_TICK, fontSize: 10 }}
+                                        stroke={GRID}
+                                        tickLine={false}
+                                        axisLine={false}
+                                        width={104}
                                         tickFormatter={(value) => value.replace(/_/g, ' ')}
                                     />
                                     <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
+                                        contentStyle={TOOLTIP_STYLE}
+                                        cursor={{ fill: 'var(--surface-2)' }}
                                         formatter={(value: number) => [value, 'Shipments']}
                                         labelFormatter={(label) => label.replace(/_/g, ' ')}
                                     />
-                                    <Bar
-                                        dataKey="count"
-                                        radius={[0, 4, 4, 0]}
-                                        name="Count"
-                                    >
+                                    <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={20} name="Count">
                                         {analytics.statusDistribution.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.status] || COLORS[index % COLORS.length]} />
+                                            <Cell key={`cell-${index}`} fill={statusColor(entry.status)} />
                                         ))}
                                     </Bar>
                                 </BarChart>
@@ -358,7 +292,7 @@ export default function CustomerAnalytics() {
 
             {/* Average Delivery Time by Route */}
             {analytics.deliveryTimeByRoute.length > 0 && (
-                <div className="bg-card p-8 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:border-primary/20 transition-all duration-300">
+                <div className="bg-card p-8 rounded-2xl border border-border shadow-sm hover:border-border transition-all duration-300">
                     <div className="flex justify-between items-start mb-8">
                         <div>
                             <h3 className="text-lg font-bold text-foreground mb-1">Average Delivery Time by Route</h3>
@@ -369,36 +303,36 @@ export default function CustomerAnalytics() {
                         <div className="h-[300px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={analytics.deliveryTimeByRoute} layout="vertical">
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID} horizontal={false} />
                                     <XAxis
                                         type="number"
-                                        stroke="#9ca3af"
-                                        fontSize={12}
+                                        tick={AXIS_TICK}
+                                        stroke={GRID}
+                                        tickLine={false}
                                         tickFormatter={(value) => `${value}h`}
                                     />
                                     <YAxis
                                         type="category"
                                         dataKey="route"
-                                        stroke="#9ca3af"
-                                        fontSize={11}
+                                        tick={{ ...AXIS_TICK, fontSize: 10 }}
+                                        stroke={GRID}
+                                        tickLine={false}
+                                        axisLine={false}
                                         width={140}
                                     />
                                     <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: '#1f2937',
-                                            border: '1px solid #374151',
-                                            borderRadius: '8px',
-                                        }}
+                                        contentStyle={TOOLTIP_STYLE}
+                                        cursor={{ fill: 'var(--surface-2)' }}
                                         formatter={(value: number, name: string) => {
                                             if (name === 'avgHours') return [`${value} hours`, 'Avg Time'];
                                             return [value, 'Shipments'];
                                         }}
                                     />
-                                    <Legend />
                                     <Bar
                                         dataKey="avgHours"
-                                        fill="#06b6d4"
-                                        radius={[0, 4, 4, 0]}
+                                        fill="var(--st-blue)"
+                                        radius={[0, 6, 6, 0]}
+                                        maxBarSize={20}
                                         name="Avg Delivery Time (hours)"
                                     />
                                 </BarChart>
@@ -420,9 +354,9 @@ export default function CustomerAnalytics() {
                                         <tr key={index} className="border-t border-border hover:bg-muted/30 transition-colors">
                                             <td className="px-4 py-3 font-medium">{route.route}</td>
                                             <td className="px-4 py-3 text-right">
-                                                <Badge variant="secondary" className="bg-background">{route.count}</Badge>
+                                                <span className="pill">{route.count}</span>
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono text-cyan-400">
+                                            <td className="px-4 py-3 text-right font-mono" style={{ color: 'var(--st-blue)' }}>
                                                 {route.avgHours}h
                                             </td>
                                         </tr>
@@ -436,3 +370,5 @@ export default function CustomerAnalytics() {
         </div>
     );
 }
+
+

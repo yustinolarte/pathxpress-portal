@@ -147,14 +147,14 @@ export default function AdminCreateIntlOrderDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10 bg-background text-foreground antialiased font-sans">
+            <DialogContent className="bg-card border-border !w-[95vw] !max-w-[1400px] max-h-[95vh] overflow-y-auto p-0 gap-0  bg-background text-foreground antialiased font-sans">
                 {/* Decorative Top Line */}
-                <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
+                <div className="w-full h-1 bg-primary" />
 
                 <div className="p-6 md:p-8 space-y-6">
                     <DialogHeader className="p-0 mb-4">
                         <DialogTitle className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-                            <Globe className="h-6 w-6 text-blue-400" />
+                            <Globe className="h-6 w-6 text-primary" />
                             New International Shipment
                         </DialogTitle>
                         <DialogDescription>
@@ -504,3 +504,4 @@ export default function AdminCreateIntlOrderDialog({
         </Dialog>
     );
 }
+

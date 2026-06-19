@@ -84,7 +84,7 @@ export default function Pricing() {
                 return (
                   <div
                     key={index}
-                    className="flex items-start gap-4 p-6 rounded-xl glass hover:glass-strong transition-smooth"
+                    className="flex items-start gap-4 p-6 rounded-xl glass hover:bg-card border-border transition-smooth"
                   >
                     <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
                       <Icon className="w-6 h-6 text-primary" />
@@ -102,7 +102,7 @@ export default function Pricing() {
           {/* Main Content with Tabs */}
           <AnimatedSection animation="slide-up" delay={0.1}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full max-w-md mx-auto grid grid-cols-2 mb-8 glass-strong p-1 h-14">
+              <TabsList className="w-full max-w-md mx-auto grid grid-cols-2 mb-8 bg-card border-border p-1 h-14">
                 <TabsTrigger
                   value="domestic"
                   className="data-[state=active]:bg-primary data-[state=active]:text-white h-12 text-base font-medium flex items-center gap-2"
@@ -123,7 +123,7 @@ export default function Pricing() {
               <TabsContent value="domestic" className="space-y-8">
                 {/* Rate Calculator */}
                 <div>
-                  <h2 className="text-2xl font-bold text-center mb-6 flex items-center justify-center gap-2">
+                  <h2 className="font-display text-2xl font-bold tracking-tight text-center mb-6 flex items-center justify-center gap-2">
                     <span className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                       <Package className="w-4 h-4 text-primary" />
                     </span>
@@ -137,11 +137,11 @@ export default function Pricing() {
               <TabsContent value="international" className="space-y-8">
                 <div className="max-w-4xl mx-auto">
                   {/* Info Banner */}
-                  <Card className="glass border-secondary/30 mb-8">
+                  <Card className="glass border-primary/30 mb-8">
                     <CardContent className="p-6">
                       <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-full bg-secondary/20 flex items-center justify-center flex-shrink-0">
-                          <Globe2 className="w-6 h-6 text-secondary" />
+                        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <Globe2 className="w-6 h-6 text-primary" />
                         </div>
                         <div>
                           <h3 className="font-semibold text-lg mb-1">{t('pricing.internationalTab.infoBanner.title')}</h3>
@@ -160,7 +160,7 @@ export default function Pricing() {
                     </div>
                     <div className="lg:col-span-2 space-y-6">
                       {/* Why International */}
-                      <Card className="glass-strong border-border">
+                      <Card className="bg-card border-border border-border">
                         <CardHeader>
                           <CardTitle className="text-lg">{t('pricing.internationalTab.whatsIncluded.title')}</CardTitle>
                         </CardHeader>
@@ -180,7 +180,7 @@ export default function Pricing() {
                         </CardContent>
                       </Card>
 
-                      <Card className="glass-strong border-border">
+                      <Card className="bg-card border-border border-border">
                         <CardContent className="p-6 text-center">
                           <p className="text-sm text-muted-foreground mb-4">
                             {t('pricing.internationalTab.needHelp')}
@@ -201,17 +201,17 @@ export default function Pricing() {
 
           {/* Bottom CTA */}
           <AnimatedSection animation="fade-in" delay={0.2} className="mt-16">
-            <Card className="glass-strong border-primary/30 max-w-3xl mx-auto overflow-hidden">
+            <Card className="bg-card border-border border-primary/30 max-w-3xl mx-auto overflow-hidden">
               <div className="grid grid-cols-1 md:grid-cols-2">
                 <CardContent className="p-8 flex flex-col justify-center">
-                  <h3 className="text-2xl font-bold mb-2">{t('pricing.domesticTab.customQuote.title')}</h3>
+                  <h3 className="font-display text-2xl font-bold tracking-tight mb-2">{t('pricing.domesticTab.customQuote.title')}</h3>
                   <p className="text-muted-foreground mb-6">
                     {t('pricing.domesticTab.customQuote.description')}
                   </p>
                   <Link href="/request-quote">
                     <Button
                       size="lg"
-                      className="bg-secondary hover:bg-secondary/90 glow-red-hover transition-smooth w-full md:w-auto btn-hover-expand"
+                      className="bg-primary hover:bg-primary/90 transition-smooth w-full md:w-auto btn-hover-expand"
                     >
                       {t('pricing.requestQuoteBtn')}
                     </Button>
@@ -233,3 +233,5 @@ export default function Pricing() {
     </div>
   );
 }
+
+

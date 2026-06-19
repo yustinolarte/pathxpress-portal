@@ -296,26 +296,20 @@ export default function CODPanel() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { className: string; icon: any; label: string }> = {
-      pending_collection: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending Collection' },
-      collected: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Collected' },
-      remitted: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Remitted' },
-      disputed: { className: 'bg-red-500/20 text-red-500 border-red-500/30', icon: Clock, label: 'Disputed' },
-      cancelled: { className: 'bg-slate-500/20 text-slate-400 border-slate-500/30', icon: Clock, label: 'Cancelled' },
-      pending: { className: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: Clock, label: 'Pending' },
-      processed: { className: 'bg-blue-500/20 text-blue-500 border-blue-500/30', icon: TrendingUp, label: 'Processed' },
-      completed: { className: 'bg-green-500/20 text-green-500 border-green-500/30', icon: CheckCircle, label: 'Completed' },
+    const variants: Record<string, { className: string; label: string }> = {
+      pending_collection: { className: 'badge2 b-amber', label: 'Pending Collection' },
+      collected: { className: 'badge2 b-blue', label: 'Collected' },
+      remitted: { className: 'badge2 b-green', label: 'Remitted' },
+      disputed: { className: 'badge2 b-red', label: 'Disputed' },
+      cancelled: { className: 'badge2 b-gray', label: 'Cancelled' },
+      pending: { className: 'badge2 b-amber', label: 'Pending' },
+      processed: { className: 'badge2 b-blue', label: 'Processed' },
+      completed: { className: 'badge2 b-green', label: 'Completed' },
     };
 
     const config = variants[status] || variants.pending;
-    const Icon = config.icon;
 
-    return (
-      <Badge className={`flex items-center gap-1 w-fit border ${config.className}`}>
-        <Icon className="w-3 h-3" />
-        {config.label}
-      </Badge>
-    );
+    return <span className={config.className}>{config.label}</span>;
   };
 
   const totalSelected = pendingCOD
@@ -328,10 +322,10 @@ export default function CODPanel() {
   return (
     <div className="space-y-6">
       {/* Client Filter */}
-      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+      <Card className="bg-card rounded-2xl border border-border shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-purple-400" />
+            <DollarSign className="h-5 w-5 text-primary" />
             COD Management Filter
           </CardTitle>
           <CardDescription>Filter COD records by client</CardDescription>
@@ -367,11 +361,11 @@ export default function CODPanel() {
       </Card>
 
       {/* Enhanced COD Summary */}
-      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 overflow-hidden">
-        <CardHeader className="bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+      <Card className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-500/5 border border-blue-500/10">
-              <Wallet className="h-5 w-5 text-blue-400/70" />
+            <div className="p-2 rounded-lg bg-secondary border border-border">
+              <Wallet className="h-5 w-5 text-foreground" />
             </div>
             COD Summary
           </CardTitle>
@@ -385,64 +379,56 @@ export default function CODPanel() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Collected Today */}
-            <div className="group relative p-5 rounded-xl bg-gradient-to-br from-green-500/10 via-green-500/5 to-transparent border border-green-500/20 hover:border-green-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-green-500/10 hover:-translate-y-1">
-              <div className="absolute top-3 right-3 p-2 rounded-lg bg-green-500/5 group-hover:bg-green-500/10 transition-colors">
-                <BadgeCheck className="h-5 w-5 text-green-400/60" />
+            <div className="kpi">
+              <div className="kt">
+                <span className="lab">Collected Today</span>
+                <span className="ic"><BadgeCheck className="h-[18px] w-[18px]" style={{ color: 'var(--st-green)' }} /></span>
               </div>
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-muted-foreground">Collected Today</span>
-                <div className="text-3xl font-bold text-green-400 tracking-tight">
-                  AED {totalCollectedToday.toFixed(2)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Calendar className="h-3 w-3 opacity-50" />
-                  {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
+              <div className="val" style={{ fontSize: 26, color: 'var(--st-green)' }}>
+                AED {totalCollectedToday.toFixed(2)}
+              </div>
+              <div className="sub">
+                <Calendar className="h-3 w-3 opacity-50" />
+                {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </div>
             </div>
 
             {/* Total Pending Settlement */}
-            <div className="group relative p-5 rounded-xl bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-transparent border border-yellow-500/20 hover:border-yellow-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-yellow-500/10 hover:-translate-y-1">
-              <div className="absolute top-3 right-3 p-2 rounded-lg bg-yellow-500/5 group-hover:bg-yellow-500/10 transition-colors">
-                <Wallet className="h-5 w-5 text-yellow-400/60" />
+            <div className="kpi">
+              <div className="kt">
+                <span className="lab">Pending Settlement</span>
+                <span className="ic"><Wallet className="h-[18px] w-[18px]" style={{ color: 'var(--st-amber)' }} /></span>
               </div>
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-muted-foreground">Pending Settlement</span>
-                <div className="text-3xl font-bold text-yellow-400 tracking-tight">
-                  AED {totalPendingSettlement.toFixed(2)}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3 opacity-50" />
-                  Ready for payout
-                </div>
+              <div className="val" style={{ fontSize: 26, color: 'var(--st-amber)' }}>
+                AED {totalPendingSettlement.toFixed(2)}
+              </div>
+              <div className="sub">
+                <Clock className="h-3 w-3 opacity-50" />
+                Ready for payout
               </div>
             </div>
 
             {/* Next Payout Date */}
-            <div className="group relative p-5 rounded-xl bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border border-blue-500/20 hover:border-blue-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/10 hover:-translate-y-1">
-              <div className="absolute top-3 right-3 p-2 rounded-lg bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors">
-                <Calendar className="h-5 w-5 text-blue-400/60" />
+            <div className="kpi accent">
+              <div className="kt">
+                <span className="lab">Next Payout</span>
+                <span className="ic"><Calendar className="h-[18px] w-[18px]" /></span>
               </div>
-              <div className="space-y-2">
-                <span className="text-sm font-medium text-muted-foreground">Next Payout</span>
-                <div className="text-2xl font-bold text-blue-400 tracking-tight">
-                  {getNextPayoutDate()}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <TrendingUp className="h-3 w-3 opacity-50" />
-                  Weekly schedule
-                </div>
+              <div className="val" style={{ fontSize: 24 }}>
+                {getNextPayoutDate()}
+              </div>
+              <div className="sub">
+                <TrendingUp className="h-3 w-3 opacity-50" />
+                Weekly schedule
               </div>
             </div>
 
             {/* Download Settlement PDF */}
-            <div className="group relative p-5 rounded-xl bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent border border-purple-500/20 hover:border-purple-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-1 flex flex-col justify-between">
+            <div className="kpi flex flex-col justify-between">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-muted-foreground">Settlement Report</span>
-                  <div className="p-2 rounded-lg bg-purple-500/5 group-hover:bg-purple-500/10 transition-colors">
-                    <Download className="h-5 w-5 text-purple-400/60" />
-                  </div>
+                  <span className="lab">Settlement Report</span>
+                  <span className="ic"><Download className="h-[18px] w-[18px]" /></span>
                 </div>
                 <div className="text-sm text-muted-foreground">
                   Filter and export COD records
@@ -472,7 +458,7 @@ export default function CODPanel() {
                   onClick={handleDownloadSettlementPDF}
                   variant="outline"
                   size="sm"
-                  className="w-full border-purple-500/30 hover:bg-purple-500/20 hover:border-purple-500/50 transition-all"
+                  className="w-full"
                 >
                   <Download className="mr-2 h-4 w-4 opacity-70" />
                   Pending Settlements
@@ -481,7 +467,7 @@ export default function CODPanel() {
                   onClick={handleDownloadAllCODPDF}
                   variant="outline"
                   size="sm"
-                  className="w-full border-blue-500/30 hover:bg-blue-500/20 hover:border-blue-500/50 transition-all"
+                  className="w-full"
                 >
                   <Download className="mr-2 h-4 w-4 opacity-70" />
                   All COD Records
@@ -491,34 +477,25 @@ export default function CODPanel() {
           </div>
 
           {/* Additional Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6 pt-6 border-t border-border/50">
-            <div className="text-center p-4 rounded-lg bg-gradient-to-br from-slate-500/5 to-transparent hover:from-slate-500/10 transition-all">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Clock className="h-4 w-4 text-slate-400/50" />
-                <div className="text-sm font-medium text-muted-foreground">Total Pending</div>
-              </div>
-              <div className="text-2xl font-bold">AED {codSummary?.pending || '0'}</div>
+          <div className="statline mt-6 pt-6 border-t border-border/50" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+            <div className="s">
+              <div className="l">Total Pending</div>
+              <div className="v">AED {codSummary?.pending || '0'}</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-gradient-to-br from-green-500/5 to-transparent hover:from-green-500/10 transition-all">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <BadgeCheck className="h-4 w-4 text-green-400/50" />
-                <div className="text-sm font-medium text-muted-foreground">Total Remitted</div>
-              </div>
-              <div className="text-2xl font-bold text-green-400">AED {codSummary?.remitted || '0'}</div>
+            <div className="s">
+              <div className="l">Total Remitted</div>
+              <div className="v green">AED {codSummary?.remitted || '0'}</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-500/5 to-transparent hover:from-blue-500/10 transition-all">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Wallet className="h-4 w-4 text-blue-400/50" />
-                <div className="text-sm font-medium text-muted-foreground">All Time Total</div>
-              </div>
-              <div className="text-2xl font-bold text-blue-400">AED {codSummary?.total || '0'}</div>
+            <div className="s">
+              <div className="l">All Time Total</div>
+              <div className="v">AED {codSummary?.total || '0'}</div>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Remittances Section */}
-      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+      <Card className="bg-card rounded-2xl border border-border shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>COD Remittances</CardTitle>
@@ -531,13 +508,13 @@ export default function CODPanel() {
                 Create Remittance
               </Button>
             </DialogTrigger>
-            <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-              <div className="w-full h-1 bg-gradient-to-r from-purple-600 to-indigo-600" />
+            <DialogContent className="bg-card border-border !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+              <div className="w-full h-1 bg-primary" />
               <div className="p-6">
                 <DialogHeader className="mb-6">
-                  <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-purple-500/20">
-                      <Wallet className="w-6 h-6 text-purple-400" />
+                  <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <Wallet className="w-6 h-6 text-primary" />
                     </div>
                     Create COD Remittance
                   </DialogTitle>
@@ -553,10 +530,10 @@ export default function CODPanel() {
                       setSelectedClient(parseInt(value));
                       setSelectedCODRecords([]);
                     }}>
-                      <SelectTrigger id="client" className="bg-white/5 border-white/10">
+                      <SelectTrigger id="client" className="bg-white/5 border-border">
                         <SelectValue placeholder="Select a client" />
                       </SelectTrigger>
-                      <SelectContent className="glass-strong">
+                      <SelectContent className="bg-card border-border">
                         {clients?.map((client: any) => (
                           <SelectItem key={client.id} value={client.id.toString()}>
                             {client.companyName}
@@ -570,7 +547,7 @@ export default function CODPanel() {
                     <>
                       <div className="space-y-2">
                         <Label>Select Shipments ({selectedCODRecords.length} selected)</Label>
-                        <div className="border border-white/10 rounded-xl max-h-[300px] overflow-y-auto bg-white/5">
+                        <div className="border border-border rounded-xl max-h-[300px] overflow-y-auto bg-white/5">
                           <Table>
                             <TableHeader>
                               <TableRow>
@@ -598,9 +575,9 @@ export default function CODPanel() {
                           </Table>
                         </div>
                         {selectedCODRecords.length > 0 && (
-                          <div className="flex justify-between items-center p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                          <div className="flex justify-between items-center p-3 bg-secondary border border-border rounded-xl">
                             <span className="font-medium">Total Amount:</span>
-                            <span className="text-lg font-bold text-purple-400">AED {totalSelected.toFixed(2)}</span>
+                            <span className="money text-lg text-primary">AED {totalSelected.toFixed(2)}</span>
                           </div>
                         )}
                       </div>
@@ -609,10 +586,10 @@ export default function CODPanel() {
                         <div className="space-y-2">
                           <Label htmlFor="paymentMethod">Payment Method</Label>
                           <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                            <SelectTrigger id="paymentMethod" className="bg-white/5 border-white/10">
+                            <SelectTrigger id="paymentMethod" className="bg-white/5 border-border">
                               <SelectValue placeholder="Select method" />
                             </SelectTrigger>
-                            <SelectContent className="glass-strong">
+                            <SelectContent className="bg-card border-border">
                               <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                               <SelectItem value="cash">Cash</SelectItem>
                               <SelectItem value="cheque">Cheque</SelectItem>
@@ -627,7 +604,7 @@ export default function CODPanel() {
                             value={paymentReference}
                             onChange={(e) => setPaymentReference(e.target.value)}
                             placeholder="Transaction ID, cheque number, etc."
-                            className="bg-white/5 border-white/10"
+                            className="bg-white/5 border-border"
                           />
                         </div>
                       </div>
@@ -640,18 +617,17 @@ export default function CODPanel() {
                           onChange={(e) => setNotes(e.target.value)}
                           placeholder="Add any notes about this remittance..."
                           rows={3}
-                          className="bg-white/5 border-white/10 resize-none"
+                          className="bg-white/5 border-border resize-none"
                         />
                       </div>
 
-                      <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
+                      <div className="flex justify-end gap-2 pt-4 border-t border-border">
                         <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
                           Cancel
                         </Button>
                         <Button
                           onClick={handleCreateRemittance}
                           disabled={selectedCODRecords.length === 0 || createRemittanceMutation.isPending}
-                          className="bg-purple-600 hover:bg-purple-700"
                         >
                           {createRemittanceMutation.isPending ? 'Creating...' : 'Create Remittance'}
                         </Button>
@@ -706,13 +682,13 @@ export default function CODPanel() {
                     </TableCell>
                     <TableCell>{remittance.client?.companyName || 'N/A'}</TableCell>
                     <TableCell>{remittance.shipmentCount}</TableCell>
-                    <TableCell className="font-semibold">{formatCurrency((remittance as any).grossAmount || remittance.totalAmount, remittance.currency)}</TableCell>
-                    <TableCell className="text-red-400 font-medium">
+                    <TableCell className="money">{formatCurrency((remittance as any).grossAmount || remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="text-muted-foreground font-mono">
                       {(remittance as any).feeAmount && parseFloat((remittance as any).feeAmount) > 0
-                        ? `- ${formatCurrency((remittance as any).feeAmount, remittance.currency)}`
+                        ? `− ${formatCurrency((remittance as any).feeAmount, remittance.currency)}`
                         : '—'}
                     </TableCell>
-                    <TableCell className="text-green-400 font-bold">{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
                     <TableCell>{remittance.paymentMethod || 'N/A'}</TableCell>
                     <TableCell>{formatDate(remittance.createdAt)}</TableCell>
                     <TableCell>{getStatusBadge(remittance.status)}</TableCell>
@@ -749,7 +725,7 @@ export default function CODPanel() {
       />
 
       {/* All COD Records */}
-      <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+      <Card className="bg-card rounded-2xl border border-border shadow-sm">
         <CardHeader>
           <CardTitle>All COD Records</CardTitle>
           <CardDescription>Complete history of cash on delivery transactions</CardDescription>
@@ -812,3 +788,5 @@ export default function CODPanel() {
     </div>
   );
 }
+
+

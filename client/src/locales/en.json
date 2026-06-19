@@ -116,6 +116,40 @@
       "point1": "E-commerce integration",
       "point2": "Multi-vendor support",
       "point3": "Real-time tracking"
+    },
+    "bullet": {
+      "title": "BULLET Express",
+      "label": "4-Hour Delivery",
+      "point1": "Delivery within 4 hours",
+      "point2": "Priority handling and routing",
+      "point3": "For your most urgent shipments"
+    },
+    "express": {
+      "title": "Express Service",
+      "label": "Distant Emirates",
+      "point1": "Faster delivery to remote emirates",
+      "point2": "Priority routing to far-reaching areas",
+      "point3": "Reliable cross-emirate transit"
+    },
+    "preferredNextDay": {
+      "title": "Next Day Preferred Time",
+      "label": "Scheduled Delivery",
+      "point1": "Next-day delivery",
+      "point2": "Choose your preferred time slot",
+      "point3": "Ideal for time-sensitive deliveries"
+    },
+    "preferredSameDay": {
+      "title": "Same Day Preferred Time",
+      "label": "Scheduled · Same Day",
+      "point1": "Same-day delivery",
+      "point2": "Pick your preferred time window",
+      "point3": "Minimum 4-hour lead time"
+    },
+    "customCase": {
+      "title": "Don't see your case?",
+      "label": "Custom solution",
+      "description": "We design custom routes and SLAs for operations of any volume.",
+      "cta": "Talk to sales"
     }
   },
   "whyChooseUs": {

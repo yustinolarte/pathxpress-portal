@@ -52,16 +52,17 @@ const LOCATION_OPTIONS = [
 ] as const;
 
 // Status options with visual styling
+// Functional tones only: blue = moving, amber = waiting, green = done, red = problem
 const STATUS_OPTIONS = [
-  { value: 'pending_pickup', label: 'Pending Pickup', icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30' },
-  { value: 'picked_up', label: 'Picked Up', icon: Package, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
-  { value: 'in_transit', label: 'In Transit', icon: Truck, color: 'text-cyan-500', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30' },
-  { value: 'out_for_delivery', label: 'Out for Delivery', icon: Truck, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/30' },
-  { value: 'delivered', label: 'Delivered', icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/30' },
-  { value: 'failed_delivery', label: 'Failed Delivery', icon: XCircle, color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30' },
-  { value: 'on_hold', label: 'On Hold', icon: Pause, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
-  { value: 'returned', label: 'Returned', icon: RotateCcw, color: 'text-gray-500', bg: 'bg-gray-500/10', border: 'border-gray-500/30' },
-  { value: 'returned_to_sender', label: 'Return to Sender', icon: RotateCcw, color: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/30' },
+  { value: 'pending_pickup', label: 'Pending Pickup', icon: Clock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'picked_up', label: 'Picked Up', icon: Package, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'in_transit', label: 'In Transit', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'out_for_delivery', label: 'Out for Delivery', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'delivered', label: 'Delivered', icon: CheckCircle2, color: 'text-[var(--st-green)]', bg: 'bg-[var(--st-green-bg)]', border: 'border-[var(--st-green)]/30' },
+  { value: 'failed_delivery', label: 'Failed Delivery', icon: XCircle, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'on_hold', label: 'On Hold', icon: Pause, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'returned', label: 'Returned', icon: RotateCcw, color: 'text-[var(--st-gray)]', bg: 'bg-[var(--st-gray-bg)]', border: 'border-border' },
+  { value: 'returned_to_sender', label: 'Return to Sender', icon: RotateCcw, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
 ] as const;
 
 // Default location for each status — can still be changed by the user
@@ -224,16 +225,16 @@ export default function AddTrackingEventDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
+      <DialogContent className="bg-card border-border !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
         {/* Decorative Top Line */}
-        <div className="w-full h-1 bg-gradient-to-r from-emerald-600 to-teal-600" />
+        <div className="w-full h-1 bg-primary" />
 
         <div className="p-6">
           {/* Header */}
           <DialogHeader className="mb-6">
-            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/20">
-                <Package className="w-6 h-6 text-emerald-400" />
+            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <Package className="w-6 h-6 text-primary" />
               </div>
               Add Tracking Event
             </DialogTitle>
@@ -262,7 +263,7 @@ export default function AddTrackingEventDialog({
                         p-3 rounded-lg border transition-all text-left
                         ${isSelected
                           ? `${status.bg} ${status.border} ring-2 ring-offset-2 ring-offset-background ring-${status.color.replace('text-', '')}`
-                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          : 'bg-white/5 border-border hover:bg-white/10'
                         }
                       `}
                     >
@@ -289,7 +290,7 @@ export default function AddTrackingEventDialog({
                   value={formData.eventDatetime}
                   onChange={(e) => setFormData({ ...formData, eventDatetime: e.target.value })}
                   required
-                  className="bg-white/5 border-white/10"
+                  className="bg-white/5 border-border"
                 />
                 <p className="text-xs text-muted-foreground">
                   Dubai Time (UTC+4)
@@ -303,7 +304,7 @@ export default function AddTrackingEventDialog({
                   Location *
                 </Label>
                 <Select value={formData.locationKey} onValueChange={handleLocationChange}>
-                  <SelectTrigger className="bg-white/5 border-white/10">
+                  <SelectTrigger className="bg-white/5 border-border">
                     <div className="flex items-center gap-2">
                       <LocationIcon className="h-4 w-4 text-muted-foreground" />
                       <SelectValue placeholder="Select location" />
@@ -363,7 +364,7 @@ export default function AddTrackingEventDialog({
             {formData.locationKey === 'other' && (
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-orange-400" />
+                  <MapPin className="w-4 h-4 text-[var(--st-amber)]" />
                   Custom Location *
                 </Label>
                 <Input
@@ -371,16 +372,16 @@ export default function AddTrackingEventDialog({
                   value={formData.customLocation}
                   onChange={(e) => setFormData({ ...formData, customLocation: e.target.value })}
                   required
-                  className="bg-orange-500/5 border-orange-500/20"
+                  className="bg-secondary border-border"
                 />
               </div>
             )}
 
             {/* Local Courier Fields */}
             {formData.locationKey === 'local_courier' && (
-              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-secondary border border-border">
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-blue-400">
+                  <Label className="flex items-center gap-2 text-[var(--st-blue)]">
                     <Truck className="w-4 h-4" />
                     Courier Name *
                   </Label>
@@ -389,11 +390,11 @@ export default function AddTrackingEventDialog({
                     value={formData.courierName}
                     onChange={(e) => setFormData({ ...formData, courierName: e.target.value })}
                     required
-                    className="bg-blue-500/5 border-blue-500/20"
+                    className="bg-background border-border"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-2 text-blue-400">
+                  <Label className="flex items-center gap-2 text-[var(--st-blue)]">
                     <FileText className="w-4 h-4" />
                     Tracking Number *
                   </Label>
@@ -402,7 +403,7 @@ export default function AddTrackingEventDialog({
                     value={formData.courierTracking}
                     onChange={(e) => setFormData({ ...formData, courierTracking: e.target.value })}
                     required
-                    className="bg-blue-500/5 border-blue-500/20"
+                    className="bg-background border-border font-mono"
                   />
                 </div>
               </div>
@@ -419,14 +420,14 @@ export default function AddTrackingEventDialog({
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                className="bg-white/5 border-white/10 resize-none"
+                className="bg-white/5 border-border resize-none"
               />
             </div>
 
             {/* POD URL - only show for delivered status */}
             {formData.statusCode === 'delivered' && (
-              <div className="space-y-2 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-                <Label className="flex items-center gap-2 text-green-400">
+              <div className="space-y-2 p-4 rounded-lg bg-[var(--st-green-bg)] border border-[var(--st-green)]/25">
+                <Label className="flex items-center gap-2 text-[var(--st-green)]">
                   <Link2 className="w-4 h-4" />
                   Proof of Delivery URL
                 </Label>
@@ -435,23 +436,22 @@ export default function AddTrackingEventDialog({
                   placeholder="https://example.com/pod-image.jpg"
                   value={podFileUrl}
                   onChange={(e) => setPodFileUrl(e.target.value)}
-                  className="bg-green-500/5 border-green-500/20"
+                  className="bg-background border-border"
                 />
-                <p className="text-xs text-green-400/70">
+                <p className="text-xs text-muted-foreground">
                   Link to signature or photo proof
                 </p>
               </div>
             )}
 
             {/* Footer */}
-            <DialogFooter className="pt-4 border-t border-white/10">
+            <DialogFooter className="pt-4 border-t border-border">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={addEventMutation.isPending}
-                className="bg-emerald-600 hover:bg-emerald-700"
               >
                 {addEventMutation.isPending ? (
                   <>
@@ -472,3 +472,4 @@ export default function AddTrackingEventDialog({
     </Dialog>
   );
 }
+

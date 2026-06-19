@@ -297,10 +297,10 @@ export default function BillingPanel() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'paid': return <Badge className="bg-green-500/20 text-green-400 border-green-500/30"><CheckCircle className="w-3 h-3 mr-1" />Paid</Badge>;
-      case 'pending': return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
-      case 'overdue': return <Badge className="bg-red-500/20 text-red-400 border-red-500/30"><AlertCircle className="w-3 h-3 mr-1" />Overdue</Badge>;
-      default: return <Badge>{status}</Badge>;
+      case 'paid': return <span className="badge2 b-green">Paid</span>;
+      case 'pending': return <span className="badge2 b-amber">Pending</span>;
+      case 'overdue': return <span className="badge2 b-red">Overdue</span>;
+      default: return <span className="badge2 b-gray">{status}</span>;
     }
   };
 
@@ -371,9 +371,9 @@ export default function BillingPanel() {
     today.setHours(0, 0, 0, 0);
     due.setHours(0, 0, 0, 0);
     const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
-    if (diffDays < 0) return <span className="text-red-400 text-xs font-medium">{Math.abs(diffDays)}d overdue</span>;
-    if (diffDays === 0) return <span className="text-orange-400 text-xs font-medium">Due today</span>;
-    if (diffDays <= 7) return <span className="text-yellow-400 text-xs font-medium">Due in {diffDays}d</span>;
+    if (diffDays < 0) return <span className="text-primary text-xs font-medium">{Math.abs(diffDays)}d overdue</span>;
+    if (diffDays === 0) return <span className="text-xs font-medium" style={{ color: 'var(--st-amber)' }}>Due today</span>;
+    if (diffDays <= 7) return <span className="text-xs font-medium" style={{ color: 'var(--st-amber)' }}>Due in {diffDays}d</span>;
     return <span className="text-muted-foreground text-xs">{diffDays}d left</span>;
   };
 
@@ -390,7 +390,7 @@ export default function BillingPanel() {
   // ─── Shared sub-components ────────────────────────────────────────────────
 
   const InvoiceTable = ({ invoiceList, exportFilename }: { invoiceList: any[]; exportFilename: string }) => (
-    <Card className="bg-card rounded-2xl border border-primary/10 shadow-xl shadow-primary/5">
+    <Card className="bg-card rounded-2xl border border-border shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle>Invoices</CardTitle>
@@ -462,15 +462,9 @@ export default function BillingPanel() {
                 const isOverdue = invoice.status === 'overdue';
                 const balance = parseFloat(invoice.balance || invoice.total || '0');
                 const sp = invoice.settlementPeriod || 'custom';
-                const settlementColors: Record<string, string> = {
-                  weekly: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-                  biweekly: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-                  monthly: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-                  custom: 'bg-muted/40 text-muted-foreground border-border',
-                };
                 return (
-                  <TableRow key={invoice.id} className={isOverdue ? 'bg-red-500/5 hover:bg-red-500/10' : ''}>
-                    <TableCell className="font-medium cursor-pointer text-blue-500 hover:text-blue-400 hover:underline" onClick={() => handlePreviewInvoice(invoice)}>
+                  <TableRow key={invoice.id} className={isOverdue ? 'bg-primary/5 hover:bg-primary/10' : ''}>
+                    <TableCell className="wb font-medium cursor-pointer hover:text-primary hover:underline" onClick={() => handlePreviewInvoice(invoice)}>
                       {invoice.invoiceNumber}
                     </TableCell>
                     <TableCell>{clients?.find(c => c.id === invoice.clientId)?.companyName || invoice.clientId}</TableCell>
@@ -478,18 +472,18 @@ export default function BillingPanel() {
                       {formatDate(invoice.periodFrom)}<br /><span className="text-muted-foreground/60">→ {formatDate(invoice.periodTo)}</span>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`text-xs border ${settlementColors[sp]}`}>{settlementLabel(sp)}</Badge>
+                      <span className="pill">{settlementLabel(sp)}</span>
                     </TableCell>
                     <TableCell className="text-center font-mono text-sm">
                       {invoice.shipmentCount ?? '—'}
                     </TableCell>
                     <TableCell className="text-sm">{formatDate(invoice.issueDate)}</TableCell>
                     <TableCell>
-                      <div className={isOverdue ? 'text-red-400 font-medium text-sm' : 'text-sm'}>{formatDate(invoice.dueDate)}</div>
+                      <div className={isOverdue ? 'text-primary font-medium text-sm' : 'text-sm'}>{formatDate(invoice.dueDate)}</div>
                       {getDueDaysLabel(invoice.dueDate, invoice.status)}
                     </TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
-                    <TableCell className={balance > 0 ? 'font-bold text-red-400' : 'text-muted-foreground'}>
+                    <TableCell className="money">{formatCurrency(invoice.total, invoice.currency)}</TableCell>
+                    <TableCell className={balance > 0 ? 'money text-primary' : 'text-muted-foreground'}>
                       {balance > 0 ? formatCurrency(invoice.balance || invoice.total, invoice.currency) : '—'}
                     </TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
@@ -509,7 +503,7 @@ export default function BillingPanel() {
                         <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(invoice)} title="Download PDF">
                           <Download className="w-4 h-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeleteInvoice(invoice.id, invoice.invoiceNumber)} title={invoice.status === 'pending' ? 'Delete invoice' : 'Only pending invoices can be deleted'} disabled={invoice.status !== 'pending' || deleteInvoiceMutation.isPending} className={invoice.status === 'pending' ? 'text-red-400 hover:text-red-500 hover:bg-red-500/10' : 'opacity-50'}>
+                        <Button variant="outline" size="sm" onClick={() => handleDeleteInvoice(invoice.id, invoice.invoiceNumber)} title={invoice.status === 'pending' ? 'Delete invoice' : 'Only pending invoices can be deleted'} disabled={invoice.status !== 'pending' || deleteInvoiceMutation.isPending} className={invoice.status === 'pending' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'opacity-50'}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -574,100 +568,77 @@ export default function BillingPanel() {
 
     const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(2);
 
+    const overdueCount = invoiceList.filter(i => i.status === 'overdue').length;
+
     return (
       <div className="space-y-4">
         {/* ── Primary financial indicators ── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Monthly Earnings */}
-          <div className="relative bg-gradient-to-br from-emerald-500/10 via-card to-card p-5 rounded-2xl border border-emerald-500/20 shadow-xl shadow-emerald-500/5 hover:-translate-y-1 hover:border-emerald-500/30 transition-all duration-300 overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -translate-y-8 translate-x-8" />
-            <div className="flex justify-between items-start mb-3">
-              <div className="p-2.5 bg-emerald-500/15 rounded-xl text-emerald-500">
-                <Banknote className="w-5 h-5" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium bg-muted/40 px-2 py-1 rounded-md">
-                {now.toLocaleString('en-US', { month: 'short', year: 'numeric' })}
-              </span>
+          <div className="kpi">
+            <div className="kt">
+              <span className="lab">Monthly Earnings</span>
+              <span className="pill">{now.toLocaleString('en-US', { month: 'short', year: 'numeric' })}</span>
             </div>
-            <p className="text-muted-foreground text-xs font-medium">Monthly Earnings</p>
-            <h3 className="text-2xl font-bold mt-1 text-emerald-400">AED {thisMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <p className="text-xs text-muted-foreground mt-1">{thisMonthInvoices.length} invoice{thisMonthInvoices.length !== 1 ? 's' : ''} this month</p>
+            <div className="val" style={{ fontSize: 26 }}>AED {thisMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">{thisMonthInvoices.length} invoice{thisMonthInvoices.length !== 1 ? 's' : ''} this month</div>
           </div>
 
           {/* Month vs Previous */}
-          <div className="relative bg-gradient-to-br from-blue-500/10 via-card to-card p-5 rounded-2xl border border-blue-500/20 shadow-xl shadow-blue-500/5 hover:-translate-y-1 hover:border-blue-500/30 transition-all duration-300 overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-8 translate-x-8" />
-            <div className="flex justify-between items-start mb-3">
-              <div className={`p-2.5 rounded-xl ${momPositive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500'}`}>
-                {momPositive ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-              </div>
-              <span className={`text-xs font-bold flex items-center gap-0.5 px-2 py-1 rounded-md ${momPositive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
-                {momPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                {Math.abs(momChange).toFixed(1)}%
+          <div className="kpi">
+            <div className="kt">
+              <span className="lab">vs Previous Month</span>
+              <span className="ic">
+                {momPositive ? <TrendingUp className="w-[18px] h-[18px]" /> : <TrendingDown className="w-[18px] h-[18px]" />}
               </span>
             </div>
-            <p className="text-muted-foreground text-xs font-medium">vs Previous Month</p>
-            <h3 className="text-2xl font-bold mt-1">
+            <div className="val" style={{ fontSize: 26 }}>
               AED {lastMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
+            </div>
+            <div className="sub">
+              <span className={`trend ${momPositive ? 'up' : 'down'}`}>
+                {momPositive ? '▲' : '▼'} {Math.abs(momChange).toFixed(1)}%
+              </span>
               {lastMonthInvoices.length} invoice{lastMonthInvoices.length !== 1 ? 's' : ''} in {new Date(prevYear, prevMonth).toLocaleString('en-US', { month: 'short' })}
-            </p>
+            </div>
           </div>
 
           {/* Total Revenue */}
-          <div className="relative bg-gradient-to-br from-violet-500/10 via-card to-card p-5 rounded-2xl border border-violet-500/20 shadow-xl shadow-violet-500/5 hover:-translate-y-1 hover:border-violet-500/30 transition-all duration-300 overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 rounded-full -translate-y-8 translate-x-8" />
-            <div className="flex justify-between items-start mb-3">
-              <div className="p-2.5 bg-violet-500/15 rounded-xl text-violet-500">
-                <BarChart3 className="w-5 h-5" />
-              </div>
+          <div className="kpi accent">
+            <div className="kt">
+              <span className="lab">Total Revenue</span>
+              <span className="ic"><BarChart3 className="w-[18px] h-[18px]" /></span>
             </div>
-            <p className="text-muted-foreground text-xs font-medium">Total Revenue</p>
-            <h3 className="text-2xl font-bold mt-1 text-violet-400">AED {totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
-            <p className="text-xs text-muted-foreground mt-1">Across {invoiceList.length} total invoices</p>
+            <div className="val" style={{ fontSize: 26 }}>AED {totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">Across {invoiceList.length} total invoices</div>
           </div>
         </div>
 
-        {/* ── Secondary metrics row ── */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {/* Avg Invoice */}
-          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-cyan-500/10 rounded-lg text-cyan-500"><DollarSign className="w-4 h-4" /></div></div>
-            <p className="text-muted-foreground text-[11px] font-medium">Avg Invoice</p>
-            <h3 className="text-lg font-bold mt-0.5">AED {fmt(avgInvoice)}</h3>
-          </div>
-
-          {/* Collection Rate */}
-          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-green-500/10 rounded-lg text-green-500"><CheckCircle className="w-4 h-4" /></div></div>
-            <p className="text-muted-foreground text-[11px] font-medium">Collection Rate</p>
-            <h3 className="text-lg font-bold mt-0.5">
-              <span className={collectionRate >= 80 ? 'text-green-400' : collectionRate >= 50 ? 'text-yellow-400' : 'text-red-400'}>{collectionRate}%</span>
-            </h3>
-            <p className="text-[10px] text-muted-foreground">{paidCount}/{invoiceList.length} paid</p>
-          </div>
-
-          {/* Pending Count */}
-          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><Clock className="w-4 h-4" /></div></div>
-            <p className="text-muted-foreground text-[11px] font-medium">Pending</p>
-            <h3 className="text-lg font-bold mt-0.5 text-yellow-400">{invoiceList.filter(i => i.status === 'pending').length}</h3>
-          </div>
-
-          {/* Outstanding Balance */}
-          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-orange-500/10 rounded-lg text-orange-500"><AlertCircle className="w-4 h-4" /></div></div>
-            <p className="text-muted-foreground text-[11px] font-medium">Outstanding</p>
-            <h3 className="text-lg font-bold mt-0.5 text-orange-400">AED {fmt(outstandingBalance)}</h3>
-          </div>
-
-          {/* Overdue Balance */}
-          <div className="bg-card p-4 rounded-2xl border border-primary/10 shadow-xl shadow-primary/5 hover:-translate-y-1 hover:border-primary/20 transition-all duration-300">
-            <div className="flex justify-between items-start mb-2"><div className="p-2 bg-red-500/10 rounded-lg text-red-500"><AlertCircle className="w-4 h-4" /></div></div>
-            <p className="text-muted-foreground text-[11px] font-medium">Overdue</p>
-            <h3 className="text-lg font-bold mt-0.5 text-red-400">AED {fmt(overdueBalance)}</h3>
-            <p className="text-[10px] text-muted-foreground">{invoiceList.filter(i => i.status === 'overdue').length} invoice{invoiceList.filter(i => i.status === 'overdue').length !== 1 ? 's' : ''}</p>
+        {/* ── Secondary metrics strip ── */}
+        <div className="bg-card border border-border rounded-2xl py-4">
+          <div className="statline" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+            <div className="s">
+              <div className="l">Avg Invoice</div>
+              <div className="v" style={{ fontSize: 20 }}>AED {fmt(avgInvoice)}</div>
+            </div>
+            <div className="s">
+              <div className="l">Collection Rate</div>
+              <div className="v" style={{ fontSize: 20, color: collectionRate >= 80 ? 'var(--st-green)' : collectionRate >= 50 ? 'var(--st-amber)' : 'var(--primary)' }}>{collectionRate}%</div>
+              <div className="l">{paidCount}/{invoiceList.length} paid</div>
+            </div>
+            <div className="s">
+              <div className="l">Pending</div>
+              <div className="v" style={{ fontSize: 20, color: 'var(--st-amber)' }}>{invoiceList.filter(i => i.status === 'pending').length}</div>
+            </div>
+            <div className="s">
+              <div className="l">Outstanding</div>
+              <div className="v" style={{ fontSize: 20 }}>AED {fmt(outstandingBalance)}</div>
+            </div>
+            <div className="s">
+              <div className="l">Overdue</div>
+              <div className="v red" style={{ fontSize: 20 }}>AED {fmt(overdueBalance)}</div>
+              <div className="l">{overdueCount} invoice{overdueCount !== 1 ? 's' : ''}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -700,18 +671,18 @@ export default function BillingPanel() {
   }) => (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button className={isIntl ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}>
+        <Button>
           {isIntl ? <Globe className="w-4 h-4 mr-2" /> : <FileText className="w-4 h-4 mr-2" />}
           Generate {isIntl ? 'International ' : ''}Invoice
         </Button>
       </DialogTrigger>
-      <DialogContent className="glass-strong !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-        <div className={`w-full h-1 bg-gradient-to-r ${isIntl ? 'from-purple-600 to-indigo-600' : 'from-blue-600 to-indigo-600'}`} />
+      <DialogContent className="bg-card border-border !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+        <div className="w-full h-1 bg-primary" />
         <div className="p-6">
           <DialogHeader className="mb-6">
-            <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-              <div className={`p-2 rounded-lg ${isIntl ? 'bg-purple-500/20' : 'bg-blue-500/20'}`}>
-                {isIntl ? <Globe className={`w-6 h-6 ${isIntl ? 'text-purple-400' : 'text-blue-400'}`} /> : <FileText className="w-6 h-6 text-blue-400" />}
+            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10">
+                {isIntl ? <Globe className="w-6 h-6 text-primary" /> : <FileText className="w-6 h-6 text-primary" />}
               </div>
               Generate {isIntl ? 'International ' : ''}Invoice
             </DialogTitle>
@@ -726,8 +697,8 @@ export default function BillingPanel() {
             <div className="space-y-2">
               <Label>Client</Label>
               <Select value={client?.toString()} onValueChange={(v) => setClient(parseInt(v))}>
-                <SelectTrigger className="bg-white/5 border-white/10"><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent className="glass-strong">
+                <SelectTrigger className="bg-white/5 border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
+                <SelectContent className="bg-card border-border">
                   {clients?.map((c: any) => <SelectItem key={c.id} value={c.id.toString()}>{c.companyName}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -736,8 +707,8 @@ export default function BillingPanel() {
             {/* Last billing info block */}
             {client && billingInfo && (
               billingInfo.lastInvoiceNumber ? (
-                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm space-y-1.5">
-                  <p className="font-semibold text-blue-400 flex items-center gap-2">
+                <div className="p-3 rounded-xl bg-secondary border border-border text-sm space-y-1.5">
+                  <p className="font-display font-semibold flex items-center gap-2" style={{ color: 'var(--st-blue)' }}>
                     <Calendar className="w-4 h-4" /> Last Invoice History
                   </p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -748,14 +719,14 @@ export default function BillingPanel() {
                     <span className="text-muted-foreground">Period covered:</span>
                     <span>{billingInfo.lastInvoicePeriodFrom ? formatDate(billingInfo.lastInvoicePeriodFrom) : '—'} → {billingInfo.lastInvoicePeriodTo ? formatDate(billingInfo.lastInvoicePeriodTo) : '—'}</span>
                     <span className="text-muted-foreground">Pending balance:</span>
-                    <span className={parseFloat(billingInfo.pendingBalance) > 0 ? 'text-red-400 font-bold' : 'text-green-400'}>
+                    <span className={parseFloat(billingInfo.pendingBalance) > 0 ? 'money text-primary' : 'money'} style={parseFloat(billingInfo.pendingBalance) > 0 ? undefined : { color: 'var(--st-green)' }}>
                       AED {parseFloat(billingInfo.pendingBalance || '0').toFixed(2)}
                     </span>
                     <span className="text-muted-foreground">Total invoices:</span>
                     <span>{billingInfo.totalInvoices}</span>
                   </div>
                   {billingInfo.suggestedPeriodStart && (
-                    <p className="text-xs text-blue-300 mt-1">
+                    <p className="text-xs text-muted-foreground mt-1">
                       Suggested next period start: <span className="font-mono font-semibold">{billingInfo.suggestedPeriodStart}</span>
                     </p>
                   )}
@@ -777,8 +748,8 @@ export default function BillingPanel() {
                   applySettlementPreset(v, billingInfo?.suggestedPeriodStart ?? null, setPStart, setPEnd);
                 }}
               >
-                <SelectTrigger className="bg-white/5 border-white/10"><SelectValue /></SelectTrigger>
-                <SelectContent className="glass-strong">
+                <SelectTrigger className="bg-white/5 border-border"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-card border-border">
                   <SelectItem value="custom">Custom (manual dates)</SelectItem>
                   <SelectItem value="weekly">Weekly (7 days)</SelectItem>
                   <SelectItem value="biweekly">Biweekly (14 days)</SelectItem>
@@ -790,17 +761,17 @@ export default function BillingPanel() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Period Start</Label>
-                <Input type="date" value={pStart} onChange={(e) => { setSettlement('custom'); setPStart(e.target.value); }} className="bg-white/5 border-white/10" />
+                <Input type="date" value={pStart} onChange={(e) => { setSettlement('custom'); setPStart(e.target.value); }} className="bg-white/5 border-border" />
               </div>
               <div className="space-y-2">
                 <Label>Period End</Label>
-                <Input type="date" value={pEnd} onChange={(e) => { setSettlement('custom'); setPEnd(e.target.value); }} className="bg-white/5 border-white/10" />
+                <Input type="date" value={pEnd} onChange={(e) => { setSettlement('custom'); setPEnd(e.target.value); }} className="bg-white/5 border-border" />
               </div>
             </div>
 
             {/* Overlap warning */}
             {client && pStart && billingInfo?.lastInvoicePeriodTo && new Date(pStart) <= new Date(billingInfo.lastInvoicePeriodTo) && (
-              <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/30 text-xs text-orange-400 flex items-start gap-2">
+              <div className="alert-soft amber !p-3 text-xs flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
                   Warning: The selected start date overlaps with the previous invoice period (through {formatDate(billingInfo.lastInvoicePeriodTo)}).
@@ -811,7 +782,7 @@ export default function BillingPanel() {
 
             {/* Billable Shipments List */}
             {client && pStart && pEnd && (
-              <div className="space-y-2 border border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="space-y-2 border border-border rounded-xl p-4 bg-white/5">
                 <div className="flex items-center justify-between mb-2">
                   <Label>Billable Shipments ({selectedIds.length})</Label>
                   <div className="flex items-center space-x-2">
@@ -823,7 +794,7 @@ export default function BillingPanel() {
                 {isLoadingShipments ? (
                   <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
                 ) : !shipments || shipments.length === 0 ? (
-                  <div className="text-center py-4 text-sm text-red-400">
+                  <div className="text-center py-4 text-sm text-primary">
                     No {isIntl ? 'international ' : ''}delivered shipments found for this period.
                   </div>
                 ) : (
@@ -850,12 +821,12 @@ export default function BillingPanel() {
 
             {/* Preview Step */}
             {showPreview ? (
-              <div className="space-y-4 border-t border-white/10 pt-4">
+              <div className="space-y-4 border-t border-border pt-4">
                 <h4 className="font-semibold text-lg flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-blue-400" />
+                  <Eye className="w-5 h-5 text-primary" />
                   Invoice Preview
                 </h4>
-                <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-3">
+                <div className="p-4 bg-white/5 border border-border rounded-xl space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Client:</span>
                     <span className="font-medium">{clients?.find((c: any) => c.id === client)?.companyName}</span>
@@ -872,7 +843,7 @@ export default function BillingPanel() {
                     <span className="text-muted-foreground">Shipments:</span>
                     <span>{selectedIds.length} items</span>
                   </div>
-                  <div className="flex justify-between text-sm border-t border-white/10 pt-2">
+                  <div className="flex justify-between text-sm border-t border-border pt-2">
                     <span className="text-muted-foreground">Subtotal:</span>
                     <span>AED {previewTotal.toFixed(2)}</span>
                   </div>
@@ -880,14 +851,14 @@ export default function BillingPanel() {
                     <span className="text-muted-foreground">Taxes:</span>
                     <span>AED 0.00</span>
                   </div>
-                  <div className="flex justify-between font-bold text-lg border-t border-white/10 pt-2">
+                  <div className="flex justify-between font-bold text-lg border-t border-border pt-2">
                     <span>Total:</span>
                     <span className="text-primary">AED {previewTotal.toFixed(2)}</span>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" className="flex-1" onClick={() => setShowPreview(false)}>Back</Button>
-                  <Button onClick={onGenerate} className="flex-1 bg-green-600 hover:bg-green-700" disabled={isPending}>
+                  <Button onClick={onGenerate} className="flex-1" disabled={isPending}>
                     {isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</> : 'Confirm & Generate Invoice'}
                   </Button>
                 </div>
@@ -899,7 +870,7 @@ export default function BillingPanel() {
                   if (selectedIds.length === 0) { toast.error('Please select at least one shipment'); return; }
                   setShowPreview(true);
                 }}
-                className={`w-full ${isIntl ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'}`}
+                className="w-full"
                 disabled={!client || !pStart || !pEnd || selectedIds.length === 0}
               >
                 <Eye className="w-4 h-4 mr-2" />
@@ -917,21 +888,22 @@ export default function BillingPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Billing & Invoices</h2>
+        <p className="eyebrow mb-2">Finance</p>
+        <h2 className="font-display text-2xl font-bold tracking-tight">Billing & Invoices</h2>
         <p className="text-muted-foreground">Manage client invoices and payments</p>
       </div>
 
       <Tabs defaultValue="domestic" className="space-y-6">
-        <TabsList className="bg-muted/40 border border-border/50">
+        <TabsList className="">
           <TabsTrigger value="domestic" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Domestic Invoices
-            {domInvoices.length > 0 && <span className="ml-1 bg-blue-500/20 text-blue-400 text-xs px-1.5 py-0.5 rounded-full">{domInvoices.length}</span>}
+            {domInvoices.length > 0 && <span className="ml-1 font-mono text-[10.5px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">{domInvoices.length}</span>}
           </TabsTrigger>
           <TabsTrigger value="international" className="flex items-center gap-2">
             <Globe className="w-4 h-4" />
             International Invoices
-            {intlInvoices.length > 0 && <span className="ml-1 bg-purple-500/20 text-purple-400 text-xs px-1.5 py-0.5 rounded-full">{intlInvoices.length}</span>}
+            {intlInvoices.length > 0 && <span className="ml-1 font-mono text-[10.5px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">{intlInvoices.length}</span>}
           </TabsTrigger>
         </TabsList>
 
@@ -1000,12 +972,12 @@ export default function BillingPanel() {
 
       {/* Invoice Preview Dialog */}
       <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="glass-strong !w-[90vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/10">
-          <div className="w-full h-1 bg-gradient-to-r from-green-600 to-emerald-600" />
+        <DialogContent className="bg-card border-border !w-[90vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+          <div className="w-full h-1 bg-primary" />
           <div className="p-6">
             <DialogHeader className="mb-6">
-              <DialogTitle className="text-2xl font-bold flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-green-500/20"><Eye className="w-6 h-6 text-green-400" /></div>
+              <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10"><Eye className="w-6 h-6 text-primary" /></div>
                 Invoice Preview
               </DialogTitle>
               <DialogDescription>{previewInvoice?.invoiceNumber || 'Loading...'}</DialogDescription>
@@ -1015,7 +987,7 @@ export default function BillingPanel() {
               <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
             ) : previewInvoice ? (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+                <div className="grid grid-cols-2 gap-4 p-4 bg-white/5 border border-border rounded-xl">
                   <div>
                     <h3 className="font-bold text-lg">{previewInvoice.clientName}</h3>
                     <p className="text-sm text-muted-foreground">{previewInvoice.billingAddress}</p>
@@ -1054,7 +1026,7 @@ export default function BillingPanel() {
                   </Table>
                 </div>
 
-                <div className="border-t border-white/10 pt-4 space-y-2">
+                <div className="border-t border-border pt-4 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
                     <span>{formatCurrency(previewInvoice.subtotal, previewInvoice.currency)}</span>
@@ -1073,26 +1045,26 @@ export default function BillingPanel() {
                     <>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Amount Paid</span>
-                        <span className="text-green-500">{formatCurrency(previewInvoice.amountPaid, previewInvoice.currency)}</span>
+                        <span className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(previewInvoice.amountPaid, previewInvoice.currency)}</span>
                       </div>
                       <div className="flex justify-between font-bold">
                         <span>Balance Due</span>
-                        <span className="text-orange-500">{formatCurrency(previewInvoice.balance || '0', previewInvoice.currency)}</span>
+                        <span className="money" style={{ color: 'var(--st-amber)' }}>{formatCurrency(previewInvoice.balance || '0', previewInvoice.currency)}</span>
                       </div>
                     </>
                   )}
                 </div>
 
                 {previewInvoice.isAdjusted && previewInvoice.adjustmentNotes && (
-                  <div className="p-3 bg-yellow-500/10 rounded-xl border border-yellow-500/30">
-                    <p className="text-sm font-medium text-yellow-500">Adjustment Notes:</p>
+                  <div className="alert-soft amber !p-3 !block">
+                    <p className="text-sm font-medium" style={{ color: 'var(--st-amber)' }}>Adjustment Notes:</p>
                     <p className="text-sm text-muted-foreground">{previewInvoice.adjustmentNotes}</p>
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-4 border-t border-white/10">
+                <div className="flex justify-end gap-2 pt-4 border-t border-border">
                   <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>Close</Button>
-                  <Button className="bg-green-600 hover:bg-green-700" onClick={() => { handleDownloadPDF(previewInvoice); setPreviewDialogOpen(false); }}>
+                  <Button onClick={() => { handleDownloadPDF(previewInvoice); setPreviewDialogOpen(false); }}>
                     <Download className="w-4 h-4 mr-2" />
                     Download PDF
                   </Button>
@@ -1107,3 +1079,5 @@ export default function BillingPanel() {
     </div>
   );
 }
+
+

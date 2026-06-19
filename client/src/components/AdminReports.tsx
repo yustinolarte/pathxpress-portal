@@ -182,13 +182,16 @@ export default function AdminReports() {
 
     return (
         <div className="space-y-6">
-            <h2 className="text-2xl font-bold">Admin Reports & Exports</h2>
+            <div>
+                <p className="eyebrow mb-2">Reports</p>
+                <h2 className="font-display text-2xl font-bold tracking-tight">Admin Reports & Exports</h2>
+            </div>
 
             {/* Filter Section */}
-            <Card className="glass-strong border-purple-500/20">
+            <Card className="bg-card border-border">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <Building2 className="h-5 w-5 text-purple-400" />
+                        <Building2 className="h-5 w-5 text-primary" />
                         Report Filters
                     </CardTitle>
                     <CardDescription>
@@ -234,10 +237,10 @@ export default function AdminReports() {
 
             <div className="grid md:grid-cols-2 gap-6">
                 {/* Monthly Orders Report */}
-                <Card className="glass-strong border-blue-500/20">
+                <Card className="bg-card border-border">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <FileText className="h-5 w-5 text-blue-400" />
+                            <FileText className="h-5 w-5 text-primary" />
                             Monthly Orders Report
                         </CardTitle>
                         <CardDescription>
@@ -275,10 +278,10 @@ export default function AdminReports() {
                 </Card>
 
                 {/* COD Report */}
-                <Card className="glass-strong border-yellow-500/20">
+                <Card className="bg-card border-border">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <FileText className="h-5 w-5 text-yellow-400" />
+                            <FileText className="h-5 w-5 text-primary" />
                             COD Report
                         </CardTitle>
                         <CardDescription>
@@ -318,10 +321,10 @@ export default function AdminReports() {
             </div>
 
             {/* Export All Orders */}
-            <Card className="glass-strong border-green-500/20">
+            <Card className="bg-card border-border">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <Download className="h-5 w-5 text-green-400" />
+                        <Download className="h-5 w-5 text-primary" />
                         Export All Orders (Global)
                     </CardTitle>
                     <CardDescription>
@@ -358,3 +361,4 @@ export default function AdminReports() {
         </div>
     );
 }
+

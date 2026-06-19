@@ -24,53 +24,37 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
     if (!order) return null;
 
     const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
-    const statusColors: Record<string, string> = {
-        pending_pickup: 'bg-yellow-500/80 hover:bg-yellow-500',
-        picked_up: 'bg-blue-500/80 hover:bg-blue-500',
-        in_transit: 'bg-indigo-500/80 hover:bg-indigo-500',
-        out_for_delivery: 'bg-purple-500/80 hover:bg-purple-500',
-        delivered: 'bg-green-500/80 hover:bg-green-500',
-        failed_delivery: 'bg-red-500/80 hover:bg-red-500',
-        on_hold: 'bg-orange-500/80 hover:bg-orange-500',
-        returned: 'bg-gray-500/80 hover:bg-gray-500',
-        returned_to_sender: 'bg-rose-600/80 hover:bg-rose-600',
-        exchange: 'bg-amber-500/80 hover:bg-amber-500',
-        canceled: 'bg-slate-500/80 hover:bg-slate-500',
-    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="glass-strong !w-[90vw] !max-w-[1200px] max-h-[95vh] overflow-y-auto p-0 gap-0 border-white/10">
-                {/* Decorative Top Line */}
-                <div className="w-full h-1 bg-red-600" />
+            <DialogContent className="bg-card border-border !w-[90vw] !max-w-[1200px] max-h-[95vh] overflow-y-auto p-0 gap-0 ">
+                <div className="w-full h-1 bg-primary" />
 
                 <div className="p-6 space-y-8">
                     {/* Header Section */}
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="space-y-1">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                <Package className="w-4 h-4 text-primary" /> Waybill Number
-                            </p>
-                            <h2 className="text-4xl font-mono font-bold tracking-tight text-foreground">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-border pb-5">
+                        <div>
+                            <p className="eyebrow">Shipment Details</p>
+                            <h2 className="font-mono text-[32px] font-bold tracking-tight leading-none mt-3 text-foreground">
                                 {order.waybillNumber}
                             </h2>
-                            <p className="text-sm text-muted-foreground">
-                                Created on {new Date(order.createdAt).toLocaleDateString('en-AE', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            <p className="font-mono text-[11px] text-muted-foreground mt-2">
+                                {new Date(order.createdAt).toLocaleDateString('en-AE', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                             </p>
                         </div>
 
                         <div className="flex items-center gap-3">
                             {/* FOD Badge */}
                             {order.fitOnDelivery === 1 && (
-                                <div className="px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center gap-2">
+                                <div className="px-4 py-2 rounded-full bg-[var(--st-blue-bg)] border border-transparent text-[var(--st-blue)] flex items-center gap-2">
                                     <Package className="w-4 h-4" />
-                                    <span className="font-bold uppercase tracking-wide text-sm">FOD</span>
+                                    <span className="font-display font-bold uppercase tracking-wide text-sm">FOD</span>
                                 </div>
                             )}
 
-                            <div className={`px-4 py-2 rounded-full border ${order.status === 'delivered' ? 'bg-green-500/10 border-green-500/20 text-green-500' :
-                                order.status === 'cancelled' ? 'bg-red-500/10 border-red-500/20 text-red-500' :
-                                    'bg-blue-500/10 border-blue-500/20 text-blue-500'
+                            <div className={`px-4 py-2 rounded-full border border-transparent ${order.status === 'delivered' ? 'bg-[var(--st-green-bg)] text-[var(--st-green)]' :
+                                order.status === 'cancelled' ? 'bg-primary/10 text-primary' :
+                                    'bg-[var(--st-blue-bg)] text-[var(--st-blue)]'
                                 } flex items-center gap-2`}>
                                 {order.status === 'delivered' ? <CheckCircle2 className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
                                 <span className="font-bold uppercase tracking-wide">{order.status.replace(/_/g, ' ')}</span>
@@ -83,38 +67,23 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
-                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
-                                <Truck className="w-4 h-4" />
-                                <span className="text-xs uppercase font-bold">Service</span>
-                            </div>
-                            <p className="text-2xl font-semibold">{order.serviceType}</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
+                        <div className="p-4 bg-card">
+                            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Service</p>
+                            <p className="font-display text-[22px] font-bold leading-none tracking-tight">{order.serviceType}</p>
                         </div>
-
-                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
-                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
-                                <Package className="w-4 h-4" />
-                                <span className="text-xs uppercase font-bold">Pieces</span>
-                            </div>
-                            <p className="text-2xl font-semibold">{order.pieces}</p>
+                        <div className="p-4 bg-card">
+                            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Pieces</p>
+                            <p className="font-display text-[22px] font-bold leading-none tracking-tight">{order.pieces}</p>
                         </div>
-
-                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
-                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
-                                <Scale className="w-4 h-4" />
-                                <span className="text-xs uppercase font-bold">Weight</span>
-                            </div>
-                            <p className="text-2xl font-semibold">{order.weight} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+                        <div className="p-4 bg-card">
+                            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Weight</p>
+                            <p className="font-display text-[22px] font-bold leading-none tracking-tight">{order.weight} <span className="text-[13px] font-normal text-muted-foreground">kg</span></p>
                         </div>
-
-                        <div className="p-4 rounded-xl bg-muted/30 border border-border hover:bg-muted/50 transition-colors group">
-                            <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
-                                <CreditCard className="w-4 h-4" />
-                                <span className="text-xs uppercase font-bold">COD Amount</span>
-                            </div>
-                            <p className="text-2xl font-semibold">
-                                {order.codRequired ? `${order.codAmount} ${order.codCurrency || 'AED'}` : 'N/A'}
+                        <div className="p-4 bg-card">
+                            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">COD Amount</p>
+                            <p className="font-display text-[22px] font-bold leading-none tracking-tight">
+                                {order.codRequired ? `${order.codAmount} ${order.codCurrency || 'AED'}` : '—'}
                             </p>
                         </div>
                     </div>
@@ -122,14 +91,11 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Addresses Column */}
                         <div className="space-y-6 lg:col-span-2">
-                            <div className="grid md:grid-cols-2 gap-6 p-6 rounded-2xl bg-muted/30 border border-border">
+                            <div className="grid md:grid-cols-2 gap-6 p-6 rounded-lg bg-muted/20 border border-border">
                                 {/* Sender */}
                                 <div className="space-y-3">
-                                    <div className="flex items-center gap-2 text-muted-foreground mb-4">
-                                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                                            <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground" />
-                                        </div>
-                                        <span className="text-sm font-bold uppercase tracking-wider">Pickup From</span>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Pickup From</span>
                                     </div>
                                     <div className="pl-10 space-y-3">
                                         <div>
@@ -150,8 +116,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
                                         {/* Special Instructions (Client) */}
                                         {order.specialInstructions && (
-                                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                                                <p className="text-xs text-blue-400 font-medium flex items-center gap-1.5 mb-1">
+                                            <div className="p-3 bg-[var(--st-blue-bg)] border border-[var(--st-blue)]/25 rounded-lg">
+                                                <p className="text-xs text-[var(--st-blue)] font-medium flex items-center gap-1.5 mb-1">
                                                     <FileText className="w-3 h-3" /> Special Instructions
                                                 </p>
                                                 <p className="text-sm text-foreground/90">{order.specialInstructions}</p>
@@ -160,8 +126,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
 
                                         {/* Merchant/Internal Note (Nosotros) */}
                                         {clients?.find(c => c.id === order.clientId)?.notes && (
-                                            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                                                <p className="text-xs text-amber-500 font-medium flex items-center gap-1.5 mb-1">
+                                            <div className="p-3 bg-[var(--st-amber-bg)] border border-[var(--st-amber)]/25 rounded-lg">
+                                                <p className="text-xs text-[var(--st-amber)] font-medium flex items-center gap-1.5 mb-1">
                                                     <AlertCircle className="w-3 h-3" /> Account Note
                                                 </p>
                                                 <p className="text-sm text-foreground/90">{clients.find(c => c.id === order.clientId)?.notes}</p>
@@ -173,11 +139,8 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                 {/* Receiver */}
                                 <div className="space-y-3 relative">
                                     <div className="absolute left-[-12px] top-10 bottom-10 w-[1px] bg-white/10 hidden md:block" />
-                                    <div className="flex items-center gap-2 text-primary mb-4">
-                                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                                            <MapPin className="w-4 h-4 text-primary" />
-                                        </div>
-                                        <span className="text-sm font-bold uppercase tracking-wider">Deliver To</span>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Deliver To</span>
                                     </div>
                                     <div className="pl-10 space-y-1">
                                         <p className="text-lg font-semibold text-foreground">{order.customerName}</p>
@@ -187,6 +150,29 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                             <Badge variant="secondary" className="font-mono bg-white/10 hover:bg-white/20">{order.customerPhone}</Badge>
                                             <a href={`tel:${order.customerPhone}`} className="text-xs text-primary hover:underline">Call now</a>
                                         </div>
+
+                                        {/* Preferred delivery schedule (PREFERRED_TIME service) */}
+                                        {(order.serviceType === 'PREFERRED_TIME' || order.serviceType === 'PREFERRED_TIME_SDD') && (order.preferredDeliveryDate || order.preferredDeliveryTime) && (
+                                            <div className="mt-3 p-3 bg-[var(--st-amber-bg)] border border-[var(--st-amber)]/25 rounded-lg">
+                                                <p className="text-xs text-[var(--st-amber)] font-medium flex items-center gap-1.5 mb-2">
+                                                    <Clock className="w-3 h-3" /> Preferred Delivery
+                                                </p>
+                                                <div className="flex flex-col gap-1 text-sm">
+                                                    {order.preferredDeliveryDate && (
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <span className="text-muted-foreground">Date</span>
+                                                            <span className="font-semibold text-foreground/90">{order.preferredDeliveryDate}</span>
+                                                        </div>
+                                                    )}
+                                                    {order.preferredDeliveryTime && (
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <span className="text-muted-foreground">Window</span>
+                                                            <span className="font-semibold text-foreground/90 font-mono">{order.preferredDeliveryTime}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -229,7 +215,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                                     {/* Embedded POD Image */}
                                                     {event.podFileUrl && (
                                                         <div className="mt-3 animate-fade-in">
-                                                            <div className="relative group/image overflow-hidden rounded-lg border border-white/10 max-w-[200px]">
+                                                            <div className="relative group/image overflow-hidden rounded-lg border border-border max-w-[200px]">
                                                                 <img
                                                                     src={event.podFileUrl}
                                                                     alt="POD"
@@ -257,3 +243,4 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
         </Dialog>
     );
 }
+
