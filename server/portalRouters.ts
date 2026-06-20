@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { publicProcedure, portalAdminProcedure, portalCustomerProcedure, portalProtectedProcedure, router } from './_core/trpc';
-import { cachedQuery, cacheInvalidate } from './_core/queryCache';
+import { cachedQuery, cacheInvalidate, cacheInvalidatePrefix } from './_core/queryCache';
 import {
   hashPassword,
   comparePassword,
@@ -21,6 +21,10 @@ import {
   createOrder,
   getAllOrders,
   getOrdersByClientId,
+  getOrdersPaged,
+  getClientOrdersPaged,
+  getOrdersStats,
+  searchOrders,
   getOrderById,
   getOrderByWaybill,
   updateOrderStatus,
@@ -54,6 +58,28 @@ import {
 } from './db';
 import { driverRouter } from './driverRouter';
 import { notifyAdminNewOrder } from './_core/mailer';
+import { emailRouter } from './emailRouter';
+
+// Shared input for paginated/windowed order lists. All fields optional; when no
+// date filter is supplied the data layer defaults to the current month.
+const orderListInput = z.object({
+  page: z.number().int().min(0).optional(),
+  pageSize: z.number().int().min(1).max(200).optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  deliveryFrom: z.string().optional(),
+  deliveryTo: z.string().optional(),
+  clientId: z.number().int().optional(),
+  statuses: z.array(z.string()).optional(),
+  sort: z.enum(['newest', 'oldest']).optional(),
+}).optional();
+
+// Invalidate every keyed orders/stats cache entry after an order mutation.
+function invalidateOrderCaches() {
+  cacheInvalidatePrefix('admin:orders');
+  cacheInvalidatePrefix('admin:orderstats');
+  cacheInvalidatePrefix('customer:orders:');
+}
 
 /**
  * Portal authentication router
@@ -333,24 +359,49 @@ export const adminPortalRouter = router({
   // Get all orders (global view)
   // NOTE: Admin sees ALL information without privacy filters
   // Privacy rules (hideShipperAddress/hideConsigneeAddress) only apply when customers generate waybills from their portal
+  // Admin sees all DOMESTIC orders (standard, exchange, returns) with full information.
+  // Paginated + windowed in SQL (defaults to current month) → returns { rows, total }.
   getAllOrders: portalAdminProcedure
-    .query(async ({ ctx }) => {
-      // Admin sees all DOMESTIC orders (standard, exchange, returns) with full information
-      const allOrders = await cachedQuery('admin:allOrders', 60, getAllOrders);
-      return allOrders.filter(order =>
-        (order.destinationCountry === 'United Arab Emirates' || order.destinationCountry === 'UAE' || order.destinationCountry === 'AE' || !order.destinationCountry)
-      );
+    .input(orderListInput)
+    .query(async ({ input }) => {
+      const filters = { ...(input ?? {}), scope: 'domestic' as const };
+      const key = `admin:orders:domestic:${JSON.stringify(input ?? {})}`;
+      return await cachedQuery(key, 60, () => getOrdersPaged(filters));
     }),
 
   // Get international orders (admin view)
   getIntlOrders: portalAdminProcedure
-    .query(async ({ ctx }) => {
-      const allOrders = await cachedQuery('admin:allOrders', 60, getAllOrders);
-      return allOrders.filter(order =>
-        (order.orderType === 'standard' || !order.orderType) &&
-        order.destinationCountry.toUpperCase() !== 'UAE' &&
-        order.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES'
-      );
+    .input(orderListInput)
+    .query(async ({ input }) => {
+      const filters = { ...(input ?? {}), scope: 'intl' as const, standardOnly: true };
+      const key = `admin:orders:intl:${JSON.stringify(input ?? {})}`;
+      return await cachedQuery(key, 60, () => getOrdersPaged(filters));
+    }),
+
+  // Lightweight KPI counts (no rows transferred); covers full history by default.
+  getOrdersStats: portalAdminProcedure
+    .input(z.object({
+      scope: z.enum(['domestic', 'intl']).optional(),
+      clientId: z.number().int().optional(),
+      statuses: z.array(z.string()).optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      deliveryFrom: z.string().optional(),
+      deliveryTo: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const key = `admin:orderstats:${JSON.stringify(input ?? {})}`;
+      return await cachedQuery(key, 60, () => getOrdersStats({ ...(input ?? {}) }));
+    }),
+
+  // Direct lookup (waybill / customer / phone / order number) outside the window.
+  searchOrders: portalAdminProcedure
+    .input(z.object({
+      term: z.string(),
+      scope: z.enum(['domestic', 'intl']).optional(),
+    }))
+    .query(async ({ input }) => {
+      return await searchOrders(input.term, { scope: input.scope });
     }),
 
   // Delete order (admin only)
@@ -380,7 +431,7 @@ export const adminPortalRouter = router({
         // Finally delete the order
         await db.delete(orders).where(eq(orders.id, input.orderId));
 
-        cacheInvalidate('admin:allOrders');
+        invalidateOrderCaches();
         return { success: true };
       } catch (error) {
         console.error('[Database] Failed to delete order:', error);
@@ -440,7 +491,7 @@ export const adminPortalRouter = router({
         }
       } catch (_) { /* never block the order update */ }
 
-      cacheInvalidate('admin:allOrders');
+      invalidateOrderCaches();
       return { success: true, order: result.order };
     }),
 
@@ -1125,7 +1176,7 @@ export const adminPortalRouter = router({
         createdBy: 'admin',
       });
 
-      cacheInvalidate('admin:allOrders');
+      invalidateOrderCaches();
       return order;
     }),
 
@@ -1450,50 +1501,47 @@ export const customerPortalRouter = router({
     }),
 
   // Get customer's orders (excluding returns and exchanges - those appear in separate section)
+  // Paginated + windowed (defaults to current month) → returns { rows, total }.
   getMyOrders: portalCustomerProcedure
-    .query(async ({ ctx }) => {
-      const allOrders = await cachedQuery(`customer:orders:${ctx.portalUser.clientId}`, 30, () => getOrdersByClientId(ctx.portalUser.clientId));
-
-      // Filter out returns and exchanges (they appear in separate Returns & Exchanges section)
-      // Limit to domestic orders
-      const orders = allOrders.filter(order =>
-        (order.orderType === 'standard' || !order.orderType) &&
-        (order.destinationCountry.toUpperCase() === 'UAE' || order.destinationCountry.toUpperCase() === 'UNITED ARAB EMIRATES')
-      );
+    .input(orderListInput)
+    .query(async ({ ctx, input }) => {
+      const clientId = ctx.portalUser.clientId;
+      const filters = { ...(input ?? {}), scope: 'domestic' as const, standardOnly: true };
+      const key = `customer:orders:${clientId}:domestic:${JSON.stringify(input ?? {})}`;
+      const { rows, total } = await cachedQuery(key, 30, () => getClientOrdersPaged(clientId, filters));
 
       // Get client's hideShipperAddress setting
-      const client = await getClientAccountById(ctx.portalUser.clientId);
+      const client = await getClientAccountById(clientId);
       const hideShipperAddress = client?.hideShipperAddress === 1;
 
       // Add hideShipperAddress to each order for waybill generation, and hide address if setting enabled
-      return orders.map(order => ({
+      const mapped = rows.map(order => ({
         ...order,
         shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
         hideShipperAddress: hideShipperAddress ? 1 : 0,
       }));
+      return { rows: mapped, total };
     }),
 
   // Get customer's international orders
   getMyIntlOrders: portalCustomerProcedure
-    .query(async ({ ctx }) => {
-      const allOrders = await cachedQuery(`customer:orders:${ctx.portalUser.clientId}`, 30, () => getOrdersByClientId(ctx.portalUser.clientId));
-
-      // Filter for international orders
-      const orders = allOrders.filter(order =>
-        (order.orderType === 'standard' || !order.orderType) &&
-        order.destinationCountry.toUpperCase() !== 'UAE' &&
-        order.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES'
-      );
+    .input(orderListInput)
+    .query(async ({ ctx, input }) => {
+      const clientId = ctx.portalUser.clientId;
+      const filters = { ...(input ?? {}), scope: 'intl' as const, standardOnly: true };
+      const key = `customer:orders:${clientId}:intl:${JSON.stringify(input ?? {})}`;
+      const { rows, total } = await cachedQuery(key, 30, () => getClientOrdersPaged(clientId, filters));
 
       // Get client's hideShipperAddress setting
-      const client = await getClientAccountById(ctx.portalUser.clientId);
+      const client = await getClientAccountById(clientId);
       const hideShipperAddress = client?.hideShipperAddress === 1;
 
-      return orders.map(order => ({
+      const mapped = rows.map(order => ({
         ...order,
         shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
         hideShipperAddress: hideShipperAddress ? 1 : 0,
       }));
+      return { rows: mapped, total };
     }),
 
   // Create new shipment/order
@@ -3637,7 +3685,7 @@ const trackingRouter = router({
       // Update order status
       await updateOrderStatus(input.shipmentId, input.statusCode);
 
-      cacheInvalidate('admin:allOrders');
+      invalidateOrderCaches();
       return { success: true };
     }),
 
@@ -3850,4 +3898,5 @@ export const portalRouter = router({
   drivers: driverRouter,
   internationalRates: internationalRatesRouter,
   notifications: notificationsRouter,
+  email: emailRouter,
 });

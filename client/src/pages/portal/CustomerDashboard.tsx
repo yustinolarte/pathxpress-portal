@@ -108,11 +108,22 @@ export default function CustomerDashboard() {
     }
   }, [user, loading, setLocation]);
 
+  // Bound the customer view to a rolling 90-day window instead of pulling the full
+  // order history on every load. 90 days covers all overview metrics (this/last month)
+  // and the 30-day chart. Returns { rows, total } now; we read rows.
+  const customerWindowFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return d.toISOString().split('T')[0];
+  }, []);
+
   // Fetch customer's orders
-  const { data: orders, isLoading: isLoadingOrders, refetch } = trpc.portal.customer.getMyOrders.useQuery();
+  const { data: ordersResp, isLoading: isLoadingOrders, refetch } = trpc.portal.customer.getMyOrders.useQuery({ dateFrom: customerWindowFrom, pageSize: 200 });
+  const orders = ordersResp?.rows;
 
   // Fetch customer's intl orders
-  const { data: intlOrders, isLoading: isLoadingIntl, refetch: refetchIntl } = trpc.portal.customer.getMyIntlOrders.useQuery();
+  const { data: intlOrdersResp, isLoading: isLoadingIntl, refetch: refetchIntl } = trpc.portal.customer.getMyIntlOrders.useQuery({ dateFrom: customerWindowFrom, pageSize: 200 });
+  const intlOrders = intlOrdersResp?.rows;
 
   // Fetch client account settings (for FOD, COD permissions)
   const { data: clientSettings } = trpc.portal.customer.getMyAccount.useQuery();

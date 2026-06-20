@@ -5,7 +5,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
@@ -594,17 +594,12 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Search by waybillNumber first, then by trackingNumber
-        // (shipping labels can encode either field as the barcode)
+        // Look up the order by its waybill number (encoded in the label barcode)
         let order: typeof orders.$inferSelect | undefined;
 
         const [byWaybill] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
         if (byWaybill) {
             order = byWaybill;
-        } else {
-            // Fallback: search by trackingNumber
-            const [byTracking] = await db.select().from(orders).where(eq(orders.trackingNumber, barcode)).limit(1);
-            if (byTracking) order = byTracking;
         }
 
         if (!order) return res.status(404).json({ error: 'Package not found in system!' });
@@ -626,7 +621,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         // Return formatted package matching the driver app expectations
         res.json({
             id: routeOrder ? routeOrder.id : order.id,
-            packageRef: order.waybillNumber || order.trackingNumber,
+            packageRef: order.waybillNumber,
             status: routeOrder ? routeOrder.status : order.status,
             customerName: order.customerName,
             customerPhone: order.customerPhone,
@@ -1129,17 +1124,11 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Find the order by waybill first, then tracking number.
-        // This matches the /stops/lookup behavior and avoids false negatives when labels encode tracking.
+        // Find the order by its waybill number.
         const [order] = await db
             .select()
             .from(orders)
-            .where(
-                or(
-                    eq(orders.waybillNumber, waybillNumber),
-                    eq(orders.trackingNumber, waybillNumber)
-                )
-            )
+            .where(eq(orders.waybillNumber, waybillNumber))
             .limit(1);
 
         if (!order) {

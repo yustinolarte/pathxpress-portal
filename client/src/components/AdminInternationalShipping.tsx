@@ -378,7 +378,9 @@ function AdminIntlOrdersTable() {
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
 
-    const { data: orders, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery();
+    // Intl is low-volume → load the full set (wide window) so the in-table search covers all.
+    const { data: ordersResp, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery({ dateFrom: '2000-01-01', pageSize: 200 });
+    const orders = ordersResp?.rows;
 
     const { data: clients } = trpc.portal.admin.getClients.useQuery();
 

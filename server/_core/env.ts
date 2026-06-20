@@ -9,5 +9,6 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   emailUser: process.env.EMAIL_USER ?? "",
   emailAppPassword: process.env.EMAIL_APP_PASSWORD ?? "",
+  resendApiKey: process.env.RESEND_API_KEY ?? "",  // Email Studio (correos de marca vía Resend)
   botApiKey: process.env.BOT_API_KEY ?? "",  // Shared secret for Pathx WhatsApp bot
 };

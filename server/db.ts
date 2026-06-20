@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, desc, sql, inArray, ne, or, notInArray } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray, ne, or, notInArray, isNull } from "drizzle-orm";
 import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
@@ -144,6 +144,7 @@ export async function createQuoteRequest(data: {
     comments: data.comments || null,
   });
 
+  cacheInvalidate('admin:quoteRequests');
   return result;
 }
 
@@ -152,10 +153,12 @@ export async function getAllQuoteRequests() {
   if (!db) return [];
 
   const { quoteRequests } = await import("../drizzle/schema");
-  const { desc } = await import("drizzle-orm");
 
   try {
-    return await db.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt));
+    // Cached + capped: inbox list, bounded so it never grows unbounded over the years.
+    return await cachedQuery('admin:quoteRequests', 60, () =>
+      db.select().from(quoteRequests).orderBy(desc(quoteRequests.createdAt)).limit(500)
+    );
   } catch (error) {
     console.error("[Database] Failed to get quote requests:", error);
     return [];
@@ -172,6 +175,7 @@ export async function deleteQuoteRequest(id: number) {
 
   try {
     await db.delete(quoteRequests).where(eq(quoteRequests.id, id));
+    cacheInvalidate('admin:quoteRequests');
     return true;
   } catch (error) {
     console.error("[Database] Failed to delete quote request:", error);
@@ -192,6 +196,7 @@ export async function createContactMessage(data: {
 
   try {
     const [result] = await db.insert(contactMessages).values(data);
+    cacheInvalidate('admin:contactMessages');
     return result;
   } catch (error) {
     console.error("[Database] Failed to create contact message:", error);
@@ -204,10 +209,12 @@ export async function getAllContactMessages() {
   if (!db) return [];
 
   const { contactMessages } = await import("../drizzle/schema");
-  const { desc } = await import("drizzle-orm");
 
   try {
-    return await db.select().from(contactMessages).orderBy(desc(contactMessages.createdAt));
+    // Cached + capped: inbox list, bounded so it never grows unbounded over the years.
+    return await cachedQuery('admin:contactMessages', 60, () =>
+      db.select().from(contactMessages).orderBy(desc(contactMessages.createdAt)).limit(500)
+    );
   } catch (error) {
     console.error("[Database] Failed to get contact messages:", error);
     return [];
@@ -223,6 +230,7 @@ export async function deleteContactMessage(id: number) {
 
   try {
     await db.delete(contactMessages).where(eq(contactMessages.id, id));
+    cacheInvalidate('admin:contactMessages');
     return true;
   } catch (error) {
     console.error("[Database] Failed to delete contact message:", error);
@@ -483,6 +491,185 @@ export async function getOrdersByClientId(clientId: number): Promise<Order[]> {
   }
 }
 
+// ─── Paginated / windowed order listing ─────────────────────────────────────
+// Pushes filtering, sorting and pagination into SQL so the portal never pulls
+// the whole orders table over the wire (Railway egress) on every load.
+
+// Country values treated as "domestic" (UAE). Mirrors the JS filters that used
+// to run in the tRPC layer.
+const UAE_DEST_VALUES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES', 'AE'];
+
+// Statuses considered closed/terminal for the "active orders" KPI.
+const TERMINAL_ORDER_STATUSES = ['delivered', 'canceled', 'cancelled', 'returned', 'returned_to_sender'];
+
+export interface OrderListFilters {
+  scope?: 'domestic' | 'intl';
+  standardOnly?: boolean;   // only orderType 'standard' (or null) — customer views + intl
+  clientId?: number;
+  statuses?: string[];
+  dateFrom?: Date | string; // createdAt >=
+  dateTo?: Date | string;   // createdAt <=
+  deliveryFrom?: Date | string; // COALESCE(deliveryDateReal, lastStatusUpdate) >=
+  deliveryTo?: Date | string;
+  sort?: 'newest' | 'oldest';
+  page?: number;     // 0-based
+  pageSize?: number; // default 50
+}
+
+function startOfCurrentMonth(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+}
+
+// Build the combined WHERE expression. When `applyDefaultWindow` is true and the
+// caller supplied no explicit date filter, results are bounded to the current
+// month so the default view stays small regardless of historical volume.
+function buildOrderConditions(filters: OrderListFilters, applyDefaultWindow = true) {
+  const conds: any[] = [];
+
+  if (filters.clientId !== undefined) conds.push(eq(orders.clientId, filters.clientId));
+
+  if (filters.scope === 'domestic') {
+    conds.push(or(inArray(orders.destinationCountry, UAE_DEST_VALUES), eq(orders.destinationCountry, '')));
+  } else if (filters.scope === 'intl') {
+    conds.push(and(notInArray(orders.destinationCountry, UAE_DEST_VALUES), ne(orders.destinationCountry, '')));
+  }
+
+  if (filters.standardOnly) {
+    conds.push(or(eq(orders.orderType, 'standard'), isNull(orders.orderType)));
+  }
+
+  if (filters.statuses && filters.statuses.length > 0) {
+    conds.push(inArray(orders.status, filters.statuses));
+  }
+
+  const hasExplicitDateFilter = !!(filters.dateFrom || filters.dateTo || filters.deliveryFrom || filters.deliveryTo);
+
+  if (filters.dateFrom) conds.push(gte(orders.createdAt, new Date(filters.dateFrom)));
+  if (filters.dateTo) {
+    const to = new Date(filters.dateTo);
+    to.setHours(23, 59, 59, 999);
+    conds.push(lte(orders.createdAt, to));
+  }
+  // Default month window only when nothing else bounds the date range.
+  if (applyDefaultWindow && !hasExplicitDateFilter) {
+    conds.push(gte(orders.createdAt, startOfCurrentMonth()));
+  }
+
+  const deliveryExpr = sql`COALESCE(${orders.deliveryDateReal}, ${orders.lastStatusUpdate})`;
+  if (filters.deliveryFrom) conds.push(gte(deliveryExpr, new Date(filters.deliveryFrom)));
+  if (filters.deliveryTo) {
+    const to = new Date(filters.deliveryTo);
+    to.setHours(23, 59, 59, 999);
+    conds.push(lte(deliveryExpr, to));
+  }
+
+  return conds.length > 0 ? and(...conds) : undefined;
+}
+
+export async function getOrdersPaged(filters: OrderListFilters): Promise<{ rows: Order[]; total: number }> {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+
+  try {
+    const where = buildOrderConditions(filters);
+    const page = Math.max(0, filters.page ?? 0);
+    const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 50));
+    const orderExpr = filters.sort === 'oldest' ? orders.createdAt : desc(orders.createdAt);
+
+    const rows = await db
+      .select()
+      .from(orders)
+      .where(where)
+      .orderBy(orderExpr)
+      .limit(pageSize)
+      .offset(page * pageSize);
+
+    const [countRow] = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(orders)
+      .where(where);
+
+    return { rows, total: Number(countRow?.count ?? 0) };
+  } catch (error) {
+    console.error("[Database] Failed to get paged orders:", error);
+    return { rows: [], total: 0 };
+  }
+}
+
+export async function getClientOrdersPaged(
+  clientId: number,
+  filters: OrderListFilters
+): Promise<{ rows: Order[]; total: number }> {
+  return getOrdersPaged({ ...filters, clientId });
+}
+
+// Lightweight KPI counts. Counts only (no rows transferred), so they safely run
+// over the full history — no default month window applied.
+export async function getOrdersStats(
+  filters: OrderListFilters
+): Promise<{ totalOrders: number; activeOrders: number }> {
+  const db = await getDb();
+  if (!db) return { totalOrders: 0, activeOrders: 0 };
+
+  try {
+    const where = buildOrderConditions(filters, false);
+    const [row] = await db
+      .select({
+        total: sql<number>`COUNT(*)`,
+        active: sql<number>`SUM(CASE WHEN ${orders.status} NOT IN ('delivered','canceled','cancelled','returned','returned_to_sender') THEN 1 ELSE 0 END)`,
+      })
+      .from(orders)
+      .where(where);
+    return { totalOrders: Number(row?.total ?? 0), activeOrders: Number(row?.active ?? 0) };
+  } catch (error) {
+    console.error("[Database] Failed to get orders stats:", error);
+    return { totalOrders: 0, activeOrders: 0 };
+  }
+}
+
+// Direct lookup by waybill / customer / phone / order number, bounded by LIMIT.
+// Lets users find orders outside the default month window without loading all rows.
+export async function searchOrders(
+  term: string,
+  opts: { clientId?: number; scope?: 'domestic' | 'intl'; standardOnly?: boolean; limit?: number } = {}
+): Promise<Order[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const q = term.trim();
+  if (!q) return [];
+
+  try {
+    const like = `%${q}%`;
+    const conds: any[] = [
+      or(
+        sql`${orders.waybillNumber} LIKE ${like}`,
+        sql`${orders.customerName} LIKE ${like}`,
+        sql`${orders.customerPhone} LIKE ${like}`,
+        sql`${orders.orderNumber} LIKE ${like}`,
+      ),
+    ];
+    if (opts.clientId !== undefined) conds.push(eq(orders.clientId, opts.clientId));
+    if (opts.scope === 'domestic') {
+      conds.push(or(inArray(orders.destinationCountry, UAE_DEST_VALUES), eq(orders.destinationCountry, '')));
+    } else if (opts.scope === 'intl') {
+      conds.push(and(notInArray(orders.destinationCountry, UAE_DEST_VALUES), ne(orders.destinationCountry, '')));
+    }
+    if (opts.standardOnly) conds.push(or(eq(orders.orderType, 'standard'), isNull(orders.orderType)));
+
+    return await db
+      .select()
+      .from(orders)
+      .where(and(...conds))
+      .orderBy(desc(orders.createdAt))
+      .limit(opts.limit ?? 50);
+  } catch (error) {
+    console.error("[Database] Failed to search orders:", error);
+    return [];
+  }
+}
+
 export async function getOrderById(id: number): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
@@ -673,7 +860,7 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
     // Sync routeOrders.status so the driver app reflects the change.
     // Only update stops that are still in a non-terminal state (in_progress / pending).
     const { routeOrders } = await import("../drizzle/schema");
-    const nonTerminalStatuses = ['pending', 'in_progress'];
+    const nonTerminalStatuses = ['pending', 'in_progress'] as const;
     // Map order status → routeOrder status
     const routeOrderStatus =
       status === 'delivered' ? 'delivered' :

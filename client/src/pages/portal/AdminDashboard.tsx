@@ -26,12 +26,16 @@ import AdminCreateOrderDialog from '@/components/AdminCreateOrderDialog';
 import EditOrderDialog from '@/components/EditOrderDialog';
 import AdminInternationalShipping from '@/components/AdminInternationalShipping';
 import CreateClientWizard from '@/components/CreateClientWizard';
+import EmailStudioPanel from '@/components/EmailStudioPanel';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from '@/components/ui/pagination';
+
+const ORDERS_PAGE_SIZE = 50;
 
 const ALL_STATUSES = [
   'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
@@ -93,10 +97,16 @@ export default function AdminDashboard() {
     return ALL_STATUSES;
   });
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
+  const [orderPage, setOrderPage] = useState(0);
 
   useEffect(() => {
     localStorage.setItem('orderFilterStatuses', JSON.stringify(orderFilterStatuses));
   }, [orderFilterStatuses]);
+
+  // Reset to first page whenever any filter changes
+  useEffect(() => {
+    setOrderPage(0);
+  }, [orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterDeliveryFrom, orderFilterDeliveryTo, orderFilterStatuses, orderSortDirection]);
 
   // Create client dialog state
   const [createClientWizardOpen, setCreateClientWizardOpen] = useState(false);
@@ -292,8 +302,27 @@ export default function AdminDashboard() {
   }, [editingClient]);
 
 
-  // Fetch all orders
-  const { data: allOrders, isLoading: ordersLoading, refetch: refetchOrders } = trpc.portal.admin.getAllOrders.useQuery();
+  const utils = trpc.useUtils();
+
+  // Server-side filtered/sorted/paginated orders. Filters drive the query input;
+  // with no date filter the server defaults to the current month.
+  const orderQueryInput = useMemo(() => ({
+    page: orderPage,
+    pageSize: ORDERS_PAGE_SIZE,
+    clientId: orderFilterClientId !== 'all' ? Number(orderFilterClientId) : undefined,
+    dateFrom: orderFilterDateFrom || undefined,
+    dateTo: orderFilterDateTo || undefined,
+    deliveryFrom: orderFilterDeliveryFrom || undefined,
+    deliveryTo: orderFilterDeliveryTo || undefined,
+    statuses: orderFilterStatuses.length < ALL_STATUSES.length ? orderFilterStatuses : undefined,
+    sort: orderSortDirection,
+  }), [orderPage, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterDeliveryFrom, orderFilterDeliveryTo, orderFilterStatuses, orderSortDirection]);
+
+  // Fetch orders (current page) + KPI stats (counts over full history)
+  const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = trpc.portal.admin.getAllOrders.useQuery(orderQueryInput);
+  const { data: ordersStats } = trpc.portal.admin.getOrdersStats.useQuery({ scope: 'domestic' });
+  const allOrders = ordersData?.rows ?? [];
+  const ordersTotal = ordersData?.total ?? 0;
 
   // Fetch quote requests
   const { data: quoteRequests, isLoading: requestsLoading, refetch: refetchRequests } = trpc.portal.admin.getQuoteRequests.useQuery();
@@ -340,40 +369,9 @@ export default function AdminDashboard() {
     }
   };
 
-  // Filter orders
-  const orders = useMemo(() => {
-    if (!allOrders) return [];
-    return allOrders.filter(order => {
-      if (orderFilterClientId !== 'all' && order.clientId.toString() !== orderFilterClientId) return false;
-      if (orderFilterDateFrom) {
-        const orderDate = new Date(order.createdAt);
-        if (orderDate < new Date(orderFilterDateFrom)) return false;
-      }
-      if (orderFilterDateTo) {
-        const orderDate = new Date(order.createdAt);
-        const toDate = new Date(orderFilterDateTo);
-        toDate.setHours(23, 59, 59, 999);
-        if (orderDate > toDate) return false;
-      }
-      if (!orderFilterStatuses.includes(order.status)) return false;
-      if (orderFilterDeliveryFrom || orderFilterDeliveryTo) {
-        const statusDate = order.deliveryDateReal ?? order.lastStatusUpdate;
-        if (!statusDate) return false;
-        const d = new Date(statusDate);
-        if (orderFilterDeliveryFrom && d < new Date(orderFilterDeliveryFrom)) return false;
-        if (orderFilterDeliveryTo) {
-          const toDate = new Date(orderFilterDeliveryTo);
-          toDate.setHours(23, 59, 59, 999);
-          if (d > toDate) return false;
-        }
-      }
-      return true;
-    }).sort((a, b) => {
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return orderSortDirection === 'newest' ? dateB - dateA : dateA - dateB;
-    });
-  }, [allOrders, orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterStatuses, orderFilterDeliveryFrom, orderFilterDeliveryTo, orderSortDirection]);
+  // Server already returns this page filtered + sorted.
+  const orders = allOrders;
+  const orderPageCount = Math.max(1, Math.ceil(ordersTotal / ORDERS_PAGE_SIZE));
 
   const handleLogout = () => {
     logout();
@@ -387,8 +385,8 @@ export default function AdminDashboard() {
 
   const stats = {
     totalClients: clients?.length || 0,
-    totalOrders: orders?.length || 0,
-    activeOrders: orders?.filter(o => o.status !== 'delivered' && o.status !== 'canceled' && o.status !== 'returned' && o.status !== 'returned_to_sender').length || 0,
+    totalOrders: ordersStats?.totalOrders || 0,
+    activeOrders: ordersStats?.activeOrders || 0,
   };
 
   const menuItems: ModernMenuItem[] = [
@@ -403,6 +401,7 @@ export default function AdminDashboard() {
     { icon: 'summarize', label: 'Reports', value: 'reports', section: 'Inbox' },
     { icon: 'chat', label: 'Requests', value: 'requests', section: 'Inbox' },
     { icon: 'mail', label: 'Messages', value: 'messages', section: 'Inbox' },
+    { icon: 'forward_to_inbox', label: 'Email Studio', value: 'email', section: 'Inbox' },
     { icon: 'menu_book', label: 'Guide', value: 'guide', section: 'Inbox' },
   ];
 
@@ -410,11 +409,12 @@ export default function AdminDashboard() {
     <ModernDashboardLayout
       menuItems={menuItems}
       activeItem={activeTab}
-      onItemClick={(value: string, searchData?: string) => {
+      onItemClick={async (value: string, searchData?: string) => {
         if (value === 'tracking' && searchData) {
-          const matchingOrder = (allOrders || []).find((o) =>
-            o.waybillNumber.toLowerCase() === searchData.toLowerCase()
-          );
+          // Search server-side so orders outside the current page/window are found too
+          const results = await utils.portal.admin.searchOrders.fetch({ term: searchData });
+          const matchingOrder =
+            results.find((o) => o.waybillNumber.toLowerCase() === searchData.toLowerCase()) ?? results[0];
           if (matchingOrder) {
             setSelectedOrder(matchingOrder);
             setViewOrderDialogOpen(true);
@@ -864,10 +864,22 @@ export default function AdminDashboard() {
                       <Plus className="mr-2 h-4 w-4" />
                       Create Order
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => {
-                      if (!orders || orders.length === 0) {
+                    <Button variant="outline" size="sm" onClick={async () => {
+                      if (ordersTotal === 0) {
                         toast.error("No orders to export");
                         return;
+                      }
+
+                      // Export ALL orders matching the current filters (every page),
+                      // not just the visible one. Fetched on demand.
+                      const exportRows: typeof orders = [];
+                      let p = 0;
+                      // eslint-disable-next-line no-constant-condition
+                      while (true) {
+                        const res = await utils.portal.admin.getAllOrders.fetch({ ...orderQueryInput, page: p, pageSize: 200 });
+                        exportRows.push(...res.rows);
+                        if (res.rows.length < 200 || exportRows.length >= res.total) break;
+                        p++;
                       }
 
                       // CSV Header
@@ -875,7 +887,7 @@ export default function AdminDashboard() {
                       csvContent += "Waybill,Client,Consignee,Phone,City,Service,Weight(kg),Pieces,COD Amount,Status,Created At\n";
 
                       // Rows
-                      orders.forEach(order => {
+                      exportRows.forEach(order => {
                         const clientName = clientsMap.get(order.clientId)?.companyName || 'Unknown Client';
                         const row = [
                           order.waybillNumber,
@@ -1236,6 +1248,36 @@ export default function AdminDashboard() {
                 ) : (
                   <p className="text-center py-8 text-muted-foreground">No orders found</p>
                 )}
+
+                {/* Pagination */}
+                {ordersTotal > 0 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {orderPage * ORDERS_PAGE_SIZE + 1}–{orderPage * ORDERS_PAGE_SIZE + orders.length} of {ordersTotal}
+                    </p>
+                    <Pagination className="mx-0 w-auto justify-end">
+                      <PaginationContent>
+                        <PaginationItem>
+                          <PaginationPrevious
+                            href="#"
+                            onClick={(e) => { e.preventDefault(); if (orderPage > 0) setOrderPage(orderPage - 1); }}
+                            className={orderPage === 0 ? 'pointer-events-none opacity-50' : ''}
+                          />
+                        </PaginationItem>
+                        <PaginationItem>
+                          <span className="px-3 text-sm text-muted-foreground">Page {orderPage + 1} of {orderPageCount}</span>
+                        </PaginationItem>
+                        <PaginationItem>
+                          <PaginationNext
+                            href="#"
+                            onClick={(e) => { e.preventDefault(); if (orderPage + 1 < orderPageCount) setOrderPage(orderPage + 1); }}
+                            className={orderPage + 1 >= orderPageCount ? 'pointer-events-none opacity-50' : ''}
+                          />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1258,6 +1300,11 @@ export default function AdminDashboard() {
           {/* Rates Tab */}
           <TabsContent value="rates" className="space-y-4">
             <RatesPanel />
+          </TabsContent>
+
+          {/* Email Studio Tab */}
+          <TabsContent value="email" className="space-y-4">
+            <EmailStudioPanel />
           </TabsContent>
 
           {/* Reports Tab */}

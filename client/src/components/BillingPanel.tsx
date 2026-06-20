@@ -245,7 +245,6 @@ export default function BillingPanel() {
         currency: details.invoice.currency,
         isAdjusted: details.invoice.isAdjusted || false,
         adjustmentNotes: details.invoice.adjustmentNotes || null,
-        adjustedAt: details.invoice.adjustedAt ? new Date(details.invoice.adjustedAt) : null,
         items: details.items.map((item: any) => ({ id: item.id, description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.total })),
       });
       toast.success('Invoice PDF downloaded');

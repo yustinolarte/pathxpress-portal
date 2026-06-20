@@ -143,7 +143,12 @@ export default function AdminReports() {
     const handleDownloadAllOrdersPDF = async () => {
         setIsDownloading(true);
         try {
-            const orders = await utils.portal.admin.getAllOrders.fetch();
+            const orders: any[] = [];
+            for (let _p = 0; ; _p++) {
+                const _r = await utils.portal.admin.getAllOrders.fetch({ page: _p, pageSize: 200, dateFrom: '2000-01-01' });
+                orders.push(..._r.rows);
+                if (_r.rows.length < 200 || orders.length >= _r.total) break;
+            }
 
             if (!orders || orders.length === 0) {
                 toast.error('No orders found');
@@ -163,7 +168,12 @@ export default function AdminReports() {
     const handleDownloadAllOrdersExcel = async () => {
         setIsDownloading(true);
         try {
-            const orders = await utils.portal.admin.getAllOrders.fetch();
+            const orders: any[] = [];
+            for (let _p = 0; ; _p++) {
+                const _r = await utils.portal.admin.getAllOrders.fetch({ page: _p, pageSize: 200, dateFrom: '2000-01-01' });
+                orders.push(..._r.rows);
+                if (_r.rows.length < 200 || orders.length >= _r.total) break;
+            }
 
             if (!orders || orders.length === 0) {
                 toast.error('No orders found');
