@@ -2418,6 +2418,152 @@ export async function calculateCODFee(codAmount: number, clientId: number): Prom
 }
 
 /**
+ * DOM ("Next Day") only delivers next-day within Zone 1. For Zone 2+ it is a
+ * standard multi-day service, so it shows a different name and timeframe.
+ */
+function domDefaultsForZone(zone: number): { name: string; time: string } {
+  return zone === 1
+    ? { name: 'Next Day Delivery', time: '1–2 business days' }
+    : { name: 'Standard Delivery', time: '3–7 business days' };
+}
+
+/**
+ * Default delivery time-slot windows for Preferred Time services when an admin
+ * hasn't configured custom slots. Hourly windows from 06:00 to 22:00.
+ */
+const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 16 }, (_, i) => {
+  const start = String(6 + i).padStart(2, '0');
+  const end = String(7 + i).padStart(2, '0');
+  return `${start}:00 - ${end}:00`;
+});
+
+/** Ensure a Preferred Time service always exposes time-slot windows. */
+function withPreferredSlots(code: string, extraConfig: any): any {
+  if (code !== 'PREFERRED_TIME' && code !== 'PREFERRED_TIME_SDD') return extraConfig;
+  const slots = Array.isArray(extraConfig?.timeSlots) && extraConfig.timeSlots.length > 0
+    ? extraConfig.timeSlots
+    : DEFAULT_PREFERRED_SLOTS;
+  return { ...(extraConfig ?? {}), timeSlots: slots };
+}
+
+export interface AvailableService {
+  code: string;
+  available: boolean;
+  reason: string | null;
+  displayName: string;
+  description: string | null;
+  deliveryWindow: string | null;
+  deliveryTime: string | null;
+  price: number | null;
+  cutoffTime: string | null;
+  extraConfig: any;
+  requiresScheduling: boolean;
+}
+
+/**
+ * Resolve the delivery services available to a client.
+ *
+ * Two modes:
+ *  - With `emirate` + `weight` (checkout / order context): full availability
+ *    including zone restrictions, cut-off checks and per-service pricing.
+ *  - Without them (settings/admin listing): returns each service's enabled
+ *    flag only, with `price: null` and no time-sensitive cut-off filtering.
+ *
+ * Shared by the portal tRPC `services.getAvailable` procedure and the Shopify
+ * integration REST endpoint so both stay in sync.
+ */
+export async function getAvailableServicesForClient(
+  clientId: number,
+  opts: { emirate?: string; weight?: number } = {}
+): Promise<AvailableService[]> {
+  const emirate = opts.emirate;
+  const weight = opts.weight;
+  const hasContext = typeof emirate === 'string' && emirate.length > 0
+    && typeof weight === 'number' && weight > 0;
+
+  const [settingsMap, client] = await Promise.all([
+    getClientServiceSettings(clientId),
+    getClientAccountById(clientId),
+  ]);
+
+  const zone = hasContext ? getZoneFromEmirate(emirate!) : 1;
+
+  const SERVICE_DEFS = [
+    { code: 'DOM',                defaultName: 'Next Day Delivery',        defaultDeliveryTime: '1–2 business days',     legacyEnabled: true,                      requiresScheduling: false },
+    { code: 'SDD',                defaultName: 'Same Day Delivery',        defaultDeliveryTime: null,                    legacyEnabled: true,                      requiresScheduling: false },
+    { code: 'BULLET',             defaultName: 'Bullet Service (4 Hours)', defaultDeliveryTime: 'Up to 4 hours',         legacyEnabled: (client?.bulletAllowed === 1), requiresScheduling: false },
+    { code: 'EXPRESS_ZONE2',      defaultName: 'Express Service – Zone 2', defaultDeliveryTime: 'Express delivery',      legacyEnabled: false,                     requiresScheduling: false },
+    { code: 'PREFERRED_TIME',     defaultName: 'Next Day Preferred Time',  defaultDeliveryTime: 'Next day · scheduled',  legacyEnabled: false,                     requiresScheduling: true },
+    { code: 'PREFERRED_TIME_SDD', defaultName: 'Same Day Preferred Time',  defaultDeliveryTime: 'Same day · scheduled',  legacyEnabled: false,                     requiresScheduling: true },
+  ] as const;
+
+  return Promise.all(SERVICE_DEFS.map(async (svc): Promise<AvailableService> => {
+    const setting = settingsMap.get(svc.code);
+    const isEnabled = setting ? setting.isEnabled === 1 : svc.legacyEnabled;
+
+    const dom = svc.code === 'DOM' ? domDefaultsForZone(zone) : null;
+    const effDefaultName = dom ? dom.name : svc.defaultName;
+    const effDefaultTime = dom ? dom.time : svc.defaultDeliveryTime;
+
+    const base = {
+      code: svc.code,
+      displayName: setting?.displayName ?? effDefaultName,
+      description: setting?.description ?? null,
+      deliveryWindow: setting?.deliveryWindow ?? null,
+      deliveryTime: setting?.deliveryTime ?? effDefaultTime,
+      requiresScheduling: svc.requiresScheduling,
+      extraConfig: withPreferredSlots(svc.code, setting?.extraConfig ? JSON.parse(setting.extraConfig) : null),
+    };
+
+    // Listing mode (no destination context): enabled flag only.
+    if (!hasContext) {
+      return {
+        ...base,
+        available: isEnabled,
+        reason: isEnabled ? null : 'Service not available for your account',
+        price: null,
+        cutoffTime: setting?.cutoffTime ?? null,
+      };
+    }
+
+    // Zone restriction for EXPRESS_ZONE2
+    if (svc.code === 'EXPRESS_ZONE2' && zone !== 2) {
+      return { ...base, available: false, reason: 'Only available for Zone 2 destinations (RAK, Fujairah, UAQ)', price: null, cutoffTime: setting?.cutoffTime ?? null };
+    }
+
+    if (!isEnabled) {
+      return { ...base, available: false, reason: 'Service not available for your account', price: null, cutoffTime: setting?.cutoffTime ?? null };
+    }
+
+    const cutoffTime = setting?.cutoffTime
+      ?? (svc.code === 'SDD' ? client?.sdCutoffTime : svc.code === 'BULLET' ? client?.bulletCutoffTime : null);
+
+    if (cutoffTime && !isCutoffNotPassed(cutoffTime)) {
+      return { ...base, available: false, reason: `Cut-off passed (${cutoffTime} Dubai time)`, price: null, cutoffTime };
+    }
+
+    let price: number | null = null;
+    try {
+      const rateResult = await calculateShipmentRate({
+        clientId,
+        serviceType: svc.code as any,
+        weight: weight!,
+        emirate,
+      });
+      price = rateResult.totalRate;
+    } catch {}
+
+    if (price === null || price === 0) {
+      if (svc.code === 'EXPRESS_ZONE2' || svc.code === 'PREFERRED_TIME' || svc.code === 'PREFERRED_TIME_SDD') {
+        return { ...base, available: false, reason: 'Rate not configured for your account', price: null, cutoffTime: cutoffTime ?? null };
+      }
+    }
+
+    return { ...base, available: true, reason: null, price, cutoffTime: cutoffTime ?? null };
+  }));
+}
+
+/**
  * Get all active rate tiers
  */
 export async function getAllRateTiers(): Promise<RateTier[]> {
@@ -2455,6 +2601,7 @@ export async function addTrackingEvent(data: {
   statusLabel: string;
   description?: string;
   podFileUrl?: string;
+  podFileUrl2?: string;
   createdBy: string;
 }) {
   const db = await getDb();

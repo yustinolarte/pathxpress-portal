@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { APP_LOGO } from '@/const';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
+import { getPodPhotoUrls } from '@shared/podPhotos';
 import {
   Package,
   Truck,
@@ -1229,21 +1230,25 @@ export default function CustomerDashboard() {
                           {event.description && <p className="text-muted-foreground mb-2">{event.description}</p>}
 
                           {/* Embedded POD Image */}
-                          {event.podFileUrl && (
+                          {getPodPhotoUrls(event).length > 0 && (
                             <div className="mt-3 animate-fade-in">
                               <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3 text-[var(--st-green)]" /> Proof of Delivery
                               </p>
-                              <div className="relative group/image overflow-hidden rounded-lg border border-border max-w-[240px]">
-                                <img
-                                  src={event.podFileUrl}
-                                  alt="POD"
-                                  className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
-                                  onClick={() => event.podFileUrl && window.open(event.podFileUrl, '_blank')}
-                                />
-                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                  <span className="text-xs text-white font-medium">View Full</span>
-                                </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-[500px]">
+                                {getPodPhotoUrls(event).map((photoUrl, photoIndex) => (
+                                  <div key={photoUrl} className="relative group/image overflow-hidden rounded-lg border border-border">
+                                    <img
+                                      src={photoUrl}
+                                      alt={`POD ${photoIndex + 1}`}
+                                      className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
+                                      onClick={() => window.open(photoUrl, '_blank')}
+                                    />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                      <span className="text-xs text-white font-medium">View Full</span>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
@@ -1638,16 +1643,19 @@ export default function CustomerDashboard() {
                             {event.description && (
                               <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
                             )}
-                            {event.podFileUrl && (
-                              <div className="mt-2">
-                                <a
-                                  href={event.podFileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-2 text-sm text-primary hover:brightness-110 underline"
-                                >
-                                  📄 View Proof of Delivery
-                                </a>
+                            {getPodPhotoUrls(event).length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-3">
+                                {getPodPhotoUrls(event).map((photoUrl, photoIndex) => (
+                                  <a
+                                    key={photoUrl}
+                                    href={photoUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 text-sm text-primary hover:brightness-110 underline"
+                                  >
+                                    View Proof of Delivery {photoIndex + 1}
+                                  </a>
+                                ))}
                               </div>
                             )}
                           </div>

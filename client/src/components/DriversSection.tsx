@@ -25,6 +25,9 @@ import {
     Activity, Download
 } from 'lucide-react';
 import CreateRouteWizard from '@/components/CreateRouteWizard';
+import { OrdersMap } from '@/components/OrdersMap';
+import type { MapPoint, PinKind } from '@/components/OrdersMap';
+import { getProofPhotoUrls } from '@shared/podPhotos';
 
 // Dubai zone presets
 const ZONE_OPTIONS = [
@@ -57,6 +60,10 @@ const ZONE_OPTIONS = [
 
 export default function DriversSection() {
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [routesView, setRoutesView] = useState<'list' | 'map'>('list');
+    const [dispatchSelectedIds, setDispatchSelectedIds] = useState<number[]>([]);
+    const [preloadedOrdersForWizard, setPreloadedOrdersForWizard] = useState<Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>>([]);
+    const [routeDetailsTab, setRouteDetailsTab] = useState<'list' | 'map'>('list');
 
     // Dialogs
     const [createDriverDialogOpen, setCreateDriverDialogOpen] = useState(false);
@@ -117,7 +124,7 @@ export default function DriversSection() {
 
     const { data: availableOrders, refetch: refetchAvailableOrders } = trpc.portal.drivers.getAvailableOrders.useQuery(
         undefined,
-        { enabled: addOrdersDialogOpen }
+        { enabled: addOrdersDialogOpen || routesView === 'map' }
     );
 
     const { data: driverProfile, isLoading: profileLoading } = trpc.portal.drivers.getDriverPerformance.useQuery(
@@ -230,6 +237,14 @@ export default function DriversSection() {
             toast.success('Paquete eliminado de la ruta');
             refetchRouteDetails();
             refetchRoutes();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
+    const optimizeRouteMutation = trpc.portal.drivers.optimizeRoute.useMutation({
+        onSuccess: (data) => {
+            toast.success(`Ruta optimizada — ${data.optimized} paradas reordenadas`);
+            refetchRouteDetails();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -507,18 +522,94 @@ export default function DriversSection() {
                 {/* Routes Tab */}
                 <TabsContent value="routes" className="space-y-4">
                     <Card className="bg-card border-border">
-                        <CardHeader className="flex flex-row items-center justify-between">
+                        <CardHeader className="flex flex-row items-center justify-between gap-3 flex-wrap">
                             <div>
                                 <CardTitle>Routes</CardTitle>
                                 <CardDescription>Daily delivery routes</CardDescription>
                             </div>
-                            <Button onClick={() => setCreateRouteWizardOpen(true)}>
-                                <Plus className="mr-2 h-4 w-4" /> Create Route
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                                    <button
+                                        onClick={() => setRoutesView('list')}
+                                        className={`px-3 py-1.5 transition-colors ${routesView === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                    >
+                                        Lista
+                                    </button>
+                                    <button
+                                        onClick={() => setRoutesView('map')}
+                                        className={`px-3 py-1.5 transition-colors ${routesView === 'map' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                    >
+                                        Mapa
+                                    </button>
+                                </div>
+                                <Button onClick={() => {
+                                    setPreloadedOrdersForWizard([]);
+                                    setCreateRouteWizardOpen(true);
+                                }}>
+                                    <Plus className="mr-2 h-4 w-4" /> Create Route
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {/* Filters */}
-                            <div className="flex flex-wrap gap-3">
+                            {/* Dispatch Map view */}
+                            {routesView === 'map' && (() => {
+                                const availableWithCoords = (availableOrders || []).filter((o: any) => o.latitude && o.longitude);
+                                const dispatchPoints: MapPoint[] = availableWithCoords.map((o: any) => ({
+                                    id: o.id,
+                                    lat: parseFloat(o.latitude),
+                                    lng: parseFloat(o.longitude),
+                                    label: o.waybillNumber || String(o.id),
+                                    kind: dispatchSelectedIds.includes(o.id) ? 'selected' : 'available',
+                                }));
+                                return (
+                                    <div className="space-y-3">
+                                        {dispatchSelectedIds.length > 0 && (
+                                            <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-border">
+                                                <span className="text-sm text-primary font-medium">
+                                                    {dispatchSelectedIds.length} orden{dispatchSelectedIds.length > 1 ? 'es' : ''} seleccionada{dispatchSelectedIds.length > 1 ? 's' : ''}
+                                                </span>
+                                                <div className="flex gap-2">
+                                                    <Button variant="outline" size="sm" onClick={() => setDispatchSelectedIds([])}>
+                                                        Limpiar
+                                                    </Button>
+                                                    <Button size="sm" onClick={() => {
+                                                        setPreloadedOrdersForWizard(
+                                                            dispatchSelectedIds.map(id => ({ id, mode: 'delivery_only' as const }))
+                                                        );
+                                                        setDispatchSelectedIds([]);
+                                                        setCreateRouteWizardOpen(true);
+                                                    }}>
+                                                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                                                        Crear ruta con selección
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {availableWithCoords.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                                                <MapPin className="w-8 h-8 opacity-30" />
+                                                <p className="text-sm">No hay pedidos disponibles con coordenadas</p>
+                                            </div>
+                                        ) : (
+                                            <OrdersMap
+                                                points={dispatchPoints}
+                                                onPointClick={(id) => {
+                                                    setDispatchSelectedIds(prev =>
+                                                        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                                                    );
+                                                }}
+                                                className="h-[520px]"
+                                            />
+                                        )}
+                                        <p className="text-xs text-muted-foreground text-center">
+                                            Haz clic en un pin para seleccionarlo. Los pines gris = disponibles, azul navy = seleccionados.
+                                        </p>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* List view — Filters + Table */}
+                            {routesView === 'list' && <><div className="flex flex-wrap gap-3">
                                 <div className="flex items-center gap-2 flex-1 min-w-[140px]">
                                     <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                                     <Input
@@ -676,7 +767,7 @@ export default function DriversSection() {
                                 </Table>
                             ) : (
                                 <p className="text-center py-8 text-muted-foreground">No routes found</p>
-                            )}
+                            )}</>}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -753,12 +844,16 @@ export default function DriversSection() {
                                                 <TableCell>{delivery.driver?.fullName || '-'}</TableCell>
                                                 <TableCell>{getStatusBadge(delivery.status)}</TableCell>
                                                 <TableCell>
-                                                    {delivery.proofPhotoUrl ? (
-                                                        <a href={delivery.proofPhotoUrl} target="_blank" rel="noopener noreferrer">
-                                                            <Badge variant="outline" className="cursor-pointer hover:bg-primary/20">
-                                                                View
-                                                            </Badge>
-                                                        </a>
+                                                    {getProofPhotoUrls(delivery).length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {getProofPhotoUrls(delivery).map((photoUrl, photoIndex) => (
+                                                                <a key={photoUrl} href={photoUrl} target="_blank" rel="noopener noreferrer">
+                                                                    <Badge variant="outline" className="cursor-pointer hover:bg-primary/20">
+                                                                        Photo {photoIndex + 1}
+                                                                    </Badge>
+                                                                </a>
+                                                            ))}
+                                                        </div>
                                                     ) : (
                                                         <span className="text-muted-foreground text-xs">-</span>
                                                     )}
@@ -1031,9 +1126,11 @@ export default function DriversSection() {
                 open={createRouteWizardOpen}
                 onOpenChange={setCreateRouteWizardOpen}
                 drivers={drivers || []}
+                preloadedOrders={preloadedOrdersForWizard}
                 onSuccess={(routeId) => {
                     setQrRouteId(routeId);
                     setQrDialogOpen(true);
+                    setPreloadedOrdersForWizard([]);
                     refetchRoutes();
                     refetchStats();
                 }}
@@ -1254,21 +1351,86 @@ export default function DriversSection() {
                             </DialogDescription>
                         </DialogHeader>
 
-                        <div className="flex justify-between items-center mb-4 gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openQRForRoute(routeDetails?.id || '')}
-                                className="gap-2"
-                            >
-                                <QrCode className="h-4 w-4 text-primary" /> Show QR
-                            </Button>
-                            <Button onClick={() => setAddOrdersDialogOpen(true)}>
-                                <Plus className="mr-2 h-4 w-4" /> Add Orders
-                            </Button>
+                        <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openQRForRoute(routeDetails?.id || '')}
+                                    className="gap-2"
+                                >
+                                    <QrCode className="h-4 w-4 text-primary" /> Show QR
+                                </Button>
+                                <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                                    <button
+                                        onClick={() => setRouteDetailsTab('list')}
+                                        className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                    >
+                                        Lista
+                                    </button>
+                                    <button
+                                        onClick={() => setRouteDetailsTab('map')}
+                                        className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'map' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                    >
+                                        Mapa
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={optimizeRouteMutation.isPending || !routeDetails?.deliveries?.length}
+                                    onClick={() => {
+                                        if (selectedRouteId) {
+                                            optimizeRouteMutation.mutate({ routeId: selectedRouteId });
+                                        }
+                                    }}
+                                    className="gap-2"
+                                >
+                                    {optimizeRouteMutation.isPending ? (
+                                        <><Loader2 className="h-4 w-4 animate-spin" /> Optimizando...</>
+                                    ) : (
+                                        <><TrendingUp className="h-4 w-4 text-[var(--st-green)]" /> Optimizar ruta</>
+                                    )}
+                                </Button>
+                                <Button onClick={() => setAddOrdersDialogOpen(true)}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add Orders
+                                </Button>
+                            </div>
                         </div>
 
-                        <div className="max-h-[450px] overflow-y-auto">
+                        {/* Route map view */}
+                        {routeDetailsTab === 'map' && (() => {
+                            const stopsWithCoords = (routeDetails?.deliveries || []).filter(
+                                (d: any) => d.latitude && d.longitude
+                            );
+                            const mapPoints: MapPoint[] = stopsWithCoords.map((d: any, idx: number) => ({
+                                id: d.id,
+                                lat: parseFloat(d.latitude),
+                                lng: parseFloat(d.longitude),
+                                label: d.sequence != null ? String(d.sequence) : String(idx + 1),
+                                kind: (d.type === 'pickup' ? 'pickup' : 'delivery') as PinKind,
+                                sequence: d.sequence ?? idx + 1,
+                            })).sort((a: MapPoint, b: MapPoint) => (a.sequence ?? 0) - (b.sequence ?? 0));
+
+                            return stopsWithCoords.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                                    <MapPin className="w-8 h-8 opacity-30" />
+                                    <p className="text-sm">No hay paradas con coordenadas en esta ruta</p>
+                                    <p className="text-xs">Agrega pedidos creados con el Location Picker para ver el mapa</p>
+                                </div>
+                            ) : (
+                                <div className="mb-4">
+                                    <OrdersMap points={mapPoints} showRoute className="h-[360px]" />
+                                    <p className="text-xs text-muted-foreground mt-2 text-center">
+                                        Verde = pickups · Azul = entregas · Número = secuencia actual
+                                    </p>
+                                </div>
+                            );
+                        })()}
+
+                        <div className={routeDetailsTab === 'map' ? 'max-h-[250px] overflow-y-auto' : 'max-h-[450px] overflow-y-auto'}>
                             {routeDetails?.deliveries && routeDetails.deliveries.length > 0 ? (
                                 <div className="space-y-2">
                                     {routeDetails.deliveries.map((delivery: any) => {

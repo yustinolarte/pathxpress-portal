@@ -4,23 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { MapPin, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+import { loadGoogleMaps } from '@/lib/googleMaps';
 
-let mapsLoadPromise: Promise<void> | null = null;
-function loadMapScript(): Promise<void> {
-    if (window.google?.maps) return Promise.resolve();
-    if (mapsLoadPromise) return mapsLoadPromise;
-    mapsLoadPromise = new Promise((resolve) => {
-        const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding`;
-        script.async = true;
-        script.crossOrigin = 'anonymous';
-        script.onload = () => resolve();
-        script.onerror = () => { mapsLoadPromise = null; resolve(); };
-        document.head.appendChild(script);
-    });
-    return mapsLoadPromise;
-}
+const loadMapScript = loadGoogleMaps;
 
 export interface PickedLocation {
     latitude: string;

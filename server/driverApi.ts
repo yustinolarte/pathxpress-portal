@@ -9,8 +9,28 @@ import { eq, and } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
+import { extractDeliveryPhotoBase64s, getProofPhotoUrls } from '../shared/podPhotos';
 
 const router = Router();
+
+async function resolveDeliveryPhotoUrls(
+    body: unknown,
+    currentPhotoUrl: string | null,
+    currentPhotoUrl2: string | null,
+): Promise<[string | null, string | null]> {
+    const photoPayloads = extractDeliveryPhotoBase64s(body);
+    const photoUrls: [string | null, string | null] = [currentPhotoUrl, currentPhotoUrl2];
+
+    for (let index = 0; index < photoPayloads.length; index += 1) {
+        try {
+            photoUrls[index] = await uploadImageToCloudinary(photoPayloads[index], 'pathxpress/deliveries');
+        } catch (error) {
+            console.error(`Error uploading delivery photo ${index + 1} to Cloudinary:`, error);
+        }
+    }
+
+    return photoUrls;
+}
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -288,6 +308,8 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 // Status
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',
                 proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+                proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
+                proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
                 notes: item.routeOrder.notes,
             };
         });
@@ -473,6 +495,8 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',
                 proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+                proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
+                proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
                 notes: item.routeOrder.notes,
             };
         });
@@ -640,7 +664,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
 router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { status, photoBase64, notes, collectedAmount } = req.body;
+        const { status, notes, collectedAmount } = req.body;
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
@@ -670,22 +694,18 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
         const isPickup = stopType === 'pickup';
         const statusLower = status.toLowerCase();
 
-        let photoUrl: string | null = routeOrder.routeOrder.proofPhotoUrl;
-
-        // Upload photo if provided
-        if (photoBase64) {
-            try {
-                photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
-            } catch (err) {
-                console.error('Error uploading to Cloudinary:', err);
-            }
-        }
+        const [photoUrl, photoUrl2] = await resolveDeliveryPhotoUrls(
+            req.body,
+            routeOrder.routeOrder.proofPhotoUrl,
+            routeOrder.routeOrder.proofPhotoUrl2,
+        );
 
         // Prepare update data based on stop type
         const updateData: Record<string, unknown> = {
             status: statusLower,
             notes: notes || routeOrder.routeOrder.notes,
             proofPhotoUrl: photoUrl,
+            proofPhotoUrl2: photoUrl2,
         };
 
         // Save collected amount if provided
@@ -792,6 +812,7 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             statusLabel: statusLabel,
             description: notes || `${statusLabel} by driver ${driver?.fullName || 'Unknown'}`,
             podFileUrl: photoUrl || undefined,
+            podFileUrl2: photoUrl2 || undefined,
             createdBy: 'driver',
         });
 
@@ -866,7 +887,7 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
     req.params.id = req.params.id;
     try {
         const { id } = req.params;
-        const { status, photoBase64, notes } = req.body;
+        const { status, notes } = req.body;
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
@@ -892,22 +913,18 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        let photoUrl: string | null = routeOrder.routeOrder.proofPhotoUrl;
-
-        // Upload photo if provided
-        if (photoBase64) {
-            try {
-                photoUrl = await uploadImageToCloudinary(photoBase64, 'pathxpress/deliveries');
-            } catch (err) {
-                console.error('Error uploading to Cloudinary:', err);
-            }
-        }
+        const [photoUrl, photoUrl2] = await resolveDeliveryPhotoUrls(
+            req.body,
+            routeOrder.routeOrder.proofPhotoUrl,
+            routeOrder.routeOrder.proofPhotoUrl2,
+        );
 
         const statusLower = status.toLowerCase();
         const updateData: Record<string, unknown> = {
             status: statusLower,
             notes: notes || routeOrder.routeOrder.notes,
             proofPhotoUrl: photoUrl,
+            proofPhotoUrl2: photoUrl2,
         };
 
         if (statusLower === 'delivered') {
@@ -951,6 +968,7 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
                     statusLower === 'returned' ? 'Returned' : 'Updated',
             description: notes || `Status updated by driver`,
             podFileUrl: photoUrl || undefined,
+            podFileUrl2: photoUrl2 || undefined,
             createdBy: 'driver',
         });
 

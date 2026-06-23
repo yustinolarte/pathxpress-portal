@@ -110,6 +110,9 @@ export const driverRouter = router({
             vehicleInfo: z.string().optional(),
             orderIds: z.array(z.number()).optional(),
             stopMode: z.enum(['pickup_only', 'delivery_only', 'both']).default('both'),
+            startAddress: z.string().optional(),
+            startLat: z.string().optional(),
+            startLng: z.string().optional(),
         }))
         .mutation(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
@@ -241,6 +244,18 @@ export const driverRouter = router({
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
             return driverAdmin.deleteRoute(input.routeId);
+        }),
+
+    optimizeRoute: publicProcedure
+        .input(z.object({
+            routeId: z.string(),
+            origin: z.object({ lat: z.number(), lng: z.number() }).optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.optimizeRoute(input.routeId, input.origin);
         }),
 
     getDriverPerformance: publicProcedure

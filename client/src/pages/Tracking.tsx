@@ -11,6 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Package, Loader2, AlertCircle, HelpCircle, MapPin, Calendar, Scale, Truck, CreditCard, ChevronRight, CheckCircle2, Clock } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import { getPodPhotoUrls } from '@shared/podPhotos';
 
 export default function Tracking() {
   const { t } = useTranslation();
@@ -251,19 +252,23 @@ export default function Tracking() {
                                 )}
 
                                 {/* Embedded POD Image */}
-                                {event.podFileUrl && (
+                                {getPodPhotoUrls(event).length > 0 && (
                                   <div className="mt-4 animate-fade-in">
                                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1">
                                       <CheckCircle2 className="w-3 h-3 text-green-500" /> Proof of Delivery
                                     </p>
-                                    <div className="relative group/image overflow-hidden rounded-lg border border-border max-w-sm">
-                                      <img
-                                        src={event.podFileUrl}
-                                        alt="Proof of Delivery"
-                                        className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
-                                        onClick={() => window.open(event.podFileUrl, '_blank')}
-                                      />
-                                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors pointer-events-none" />
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+                                      {getPodPhotoUrls(event).map((photoUrl, photoIndex) => (
+                                        <div key={photoUrl} className="relative group/image overflow-hidden rounded-lg border border-border">
+                                          <img
+                                            src={photoUrl}
+                                            alt={`Proof of Delivery ${photoIndex + 1}`}
+                                            className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
+                                            onClick={() => window.open(photoUrl, '_blank')}
+                                          />
+                                          <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-colors pointer-events-none" />
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
                                 )}

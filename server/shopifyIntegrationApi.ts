@@ -7,7 +7,8 @@
  * which is not usable from external servers.
  */
 import { Router, Request, Response, NextFunction } from 'express';
-import { getDb, generateWaybillNumber, createOrder, createTrackingEvent } from './db';
+import { getDb, generateWaybillNumber, createOrder, createTrackingEvent, getAvailableServicesForClient, getOrderByWaybill } from './db';
+import { renderWaybillPdf } from './waybillPdf';
 import { codRecords } from '../drizzle/schema';
 
 const router = Router();
@@ -120,6 +121,90 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
 
     } catch (err: any) {
         console.error('⛔ Shopify integration error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
+
+// ============ GET /api/shopify/services ============
+// Returns the delivery services available to a client.
+//   - ?clientId=123                      → enabled-service listing (settings dropdown)
+//   - ?clientId=123&emirate=Dubai&weight=2 → priced/available services (checkout rates)
+router.get('/services', integrationAuth, async (req: Request, res: Response) => {
+    try {
+        const clientId = parseInt(String(req.query.clientId ?? ''), 10);
+        if (!clientId || Number.isNaN(clientId)) {
+            return res.status(400).json({ error: 'Missing or invalid clientId' });
+        }
+
+        const emirate = req.query.emirate ? String(req.query.emirate) : undefined;
+        const weightRaw = req.query.weight ? parseFloat(String(req.query.weight)) : undefined;
+        const weight = weightRaw && weightRaw > 0 ? weightRaw : undefined;
+
+        const services = await getAvailableServicesForClient(clientId, { emirate, weight });
+        return res.json({ services });
+    } catch (err: any) {
+        console.error('⛔ Shopify services error:', err);
+        return res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+});
+
+// ============ GET /api/shopify/waybill/:waybill(.pdf) ============
+// Returns the official PathXpress shipping label as a PDF.
+// Optional ?clientId=123 enforces that the waybill belongs to that client.
+router.get('/waybill/:waybill', integrationAuth, async (req: Request, res: Response) => {
+    try {
+        const waybillNumber = String(req.params.waybill || '').replace(/\.pdf$/i, '');
+        if (!waybillNumber) {
+            return res.status(400).json({ error: 'Missing waybill number' });
+        }
+
+        const order = await getOrderByWaybill(waybillNumber);
+        if (!order) {
+            return res.status(404).json({ error: 'Waybill not found' });
+        }
+
+        // Optional tenant isolation: if a clientId is supplied it must match.
+        const clientId = req.query.clientId ? parseInt(String(req.query.clientId), 10) : null;
+        if (clientId && order.clientId !== clientId) {
+            return res.status(403).json({ error: 'Waybill does not belong to this client' });
+        }
+
+        const pdf = await renderWaybillPdf({
+            waybillNumber: order.waybillNumber,
+            shipperName: order.shipperName,
+            shipperAddress: order.shipperAddress,
+            shipperCity: order.shipperCity,
+            shipperCountry: order.shipperCountry,
+            shipperPhone: order.shipperPhone,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            address: order.address,
+            city: order.city,
+            emirate: order.emirate,
+            destinationCountry: order.destinationCountry,
+            pieces: order.pieces,
+            weight: order.weight,
+            serviceType: order.serviceType,
+            status: order.status,
+            createdAt: order.createdAt,
+            codRequired: order.codRequired,
+            codAmount: order.codAmount,
+            codCurrency: order.codCurrency,
+            specialInstructions: order.specialInstructions,
+            hideConsigneeAddress: order.hideConsigneeAddress,
+            isReturn: order.isReturn,
+            fitOnDelivery: order.fitOnDelivery,
+            itemsDescription: order.itemsDescription,
+            preferredDeliveryDate: order.preferredDeliveryDate,
+            preferredDeliveryTime: order.preferredDeliveryTime,
+        });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="waybill-${waybillNumber}.pdf"`);
+        res.setHeader('Cache-Control', 'private, max-age=86400');
+        return res.send(pdf);
+    } catch (err: any) {
+        console.error('⛔ Shopify waybill PDF error:', err);
         return res.status(500).json({ error: err.message || 'Internal server error' });
     }
 });

@@ -1,0 +1,1 @@
+ALTER TABLE `clientAccounts` ADD `hideShipperAddress` int DEFAULT 0 NOT NULL;

@@ -6,6 +6,7 @@ import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, C
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
+import { getPodPhotoUrls } from '@shared/podPhotos';
 
 interface OrderDetailsDialogProps {
     open: boolean;
@@ -213,18 +214,22 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                                     {event.description && <p className="text-sm text-muted-foreground leading-snug">{event.description}</p>}
 
                                                     {/* Embedded POD Image */}
-                                                    {event.podFileUrl && (
+                                                    {getPodPhotoUrls(event).length > 0 && (
                                                         <div className="mt-3 animate-fade-in">
-                                                            <div className="relative group/image overflow-hidden rounded-lg border border-border max-w-[200px]">
-                                                                <img
-                                                                    src={event.podFileUrl}
-                                                                    alt="POD"
-                                                                    className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
-                                                                    onClick={() => event.podFileUrl && window.open(event.podFileUrl, '_blank')}
-                                                                />
-                                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                                                    <span className="text-xs text-white font-medium">View Full</span>
-                                                                </div>
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-[420px]">
+                                                                {getPodPhotoUrls(event).map((photoUrl, photoIndex) => (
+                                                                    <div key={photoUrl} className="relative group/image overflow-hidden rounded-lg border border-border">
+                                                                        <img
+                                                                            src={photoUrl}
+                                                                            alt={`POD ${photoIndex + 1}`}
+                                                                            className="w-full h-auto object-cover transition-transform duration-500 group-hover/image:scale-105 cursor-zoom-in"
+                                                                            onClick={() => window.open(photoUrl, '_blank')}
+                                                                        />
+                                                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                                                                            <span className="text-xs text-white font-medium">View Full</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                         </div>
                                                     )}

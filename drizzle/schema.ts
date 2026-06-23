@@ -291,6 +291,7 @@ export const trackingEvents = mysqlTable("trackingEvents", {
   statusLabel: varchar("statusLabel", { length: 255 }).notNull(),
   description: text("description"),
   podFileUrl: varchar("podFileUrl", { length: 500 }), // Proof of Delivery file URL
+  podFileUrl2: varchar("podFileUrl2", { length: 500 }), // Optional second Proof of Delivery URL
   createdBy: varchar("createdBy", { length: 50 }).default("system").notNull(), // system or admin
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
@@ -603,6 +604,9 @@ export const driverRoutes = mysqlTable("driverRoutes", {
   zone: varchar("zone", { length: 100 }),
   vehicleInfo: varchar("vehicleInfo", { length: 100 }),
   status: mysqlEnum("status", ["pending", "in_progress", "completed", "cancelled"]).default("pending").notNull(),
+  startAddress: varchar("startAddress", { length: 255 }),
+  startLat: varchar("startLat", { length: 50 }),
+  startLng: varchar("startLng", { length: 50 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -623,6 +627,7 @@ export const routeOrders = mysqlTable("routeOrders", {
   type: mysqlEnum("type", ["pickup", "delivery"]).default("delivery").notNull(), // Type of stop
   status: mysqlEnum("status", ["pending", "in_progress", "picked_up", "delivered", "attempted", "returned", "failed", "on_hold"]).default("pending").notNull(),
   proofPhotoUrl: text("proofPhotoUrl"),
+  proofPhotoUrl2: text("proofPhotoUrl2"),
   notes: text("notes"),
   attemptedAt: timestamp("attemptedAt"),
   deliveredAt: timestamp("deliveredAt"),

@@ -1,0 +1,1 @@
+ALTER TABLE `trackingEvents` ADD `podFileUrl` varchar(500);

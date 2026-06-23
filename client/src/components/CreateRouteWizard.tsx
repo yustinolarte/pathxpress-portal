@@ -45,6 +45,7 @@ interface CreateRouteWizardProps {
   onOpenChange: (open: boolean) => void;
   onSuccess: (routeId: string) => void;
   drivers: Array<{ id: number; fullName: string; vehicleNumber: string | null; status: string }>;
+  preloadedOrders?: Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>;
 }
 
 const defaultForm = {
@@ -55,6 +56,9 @@ const defaultForm = {
   driverId: '',
   vehicleInfo: '',
   notes: '',
+  startAddress: '',
+  startLat: '',
+  startLng: '',
 };
 
 const STEPS = [
@@ -90,7 +94,7 @@ function Field({
 
 // ─── Componente principal ──────────────────────────────────────────────────
 
-export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drivers }: CreateRouteWizardProps) {
+export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drivers, preloadedOrders }: CreateRouteWizardProps) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState(defaultForm);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -118,6 +122,9 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       setHasReachedStep3(false);
       setSelectedOrders([]);
       setOrderSearch('');
+    } else if (preloadedOrders && preloadedOrders.length > 0) {
+      setSelectedOrders(preloadedOrders);
+      setHasReachedStep3(true);
     }
   }, [open]);
 
@@ -178,6 +185,9 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         driverId: form.driverId && form.driverId !== 'none' ? parseInt(form.driverId) : undefined,
         zone: finalZone || undefined,
         vehicleInfo: form.vehicleInfo || undefined,
+        startAddress: form.startAddress || undefined,
+        startLat: form.startLat || undefined,
+        startLng: form.startLng || undefined,
       });
 
       if (selectedOrders.length > 0) {
@@ -259,6 +269,21 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 className={`mt-2 ${textInputClass('zoneCustom')}`}
               />
             )}
+          </Field>
+          <Field label="Punto de origen (opcional)">
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                type="text"
+                value={form.startAddress}
+                onChange={e => setField('startAddress', e.target.value)}
+                placeholder="Ej: Al Quoz Industrial, Dubai — bodega o punto de partida"
+                className={`pl-9 ${textInputClass('startAddress')}`}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Si lo indicas, la optimización de ruta arrancará desde aquí. Déjalo vacío para que el sistema elija el mejor punto de inicio.
+            </p>
           </Field>
         </div>
       </div>
@@ -495,6 +520,12 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               <div className="flex justify-between">
                 <span className="text-slate-400">Zona</span>
                 <span>{finalZone}</span>
+              </div>
+            )}
+            {form.startAddress && (
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-400 flex-shrink-0">Origen</span>
+                <span className="text-right text-slate-300 truncate">{form.startAddress}</span>
               </div>
             )}
           </div>

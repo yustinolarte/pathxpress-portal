@@ -33,8 +33,10 @@ temp/
 .env.test.local
 .env.production.local
 
-# NEVER expose DB dumps
+# NEVER expose DB dumps (but DO version drizzle migrations)
 *.sql
+!drizzle/*.sql
+!drizzle/**/*.sql
 
 ####################################
 # EDITOR / OS FILES

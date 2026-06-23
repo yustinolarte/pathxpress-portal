@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Package, Search, MapPin, Calendar, Weight, Box } from 'lucide-react';
+import { Package, Search, MapPin, Calendar, Weight, Box, CheckCircle2 } from 'lucide-react';
 import { APP_LOGO, APP_TITLE } from '@/const';
+import { getPodPhotoUrls } from '@shared/podPhotos';
 
 export default function TrackShipment() {
   const [waybillNumber, setWaybillNumber] = useState('');
@@ -206,6 +207,29 @@ export default function TrackShipment() {
                                     <MapPin className="h-3 w-3" />
                                     {event.location}
                                   </p>
+                                )}
+                                {getPodPhotoUrls(event).length > 0 && (
+                                  <div className="mt-4">
+                                    <p className="mb-2 flex items-center gap-1 text-xs font-medium uppercase tracking-widest text-gray-300">
+                                      <CheckCircle2 className="h-3 w-3 text-green-400" /> Proof of Delivery
+                                    </p>
+                                    <div className="grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
+                                      {getPodPhotoUrls(event).map((photoUrl, photoIndex) => (
+                                        <button
+                                          key={photoUrl}
+                                          type="button"
+                                          className="group/image overflow-hidden rounded-lg border border-white/15 text-left"
+                                          onClick={() => window.open(photoUrl, '_blank')}
+                                        >
+                                          <img
+                                            src={photoUrl}
+                                            alt={`Proof of Delivery ${photoIndex + 1}`}
+                                            className="h-auto w-full cursor-zoom-in object-cover transition-transform duration-500 group-hover/image:scale-105"
+                                          />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                               <div className="text-right text-sm text-gray-400 flex-shrink-0">

@@ -129,6 +129,7 @@ export default function AddIntlTrackingEventDialog({
     courierTracking: '',
   });
   const [podFileUrl, setPodFileUrl] = useState('');
+  const [podFileUrl2, setPodFileUrl2] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -160,6 +161,7 @@ export default function AddIntlTrackingEventDialog({
       courierTracking: '',
     });
     setPodFileUrl('');
+    setPodFileUrl2('');
   };
 
   const handleStatusChange = (value: string) => {
@@ -218,6 +220,7 @@ export default function AddIntlTrackingEventDialog({
       statusLabel: formData.statusLabel,
       description: finalDescription,
       podFileUrl: podFileUrl || undefined,
+      podFileUrl2: podFileUrl2 || undefined,
     });
   };
 
@@ -439,7 +442,7 @@ export default function AddIntlTrackingEventDialog({
               <div className="space-y-2 p-4 rounded-lg bg-[var(--st-green-bg)] border border-[var(--st-green)]/25">
                 <Label className="flex items-center gap-2 text-[var(--st-green)]">
                   <Link2 className="w-4 h-4" />
-                  Proof of Delivery URL
+                  Proof of Delivery URLs
                 </Label>
                 <Input
                   type="url"
@@ -448,7 +451,14 @@ export default function AddIntlTrackingEventDialog({
                   onChange={(e) => setPodFileUrl(e.target.value)}
                   className="bg-background border-border"
                 />
-                <p className="text-xs text-muted-foreground">Link to signature or photo proof</p>
+                <Input
+                  type="url"
+                  placeholder="https://example.com/pod-image-2.jpg (optional)"
+                  value={podFileUrl2}
+                  onChange={(e) => setPodFileUrl2(e.target.value)}
+                  className="bg-background border-border"
+                />
+                <p className="text-xs text-muted-foreground">Add up to two links to signature or photo proof</p>
               </div>
             )}
 

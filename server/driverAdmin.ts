@@ -3,9 +3,11 @@
  * Used by tRPC router for admin panel driver management
  */
 import bcrypt from 'bcryptjs';
-import { eq, and, desc, sql, gte, isNull, notInArray, or, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, notInArray, or, inArray } from 'drizzle-orm';
 import { getDb } from './db';
-import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, clientAccounts } from '../drizzle/schema';
+import { drivers, driverRoutes, routeOrders, orders, driverReports, clientAccounts } from '../drizzle/schema';
+import { optimizeStops } from './routeOptimizer';
+import type { OptimizableStop, LatLng } from './routeOptimizer';
 import { cachedQuery } from './_core/queryCache';
 
 // ============ DASHBOARD STATS ============
@@ -273,13 +275,21 @@ export async function getRouteDetails(routeId: string) {
     const deliveries = routeOrdersList.map((item) => ({
         id: item.routeOrder.id,
         orderId: item.order.id,
+        sequence: item.routeOrder.sequence,
+        type: item.routeOrder.type,
         waybillNumber: item.order.waybillNumber,
         customerName: item.order.customerName,
         customerPhone: item.order.customerPhone,
         address: item.order.address,
         city: item.order.city,
+        latitude: item.order.latitude,
+        longitude: item.order.longitude,
+        shipperCity: item.order.shipperCity,
+        shipperLat: null as string | null,
+        shipperLng: null as string | null,
         status: item.routeOrder.status,
         proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+        proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
         notes: item.routeOrder.notes,
         deliveredAt: item.routeOrder.deliveredAt,
         companyName: clientMap[item.order.clientId] || 'Unknown',
@@ -307,6 +317,9 @@ export async function createDriverRoute(data: {
     vehicleInfo?: string;
     orderIds?: number[];
     stopMode?: 'pickup_only' | 'delivery_only' | 'both';
+    startAddress?: string;
+    startLat?: string;
+    startLng?: string;
 }) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
@@ -320,6 +333,9 @@ export async function createDriverRoute(data: {
         zone: data.zone || null,
         vehicleInfo: data.vehicleInfo || null,
         status: 'pending',
+        startAddress: data.startAddress || null,
+        startLat: data.startLat || null,
+        startLng: data.startLng || null,
     });
 
     // Add orders to route if provided — batch insert instead of loop
@@ -344,6 +360,47 @@ export async function createDriverRoute(data: {
     }
 
     return { id: data.id };
+}
+
+export async function optimizeRoute(routeId: string, origin?: { lat: number; lng: number }) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
+    if (!route) throw new Error('Route not found');
+
+    const stopsRaw = await db
+        .select({ ro: routeOrders, o: orders })
+        .from(routeOrders)
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(eq(routeOrders.routeId, routeId));
+
+    const startOrigin: LatLng | null =
+        origin ??
+        (route.startLat && route.startLng
+            ? { lat: parseFloat(route.startLat), lng: parseFloat(route.startLng) }
+            : null);
+
+    const stops: OptimizableStop[] = stopsRaw.map(({ ro, o }) => {
+        const isPickup = ro.type === 'pickup';
+        const lat = isPickup ? null : (o.latitude ? parseFloat(o.latitude) : null);
+        const lng = isPickup ? null : (o.longitude ? parseFloat(o.longitude) : null);
+        return {
+            id: ro.id,
+            type: ro.type,
+            coords: lat !== null && lng !== null ? { lat, lng } : null,
+        };
+    });
+
+    const optimizedIds = optimizeStops(stops, startOrigin);
+
+    for (let i = 0; i < optimizedIds.length; i++) {
+        await db.update(routeOrders)
+            .set({ sequence: i + 1 })
+            .where(eq(routeOrders.id, optimizedIds[i]));
+    }
+
+    return { optimized: optimizedIds.length };
 }
 
 export async function updateRouteStatus(routeId: string, status: 'pending' | 'in_progress' | 'completed' | 'cancelled') {
@@ -442,6 +499,7 @@ export async function getAllDeliveries(filters?: {
             sequence: routeOrders.sequence,
             status: routeOrders.status,
             proofPhotoUrl: routeOrders.proofPhotoUrl,
+            proofPhotoUrl2: routeOrders.proofPhotoUrl2,
             notes: routeOrders.notes,
             deliveredAt: routeOrders.deliveredAt,
             waybillNumber: orders.waybillNumber,
@@ -464,6 +522,7 @@ export async function getAllDeliveries(filters?: {
         sequence: r.sequence,
         status: r.status,
         proofPhotoUrl: r.proofPhotoUrl,
+        proofPhotoUrl2: r.proofPhotoUrl2,
         notes: r.notes,
         deliveredAt: r.deliveredAt,
         waybillNumber: r.waybillNumber,
@@ -629,6 +688,9 @@ export async function getAvailableOrders() {
             address: orders.address,
             city: orders.city,
             emirate: orders.emirate,
+            latitude: orders.latitude,
+            longitude: orders.longitude,
+            shipperCity: orders.shipperCity,
             status: orders.status,
             codRequired: orders.codRequired,
             codAmount: orders.codAmount,

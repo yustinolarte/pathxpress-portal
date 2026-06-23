@@ -1,0 +1,1 @@
+ALTER TABLE `clientAccounts` ADD `manualRateTierId` int;

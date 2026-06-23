@@ -3454,36 +3454,6 @@ export const clientsRouter = router({
 });
 
 /**
- * DOM ("Next Day") only delivers next-day within Zone 1. For Zone 2+ it is a
- * standard multi-day service, so it shows a different name and timeframe.
- */
-function domDefaultsForZone(zone: number): { name: string; time: string } {
-  return zone === 1
-    ? { name: 'Next Day Delivery', time: '1–2 business days' }
-    : { name: 'Standard Delivery', time: '3–7 business days' };
-}
-
-/**
- * Default delivery time-slot windows for Preferred Time services when an admin
- * hasn't configured custom slots. Hourly windows from 06:00 to 22:00.
- * Preferred Time must always be booked by window, never an arbitrary minute.
- */
-const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 16 }, (_, i) => {
-  const start = String(6 + i).padStart(2, '0');
-  const end = String(7 + i).padStart(2, '0');
-  return `${start}:00 - ${end}:00`;
-});
-
-/** Ensure a Preferred Time service always exposes time-slot windows. */
-function withPreferredSlots(code: string, extraConfig: any): any {
-  if (code !== 'PREFERRED_TIME' && code !== 'PREFERRED_TIME_SDD') return extraConfig;
-  const slots = Array.isArray(extraConfig?.timeSlots) && extraConfig.timeSlots.length > 0
-    ? extraConfig.timeSlots
-    : DEFAULT_PREFERRED_SLOTS;
-  return { ...(extraConfig ?? {}), timeSlots: slots };
-}
-
-/**
  * Services Router — available delivery services for the authenticated customer
  */
 export const servicesRouter = router({
@@ -3494,129 +3464,8 @@ export const servicesRouter = router({
     }))
     .query(async ({ input, ctx }) => {
       const clientId = ctx.portalUser!.clientId!;
-      const { getClientServiceSettings, getClientAccountById, isCutoffNotPassed, getZoneFromEmirate, calculateShipmentRate } = await import('./db');
-
-      const [settingsMap, client] = await Promise.all([
-        getClientServiceSettings(clientId),
-        getClientAccountById(clientId),
-      ]);
-
-      const zone = getZoneFromEmirate(input.emirate);
-
-      const SERVICE_DEFS = [
-        { code: 'DOM',            defaultName: 'Next Day Delivery',          defaultDeliveryTime: '1–2 business days', legacyEnabled: true },
-        { code: 'SDD',            defaultName: 'Same Day Delivery',          defaultDeliveryTime: null,                legacyEnabled: true },
-        { code: 'BULLET',         defaultName: 'Bullet Service (4 Hours)',   defaultDeliveryTime: 'Up to 4 hours',     legacyEnabled: (client?.bulletAllowed === 1) },
-        { code: 'EXPRESS_ZONE2',  defaultName: 'Express Service – Zone 2',   defaultDeliveryTime: 'Express delivery',  legacyEnabled: false },
-        { code: 'PREFERRED_TIME', defaultName: 'Next Day Preferred Time',     defaultDeliveryTime: 'Next day · scheduled', legacyEnabled: false },
-        { code: 'PREFERRED_TIME_SDD', defaultName: 'Same Day Preferred Time', defaultDeliveryTime: 'Same day · scheduled', legacyEnabled: false },
-      ] as const;
-
-      const results = await Promise.all(SERVICE_DEFS.map(async (svc) => {
-        const setting = settingsMap.get(svc.code);
-        const isEnabled = setting ? setting.isEnabled === 1 : svc.legacyEnabled;
-
-        // Zone-aware defaults: DOM shifts to a standard multi-day service in Zone 2+.
-        const dom = svc.code === 'DOM' ? domDefaultsForZone(zone) : null;
-        const effDefaultName = dom ? dom.name : svc.defaultName;
-        const effDefaultTime = dom ? dom.time : svc.defaultDeliveryTime;
-
-        // Zone restriction for EXPRESS_ZONE2
-        if (svc.code === 'EXPRESS_ZONE2' && zone !== 2) {
-          return {
-            code: svc.code,
-            available: false,
-            reason: 'Only available for Zone 2 destinations (RAK, Fujairah, UAQ)',
-            displayName: setting?.displayName ?? effDefaultName,
-            description: setting?.description ?? null,
-            deliveryWindow: setting?.deliveryWindow ?? null,
-            deliveryTime: setting?.deliveryTime ?? effDefaultTime,
-            price: null,
-            cutoffTime: setting?.cutoffTime ?? null,
-            extraConfig: null,
-          };
-        }
-
-        // Enabled check
-        if (!isEnabled) {
-          return {
-            code: svc.code,
-            available: false,
-            reason: 'Service not available for your account',
-            displayName: setting?.displayName ?? effDefaultName,
-            description: setting?.description ?? null,
-            deliveryWindow: setting?.deliveryWindow ?? null,
-            deliveryTime: setting?.deliveryTime ?? effDefaultTime,
-            price: null,
-            cutoffTime: setting?.cutoffTime ?? null,
-            extraConfig: null,
-          };
-        }
-
-        // Cut-off check
-        const cutoffTime = setting?.cutoffTime
-          ?? (svc.code === 'SDD' ? client?.sdCutoffTime : svc.code === 'BULLET' ? client?.bulletCutoffTime : null);
-
-        if (cutoffTime && !isCutoffNotPassed(cutoffTime)) {
-          return {
-            code: svc.code,
-            available: false,
-            reason: `Cut-off passed (${cutoffTime} Dubai time)`,
-            displayName: setting?.displayName ?? effDefaultName,
-            description: setting?.description ?? null,
-            deliveryWindow: setting?.deliveryWindow ?? null,
-            deliveryTime: setting?.deliveryTime ?? effDefaultTime,
-            price: null,
-            cutoffTime,
-            extraConfig: null,
-          };
-        }
-
-        // Calculate price
-        let price: number | null = null;
-        try {
-          const rateResult = await calculateShipmentRate({
-            clientId,
-            serviceType: svc.code as any,
-            weight: input.weight,
-            emirate: input.emirate,
-          });
-          price = rateResult.totalRate;
-        } catch {}
-
-        if (price === null || price === 0) {
-          // For new services, price must be configured
-          if (svc.code === 'EXPRESS_ZONE2' || svc.code === 'PREFERRED_TIME' || svc.code === 'PREFERRED_TIME_SDD') {
-            return {
-              code: svc.code,
-              available: false,
-              reason: 'Rate not configured for your account',
-              displayName: setting?.displayName ?? effDefaultName,
-              description: setting?.description ?? null,
-              deliveryWindow: setting?.deliveryWindow ?? null,
-              deliveryTime: setting?.deliveryTime ?? effDefaultTime,
-              price: null,
-              cutoffTime: cutoffTime ?? null,
-              extraConfig: null,
-            };
-          }
-        }
-
-        return {
-          code: svc.code,
-          available: true,
-          reason: null,
-          displayName: setting?.displayName ?? effDefaultName,
-          description: setting?.description ?? null,
-          deliveryWindow: setting?.deliveryWindow ?? null,
-          deliveryTime: setting?.deliveryTime ?? effDefaultTime,
-          price,
-          cutoffTime: cutoffTime ?? null,
-          extraConfig: withPreferredSlots(svc.code, setting?.extraConfig ? JSON.parse(setting.extraConfig) : null),
-        };
-      }));
-
-      return results;
+      const { getAvailableServicesForClient } = await import('./db');
+      return getAvailableServicesForClient(clientId, { emirate: input.emirate, weight: input.weight });
     }),
 });
 
@@ -3669,6 +3518,7 @@ const trackingRouter = router({
       statusLabel: z.string(),
       description: z.string().optional(),
       podFileUrl: z.string().optional(),
+      podFileUrl2: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await createTrackingEvent({
@@ -3679,6 +3529,7 @@ const trackingRouter = router({
         statusLabel: input.statusLabel,
         description: input.description,
         podFileUrl: input.podFileUrl,
+        podFileUrl2: input.podFileUrl2,
         createdBy: ctx.portalUser.email || 'admin',
       });
 
