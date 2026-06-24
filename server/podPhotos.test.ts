@@ -34,6 +34,32 @@ describe("delivery POD photos", () => {
     ).toEqual(["first", "second"]);
   });
 
+  it("stores the recipient signature in the second slot after the photo", () => {
+    expect(
+      extractDeliveryPhotoBase64s({
+        photoBase64: "photo",
+        signatureBase64: "signature",
+      })
+    ).toEqual(["photo", "signature"]);
+  });
+
+  it("accepts a signature-only delivery", () => {
+    expect(extractDeliveryPhotoBase64s({ signature: "signature" })).toEqual([
+      "signature",
+    ]);
+  });
+
+  it("ignores unknown fields and only reads named photo/signature fields", () => {
+    expect(
+      extractDeliveryPhotoBase64s({
+        status: "delivered",
+        notes: "left with neighbour",
+        collectedAmount: 150.5,
+        photoBase64: "photo",
+      })
+    ).toEqual(["photo"]);
+  });
+
   it("returns both current and legacy URL fields for display", () => {
     expect(
       getPodPhotoUrls({ podFileUrl: "one.jpg", podFileUrl2: "two.jpg" })

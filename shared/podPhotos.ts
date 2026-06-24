@@ -21,6 +21,11 @@ function addPhotoValue(value: unknown, photos: string[]) {
 /**
  * Supports the original driver payload and the common two-photo payload shapes.
  * New clients should send `photoBase64s: [firstPhoto, secondPhoto]`.
+ *
+ * The recipient signature is captured by the driver app as an image too, so it
+ * is read from explicit `signature*` fields and stored as a regular POD image.
+ * Signature fields are listed AFTER the photos so a delivery photo keeps slot 1
+ * and the signature takes slot 2 (the system stores exactly two POD images).
  */
 export function extractDeliveryPhotoBase64s(body: unknown): string[] {
   if (!body || typeof body !== "object") return [];
@@ -40,6 +45,11 @@ export function extractDeliveryPhotoBase64s(body: unknown): string[] {
     payload.photo2Base64,
     payload.secondPhoto,
     payload.photo2,
+    // Recipient signature (image) — kept after photos so it lands in slot 2.
+    payload.signatureBase64,
+    payload.signature,
+    payload.signatureImage,
+    payload.signatureData,
   ].forEach(value => addPhotoValue(value, photos));
 
   return photos.slice(0, 2);

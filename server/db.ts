@@ -2535,6 +2535,25 @@ export async function getAvailableServicesForClient(
       return { ...base, available: false, reason: 'Service not available for your account', price: null, cutoffTime: setting?.cutoffTime ?? null };
     }
 
+    // Emirate (region) restriction — admins can limit each service to specific
+    // emirates via clientServiceSettings.availableRegions (JSON array of names).
+    // e.g. Same Day may be restricted to Zone 1, so it won't be offered to RAK.
+    if (emirate) {
+      let regions: string[] = [];
+      try { regions = setting?.availableRegions ? JSON.parse(setting.availableRegions) : []; } catch {}
+      if (Array.isArray(regions) && regions.length > 0) {
+        const norm = (s: string) => String(s).toLowerCase().trim().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
+        const dest = norm(emirate);
+        const allowed = regions.some(r => {
+          const rn = norm(r);
+          return rn === dest || dest.includes(rn) || rn.includes(dest);
+        });
+        if (!allowed) {
+          return { ...base, available: false, reason: 'Not available for this destination', price: null, cutoffTime: setting?.cutoffTime ?? null };
+        }
+      }
+    }
+
     const cutoffTime = setting?.cutoffTime
       ?? (svc.code === 'SDD' ? client?.sdCutoffTime : svc.code === 'BULLET' ? client?.bulletCutoffTime : null);
 
