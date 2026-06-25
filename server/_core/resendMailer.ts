@@ -1,11 +1,18 @@
 import { ENV } from './env';
 
+export interface ResendAttachment {
+  filename: string;
+  content: string; // base64-encoded file content (no "data:" prefix)
+  contentType?: string;
+}
+
 export interface ResendSendInput {
   from: string;
   to: string | string[];
   subject: string;
   html: string;
   replyTo?: string;
+  attachments?: ResendAttachment[];
 }
 
 export interface ResendSendResult {
@@ -35,6 +42,13 @@ export async function sendViaResend(input: ResendSendInput): Promise<ResendSendR
       subject: input.subject,
       html: input.html,
       reply_to: input.replyTo || undefined,
+      attachments: input.attachments && input.attachments.length
+        ? input.attachments.map((a) => ({
+            filename: a.filename,
+            content: a.content,
+            content_type: a.contentType || undefined,
+          }))
+        : undefined,
     }),
   });
 

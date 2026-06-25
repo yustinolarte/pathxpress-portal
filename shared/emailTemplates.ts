@@ -230,6 +230,8 @@ export interface EmailTemplate {
   subject: string;
   fields: TemplateField[];
   render: (v: Vars) => string;
+  /** When true, the Email Studio shows a file picker so the admin can attach files. */
+  attachments?: boolean;
 }
 
 export const TEMPLATES: EmailTemplate[] = [
@@ -439,6 +441,7 @@ export const TEMPLATES: EmailTemplate[] = [
     label: 'General announcement',
     from: 'PATHXPRESS <info@pathxpress.net>',
     subject: 'A message from PathXpress',
+    attachments: true,
     fields: [
       { name: 'eyebrow', label: 'Badge / eyebrow (optional)', type: 'text', value: 'Announcement' },
       { name: 'heading', label: 'Heading', type: 'text', value: 'A quick update from PathXpress.' },

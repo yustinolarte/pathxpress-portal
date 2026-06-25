@@ -18,6 +18,16 @@ export const emailRouter = router({
         to: z.string().email(),
         vars: z.record(z.string(), z.string()).default({}),
         subjectOverride: z.string().trim().optional(),
+        attachments: z
+          .array(
+            z.object({
+              filename: z.string().min(1).max(200),
+              content: z.string().min(1), // base64-encoded file content
+              contentType: z.string().max(150).optional(),
+            }),
+          )
+          .max(10)
+          .optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -41,6 +51,18 @@ export const emailRouter = router({
         ? input.subjectOverride
         : rendered.subject;
 
+      // 3b) cap total attachment size (~7 MB raw) so the request stays under the body limit
+      if (input.attachments?.length) {
+        const MAX_ATTACH_BYTES = 7 * 1024 * 1024;
+        const totalBytes = input.attachments.reduce(
+          (sum, a) => sum + Math.floor((a.content.length * 3) / 4),
+          0,
+        );
+        if (totalBytes > MAX_ATTACH_BYTES) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Attachments exceed the 7 MB total limit.' });
+        }
+      }
+
       // 4) send via Resend
       try {
         const result = await sendViaResend({
@@ -48,6 +70,7 @@ export const emailRouter = router({
           to: input.to,
           subject,
           html: rendered.html,
+          attachments: input.attachments,
         });
         return { ok: true as const, id: result.id, to: input.to };
       } catch (err: any) {

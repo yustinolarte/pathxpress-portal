@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Mail, Send, FlaskConical } from 'lucide-react';
+import { Mail, Send, FlaskConical, Paperclip, X } from 'lucide-react';
 import { TEMPLATES, FROMS, renderEmail, getTemplate, type Vars } from '@shared/emailTemplates';
 
 function defaultsFor(key: string): Vars {
@@ -15,6 +15,30 @@ function defaultsFor(key: string): Vars {
   const v: Vars = {};
   t?.fields.forEach((f) => { v[f.name] = f.value; });
   return v;
+}
+
+// Keep total attachments under the 10 MB request body limit (base64 inflates ~33%).
+const MAX_ATTACH_BYTES = 7 * 1024 * 1024;
+
+interface AttachmentDraft { filename: string; content: string; contentType: string; size: number; }
+
+function fileToAttachment(file: File): Promise<AttachmentDraft> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const base64 = result.includes(',') ? result.slice(result.indexOf(',') + 1) : result;
+      resolve({ filename: file.name, content: base64, contentType: file.type || 'application/octet-stream', size: file.size });
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 export default function EmailStudioPanel() {
@@ -25,6 +49,7 @@ export default function EmailStudioPanel() {
   const [testTo, setTestTo] = useState('');
   const [subjectText, setSubjectText] = useState('');
   const [subjectDirty, setSubjectDirty] = useState(false);
+  const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
 
   const template = useMemo(() => getTemplate(selectedKey)!, [selectedKey]);
 
@@ -35,6 +60,7 @@ export default function EmailStudioPanel() {
     setValues(defaultsFor(selectedKey));
     setFromValue(t.from);
     setSubjectDirty(false);
+    setAttachments([]);
   }, [selectedKey]);
 
   // Preview render + automatic subject.
@@ -69,6 +95,30 @@ export default function EmailStudioPanel() {
       to: target,
       vars: values,
       subjectOverride: subjectText.trim() || undefined,
+      attachments: attachments.length
+        ? attachments.map(({ filename, content, contentType }) => ({ filename, content, contentType }))
+        : undefined,
+    });
+  }
+
+  async function addFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const incoming: AttachmentDraft[] = [];
+    for (const file of Array.from(list)) {
+      try {
+        incoming.push(await fileToAttachment(file));
+      } catch {
+        toast.error(`Could not read ${file.name}`);
+      }
+    }
+    setAttachments((prev) => {
+      const next = [...prev, ...incoming];
+      const total = next.reduce((s, a) => s + a.size, 0);
+      if (total > MAX_ATTACH_BYTES) {
+        toast.error('Attachments exceed the 7 MB total limit.');
+        return prev;
+      }
+      return next;
     });
   }
 
@@ -161,6 +211,43 @@ export default function EmailStudioPanel() {
               </div>
             ))}
           </div>
+
+          {template.attachments && (
+            <div className="border-t pt-3 space-y-2">
+              <Label className="text-xs">Attachments</Label>
+              <label className="flex items-center justify-center gap-2 w-full rounded-lg border border-dashed border-input px-3 py-3 text-sm text-muted-foreground cursor-pointer hover:bg-muted transition-colors">
+                <Paperclip className="h-4 w-4" />
+                <span>Add files (PDF, images…)</span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => { void addFiles(e.target.files); e.currentTarget.value = ''; }}
+                />
+              </label>
+              {attachments.length > 0 && (
+                <ul className="space-y-1.5">
+                  {attachments.map((a, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 rounded-md bg-muted px-2.5 py-1.5 text-xs">
+                      <span className="truncate">{a.filename}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-muted-foreground font-mono">{formatBytes(a.size)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                          className="text-muted-foreground hover:text-[#E10600]"
+                          aria-label={`Remove ${a.filename}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[11px] text-muted-foreground">Up to 7 MB total · files are attached to the email the recipient receives.</p>
+            </div>
+          )}
 
           <div className="border-t pt-3 space-y-2">
             <div className="space-y-1.5">
