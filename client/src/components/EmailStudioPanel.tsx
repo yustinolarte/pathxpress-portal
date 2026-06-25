@@ -28,7 +28,7 @@ export default function EmailStudioPanel() {
 
   const template = useMemo(() => getTemplate(selectedKey)!, [selectedKey]);
 
-  // Al cambiar de plantilla: reset de campos, remitente y asunto.
+  // On template change: reset fields, sender and subject.
   useEffect(() => {
     const t = getTemplate(selectedKey);
     if (!t) return;
@@ -37,13 +37,13 @@ export default function EmailStudioPanel() {
     setSubjectDirty(false);
   }, [selectedKey]);
 
-  // Render de preview + asunto automático.
+  // Preview render + automatic subject.
   const rendered = useMemo(
     () => renderEmail(selectedKey, values, fromValue),
     [selectedKey, values, fromValue],
   );
 
-  // Sincroniza el asunto automático mientras el usuario no lo haya editado a mano.
+  // Keep the subject in sync with the auto value until the user edits it manually.
   useEffect(() => {
     if (!subjectDirty && rendered) setSubjectText(rendered.subject);
   }, [rendered, subjectDirty]);
@@ -74,7 +74,7 @@ export default function EmailStudioPanel() {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,380px)_minmax(0,1fr)] gap-4">
-      {/* RAIL: lista de plantillas */}
+      {/* RAIL: template list */}
       <Card className="h-fit">
         <CardContent className="p-3 space-y-1">
           <div className="flex items-center gap-2 px-2 py-2 text-sm font-semibold text-muted-foreground">

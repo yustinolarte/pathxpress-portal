@@ -5,9 +5,9 @@ import { renderEmail, isAllowedFrom, getTemplate } from '@shared/emailTemplates'
 import { sendViaResend } from './_core/resendMailer';
 
 /**
- * Email Studio — envío manual de correos de marca por un admin del portal.
- * El servidor RE-RENDERIZA la plantilla a partir de (templateKey + vars) para
- * garantizar el layout de marca; nunca confía en HTML enviado por el cliente.
+ * Email Studio — manual sending of branded emails by a portal admin.
+ * The server RE-RENDERS the template from (templateKey + vars) to guarantee
+ * the brand layout; it never trusts HTML sent by the client.
  */
 export const emailRouter = router({
   send: portalAdminProcedure

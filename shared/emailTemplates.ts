@@ -22,9 +22,9 @@ export interface FromOption { label: string; value: string; }
 export const FROMS: FromOption[] = [
   { label: '🧪 TEST — Resend <onboarding@resend.dev>', value: 'PATHXPRESS <onboarding@resend.dev>' },
   { label: 'PATHXPRESS <welcome@pathxpress.net>', value: 'PATHXPRESS <welcome@pathxpress.net>' },
-  { label: 'PATHXPRESS <envios@pathxpress.net>', value: 'PATHXPRESS <envios@pathxpress.net>' },
-  { label: 'PATHXPRESS · Finance <finanzas@pathxpress.net>', value: 'PATHXPRESS Finance <finanzas@pathxpress.net>' },
-  { label: 'PATHXPRESS · Billing <facturacion@pathxpress.net>', value: 'PATHXPRESS Billing <facturacion@pathxpress.net>' },
+  { label: 'PATHXPRESS <shipping@pathxpress.net>', value: 'PATHXPRESS <shipping@pathxpress.net>' },
+  { label: 'PATHXPRESS · Finance <finance@pathxpress.net>', value: 'PATHXPRESS Finance <finance@pathxpress.net>' },
+  { label: 'PATHXPRESS · Billing <billing@pathxpress.net>', value: 'PATHXPRESS Billing <billing@pathxpress.net>' },
   { label: 'PATHXPRESS <info@pathxpress.net>', value: 'PATHXPRESS <info@pathxpress.net>' },
 ];
 
@@ -54,6 +54,18 @@ const lede = (htmlStr: string): string =>
 
 const note = (t: string): string =>
   '<p style="margin:12px 0 0;font-family:\'Hanken Grotesk\',Arial,sans-serif;font-size:11.5px;line-height:1.5;color:' + C.muted + ';">' + esc(t) + '</p>';
+
+// Free-form body: a blank line starts a new paragraph; single newlines become <br/>.
+const para = (htmlStr: string): string =>
+  '<p style="margin:14px 0 0;font-family:\'Hanken Grotesk\',Arial,sans-serif;font-size:15px;line-height:1.65;color:' + C.slate + ';">' + htmlStr + '</p>';
+function body(text: string): string {
+  return esc(text)
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => para(nl(p)))
+    .join('');
+}
 
 function cta(label: string, href?: string, ghost?: boolean): string {
   const h = href || '#';
@@ -265,7 +277,7 @@ export const TEMPLATES: EmailTemplate[] = [
   {
     key: 'shipment_created',
     label: 'Shipment confirmed',
-    from: 'PATHXPRESS <envios@pathxpress.net>',
+    from: 'PATHXPRESS <shipping@pathxpress.net>',
     subject: 'Your shipment {{tracking_number}} is confirmed',
     fields: [
       { name: 'recipient_name', label: 'Recipient (name)', type: 'text', value: 'Khalid' },
@@ -296,7 +308,7 @@ export const TEMPLATES: EmailTemplate[] = [
   {
     key: 'out_for_delivery',
     label: 'Out for delivery',
-    from: 'PATHXPRESS <envios@pathxpress.net>',
+    from: 'PATHXPRESS <shipping@pathxpress.net>',
     subject: 'Your package ships today — arriving approx. {{eta_window}}',
     fields: [
       { name: 'driver', label: 'Driver', type: 'text', value: 'Rashid' },
@@ -328,7 +340,7 @@ export const TEMPLATES: EmailTemplate[] = [
   {
     key: 'delivered',
     label: 'Delivered',
-    from: 'PATHXPRESS <envios@pathxpress.net>',
+    from: 'PATHXPRESS <shipping@pathxpress.net>',
     subject: '✓ Delivered — {{tracking_number}}',
     fields: [
       { name: 'tracking_number', label: 'Tracking number', type: 'text', value: 'PX-AUH-4821' },
@@ -355,7 +367,7 @@ export const TEMPLATES: EmailTemplate[] = [
   {
     key: 'cod_remittance',
     label: 'COD remittance',
-    from: 'PATHXPRESS Finance <finanzas@pathxpress.net>',
+    from: 'PATHXPRESS Finance <finance@pathxpress.net>',
     subject: 'COD remittance {{reference}} sent — {{net}}',
     fields: [
       { name: 'client_name', label: 'Client', type: 'text', value: 'Najm Store' },
@@ -390,7 +402,7 @@ export const TEMPLATES: EmailTemplate[] = [
   {
     key: 'invoice',
     label: 'Invoice available',
-    from: 'PATHXPRESS Billing <facturacion@pathxpress.net>',
+    from: 'PATHXPRESS Billing <billing@pathxpress.net>',
     subject: 'Invoice {{invoice_number}} available — due {{due_date}}',
     fields: [
       { name: 'client_name', label: 'Client', type: 'text', value: 'Atlas Retail' },
@@ -419,6 +431,34 @@ export const TEMPLATES: EmailTemplate[] = [
       ) +
       cta('Download invoice (PDF)', v.pdf_url) +
       cta('Pay now', v.pay_url, true),
+  },
+
+  /* 7) GENERAL ANNOUNCEMENT — free-form, brand-wrapped */
+  {
+    key: 'general',
+    label: 'General announcement',
+    from: 'PATHXPRESS <info@pathxpress.net>',
+    subject: 'A message from PathXpress',
+    fields: [
+      { name: 'eyebrow', label: 'Badge / eyebrow (optional)', type: 'text', value: 'Announcement' },
+      { name: 'heading', label: 'Heading', type: 'text', value: 'A quick update from PathXpress.' },
+      {
+        name: 'message',
+        label: 'Message (write freely — leave a blank line between paragraphs)',
+        type: 'textarea',
+        value:
+          'Hi there,\n\nWe wanted to share a quick update with you. Use this space to write anything — service changes, holiday schedules, new features, or simply a thank-you.\n\nLeave a blank line between paragraphs and they will be spaced for you automatically.\n\nWarm regards,\nThe PathXpress team',
+      },
+      { name: 'cta_label', label: 'Button label (optional)', type: 'text', value: 'Visit your portal' },
+      { name: 'cta_url', label: 'Button URL (optional)', type: 'text', value: 'https://pathxpress.net/portal/login' },
+      { name: 'footnote', label: 'Small footnote (optional)', type: 'textarea', value: '' },
+    ],
+    render: (v) =>
+      (String(v.eyebrow).trim() ? tag(v.eyebrow, 'blue') : '') +
+      h1(v.heading) +
+      body(v.message) +
+      (String(v.cta_label).trim() ? cta(v.cta_label, String(v.cta_url).trim() || '#') : '') +
+      (String(v.footnote).trim() ? note(v.footnote) : ''),
   },
 ];
 

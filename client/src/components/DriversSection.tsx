@@ -25,6 +25,7 @@ import {
     Activity, Download
 } from 'lucide-react';
 import CreateRouteWizard from '@/components/CreateRouteWizard';
+import OrderPickList, { type SelectedOrder } from '@/components/OrderPickList';
 import { OrdersMap } from '@/components/OrdersMap';
 import type { MapPoint, PinKind } from '@/components/OrdersMap';
 import { getProofPhotoUrls } from '@shared/podPhotos';
@@ -77,8 +78,7 @@ export default function DriversSection() {
     // Selected items
     const [selectedDriver, setSelectedDriver] = useState<any>(null);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
-    const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
-    const [orderModes, setOrderModes] = useState<Record<number, 'pickup_only' | 'delivery_only' | 'both'>>({});
+    const [addOrders, setAddOrders] = useState<SelectedOrder[]>([]);
     const [qrRouteId, setQrRouteId] = useState('');
     const [profileDriverId, setProfileDriverId] = useState<number | null>(null);
 
@@ -206,7 +206,7 @@ export default function DriversSection() {
         onSuccess: () => {
             toast.success('Orders added to route');
             setAddOrdersDialogOpen(false);
-            setSelectedOrderIds([]);
+            setAddOrders([]);
             refetchRouteDetails();
             refetchRoutes();
             refetchAvailableOrders();
@@ -283,19 +283,14 @@ export default function DriversSection() {
     };
 
     const handleAddOrdersToRoute = () => {
-        if (!selectedRouteId || selectedOrderIds.length === 0) {
+        if (!selectedRouteId || addOrders.length === 0) {
             toast.error('Select at least one order');
             return;
         }
 
-        const ordersPayload = selectedOrderIds.map(id => ({
-            id,
-            mode: orderModes[id] || 'both'
-        }));
-
         addOrdersToRouteMutation.mutate({
             routeId: selectedRouteId,
-            orders: ordersPayload,
+            orders: addOrders,
         });
     };
 
@@ -309,14 +304,6 @@ export default function DriversSection() {
         if (confirm('Are you sure you want to delete this report?')) {
             deleteReportMutation.mutate({ id });
         }
-    };
-
-    const toggleOrderSelection = (orderId: number) => {
-        setSelectedOrderIds(prev =>
-            prev.includes(orderId)
-                ? prev.filter(id => id !== orderId)
-                : [...prev, orderId]
-        );
     };
 
     const openDriverProfile = (driver: any) => {
@@ -560,6 +547,17 @@ export default function DriversSection() {
                                     lng: parseFloat(o.longitude),
                                     label: o.waybillNumber || String(o.id),
                                     kind: dispatchSelectedIds.includes(o.id) ? 'selected' : 'available',
+                                    details: {
+                                        customerName: o.customerName,
+                                        address: o.address,
+                                        city: o.city,
+                                        emirate: o.emirate,
+                                        pieces: o.pieces,
+                                        weight: o.weight,
+                                        serviceType: o.serviceType,
+                                        codRequired: o.codRequired,
+                                        codAmount: o.codAmount,
+                                    },
                                 }));
                                 return (
                                     <div className="space-y-3">
@@ -1409,9 +1407,20 @@ export default function DriversSection() {
                                 id: d.id,
                                 lat: parseFloat(d.latitude),
                                 lng: parseFloat(d.longitude),
-                                label: d.sequence != null ? String(d.sequence) : String(idx + 1),
+                                label: d.waybillNumber || (d.sequence != null ? String(d.sequence) : String(idx + 1)),
                                 kind: (d.type === 'pickup' ? 'pickup' : 'delivery') as PinKind,
                                 sequence: d.sequence ?? idx + 1,
+                                details: {
+                                    customerName: d.customerName,
+                                    address: d.address,
+                                    city: d.city,
+                                    pieces: d.pieces,
+                                    weight: d.weight,
+                                    serviceType: d.serviceType,
+                                    codRequired: d.codRequired,
+                                    codAmount: d.codAmount,
+                                    type: d.type,
+                                },
                             })).sort((a: MapPoint, b: MapPoint) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
                             return stopsWithCoords.length === 0 ? (
@@ -1516,12 +1525,12 @@ export default function DriversSection() {
             {/* Add Orders to Route Dialog */}
             <Dialog open={addOrdersDialogOpen} onOpenChange={(open) => {
                 setAddOrdersDialogOpen(open);
-                if (!open) setSelectedOrderIds([]);
+                if (!open) setAddOrders([]);
             }}>
-                <DialogContent className="bg-card border-border !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+                <DialogContent className="bg-card border-border !w-[95vw] !max-w-[1040px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
                     <div className="w-full h-1 bg-primary" />
 
-                    <div className="p-6">
+                    <div className="p-6 min-w-0">
                         <DialogHeader className="mb-4">
                             <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
                                 <div className="p-2 rounded-lg bg-primary/10">
@@ -1534,122 +1543,18 @@ export default function DriversSection() {
                             </DialogDescription>
                         </DialogHeader>
 
-                        {selectedOrderIds.length > 0 && (
-                            <div className="mb-4 p-3 rounded-lg bg-[var(--st-green-bg)] border border-[var(--st-green)]/25 flex items-center justify-between">
-                                <span className="text-sm text-[var(--st-green)]">
-                                    <CheckCircle2 className="w-4 h-4 inline mr-1" />
-                                    {selectedOrderIds.length} order{selectedOrderIds.length > 1 ? 's' : ''} selected
-                                </span>
-                            </div>
-                        )}
-
-                        <div className="max-h-[450px] overflow-y-auto">
-                            {availableOrders && availableOrders.length > 0 ? (
-                                <div className="space-y-2">
-                                    {availableOrders.map((order: any) => {
-                                        const isSelected = selectedOrderIds.includes(order.id);
-                                        const isReturn = order.isReturn === 1 || order.orderType === 'return';
-                                        const isExchange = order.orderType === 'exchange';
-                                        return (
-                                            <div
-                                                key={order.id}
-                                                onClick={() => toggleOrderSelection(order.id)}
-                                                className={`
-                                                    rounded-lg border p-4 cursor-pointer transition-all
-                                                    ${isSelected
-                                                        ? 'bg-primary/10 border-primary/30 ring-1 ring-primary/30'
-                                                        : 'bg-white/5 border-border hover:bg-white/10'
-                                                    }
-                                                `}
-                                            >
-                                                <div className="flex items-start gap-3">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        onChange={() => toggleOrderSelection(order.id)}
-                                                        className="h-4 w-4 mt-1 rounded border-gray-300"
-                                                    />
-
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                                                            <span className="font-mono font-medium text-sm">{order.waybillNumber}</span>
-                                                            <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
-                                                                <Building2 className="w-3 h-3 mr-1" />{order.companyName}
-                                                            </Badge>
-                                                            {isReturn && (
-                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
-                                                                    <RotateCcw className="w-3 h-3 mr-1" />Return
-                                                                </Badge>
-                                                            )}
-                                                            {isExchange && (
-                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
-                                                                    <RefreshCw className="w-3 h-3 mr-1" />Exchange
-                                                                </Badge>
-                                                            )}
-                                                            {order.serviceType === 'same-day' && (
-                                                                <Badge variant="outline" className="!bg-primary/10 !text-primary !border-transparent text-xs">
-                                                                    ⚡ Same Day
-                                                                </Badge>
-                                                            )}
-                                                            {order.serviceType === 'express' && (
-                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
-                                                                    ⚡ Express
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-
-                                                        <div className="flex items-center gap-2 text-sm mb-1">
-                                                            <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                                            <span className="font-medium">{order.customerName}</span>
-                                                            <span className="text-muted-foreground">•</span>
-                                                            <span className="text-muted-foreground truncate">{order.address}</span>
-                                                        </div>
-
-                                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                            <span className="flex items-center gap-1">
-                                                                <MapPin className="w-3 h-3" />{order.city}{order.emirate ? `, ${order.emirate}` : ''}
-                                                            </span>
-                                                            <span>{order.pieces} pc{order.pieces > 1 ? 's' : ''} • {order.weight} kg</span>
-                                                            {order.codRequired ? (
-                                                                <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
-                                                                    <DollarSign className="w-3 h-3 mr-0.5" />COD {order.codAmount} AED
-                                                                </Badge>
-                                                            ) : (
-                                                                <Badge variant="outline" className="!bg-[var(--st-green-bg)] !text-[var(--st-green)] !border-transparent text-xs">Prepaid</Badge>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
-                                                        <Select
-                                                            value={orderModes[order.id] || 'both'}
-                                                            onValueChange={(value: any) => setOrderModes(prev => ({ ...prev, [order.id]: value }))}
-                                                        >
-                                                            <SelectTrigger className="h-8 w-[160px] bg-white/5 border-border text-xs">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="both">🔄 Pickup + Delivery</SelectItem>
-                                                                <SelectItem value="pickup_only">📦 Pickup Only</SelectItem>
-                                                                <SelectItem value="delivery_only">🚚 Delivery Only</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <p className="text-center py-8 text-muted-foreground">No available orders to add</p>
-                            )}
-                        </div>
+                        <OrderPickList
+                            orders={availableOrders as any[] | undefined}
+                            value={addOrders}
+                            onChange={setAddOrders}
+                            maxHeightClass="max-h-[55vh]"
+                        />
 
                         <DialogFooter className="pt-4 mt-4 border-t border-border">
                             <Button type="button" variant="outline" onClick={() => setAddOrdersDialogOpen(false)}>Cancel</Button>
                             <Button
                                 onClick={handleAddOrdersToRoute}
-                                disabled={selectedOrderIds.length === 0 || addOrdersToRouteMutation.isPending}
+                                disabled={addOrders.length === 0 || addOrdersToRouteMutation.isPending}
                             >
                                 {addOrdersToRouteMutation.isPending ? (
                                     <>
@@ -1659,7 +1564,7 @@ export default function DriversSection() {
                                 ) : (
                                     <>
                                         <CheckCircle2 className="w-4 h-4 mr-2" />
-                                        Add {selectedOrderIds.length} Order{selectedOrderIds.length !== 1 ? 's' : ''}
+                                        Add {addOrders.length} Order{addOrders.length !== 1 ? 's' : ''}
                                     </>
                                 )}
                             </Button>

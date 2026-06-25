@@ -13,9 +13,9 @@ export interface ResendSendResult {
 }
 
 /**
- * Envía un correo HTML a través de la API de Resend.
- * La API key vive solo en el servidor (ENV.resendApiKey).
- * Lanza Error con mensaje legible si falla (para que tRPC lo convierta en TRPCError).
+ * Sends an HTML email through the Resend API.
+ * The API key lives only on the server (ENV.resendApiKey).
+ * Throws Error with a readable message on failure (so tRPC turns it into a TRPCError).
  */
 export async function sendViaResend(input: ResendSendInput): Promise<ResendSendResult> {
   const apiKey = ENV.resendApiKey;

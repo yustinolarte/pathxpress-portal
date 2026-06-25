@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
+import { customAlphabet } from 'nanoid';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import {
   Check, MapPin, Truck, Package, CheckCircle2,
   ChevronRight, ChevronLeft, Loader2, Hash, Calendar,
-  FileText, Search, DollarSign, RotateCcw, RefreshCw,
-  Building2, QrCode, Users,
+  FileText, QrCode, RefreshCw,
 } from 'lucide-react';
+import OrderPickList from './OrderPickList';
+
+// Random, non-sequential route IDs (server re-checks uniqueness). Unambiguous alphabet (no I/O/0/1).
+const genRouteSuffix = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
+const makeRouteId = () => `DXB-${new Date().getFullYear()}-${genRouteSuffix()}`;
 
 // Dubai zone presets
 const ZONE_OPTIONS = [
@@ -103,7 +106,6 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   const [selectedOrders, setSelectedOrders] = useState<
     Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>
   >([]);
-  const [orderSearch, setOrderSearch] = useState('');
 
   const createRouteMutation = trpc.portal.drivers.createRoute.useMutation();
   const addOrdersMutation = trpc.portal.drivers.addOrdersToRoute.useMutation();
@@ -121,10 +123,13 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       setIsSubmitting(false);
       setHasReachedStep3(false);
       setSelectedOrders([]);
-      setOrderSearch('');
-    } else if (preloadedOrders && preloadedOrders.length > 0) {
-      setSelectedOrders(preloadedOrders);
-      setHasReachedStep3(true);
+    } else {
+      // Auto-generate a fresh random route ID each time the wizard opens.
+      setForm(f => ({ ...f, id: makeRouteId() }));
+      if (preloadedOrders && preloadedOrders.length > 0) {
+        setSelectedOrders(preloadedOrders);
+        setHasReachedStep3(true);
+      }
     }
   }, [open]);
 
@@ -137,16 +142,15 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   }
 
   const errors: Record<string, string> = {};
-  if (touched.id && !form.id.trim()) errors.id = 'Requerido';
   if (touched.date && !form.date) errors.date = 'Requerido';
 
   function canAdvance(): boolean {
-    if (step === 1) return !!(form.id.trim() && form.date);
+    if (step === 1) return !!form.date; // ID is auto-generated, always present
     return true;
   }
 
   function touchAll() {
-    if (step === 1) setTouched(t => ({ ...t, id: true, date: true }));
+    if (step === 1) setTouched(t => ({ ...t, date: true }));
   }
 
   function handleNext() {
@@ -160,18 +164,6 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
     setStep(s => s - 1);
   }
 
-  function toggleOrder(orderId: number) {
-    setSelectedOrders(prev =>
-      prev.some(o => o.id === orderId)
-        ? prev.filter(o => o.id !== orderId)
-        : [...prev, { id: orderId, mode: 'both' }]
-    );
-  }
-
-  function setOrderMode(orderId: number, mode: 'pickup_only' | 'delivery_only' | 'both') {
-    setSelectedOrders(prev => prev.map(o => o.id === orderId ? { ...o, mode } : o));
-  }
-
   async function handleCreate() {
     setIsSubmitting(true);
     try {
@@ -179,8 +171,10 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         ? form.zoneCustom
         : ZONE_OPTIONS.find(z => z.value === form.zone)?.label ?? form.zone;
 
-      await createRouteMutation.mutateAsync({
-        id: form.id.trim(),
+      // The server is the source of truth for the ID (it re-checks uniqueness and may
+      // regenerate on the rare collision), so use the returned id downstream.
+      const created = await createRouteMutation.mutateAsync({
+        id: form.id.trim() || undefined,
         date: form.date,
         driverId: form.driverId && form.driverId !== 'none' ? parseInt(form.driverId) : undefined,
         zone: finalZone || undefined,
@@ -189,16 +183,17 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         startLat: form.startLat || undefined,
         startLng: form.startLng || undefined,
       });
+      const newId = created.id;
 
       if (selectedOrders.length > 0) {
         await addOrdersMutation.mutateAsync({
-          routeId: form.id.trim(),
+          routeId: newId,
           orders: selectedOrders,
         });
       }
 
       toast.success('Ruta creada exitosamente');
-      onSuccess(form.id.trim());
+      onSuccess(newId);
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err?.message || 'Error al crear la ruta');
@@ -222,19 +217,27 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         </div>
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="ID de la Ruta" required error={errors.id}>
-              <div className="relative">
-                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  value={form.id}
-                  onChange={e => setField('id', e.target.value)}
-                  onBlur={() => touch('id')}
-                  placeholder="DXB-2025-001"
-                  className={`pl-9 ${textInputClass('id')}`}
-                />
+            <Field label="ID de la Ruta">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={form.id}
+                    readOnly
+                    className="w-full rounded-lg border border-input bg-muted/40 pl-9 pr-3 py-2 text-sm font-mono outline-none cursor-default"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setField('id', makeRouteId())}
+                  title="Regenerar ID"
+                  className="flex-shrink-0 px-3 rounded-lg border border-input bg-background hover:bg-muted/40 transition-colors flex items-center justify-center"
+                >
+                  <RefreshCw className="w-4 h-4 text-muted-foreground" />
+                </button>
               </div>
-              <p className="text-xs text-muted-foreground">Identificador único para esta ruta</p>
+              <p className="text-xs text-muted-foreground">Generado automáticamente y aleatorio (no editable por seguridad)</p>
             </Field>
             <Field label="Fecha" required error={errors.date}>
               <div className="relative">
@@ -344,141 +347,14 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   }
 
   function renderStep3() {
-    const filtered = (availableOrders || []).filter((order: any) => {
-      if (!orderSearch.trim()) return true;
-      const q = orderSearch.toLowerCase();
-      return (
-        order.waybillNumber?.toLowerCase().includes(q) ||
-        order.customerName?.toLowerCase().includes(q) ||
-        order.city?.toLowerCase().includes(q)
-      );
-    });
-
     return (
       <div className="space-y-4">
-        {/* Buscador */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={orderSearch}
-            onChange={e => setOrderSearch(e.target.value)}
-            placeholder="Buscar por waybill, cliente o ciudad..."
-            className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors"
-          />
-        </div>
-
-        {/* Banner de seleccionados */}
-        {selectedOrders.length > 0 && (
-          <div className="p-3 rounded-lg bg-primary/10 border border-border flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
-            <span className="text-sm text-primary font-medium">
-              {selectedOrders.length} orden{selectedOrders.length > 1 ? 'es' : ''} seleccionada{selectedOrders.length > 1 ? 's' : ''}
-            </span>
-          </div>
-        )}
-
-        {/* Lista de órdenes */}
-        <div className="max-h-[540px] overflow-y-auto rounded-xl border border-border">
-          {ordersLoading ? (
-            <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">Cargando órdenes...</span>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-              <Package className="w-8 h-8 opacity-30" />
-              <p className="text-sm">No hay órdenes disponibles para asignar</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-border">
-              {filtered.map((order: any) => {
-                const isSelected = selectedOrders.some(o => o.id === order.id);
-                const isReturn = order.isReturn === 1 || order.orderType === 'return';
-                const isExchange = order.orderType === 'exchange';
-                return (
-                  <div
-                    key={order.id}
-                    onClick={() => toggleOrder(order.id)}
-                    className={`p-4 cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'bg-primary/5 border-l-2 border-l-primary'
-                        : 'hover:bg-muted/30'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleOrder(order.id)}
-                        className="h-4 w-4 mt-1 rounded border-gray-300 flex-shrink-0"
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-mono font-medium text-sm">{order.waybillNumber}</span>
-                          <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-xs">
-                            <Building2 className="w-3 h-3 mr-1" />{order.companyName}
-                          </Badge>
-                          {isReturn && (
-                            <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
-                              <RotateCcw className="w-3 h-3 mr-1" />Retorno
-                            </Badge>
-                          )}
-                          {isExchange && (
-                            <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
-                              <RefreshCw className="w-3 h-3 mr-1" />Cambio
-                            </Badge>
-                          )}
-                          {order.serviceType === 'same-day' && (
-                            <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-xs">⚡ Same Day</Badge>
-                          )}
-                          {order.serviceType === 'express' && (
-                            <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">⚡ Express</Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm mb-1">
-                          <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="font-medium">{order.customerName}</span>
-                          <span className="text-muted-foreground">•</span>
-                          <span className="text-muted-foreground truncate">{order.address}</span>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" />{order.city}{order.emirate ? `, ${order.emirate}` : ''}
-                          </span>
-                          <span>{order.pieces} pieza{order.pieces > 1 ? 's' : ''} • {order.weight} kg</span>
-                          {order.codRequired ? (
-                            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
-                              <DollarSign className="w-3 h-3 mr-0.5" />COD {order.codAmount} AED
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepago</Badge>
-                          )}
-                        </div>
-                      </div>
-                      <div onClick={e => e.stopPropagation()} className="flex-shrink-0">
-                        <Select
-                          value={selectedOrders.find(o => o.id === order.id)?.mode || 'both'}
-                          onValueChange={(value: any) => setOrderMode(order.id, value)}
-                        >
-                          <SelectTrigger className="h-8 w-[155px] text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="both">🔄 Pickup + Entrega</SelectItem>
-                            <SelectItem value="pickup_only">📦 Solo Pickup</SelectItem>
-                            <SelectItem value="delivery_only">🚚 Solo Entrega</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <OrderPickList
+          orders={availableOrders as any[] | undefined}
+          loading={ordersLoading}
+          value={selectedOrders}
+          onChange={setSelectedOrders}
+        />
         <p className="text-xs text-muted-foreground text-center">
           Puedes omitir este paso y agregar paquetes después desde el detalle de la ruta
         </p>
@@ -590,10 +466,10 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-card border-border !w-[95vw] !max-w-[920px] max-h-[95vh] overflow-y-auto p-0 gap-0 ">
+      <DialogContent className="bg-card border-border !w-[95vw] !max-w-[1040px] max-h-[95vh] overflow-y-auto p-0 gap-0 ">
         <div className="w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-600 flex-shrink-0" />
 
-        <div className="p-6 pb-0">
+        <div className="p-6 pb-0 min-w-0">
           {/* Header */}
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 rounded-lg bg-blue-500/10">
@@ -643,7 +519,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         </div>
 
         {/* Step Content */}
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 min-w-0">
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}

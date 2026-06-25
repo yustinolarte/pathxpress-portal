@@ -3,7 +3,8 @@
  * Used by tRPC router for admin panel driver management
  */
 import bcrypt from 'bcryptjs';
-import { eq, and, desc, sql, gte, notInArray, or, inArray } from 'drizzle-orm';
+import { customAlphabet } from 'nanoid';
+import { eq, and, desc, sql, gte, notInArray, inArray } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, clientAccounts } from '../drizzle/schema';
 import { optimizeStops } from './routeOptimizer';
@@ -309,8 +310,23 @@ export async function getRouteDetails(routeId: string) {
     };
 }
 
+// Random, non-sequential route IDs so routes can't be enumerated/claimed by guessing.
+// Reuses the same unambiguous alphabet as the waybill generator (no I/O/0/1).
+const routeIdSuffix = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
+
+async function generateUniqueRouteId(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<string> {
+    const year = new Date().getFullYear();
+    for (let attempt = 0; attempt < 6; attempt++) {
+        const candidate = `DXB-${year}-${routeIdSuffix()}`;
+        const [existing] = await db.select({ id: driverRoutes.id }).from(driverRoutes).where(eq(driverRoutes.id, candidate)).limit(1);
+        if (!existing) return candidate;
+    }
+    // Astronomically unlikely fallback — extra entropy guarantees uniqueness.
+    return `DXB-${year}-${routeIdSuffix()}${routeIdSuffix()}`;
+}
+
 export async function createDriverRoute(data: {
-    id: string;
+    id?: string;
     date: Date;
     driverId?: number;
     zone?: string;
@@ -326,8 +342,17 @@ export async function createDriverRoute(data: {
 
     const stopMode = data.stopMode || 'both';
 
+    // Resolve the route ID: use the (random) client-provided one if free, otherwise generate a fresh unique one.
+    let routeId = data.id?.trim() || '';
+    if (routeId) {
+        const [clash] = await db.select({ id: driverRoutes.id }).from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
+        if (clash) routeId = await generateUniqueRouteId(db);
+    } else {
+        routeId = await generateUniqueRouteId(db);
+    }
+
     await db.insert(driverRoutes).values({
-        id: data.id,
+        id: routeId,
         date: data.date,
         driverId: data.driverId || null,
         zone: data.zone || null,
@@ -340,16 +365,19 @@ export async function createDriverRoute(data: {
 
     // Add orders to route if provided — batch insert instead of loop
     if (data.orderIds && data.orderIds.length > 0) {
+        // Guard: only create legs that are actually assignable for each order.
+        const flags = await getAssignmentFlags(data.orderIds);
         const stopsToInsert: { routeId: string; orderId: number; sequence: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
         let sequence = 1;
 
         for (const orderId of data.orderIds) {
-            if (stopMode === 'pickup_only' || stopMode === 'both') {
-                stopsToInsert.push({ routeId: data.id, orderId, sequence, type: 'pickup', status: 'pending' });
+            const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true };
+            if ((stopMode === 'pickup_only' || stopMode === 'both') && f.canPickup) {
+                stopsToInsert.push({ routeId, orderId, sequence, type: 'pickup', status: 'pending' });
                 sequence++;
             }
-            if (stopMode === 'delivery_only' || stopMode === 'both') {
-                stopsToInsert.push({ routeId: data.id, orderId, sequence, type: 'delivery', status: 'pending' });
+            if ((stopMode === 'delivery_only' || stopMode === 'both') && f.canDeliver) {
+                stopsToInsert.push({ routeId, orderId, sequence, type: 'delivery', status: 'pending' });
                 sequence++;
             }
         }
@@ -359,7 +387,7 @@ export async function createDriverRoute(data: {
         }
     }
 
-    return { id: data.id };
+    return { id: routeId };
 }
 
 export async function optimizeRoute(routeId: string, origin?: { lat: number; lng: number }) {
@@ -444,18 +472,23 @@ export async function addOrdersToRoute(
     let maxSeq = existing.length;
     const existingOrderIds = new Set(existing.map(r => r.orderId));
 
+    // Server-side guard: only create legs that are actually assignable for each order
+    // (don't re-pickup an already-picked-up package, don't double-assign an active leg).
+    const flags = await getAssignmentFlags(ordersList.map(o => o.id));
+
     const stopsToInsert: { routeId: string; orderId: number; sequence: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
 
     for (const orderData of ordersList) {
         const orderId = orderData.id;
         const stopMode = orderData.mode;
+        const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true };
 
         if (!existingOrderIds.has(orderId)) {
-            if (stopMode === 'pickup_only' || stopMode === 'both') {
+            if ((stopMode === 'pickup_only' || stopMode === 'both') && f.canPickup) {
                 maxSeq++;
                 stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'pickup', status: 'pending' });
             }
-            if (stopMode === 'delivery_only' || stopMode === 'both') {
+            if ((stopMode === 'delivery_only' || stopMode === 'both') && f.canDeliver) {
                 maxSeq++;
                 stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'delivery', status: 'pending' });
             }
@@ -670,16 +703,90 @@ export async function getDriverPerformance(driverId: number) {
 
 // ============ AVAILABLE ORDERS ============
 
+export type OrderMode = 'pickup_only' | 'delivery_only' | 'both';
+export interface AssignmentFlags { canPickup: boolean; canDeliver: boolean; }
+
+// A route stop still "occupies" the order (blocks re-assigning that leg) while in these states.
+const ACTIVE_STOP_STATUSES = ['pending', 'in_progress', 'on_hold', 'attempted'];
+// Orders in these states are done/dead — never offered for assignment.
+const TERMINAL_ORDER_STATUSES = ['delivered', 'returned', 'returned_to_sender', 'canceled'];
+// Order-level statuses that mean the package was already physically picked up.
+const PICKED_UP_ORDER_STATUSES = ['picked_up', 'in_transit', 'out_for_delivery', 'delivery_attempted', 'failed_delivery'];
+// Order-level statuses that still require a pickup leg.
+const NEEDS_PICKUP_STATUSES = ['pending', 'pending_pickup'];
+
+interface StopInfo { activePickup: boolean; activeDelivery: boolean; pickedUpViaStop: boolean; deliveredViaStop: boolean; }
+
+/** Aggregate route stops (ignoring cancelled routes) into per-order occupancy info. */
+function buildStopInfo(
+    stopRows: { orderId: number; type: string; stopStatus: string; routeStatus: string }[],
+): Map<number, StopInfo> {
+    const map = new Map<number, StopInfo>();
+    for (const s of stopRows) {
+        if (s.routeStatus === 'cancelled') continue;
+        const e = map.get(s.orderId) ?? { activePickup: false, activeDelivery: false, pickedUpViaStop: false, deliveredViaStop: false };
+        if (s.type === 'pickup') {
+            if (s.stopStatus === 'picked_up') e.pickedUpViaStop = true;
+            if (ACTIVE_STOP_STATUSES.includes(s.stopStatus)) e.activePickup = true;
+        } else {
+            if (s.stopStatus === 'delivered') e.deliveredViaStop = true;
+            if (ACTIVE_STOP_STATUSES.includes(s.stopStatus)) e.activeDelivery = true;
+        }
+        map.set(s.orderId, e);
+    }
+    return map;
+}
+
+/** Pure rule: which legs can still be assigned for an order given its status + current occupancy. */
+function computeAssignmentFlags(orderStatus: string, info?: StopInfo): AssignmentFlags {
+    const i = info ?? { activePickup: false, activeDelivery: false, pickedUpViaStop: false, deliveredViaStop: false };
+    const pickedUp = PICKED_UP_ORDER_STATUSES.includes(orderStatus) || i.pickedUpViaStop;
+    const delivered = orderStatus === 'delivered' || i.deliveredViaStop;
+    const canPickup = NEEDS_PICKUP_STATUSES.includes(orderStatus) && !pickedUp && !i.activePickup;
+    const canDeliver = !delivered && !i.activeDelivery;
+    return { canPickup, canDeliver };
+}
+
+function defaultModeFor(flags: AssignmentFlags): OrderMode {
+    if (flags.canPickup && flags.canDeliver) return 'both';
+    return flags.canPickup ? 'pickup_only' : 'delivery_only';
+}
+
+/** Per-order assignment flags for a specific set of orders — used as a server-side guard when assigning. */
+export async function getAssignmentFlags(orderIds: number[]): Promise<Map<number, AssignmentFlags>> {
+    const db = await getDb();
+    const result = new Map<number, AssignmentFlags>();
+    if (!db || orderIds.length === 0) return result;
+
+    const orderRows = await db.select({ id: orders.id, status: orders.status })
+        .from(orders).where(inArray(orders.id, orderIds));
+    const stopRows = await db
+        .select({ orderId: routeOrders.orderId, type: routeOrders.type, stopStatus: routeOrders.status, routeStatus: driverRoutes.status })
+        .from(routeOrders)
+        .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+        .where(inArray(routeOrders.orderId, orderIds));
+
+    const stopInfo = buildStopInfo(stopRows);
+    for (const o of orderRows) {
+        result.set(o.id, computeAssignmentFlags(o.status, stopInfo.get(o.id)));
+    }
+    return result;
+}
+
 export async function getAvailableOrders() {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    // Get order IDs already assigned to routes
-    const assignedOrders = await db.select({ orderId: routeOrders.orderId }).from(routeOrders);
-    const assignedIds = assignedOrders.map(o => o.orderId);
+    // All route stops + their route status, so cancelled routes don't lock orders.
+    const stopRows = await db
+        .select({ orderId: routeOrders.orderId, type: routeOrders.type, stopStatus: routeOrders.status, routeStatus: driverRoutes.status })
+        .from(routeOrders)
+        .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id));
+    const stopInfo = buildStopInfo(stopRows);
 
-    // Get orders that are out_for_delivery or pending_pickup but not yet assigned
-    const availableOrdersRaw = await db
+    // Candidate orders = anything not in a terminal state. The per-order flags below decide
+    // whether a pickup and/or delivery leg is still assignable.
+    const candidateOrders = await db
         .select({
             id: orders.id,
             waybillNumber: orders.waybillNumber,
@@ -704,24 +811,19 @@ export async function getAvailableOrders() {
             specialInstructions: orders.specialInstructions,
         })
         .from(orders)
-        .where(
-            and(
-                or(
-                    eq(orders.status, 'pending'),
-                    eq(orders.status, 'pending_pickup'),
-                    eq(orders.status, 'picked_up'),
-                    eq(orders.status, 'in_transit'),
-                    eq(orders.status, 'failed_delivery')
-                ),
-                assignedIds.length > 0
-                    ? notInArray(orders.id, assignedIds)
-                    : sql`1=1`
-            )
-        )
+        .where(notInArray(orders.status, TERMINAL_ORDER_STATUSES))
         .orderBy(desc(orders.createdAt));
 
-    // Get company names for all client IDs
-    const clientIds = Array.from(new Set(availableOrdersRaw.map(o => o.clientId)));
+    // Keep only orders that still have an assignable leg, attaching the flags + default mode.
+    const available = candidateOrders
+        .map(o => {
+            const flags = computeAssignmentFlags(o.status, stopInfo.get(o.id));
+            return { ...o, ...flags, defaultMode: defaultModeFor(flags) };
+        })
+        .filter(o => o.canPickup || o.canDeliver);
+
+    // Resolve company names for the surviving orders.
+    const clientIds = Array.from(new Set(available.map(o => o.clientId)));
     let clientMap: Record<number, string> = {};
     if (clientIds.length > 0) {
         const clients = await db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName })
@@ -731,7 +833,7 @@ export async function getAvailableOrders() {
         }
     }
 
-    return availableOrdersRaw.map(o => ({
+    return available.map(o => ({
         ...o,
         companyName: clientMap[o.clientId] || 'Unknown',
     }));

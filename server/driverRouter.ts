@@ -103,7 +103,7 @@ export const driverRouter = router({
 
     createRoute: publicProcedure
         .input(z.object({
-            id: z.string().min(1),
+            id: z.string().optional(), // optional — server generates a random unique ID when omitted
             date: z.string(), // ISO date string
             driverId: z.number().optional(),
             zone: z.string().optional(),

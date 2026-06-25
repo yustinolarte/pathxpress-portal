@@ -28,13 +28,13 @@ export async function notifyAdminNewOrder(
     await transporter.sendMail({
       from: `"PathXpress" <${emailUser}>`,
       to: adminEmail,
-      subject: `Nueva Orden: ${waybillNumber}`,
+      subject: `New Order: ${waybillNumber}`,
       html: `
-        <h2 style="color:#1a1a1a;">Nueva Orden Recibida</h2>
+        <h2 style="color:#1a1a1a;">New Order Received</h2>
         <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px;">
           <tr><td style="padding:6px 12px;font-weight:bold;">Waybill</td><td style="padding:6px 12px;">${waybillNumber}</td></tr>
-          <tr><td style="padding:6px 12px;font-weight:bold;">Cliente</td><td style="padding:6px 12px;">${customerName}</td></tr>
-          <tr><td style="padding:6px 12px;font-weight:bold;">Teléfono</td><td style="padding:6px 12px;">${customerPhone}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold;">Customer</td><td style="padding:6px 12px;">${customerName}</td></tr>
+          <tr><td style="padding:6px 12px;font-weight:bold;">Phone</td><td style="padding:6px 12px;">${customerPhone}</td></tr>
         </table>
       `,
     });
