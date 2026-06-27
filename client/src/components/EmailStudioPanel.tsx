@@ -7,14 +7,42 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Mail, Send, FlaskConical, Paperclip, X } from 'lucide-react';
+import { Mail, Send, FlaskConical, Paperclip, X, FileText, Loader2 } from 'lucide-react';
 import { TEMPLATES, FROMS, renderEmail, getTemplate, type Vars } from '@shared/emailTemplates';
+import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 
 function defaultsFor(key: string): Vars {
   const t = getTemplate(key);
   const v: Vars = {};
   t?.fields.forEach((f) => { v[f.name] = f.value; });
   return v;
+}
+
+// "2062.00" → "AED 2,062.00"
+function fmtMoney(currency: string, amount: string | number): string {
+  const n = Number(amount);
+  if (!isFinite(n)) return `${currency} ${amount}`;
+  return `${currency} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Date → "01 Jun 2026"
+function fmtDate(d: string | Date | null | undefined): string {
+  if (!d) return '';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return String(d);
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve(result.includes(',') ? result.slice(result.indexOf(',') + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 // Keep total attachments under the 10 MB request body limit (base64 inflates ~33%).
@@ -50,8 +78,16 @@ export default function EmailStudioPanel() {
   const [subjectText, setSubjectText] = useState('');
   const [subjectDirty, setSubjectDirty] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
 
+  const utils = trpc.useUtils();
   const template = useMemo(() => getTemplate(selectedKey)!, [selectedKey]);
+  const isInvoice = selectedKey === 'invoice';
+
+  // Invoice picker data (only loaded for the invoice template).
+  const { data: allInvoices } = trpc.portal.billing.getAllInvoices.useQuery(undefined, { enabled: isInvoice });
+  const { data: clients } = trpc.portal.admin.getClients.useQuery(undefined, { enabled: isInvoice });
 
   // On template change: reset fields, sender and subject.
   useEffect(() => {
@@ -61,7 +97,69 @@ export default function EmailStudioPanel() {
     setFromValue(t.from);
     setSubjectDirty(false);
     setAttachments([]);
+    setSelectedInvoiceId('');
   }, [selectedKey]);
+
+  // Pick an existing invoice → auto-fill all fields, set the recipient and attach the PDF.
+  async function applyInvoice(idStr: string) {
+    setSelectedInvoiceId(idStr);
+    const id = Number(idStr);
+    const inv = (allInvoices ?? []).find((i) => i.id === id);
+    if (!inv) return;
+    const client = (clients ?? []).find((c) => c.id === inv.clientId);
+    const currency = inv.currency || 'AED';
+
+    setValues({
+      ...defaultsFor('invoice'),
+      client_name: client?.companyName || `Client #${inv.clientId}`,
+      period: `${fmtDate(inv.periodFrom)} – ${fmtDate(inv.periodTo)}`,
+      shipment_count: String(inv.shipmentCount ?? ''),
+      subtotal: fmtMoney(currency, inv.subtotal),
+      vat: fmtMoney(currency, inv.taxes || '0'),
+      total: fmtMoney(currency, inv.total),
+      invoice_number: inv.invoiceNumber,
+      issued_date: fmtDate(inv.issueDate),
+      due_date: fmtDate(inv.dueDate),
+      pdf_url: 'https://pathxpress.net/portal/invoices',
+      pay_url: client?.paymentLink || 'https://pathxpress.net/portal/invoices',
+    });
+    if (client?.billingEmail) setTo(client.billingEmail);
+
+    // Build the invoice PDF in-browser and attach it to the email.
+    setInvoiceLoading(true);
+    try {
+      const details = await utils.portal.billing.getInvoiceDetails.fetch({ invoiceId: id });
+      const blob = generateInvoicePDF({
+        id: details.invoice.id,
+        invoiceNumber: details.invoice.invoiceNumber,
+        clientName: client?.companyName || `Client #${inv.clientId}`,
+        billingAddress: client?.billingAddress || null,
+        billingEmail: client?.billingEmail || null,
+        issueDate: new Date(details.invoice.issueDate),
+        dueDate: new Date(details.invoice.dueDate),
+        periodStart: new Date(details.invoice.periodFrom),
+        periodEnd: new Date(details.invoice.periodTo),
+        subtotal: details.invoice.subtotal,
+        tax: details.invoice.taxes || '0',
+        total: details.invoice.total,
+        amountPaid: details.invoice.amountPaid || '0',
+        balance: details.invoice.balance || details.invoice.total,
+        status: details.invoice.status,
+        currency: details.invoice.currency,
+        isAdjusted: !!details.invoice.isAdjusted,
+        adjustmentNotes: details.invoice.adjustmentNotes || null,
+        items: details.items.map((item) => ({ id: item.id, description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.total })),
+      }, { output: 'blob' }) as Blob;
+
+      const base64 = await blobToBase64(blob);
+      setAttachments([{ filename: `Invoice-${details.invoice.invoiceNumber}.pdf`, content: base64, contentType: 'application/pdf', size: blob.size }]);
+      toast.success('Invoice loaded — PDF attached');
+    } catch {
+      toast.error('Could not load the invoice PDF');
+    } finally {
+      setInvoiceLoading(false);
+    }
+  }
 
   // Preview render + automatic subject.
   const rendered = useMemo(
@@ -154,6 +252,31 @@ export default function EmailStudioPanel() {
             <h3 className="text-lg font-bold tracking-tight">{template.label}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">Template: {template.key}</p>
           </div>
+
+          {isInvoice && (
+            <div className="border-t pt-3 space-y-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                {invoiceLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                Load from existing invoice
+              </Label>
+              <Select value={selectedInvoiceId} onValueChange={applyInvoice} disabled={invoiceLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={invoiceLoading ? 'Loading…' : 'Select an invoice to auto-fill'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(allInvoices ?? []).map((inv) => {
+                    const client = (clients ?? []).find((c) => c.id === inv.clientId);
+                    return (
+                      <SelectItem key={inv.id} value={String(inv.id)}>
+                        {inv.invoiceNumber} · {client?.companyName || `Client #${inv.clientId}`} · {fmtMoney(inv.currency || 'AED', inv.total)}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Auto-fills every field, sets the recipient and attaches the invoice PDF.</p>
+            </div>
+          )}
 
           <div className="border-t pt-3 space-y-3">
             <div className="space-y-1.5">

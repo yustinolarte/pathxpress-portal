@@ -406,6 +406,7 @@ export const TEMPLATES: EmailTemplate[] = [
     label: 'Invoice available',
     from: 'PATHXPRESS Billing <billing@pathxpress.net>',
     subject: 'Invoice {{invoice_number}} available — due {{due_date}}',
+    attachments: true,
     fields: [
       { name: 'client_name', label: 'Client', type: 'text', value: 'Atlas Retail' },
       { name: 'period', label: 'Period', type: 'text', value: '01–07 Jun 2026' },

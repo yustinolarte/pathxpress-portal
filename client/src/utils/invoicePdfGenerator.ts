@@ -32,7 +32,7 @@ interface Invoice {
   lastAdjustedAt?: Date | null;
 }
 
-export function generateInvoicePDF(invoice: Invoice): void {
+export function generateInvoicePDF(invoice: Invoice, options?: { output?: 'save' | 'blob' }): Blob | void {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -328,6 +328,9 @@ export function generateInvoicePDF(invoice: Invoice): void {
   doc.text('Thank you for your business!', pageWidth / 2, footerY, { align: 'center' });
   doc.text('For any questions, please contact us at info@pathxpress.net', pageWidth / 2, footerY + 4, { align: 'center' });
   
-  // Save the PDF
+  // Return the PDF as a Blob (e.g. to attach to an email) or trigger a download.
+  if (options?.output === 'blob') {
+    return doc.output('blob');
+  }
   doc.save(`Invoice-${invoice.invoiceNumber}.pdf`);
 }
