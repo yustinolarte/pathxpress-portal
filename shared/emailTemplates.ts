@@ -417,8 +417,8 @@ export const TEMPLATES: EmailTemplate[] = [
       { name: 'invoice_number', label: 'Invoice number', type: 'text', value: 'INV-2026-0418' },
       { name: 'issued_date', label: 'Issue date', type: 'text', value: '12 Jun 2026' },
       { name: 'due_date', label: 'Due date', type: 'text', value: '26 Jun 2026' },
-      { name: 'pdf_url', label: 'PDF URL', type: 'text', value: 'https://pathxpress.net/portal/invoices/INV-2026-0418.pdf' },
-      { name: 'pay_url', label: 'Payment URL', type: 'text', value: 'https://pathxpress.net/portal/pay/INV-2026-0418' },
+      { name: 'pdf_url', label: 'Invoice link (portal)', type: 'text', value: 'https://pathxpress.net/portal/customer?tab=invoices' },
+      { name: 'pay_url', label: 'Payment URL', type: 'text', value: 'https://pathxpress.net/portal/customer?tab=invoices' },
     ],
     render: (v) =>
       tag('Payment pending', 'amber') +

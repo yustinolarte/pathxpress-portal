@@ -120,8 +120,8 @@ export default function EmailStudioPanel() {
       invoice_number: inv.invoiceNumber,
       issued_date: fmtDate(inv.issueDate),
       due_date: fmtDate(inv.dueDate),
-      pdf_url: 'https://pathxpress.net/portal/invoices',
-      pay_url: client?.paymentLink || 'https://pathxpress.net/portal/invoices',
+      pdf_url: 'https://pathxpress.net/portal/customer?tab=invoices',
+      pay_url: client?.paymentLink || 'https://pathxpress.net/portal/customer?tab=invoices',
     });
     if (client?.billingEmail) setTo(client.billingEmail);
 

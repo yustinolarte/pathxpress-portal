@@ -75,7 +75,13 @@ import * as XLSX from 'xlsx';
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout, loading } = usePortalAuth();
-  const [activeTab, setActiveTab] = useState('overview');
+  // Allow deep-linking to a tab via ?tab= (e.g. /portal/customer?tab=invoices from emails/notifications).
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === 'undefined') return 'overview';
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    const valid = ['overview', 'analytics', 'orders', 'returns', 'tracking', 'calculator', 'international', 'invoices', 'cod', 'reports', 'guide'];
+    return tab && valid.includes(tab) ? tab : 'overview';
+  });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createIntlDialogOpen, setCreateIntlDialogOpen] = useState(false);
   const [trackingWaybill, setTrackingWaybill] = useState('');
