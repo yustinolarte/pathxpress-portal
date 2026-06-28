@@ -79,15 +79,18 @@ export default function EmailStudioPanel() {
   const [subjectDirty, setSubjectDirty] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
-  const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [selectedRemittanceId, setSelectedRemittanceId] = useState<string>('');
+  const [pickerLoading, setPickerLoading] = useState(false);
 
   const utils = trpc.useUtils();
   const template = useMemo(() => getTemplate(selectedKey)!, [selectedKey]);
   const isInvoice = selectedKey === 'invoice';
+  const isRemittance = selectedKey === 'cod_remittance';
 
-  // Invoice picker data (only loaded for the invoice template).
+  // Record-picker data (only loaded for the templates that use it).
   const { data: allInvoices } = trpc.portal.billing.getAllInvoices.useQuery(undefined, { enabled: isInvoice });
   const { data: clients } = trpc.portal.admin.getClients.useQuery(undefined, { enabled: isInvoice });
+  const { data: allRemittances } = trpc.portal.cod.getAllRemittances.useQuery(undefined, { enabled: isRemittance });
 
   // On template change: reset fields, sender and subject.
   useEffect(() => {
@@ -98,6 +101,7 @@ export default function EmailStudioPanel() {
     setSubjectDirty(false);
     setAttachments([]);
     setSelectedInvoiceId('');
+    setSelectedRemittanceId('');
   }, [selectedKey]);
 
   // Pick an existing invoice → auto-fill all fields, set the recipient and attach the PDF.
@@ -126,7 +130,7 @@ export default function EmailStudioPanel() {
     if (client?.billingEmail) setTo(client.billingEmail);
 
     // Build the invoice PDF in-browser and attach it to the email.
-    setInvoiceLoading(true);
+    setPickerLoading(true);
     try {
       const details = await utils.portal.billing.getInvoiceDetails.fetch({ invoiceId: id });
       const blob = generateInvoicePDF({
@@ -157,7 +161,57 @@ export default function EmailStudioPanel() {
     } catch {
       toast.error('Could not load the invoice PDF');
     } finally {
-      setInvoiceLoading(false);
+      setPickerLoading(false);
+    }
+  }
+
+  // Pick an existing COD remittance → auto-fill all fields, set the recipient and attach the receipt PDF.
+  async function applyRemittance(idStr: string) {
+    setSelectedRemittanceId(idStr);
+    const id = Number(idStr);
+    const rem = (allRemittances ?? []).find((r) => r.id === id);
+    if (!rem) return;
+    const client = rem.client;
+    const currency = rem.currency || 'AED';
+
+    setPickerLoading(true);
+    try {
+      const details = await utils.portal.cod.getRemittanceDetails.fetch({ remittanceId: id });
+
+      // The remittance has no stored period, so derive it from the COD records' collection dates.
+      const times = (details.items ?? [])
+        .map((it) => it.codRecord?.collectedDate)
+        .filter((d): d is NonNullable<typeof d> => !!d)
+        .map((d) => new Date(d).getTime())
+        .filter((n) => !isNaN(n));
+      const period = times.length
+        ? `${fmtDate(new Date(Math.min(...times)))} – ${fmtDate(new Date(Math.max(...times)))}`
+        : fmtDate(rem.processedDate || rem.createdAt);
+
+      setValues({
+        ...defaultsFor('cod_remittance'),
+        client_name: client?.companyName || `Client #${rem.clientId}`,
+        period,
+        count: String(rem.shipmentCount ?? ''),
+        gross: fmtMoney(currency, rem.grossAmount),
+        handling_fee: '—', // remittances track a single fee, mapped to "COD fee" below
+        cod_fee: `− ${fmtMoney(currency, rem.feeAmount || '0')}`,
+        net: fmtMoney(currency, rem.totalAmount),
+        reference: rem.remittanceNumber,
+        bank: client?.companyName || '',
+        receipt_url: 'https://pathxpress.net/portal/customer?tab=cod',
+      });
+      if (client?.billingEmail) setTo(client.billingEmail);
+
+      const { generateRemittancePDF } = await import('@/lib/reportUtils');
+      const blob = generateRemittancePDF(details.remittance, details.items).output('blob') as Blob;
+      const base64 = await blobToBase64(blob);
+      setAttachments([{ filename: `Remittance-${details.remittance.remittanceNumber}.pdf`, content: base64, contentType: 'application/pdf', size: blob.size }]);
+      toast.success('Remittance loaded — PDF attached');
+    } catch {
+      toast.error('Could not load the remittance PDF');
+    } finally {
+      setPickerLoading(false);
     }
   }
 
@@ -256,12 +310,12 @@ export default function EmailStudioPanel() {
           {isInvoice && (
             <div className="border-t pt-3 space-y-1.5">
               <Label className="text-xs flex items-center gap-1.5">
-                {invoiceLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                {pickerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
                 Load from existing invoice
               </Label>
-              <Select value={selectedInvoiceId} onValueChange={applyInvoice} disabled={invoiceLoading}>
+              <Select value={selectedInvoiceId} onValueChange={applyInvoice} disabled={pickerLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder={invoiceLoading ? 'Loading…' : 'Select an invoice to auto-fill'} />
+                  <SelectValue placeholder={pickerLoading ? 'Loading…' : 'Select an invoice to auto-fill'} />
                 </SelectTrigger>
                 <SelectContent>
                   {(allInvoices ?? []).map((inv) => {
@@ -275,6 +329,28 @@ export default function EmailStudioPanel() {
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-muted-foreground">Auto-fills every field, sets the recipient and attaches the invoice PDF.</p>
+            </div>
+          )}
+
+          {isRemittance && (
+            <div className="border-t pt-3 space-y-1.5">
+              <Label className="text-xs flex items-center gap-1.5">
+                {pickerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                Load from existing remittance
+              </Label>
+              <Select value={selectedRemittanceId} onValueChange={applyRemittance} disabled={pickerLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder={pickerLoading ? 'Loading…' : 'Select a remittance to auto-fill'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(allRemittances ?? []).map((rem) => (
+                    <SelectItem key={rem.id} value={String(rem.id)}>
+                      {rem.remittanceNumber} · {rem.client?.companyName || `Client #${rem.clientId}`} · {fmtMoney(rem.currency || 'AED', rem.totalAmount)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Auto-fills every field, sets the recipient and attaches the remittance receipt PDF.</p>
             </div>
           )}
 

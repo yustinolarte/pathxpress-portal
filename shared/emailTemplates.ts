@@ -371,6 +371,7 @@ export const TEMPLATES: EmailTemplate[] = [
     label: 'COD remittance',
     from: 'PATHXPRESS Finance <finance@pathxpress.net>',
     subject: 'COD remittance {{reference}} sent — {{net}}',
+    attachments: true,
     fields: [
       { name: 'client_name', label: 'Client', type: 'text', value: 'Najm Store' },
       { name: 'period', label: 'Period', type: 'text', value: '05–09 Jun 2026' },
@@ -381,7 +382,7 @@ export const TEMPLATES: EmailTemplate[] = [
       { name: 'net', label: 'Net transferred', type: 'text', value: 'AED 2,381.30' },
       { name: 'reference', label: 'Reference', type: 'text', value: 'RMT-2026-0091' },
       { name: 'bank', label: 'Destination account', type: 'textarea', value: 'Najm Store\nEmirates NBD ••4471' },
-      { name: 'receipt_url', label: 'Receipt URL', type: 'text', value: 'https://pathxpress.net/portal/remittances' },
+      { name: 'receipt_url', label: 'Receipt URL', type: 'text', value: 'https://pathxpress.net/portal/customer?tab=cod' },
     ],
     render: (v) =>
       tag('Remittance processed', 'green') +
