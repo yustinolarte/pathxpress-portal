@@ -11,6 +11,7 @@ import {
   getOrderByWaybill,
   getTrackingEventsByShipmentId,
   updateOrder,
+  updateOrderLocation,
   createTrackingEvent,
 } from './db';
 import {
@@ -174,6 +175,31 @@ router.put('/orders/:waybill/service-type', async (req: Request, res: Response) 
     res.json({ success: true, serviceType });
   } catch (err) {
     console.error('[BotRouter] PUT /service-type error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── PUT /api/bot/orders/:waybill/location ────────────────────────────────────
+// Used by Bot Ubicación (WhatsApp/Baileys) to save the location the consignee
+// shares in reply to the automatic "share your location" request.
+router.put('/orders/:waybill/location', async (req: Request, res: Response) => {
+  try {
+    const { latitude, longitude } = req.body;
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ error: 'latitude and longitude are required' });
+    }
+
+    const order = await getOrderByWaybill(req.params.waybill);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const updated = await updateOrderLocation(order.id, String(latitude), String(longitude));
+    if (!updated) {
+      return res.status(500).json({ error: 'Failed to save location' });
+    }
+
+    res.json({ success: true, latitude: updated.latitude, longitude: updated.longitude });
+  } catch (err) {
+    console.error('[BotRouter] PUT /location error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

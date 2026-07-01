@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
 import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { notifyBotNewOrder } from './_core/botWebhook';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -460,7 +461,17 @@ export async function createOrder(order: InsertOrder): Promise<Order | null> {
     const result = await db.insert(orders).values(order);
     const insertedId = Number(result[0].insertId);
     const inserted = await db.select().from(orders).where(eq(orders.id, insertedId)).limit(1);
-    return inserted.length > 0 ? inserted[0] : null;
+    const createdOrder = inserted.length > 0 ? inserted[0] : null;
+
+    if (createdOrder) {
+      notifyBotNewOrder({
+        waybillNumber: createdOrder.waybillNumber,
+        customerName: createdOrder.customerName,
+        customerPhone: createdOrder.customerPhone,
+      });
+    }
+
+    return createdOrder;
   } catch (error) {
     console.error("[Database] Failed to create order:", error);
     return null;
@@ -843,6 +854,23 @@ export async function updateOrder(
   } catch (error) {
     console.error("[Database] Failed to update order:", error);
     return { success: false, error: "Failed to update order" };
+  }
+}
+
+export async function updateOrderLocation(
+  id: number,
+  latitude: string,
+  longitude: string
+): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    await db.update(orders).set({ latitude, longitude }).where(eq(orders.id, id));
+    return await getOrderById(id);
+  } catch (error) {
+    console.error("[Database] Failed to update order location:", error);
+    return null;
   }
 }
 
