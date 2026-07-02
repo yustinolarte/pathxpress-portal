@@ -371,12 +371,21 @@ export async function createDriverRoute(data: {
         let sequence = 1;
 
         for (const orderId of data.orderIds) {
-            const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true };
-            if ((stopMode === 'pickup_only' || stopMode === 'both') && f.canPickup) {
+            const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true, canBoth: true };
+            // "both" is atomic: only insert the pair when both legs are actually open, so we never
+            // silently drop one leg (e.g. dropping delivery because the package isn't picked up yet —
+            // that's expected, since this same call is the one doing the pickup).
+            if (stopMode === 'both') {
+                if (f.canBoth) {
+                    stopsToInsert.push({ routeId, orderId, sequence, type: 'pickup', status: 'pending' });
+                    sequence++;
+                    stopsToInsert.push({ routeId, orderId, sequence, type: 'delivery', status: 'pending' });
+                    sequence++;
+                }
+            } else if (stopMode === 'pickup_only' && f.canPickup) {
                 stopsToInsert.push({ routeId, orderId, sequence, type: 'pickup', status: 'pending' });
                 sequence++;
-            }
-            if ((stopMode === 'delivery_only' || stopMode === 'both') && f.canDeliver) {
+            } else if (stopMode === 'delivery_only' && f.canDeliver) {
                 stopsToInsert.push({ routeId, orderId, sequence, type: 'delivery', status: 'pending' });
                 sequence++;
             }
@@ -481,14 +490,23 @@ export async function addOrdersToRoute(
     for (const orderData of ordersList) {
         const orderId = orderData.id;
         const stopMode = orderData.mode;
-        const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true };
+        const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true, canBoth: true };
 
         if (!existingOrderIds.has(orderId)) {
-            if ((stopMode === 'pickup_only' || stopMode === 'both') && f.canPickup) {
+            // "both" is atomic: only insert the pair when both legs are actually open, so we never
+            // silently drop one leg (e.g. dropping delivery because the package isn't picked up yet —
+            // that's expected, since this same call is the one doing the pickup).
+            if (stopMode === 'both') {
+                if (f.canBoth) {
+                    maxSeq++;
+                    stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'pickup', status: 'pending' });
+                    maxSeq++;
+                    stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'delivery', status: 'pending' });
+                }
+            } else if (stopMode === 'pickup_only' && f.canPickup) {
                 maxSeq++;
                 stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'pickup', status: 'pending' });
-            }
-            if ((stopMode === 'delivery_only' || stopMode === 'both') && f.canDeliver) {
+            } else if (stopMode === 'delivery_only' && f.canDeliver) {
                 maxSeq++;
                 stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'delivery', status: 'pending' });
             }
@@ -704,7 +722,7 @@ export async function getDriverPerformance(driverId: number) {
 // ============ AVAILABLE ORDERS ============
 
 export type OrderMode = 'pickup_only' | 'delivery_only' | 'both';
-export interface AssignmentFlags { canPickup: boolean; canDeliver: boolean; }
+export interface AssignmentFlags { canPickup: boolean; canDeliver: boolean; canBoth: boolean; }
 
 // A route stop still "occupies" the order (blocks re-assigning that leg) while in these states.
 const ACTIVE_STOP_STATUSES = ['pending', 'in_progress', 'on_hold', 'attempted'];
@@ -747,15 +765,26 @@ function computeAssignmentFlags(orderStatus: string, info?: StopInfo): Assignmen
     const pickedUp = PICKED_UP_ORDER_STATUSES.includes(orderStatus) || i.pickedUpViaStop;
     const delivered = orderStatus === 'delivered' || i.deliveredViaStop;
     const needsPickup = NEEDS_PICKUP_STATUSES.includes(orderStatus);
-    const canPickup = needsPickup && !pickedUp && !i.activePickup;
-    // A package that still needs a pickup leg (and hasn't had one) can't be assigned delivery-only.
-    const canDeliver = !delivered && !i.activeDelivery && (pickedUp || !needsPickup);
-    return { canPickup, canDeliver };
+    // Whether each leg is still "open" (not already done / not already occupied by another stop),
+    // independent of whether the other leg has happened yet.
+    const pickupOpen = needsPickup && !pickedUp && !i.activePickup;
+    const deliveryLegOpen = !delivered && !i.activeDelivery;
+
+    const canPickup = pickupOpen; // "Solo Pickup"
+    // A package that still needs a pickup leg (and hasn't had one) can't be assigned delivery-only —
+    // there's nothing to hand over yet.
+    const canDeliver = deliveryLegOpen && (pickedUp || !needsPickup); // "Solo Entrega"
+    // "Pickup + Entrega" bundles both legs into the same route, so it only needs both legs to still
+    // be open — it does NOT require the package to already be picked up (that's the whole point of
+    // doing both in one go).
+    const canBoth = pickupOpen && deliveryLegOpen; // "Pickup + Entrega"
+    return { canPickup, canDeliver, canBoth };
 }
 
 function defaultModeFor(flags: AssignmentFlags): OrderMode {
-    if (flags.canPickup && flags.canDeliver) return 'both';
-    return flags.canPickup ? 'pickup_only' : 'delivery_only';
+    if (flags.canBoth) return 'both';
+    if (flags.canPickup) return 'pickup_only';
+    return 'delivery_only';
 }
 
 /** Per-order assignment flags for a specific set of orders — used as a server-side guard when assigning. */

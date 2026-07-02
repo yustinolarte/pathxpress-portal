@@ -28,10 +28,14 @@ function allowedModes(order: any): OrderMode[] {
   // Older data / fallback: if flags are absent, allow everything.
   const canPickup = order.canPickup ?? true;
   const canDeliver = order.canDeliver ?? true;
-  if (canPickup && canDeliver) return ['both', 'pickup_only', 'delivery_only'];
-  if (canDeliver) return ['delivery_only'];
-  if (canPickup) return ['pickup_only'];
-  return [];
+  // "both" bundles the pickup + delivery legs into the same route, so it doesn't require the
+  // package to already be picked up — only that neither leg is already done/occupied elsewhere.
+  const canBoth = order.canBoth ?? (canPickup && canDeliver);
+  const modes: OrderMode[] = [];
+  if (canBoth) modes.push('both');
+  if (canPickup) modes.push('pickup_only');
+  if (canDeliver) modes.push('delivery_only');
+  return modes;
 }
 
 function defaultModeFor(order: any): OrderMode {

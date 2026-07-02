@@ -20,6 +20,7 @@ import {
   clientAccounts,
   invoices,
   codRecords,
+  orders,
 } from '../drizzle/schema';
 import { ENV } from './_core/env';
 
@@ -35,6 +36,34 @@ function botAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 router.use(botAuth);
+
+// ── GET /api/bot/orders/pending-location ──────────────────────────────────────
+// Todas las órdenes en pending_pickup — usado por Bot Ubicación para "ponerse
+// al día" pidiendo ubicación de órdenes que se crearon mientras el bot estaba
+// caído o no llegó a mandar el aviso. No filtra por si ya tiene latitude/
+// longitude guardada a propósito: muchas órdenes (Shopify, etc.) ya traen
+// coordenadas aproximadas de la dirección que no vinieron de una ubicación
+// real compartida por el cliente — se le vuelve a pedir igual, y si contesta
+// esa ubicación real reemplaza a la que hubiera antes.
+// Debe ir ANTES de /orders/:waybill para que Express no la confunda con un
+// waybill literal llamado "pending-location" (mismo motivo que /clients/overdue-all
+// más abajo en este archivo).
+router.get('/orders/pending-location', async (req: Request, res: Response) => {
+  try {
+    const db = await getDb();
+    if (!db) return res.status(503).json({ error: 'Database not available' });
+
+    const rows = await db
+      .select({ waybillNumber: orders.waybillNumber })
+      .from(orders)
+      .where(eq(orders.status, 'pending_pickup'));
+
+    res.json({ waybillNumbers: rows.map((r) => r.waybillNumber) });
+  } catch (err) {
+    console.error('[BotRouter] GET /orders/pending-location error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // ── GET /api/bot/orders/:waybill ─────────────────────────────────────────────
 router.get('/orders/:waybill', async (req: Request, res: Response) => {
