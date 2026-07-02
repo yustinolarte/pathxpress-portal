@@ -8,6 +8,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { eq, and, inArray } from 'drizzle-orm';
 import {
   getDb,
+  getClientAccountById,
+  getOrderById,
   getOrderByWaybill,
   getTrackingEventsByShipmentId,
   updateOrder,
@@ -45,6 +47,25 @@ router.get('/orders/:waybill', async (req: Request, res: Response) => {
       ? await db.select().from(codRecords).where(eq(codRecords.shipmentId, order.id)).limit(1)
       : [];
 
+    // En un return/exchange-return, shipper* y customer* vienen intercambiados
+    // (el destinatario original pasa a ser el shipper), así que Bot Ubicación
+    // necesita ambos pares más el flag isReturn para saber a quién pedirle la
+    // ubicación. Si ya existe una ubicación guardada en la orden original, se
+    // expone acá para que el bot la reuse en vez de volver a preguntar.
+    let originalLatitude: string | null = null;
+    let originalLongitude: string | null = null;
+    if (order.isReturn === 1 && order.originalOrderId) {
+      const originalOrder = await getOrderById(order.originalOrderId);
+      if (originalOrder?.latitude && originalOrder?.longitude) {
+        originalLatitude = originalOrder.latitude;
+        originalLongitude = originalOrder.longitude;
+      }
+    }
+
+    // Nombre del comercio (cuenta del cliente que creó la orden), para que
+    // Bot Ubicación pueda mencionarlo en el mensaje en vez de solo "PathXpress".
+    const clientAccount = await getClientAccountById(order.clientId);
+
     res.json({
       id: order.id,
       waybillNumber: order.waybillNumber,
@@ -56,6 +77,13 @@ router.get('/orders/:waybill', async (req: Request, res: Response) => {
         currency: order.codCurrency ?? 'AED',
       },
       customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      isReturn: order.isReturn === 1,
+      shipperName: order.shipperName,
+      shipperPhone: order.shipperPhone,
+      merchantName: clientAccount?.companyName ?? null,
+      originalLatitude,
+      originalLongitude,
       city: order.city,
       createdAt: order.createdAt,
     });

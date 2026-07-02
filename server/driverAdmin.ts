@@ -725,12 +725,16 @@ function buildStopInfo(
     for (const s of stopRows) {
         if (s.routeStatus === 'cancelled') continue;
         const e = map.get(s.orderId) ?? { activePickup: false, activeDelivery: false, pickedUpViaStop: false, deliveredViaStop: false };
+        // Once its route is completed, a leg that never resolved to picked_up/delivered
+        // (still pending, in_progress, on_hold or attempted) is released back to the pool
+        // instead of blocking reassignment forever — only an in-flight route legitimately occupies it.
+        const stillActive = s.routeStatus !== 'completed' && ACTIVE_STOP_STATUSES.includes(s.stopStatus);
         if (s.type === 'pickup') {
             if (s.stopStatus === 'picked_up') e.pickedUpViaStop = true;
-            if (ACTIVE_STOP_STATUSES.includes(s.stopStatus)) e.activePickup = true;
+            if (stillActive) e.activePickup = true;
         } else {
             if (s.stopStatus === 'delivered') e.deliveredViaStop = true;
-            if (ACTIVE_STOP_STATUSES.includes(s.stopStatus)) e.activeDelivery = true;
+            if (stillActive) e.activeDelivery = true;
         }
         map.set(s.orderId, e);
     }
@@ -742,8 +746,10 @@ function computeAssignmentFlags(orderStatus: string, info?: StopInfo): Assignmen
     const i = info ?? { activePickup: false, activeDelivery: false, pickedUpViaStop: false, deliveredViaStop: false };
     const pickedUp = PICKED_UP_ORDER_STATUSES.includes(orderStatus) || i.pickedUpViaStop;
     const delivered = orderStatus === 'delivered' || i.deliveredViaStop;
-    const canPickup = NEEDS_PICKUP_STATUSES.includes(orderStatus) && !pickedUp && !i.activePickup;
-    const canDeliver = !delivered && !i.activeDelivery;
+    const needsPickup = NEEDS_PICKUP_STATUSES.includes(orderStatus);
+    const canPickup = needsPickup && !pickedUp && !i.activePickup;
+    // A package that still needs a pickup leg (and hasn't had one) can't be assigned delivery-only.
+    const canDeliver = !delivered && !i.activeDelivery && (pickedUp || !needsPickup);
     return { canPickup, canDeliver };
 }
 
@@ -811,7 +817,11 @@ export async function getAvailableOrders() {
             specialInstructions: orders.specialInstructions,
         })
         .from(orders)
-        .where(notInArray(orders.status, TERMINAL_ORDER_STATUSES))
+        .where(and(
+            notInArray(orders.status, TERMINAL_ORDER_STATUSES),
+            // International shipments aren't handled by local driver routes.
+            sql`UPPER(${orders.destinationCountry}) IN ('UAE', 'UNITED ARAB EMIRATES')`,
+        ))
         .orderBy(desc(orders.createdAt));
 
     // Keep only orders that still have an assignable leg, attaching the flags + default mode.
