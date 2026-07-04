@@ -31,6 +31,10 @@ export default function TrackShipment() {
       out_for_delivery: 'bg-purple-500',
       delivered: 'bg-green-500',
       failed_delivery: 'bg-red-500',
+      failed_pickup: 'bg-red-500',
+      address_issue: 'bg-yellow-500',
+      rescheduled: 'bg-yellow-500',
+      damaged: 'bg-red-500',
       returned: 'bg-gray-500',
       returned_to_sender: 'bg-rose-600',
     };

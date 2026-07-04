@@ -24,7 +24,11 @@ import {
   Link2,
   Plane,
   FileCheck,
-  Bike
+  Bike,
+  PackageX,
+  CalendarClock,
+  MapPinOff,
+  ShieldAlert
 } from 'lucide-react';
 
 // Ubicaciones predefinidas de PathXpress - 7 Emiratos de UAE
@@ -54,25 +58,31 @@ const LOCATION_OPTIONS = [
 // Status options with visual styling
 // Functional tones only: blue = moving, amber = waiting, green = done, red = problem
 const STATUS_OPTIONS = [
-  { value: 'pending_pickup', label: 'Pending Pickup', icon: Clock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
-  { value: 'picked_up', label: 'Picked Up', icon: Package, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'in_transit', label: 'In Transit', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'out_for_delivery', label: 'Out for Delivery', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'delivered', label: 'Delivered', icon: CheckCircle2, color: 'text-[var(--st-green)]', bg: 'bg-[var(--st-green-bg)]', border: 'border-[var(--st-green)]/30' },
-  { value: 'failed_delivery', label: 'Failed Delivery', icon: XCircle, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
-  { value: 'on_hold', label: 'On Hold', icon: Pause, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
-  { value: 'returned', label: 'Returned', icon: RotateCcw, color: 'text-[var(--st-gray)]', bg: 'bg-[var(--st-gray-bg)]', border: 'border-border' },
-  { value: 'returned_to_sender', label: 'Return to Sender', icon: RotateCcw, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'pending_pickup', label: 'Pending Pickup', description: 'Order created; waiting for the courier to collect the package from the sender.', icon: Clock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'picked_up', label: 'Picked Up', description: "Courier has collected the package from the sender's location.", icon: Package, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'failed_pickup', label: 'Failed Pickup', description: 'Pickup attempt failed — sender unavailable, address incorrect, or package not ready.', icon: PackageX, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'in_transit', label: 'In Transit', description: 'Package is moving through the network toward its destination hub.', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'out_for_delivery', label: 'Out for Delivery', description: 'Package is with the driver on the final leg to the recipient.', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'delivered', label: 'Delivered', description: 'Package was successfully handed to the recipient.', icon: CheckCircle2, color: 'text-[var(--st-green)]', bg: 'bg-[var(--st-green-bg)]', border: 'border-[var(--st-green)]/30' },
+  { value: 'failed_delivery', label: 'Failed Delivery', description: 'Delivery attempt failed — recipient unavailable, refused, or address unreachable.', icon: XCircle, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'address_issue', label: 'Address Issue', description: 'Address is incomplete or incorrect; recipient/sender must be contacted to confirm the location.', icon: MapPinOff, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'rescheduled', label: 'Rescheduled', description: 'Pickup or delivery was rebooked to a new confirmed date/time.', icon: CalendarClock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'damaged', label: 'Damaged', description: 'Package shows visible damage detected in transit or before delivery.', icon: ShieldAlert, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'on_hold', label: 'On Hold', description: 'Shipment is paused pending review, payment, or customer instructions.', icon: Pause, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'returned', label: 'Returned', description: 'Package is on its way back to the PathXpress hub.', icon: RotateCcw, color: 'text-[var(--st-gray)]', bg: 'bg-[var(--st-gray-bg)]', border: 'border-border' },
+  { value: 'returned_to_sender', label: 'Return to Sender', description: 'Package was returned and handed back to the original sender.', icon: RotateCcw, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
 ] as const;
 
 // Default location for each status — can still be changed by the user
 const STATUS_DEFAULT_LOCATION: Record<string, string> = {
   pending_pickup:     'sender_location',
   picked_up:          'sender_location',
+  failed_pickup:      'sender_location',
   in_transit:         'pathxpress_hub_dubai',
   out_for_delivery:   'driver_vehicle',
   delivered:          'customer_location',
   failed_delivery:    'customer_location',
+  damaged:            'driver_vehicle',
   on_hold:            'pathxpress_hub_dubai',
   returned:           'pathxpress_hub_dubai',
   returned_to_sender: 'sender_location',
@@ -278,6 +288,12 @@ export default function AddTrackingEventDialog({
                   );
                 })}
               </div>
+              {(() => {
+                const selected = STATUS_OPTIONS.find(s => s.value === formData.statusCode);
+                return selected ? (
+                  <p className="text-xs text-muted-foreground italic">{selected.description}</p>
+                ) : null;
+              })()}
             </div>
 
             {/* Date/Time and Location Row */}

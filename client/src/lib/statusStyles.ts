@@ -21,6 +21,8 @@ export const STATUS_TONE: Record<string, StatusTone> = {
   exchange: 'amber',
   pending: 'amber',
   customs_clearance: 'amber',
+  address_issue: 'amber',
+  rescheduled: 'amber',
   // done
   delivered: 'green',
   completed: 'green',
@@ -30,6 +32,8 @@ export const STATUS_TONE: Record<string, StatusTone> = {
   approved: 'green',
   // problem
   failed_delivery: 'red',
+  failed_pickup: 'red',
+  damaged: 'red',
   returned_to_sender: 'red',
   overdue: 'red',
   rejected: 'red',

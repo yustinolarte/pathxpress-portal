@@ -29,6 +29,9 @@ import {
   Globe,
   Navigation,
   Warehouse,
+  PackageX,
+  CalendarClock,
+  MapPinOff,
 } from 'lucide-react';
 
 // International location options grouped by stage
@@ -58,26 +61,31 @@ const INTL_LOCATION_OPTIONS = [
 // All possible international package statuses
 // Functional tones only: blue = moving, amber = waiting, green = done, red = problem
 const INTL_STATUS_OPTIONS = [
-  { value: 'pending_pickup', label: 'Pending Pickup', icon: Clock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
-  { value: 'picked_up', label: 'Picked Up', icon: Package, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'departed_origin', label: 'Departed Origin', icon: Plane, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'in_transit', label: 'In Transit', icon: Globe, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'arrived_destination', label: 'Arrived Destination', icon: Navigation, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'customs_clearance', label: 'Customs Clearance', icon: FileCheck, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
-  { value: 'customs_cleared', label: 'Customs Cleared', icon: ShieldCheck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'customs_held', label: 'Held by Customs', icon: ShieldAlert, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
-  { value: 'out_for_delivery', label: 'Out for Delivery', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
-  { value: 'delivered', label: 'Delivered', icon: CheckCircle2, color: 'text-[var(--st-green)]', bg: 'bg-[var(--st-green-bg)]', border: 'border-[var(--st-green)]/30' },
-  { value: 'failed_delivery', label: 'Failed Delivery', icon: XCircle, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
-  { value: 'on_hold', label: 'On Hold', icon: Pause, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
-  { value: 'returned', label: 'Returned', icon: RotateCcw, color: 'text-[var(--st-gray)]', bg: 'bg-[var(--st-gray-bg)]', border: 'border-border' },
-  { value: 'returned_to_sender', label: 'Return to Sender', icon: RotateCcw, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'pending_pickup', label: 'Pending Pickup', description: 'Order created; waiting for the courier to collect the package from the sender.', icon: Clock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'picked_up', label: 'Picked Up', description: "Courier has collected the package from the sender's location.", icon: Package, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'failed_pickup', label: 'Failed Pickup', description: 'Pickup attempt failed — sender unavailable, address incorrect, or package not ready.', icon: PackageX, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'departed_origin', label: 'Departed Origin', description: 'Package has left the origin country and is en route internationally.', icon: Plane, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'in_transit', label: 'In Transit', description: 'Package is moving through the international network toward the destination country.', icon: Globe, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'arrived_destination', label: 'Arrived Destination', description: 'Package has arrived in the destination country and is awaiting further processing.', icon: Navigation, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'customs_clearance', label: 'Customs Clearance', description: 'Package is being processed by customs in the destination country.', icon: FileCheck, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'customs_cleared', label: 'Customs Cleared', description: 'Package has cleared customs and can continue to final delivery.', icon: ShieldCheck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'customs_held', label: 'Held by Customs', description: 'Customs has held the package — additional documentation or duties may be required.', icon: ShieldAlert, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'out_for_delivery', label: 'Out for Delivery', description: 'Package is with the local delivery partner on the final leg to the recipient.', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'delivered', label: 'Delivered', description: 'Package was successfully handed to the recipient.', icon: CheckCircle2, color: 'text-[var(--st-green)]', bg: 'bg-[var(--st-green-bg)]', border: 'border-[var(--st-green)]/30' },
+  { value: 'failed_delivery', label: 'Failed Delivery', description: 'Delivery attempt failed — recipient unavailable, refused, or address unreachable.', icon: XCircle, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'address_issue', label: 'Address Issue', description: 'Address is incomplete or incorrect; recipient/sender must be contacted to confirm the location.', icon: MapPinOff, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'rescheduled', label: 'Rescheduled', description: 'Pickup or delivery was rebooked to a new confirmed date/time.', icon: CalendarClock, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'damaged', label: 'Damaged', description: 'Package shows visible damage detected in transit or before delivery.', icon: ShieldAlert, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
+  { value: 'on_hold', label: 'On Hold', description: 'Shipment is paused pending review, payment, or customer instructions.', icon: Pause, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
+  { value: 'returned', label: 'Returned', description: 'Package is on its way back to the PathXpress hub.', icon: RotateCcw, color: 'text-[var(--st-gray)]', bg: 'bg-[var(--st-gray-bg)]', border: 'border-border' },
+  { value: 'returned_to_sender', label: 'Return to Sender', description: 'Package was returned and handed back to the original sender.', icon: RotateCcw, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
 ] as const;
 
 // Default location for each international status — can still be changed by the user
 const STATUS_DEFAULT_LOCATION: Record<string, string> = {
   pending_pickup:       'pathxpress_hub_dubai',
   picked_up:            'pathxpress_hub_dubai',
+  failed_pickup:        'pathxpress_hub_dubai',
   departed_origin:      'dubai_airport_dxb',
   in_transit:           'international_transit_hub',
   arrived_destination:  'destination_airport',
@@ -87,6 +95,7 @@ const STATUS_DEFAULT_LOCATION: Record<string, string> = {
   out_for_delivery:     'local_delivery_partner',
   delivered:            'customer_location',
   failed_delivery:      'customer_location',
+  damaged:              'destination_warehouse',
   on_hold:              'destination_warehouse',
   returned:             'return_facility',
   returned_to_sender:   'pathxpress_hub_dubai',
@@ -277,6 +286,12 @@ export default function AddIntlTrackingEventDialog({
                   );
                 })}
               </div>
+              {(() => {
+                const selected = INTL_STATUS_OPTIONS.find(s => s.value === formData.statusCode);
+                return selected ? (
+                  <p className="text-xs text-muted-foreground italic">{selected.description}</p>
+                ) : null;
+              })()}
             </div>
 
             {/* Date/Time and Location Row */}
