@@ -664,7 +664,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
 router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { status, notes, collectedAmount } = req.body;
+        const { status, notes, collectedAmount, deliveredLat, deliveredLng } = req.body;
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
@@ -711,6 +711,12 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
         // Save collected amount if provided
         if (collectedAmount) {
             updateData.collectedAmount = collectedAmount.toString();
+        }
+
+        // GPS position captured by the app at POD time
+        if (typeof deliveredLat === 'number' && typeof deliveredLng === 'number') {
+            updateData.deliveredLat = deliveredLat;
+            updateData.deliveredLng = deliveredLng;
         }
 
         // Set timestamp based on status

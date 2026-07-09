@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, index } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, double, index } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -633,6 +633,9 @@ export const routeOrders = mysqlTable("routeOrders", {
   deliveredAt: timestamp("deliveredAt"),
   pickedUpAt: timestamp("pickedUpAt"), // For pickup stops
   collectedAmount: varchar("collectedAmount", { length: 50 }), // Actual amount collected by driver
+  // Where the driver actually was when completing the stop (from the POD GPS fix)
+  deliveredLat: double("deliveredLat"),
+  deliveredLng: double("deliveredLng"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   routeIdIdx: index("routeOrders_routeId_idx").on(table.routeId),
