@@ -61,18 +61,17 @@ describe("portal.auth.login", () => {
 
 describe("portal.customer.createShipment", () => {
   it("should create shipment with valid token", async () => {
-    const ctx = createMockContext();
+    // portal.customer.createShipment authenticates via ctx.portalUser (set from an
+    // HttpOnly cookie in real requests), not via a token field in the input — so
+    // the mock context sets portalUser directly instead of logging in for real.
+    const ctx: TrpcContext = {
+      ...createMockContext(),
+      portalUser: { userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 },
+    };
     const caller = appRouter.createCaller(ctx);
-
-    // First login to get token
-    const loginResult = await caller.portal.auth.login({
-      email: "customer@techsolutions.ae",
-      password: "customer123",
-    });
 
     // Create shipment
     const shipment = await caller.portal.customer.createShipment({
-      token: loginResult.token,
       shipment: {
         shipperName: "Test Shipper",
         shipperAddress: "123 Test St",
@@ -86,10 +85,10 @@ describe("portal.customer.createShipment", () => {
         emirate: "Dubai",
         destinationCountry: "UAE",
         pieces: 1,
-        weight: "2.5",
-        length: "30",
-        width: "20",
-        height: "15",
+        weight: 2.5,
+        length: 30,
+        width: 20,
+        height: 15,
         serviceType: "standard",
         specialInstructions: "Test shipment",
       },
@@ -97,7 +96,7 @@ describe("portal.customer.createShipment", () => {
 
     expect(shipment).toHaveProperty("id");
     expect(shipment).toHaveProperty("waybillNumber");
-    expect(shipment.waybillNumber).toMatch(/^PX\d{9}$/);
+    expect(shipment.waybillNumber).toMatch(/^PX\d{9}-[A-Z0-9]{3}$/);
     expect(shipment.customerName).toBe("Test Customer");
   });
 });

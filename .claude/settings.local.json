@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(ls -la /c/Users/steve/Downloads/pathxpress/drizzle/*.sql)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(git rm *)"
     ]
   }
 }

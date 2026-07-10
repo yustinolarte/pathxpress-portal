@@ -56,7 +56,30 @@ async function startServer() {
   // Security middleware
   app.use(
     helmet({
-      contentSecurityPolicy: false, // Disabled to avoid conflicts with Vite in dev mode
+      // Only in production: dev mode serves through Vite (inline HMR client, eval'd
+      // modules) which a locked-down CSP would break. The allowlist below covers every
+      // external origin the app actually loads: Google Maps JS SDK + Geocoding
+      // (maps.googleapis.com / *.googleapis.com), Google Fonts, unpkg (Leaflet), and
+      // self-hosted assets/API. 'unsafe-inline' stays on script-src/style-src because
+      // index.html uses an inline onload= font-swap attribute and several UI libraries
+      // (Radix/Framer Motion) inject inline style attributes — moving to a nonce-based
+      // policy would need a separate, browser-tested pass.
+      contentSecurityPolicy: process.env.NODE_ENV === "production" ? {
+        useDefaults: false,
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "https://maps.googleapis.com", "https://unpkg.com"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com"],
+          imgSrc: ["'self'", "data:", "blob:", "https:"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+          connectSrc: ["'self'", "https://maps.googleapis.com", "https://*.googleapis.com"],
+          mediaSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          frameAncestors: ["'self'"],
+          formAction: ["'self'"],
+        },
+      } : false,
       frameguard: { action: "deny" }, // Clickjacking protection
       hsts: true, // HTTP Strict Transport Security
       noSniff: true, // Prevent MIME type sniffing
@@ -75,23 +98,48 @@ async function startServer() {
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20, // Limit each IP to 20 login attempts per window
+    max: 20, // Limit each IP to 20 login/password-change attempts per window
     standardHeaders: true,
     legacyHeaders: false,
     message: "Too many login attempts from this IP, please try again after 15 minutes",
   });
 
-  // Apply rate limiting
-  // Note: tRPC batching might bypass the specific route match, but this catches direct calls
-  app.use("/api/trpc/portal.auth.login", authLimiter);
-  app.use("/api/driver/auth/login", authLimiter);
-  app.use("/api/trpc/tracking.getByTrackingId", rateLimit({
+  const trackingLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 30,
     standardHeaders: true,
     legacyHeaders: false,
     message: "Too many tracking lookups from this IP, please try again after 15 minutes",
-  }));
+  });
+
+  // tRPC batches multiple calls into one request as a comma-separated procedure
+  // list in the URL, e.g. /api/trpc/portal.auth.login,portal.auth.me?batch=1 — an
+  // exact-path `app.use("/api/trpc/portal.auth.login", ...)` never matches that
+  // (the "," isn't a path-segment boundary), silently letting batched calls skip
+  // the limiter. Inspect the actual procedure names instead of path-prefix matching.
+  function trpcBatchedProcedures(req: express.Request): string[] {
+    const prefix = "/api/trpc/";
+    if (!req.originalUrl.startsWith(prefix)) return [];
+    const afterPrefix = req.originalUrl.slice(prefix.length).split("?")[0];
+    try {
+      return decodeURIComponent(afterPrefix).split(",");
+    } catch {
+      return afterPrefix.split(",");
+    }
+  }
+
+  const AUTH_PROCEDURES = new Set(["portal.auth.login", "portal.auth.changePassword"]);
+  const TRACKING_PROCEDURES = new Set(["tracking.getByTrackingId"]);
+
+  app.use((req, res, next) => {
+    const procedures = trpcBatchedProcedures(req);
+    if (procedures.some(p => AUTH_PROCEDURES.has(p))) return authLimiter(req, res, next);
+    if (procedures.some(p => TRACKING_PROCEDURES.has(p))) return trackingLimiter(req, res, next);
+    next();
+  });
+
+  // Apply rate limiting
+  app.use("/api/driver/auth/login", authLimiter);
   app.use("/api", apiLimiter);
 
   // Cookie parser (must be before tRPC middleware)

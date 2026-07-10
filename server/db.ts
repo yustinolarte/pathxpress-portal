@@ -911,6 +911,7 @@ export async function updateOrder(
     }
 
     // 6. Return updated order
+    cacheInvalidate('admin:allCODRecords');
     const updatedOrder = await getOrderById(orderId);
     return { success: true, order: updatedOrder! };
 
@@ -988,6 +989,7 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
             eq(codRecords.status, 'pending_collection')
           )
         );
+      cacheInvalidate('admin:allCODRecords');
     }
 
     return getOrderById(id);
@@ -1434,6 +1436,7 @@ export async function generateInvoiceForClient(
     }
   }
 
+  cacheInvalidate('admin:allInvoices');
   return invoice.insertId;
 }
 
@@ -1647,6 +1650,7 @@ export async function generateIntlInvoiceForClient(
     });
   }
 
+  cacheInvalidate('admin:allInvoices');
   return invoice.insertId;
 }
 
@@ -1661,40 +1665,45 @@ export async function getAllInvoices() {
   const db = await getDb();
   if (!db) return [];
 
-  const rows = await db
-    .select({
-      id: invoices.id,
-      clientId: invoices.clientId,
-      invoiceNumber: invoices.invoiceNumber,
-      periodFrom: invoices.periodFrom,
-      periodTo: invoices.periodTo,
-      issueDate: invoices.issueDate,
-      dueDate: invoices.dueDate,
-      currency: invoices.currency,
-      subtotal: invoices.subtotal,
-      taxes: invoices.taxes,
-      total: invoices.total,
-      amountPaid: invoices.amountPaid,
-      balance: invoices.balance,
-      status: invoices.status,
-      settlementPeriod: invoices.settlementPeriod,
-      paymentDate: invoices.paymentDate,
-      paymentReference: invoices.paymentReference,
-      notes: invoices.notes,
-      adjustmentNotes: invoices.adjustmentNotes,
-      isAdjusted: invoices.isAdjusted,
-      lastAdjustedBy: invoices.lastAdjustedBy,
-      lastAdjustedAt: invoices.lastAdjustedAt,
-      createdAt: invoices.createdAt,
-      updatedAt: invoices.updatedAt,
-      shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
-    })
-    .from(invoices)
-    .leftJoin(invoiceItems, eq(invoices.id, invoiceItems.invoiceId))
-    .groupBy(invoices.id)
-    .orderBy(desc(invoices.createdAt));
+  // Cached + capped: admin list view, bounded so it never grows unbounded over the years.
+  // 60s staleness is the same tolerance already accepted by getOrdersPaged/getAnalytics.
+  return await cachedQuery('admin:allInvoices', 60, async () => {
+    const rows = await db
+      .select({
+        id: invoices.id,
+        clientId: invoices.clientId,
+        invoiceNumber: invoices.invoiceNumber,
+        periodFrom: invoices.periodFrom,
+        periodTo: invoices.periodTo,
+        issueDate: invoices.issueDate,
+        dueDate: invoices.dueDate,
+        currency: invoices.currency,
+        subtotal: invoices.subtotal,
+        taxes: invoices.taxes,
+        total: invoices.total,
+        amountPaid: invoices.amountPaid,
+        balance: invoices.balance,
+        status: invoices.status,
+        settlementPeriod: invoices.settlementPeriod,
+        paymentDate: invoices.paymentDate,
+        paymentReference: invoices.paymentReference,
+        notes: invoices.notes,
+        adjustmentNotes: invoices.adjustmentNotes,
+        isAdjusted: invoices.isAdjusted,
+        lastAdjustedBy: invoices.lastAdjustedBy,
+        lastAdjustedAt: invoices.lastAdjustedAt,
+        createdAt: invoices.createdAt,
+        updatedAt: invoices.updatedAt,
+        shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
+      })
+      .from(invoices)
+      .leftJoin(invoiceItems, eq(invoices.id, invoiceItems.invoiceId))
+      .groupBy(invoices.id)
+      .orderBy(desc(invoices.createdAt))
+      .limit(500);
 
-  return rows;
+    return rows;
+  });
 }
 
 export async function getClientBillingInfo(clientId: number) {
@@ -1769,6 +1778,7 @@ export async function updateInvoiceStatus(id: number, status: 'pending' | 'paid'
   if (!db) throw new Error("Database not available");
 
   await db.update(invoices).set({ status }).where(eq(invoices.id, id));
+  cacheInvalidate('admin:allInvoices');
 }
 
 export async function updateInvoice(id: number, data: Partial<{
@@ -1788,6 +1798,7 @@ export async function updateInvoice(id: number, data: Partial<{
   if (!db) throw new Error("Database not available");
 
   await db.update(invoices).set(data).where(eq(invoices.id, id));
+  cacheInvalidate('admin:allInvoices');
 }
 
 // Delete invoice (only if pending)
@@ -1811,6 +1822,7 @@ export async function deleteInvoice(id: number): Promise<{ success: boolean; err
   // Delete invoice
   await db.delete(invoices).where(eq(invoices.id, id));
 
+  cacheInvalidate('admin:allInvoices');
   return { success: true };
 }
 
@@ -1880,6 +1892,7 @@ export async function recalculateInvoiceTotals(invoiceId: number): Promise<void>
     total: total.toFixed(2),
     balance: balance.toFixed(2),
   }).where(eq(invoices.id, invoiceId));
+  cacheInvalidate('admin:allInvoices');
 }
 
 // ==================== COD Functions ====================
@@ -1906,19 +1919,24 @@ export async function getAllCODRecords() {
   const db = await getDb();
   if (!db) return [];
 
-  const result = await db
-    .select({
-      codRecord: codRecords,
-      order: orders,
-      client: clientAccounts,
-    })
-    .from(codRecords)
-    .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
-    .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
-    .where(ne(codRecords.status, 'cancelled'))
-    .orderBy(desc(codRecords.createdAt));
+  // Cached + capped: admin list view, bounded so it never grows unbounded over the years.
+  // 60s staleness is the same tolerance already accepted by getOrdersPaged/getAnalytics.
+  return await cachedQuery('admin:allCODRecords', 60, async () => {
+    const result = await db
+      .select({
+        codRecord: codRecords,
+        order: orders,
+        client: clientAccounts,
+      })
+      .from(codRecords)
+      .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
+      .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
+      .where(ne(codRecords.status, 'cancelled'))
+      .orderBy(desc(codRecords.createdAt))
+      .limit(500);
 
-  return result.map(r => ({ ...r.codRecord, order: r.order, client: r.client }));
+    return result.map(r => ({ ...r.codRecord, order: r.order, client: r.client }));
+  });
 }
 
 export async function getPendingCODByClient(clientId: number) {
@@ -1999,6 +2017,8 @@ export async function createCODRemittance(data: {
       .where(inArray(codRecords.id, allCodRecords.map(r => r.id)));
   }
 
+  cacheInvalidate('admin:allRemittances');
+  cacheInvalidate('admin:allCODRecords');
   return remittanceId;
 }
 
@@ -2013,16 +2033,21 @@ export async function getAllRemittances() {
   const db = await getDb();
   if (!db) return [];
 
-  const result = await db
-    .select({
-      remittance: codRemittances,
-      client: clientAccounts,
-    })
-    .from(codRemittances)
-    .leftJoin(clientAccounts, eq(codRemittances.clientId, clientAccounts.id))
-    .orderBy(desc(codRemittances.createdAt));
+  // Cached + capped: admin list view, bounded so it never grows unbounded over the years.
+  // 60s staleness is the same tolerance already accepted by getOrdersPaged/getAnalytics.
+  return await cachedQuery('admin:allRemittances', 60, async () => {
+    const result = await db
+      .select({
+        remittance: codRemittances,
+        client: clientAccounts,
+      })
+      .from(codRemittances)
+      .leftJoin(clientAccounts, eq(codRemittances.clientId, clientAccounts.id))
+      .orderBy(desc(codRemittances.createdAt))
+      .limit(500);
 
-  return result.map(r => ({ ...r.remittance, client: r.client }));
+    return result.map(r => ({ ...r.remittance, client: r.client }));
+  });
 }
 
 export async function getRemittanceById(id: number) {
@@ -2061,6 +2086,7 @@ export async function updateRemittanceStatus(id: number, status: 'pending' | 'pr
   }
 
   await db.update(codRemittances).set(updateData).where(eq(codRemittances.id, id));
+  cacheInvalidate('admin:allRemittances');
 }
 
 export async function generateRemittanceNumber(): Promise<string> {

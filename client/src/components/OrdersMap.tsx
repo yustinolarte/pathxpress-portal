@@ -236,6 +236,15 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
     const polylineRef   = useRef<google.maps.Polyline | null>(null);
     const [mapReady, setMapReady] = useState(false);
 
+    // Callers typically pass these as inline arrow functions, so a new function
+    // identity arrives on every parent render. Keeping them in refs (always up to
+    // date, but never triggering the marker-rebuild effect below) means an
+    // unrelated parent re-render no longer tears down and recreates every pin.
+    const onPointClickRef = useRef(onPointClick);
+    onPointClickRef.current = onPointClick;
+    const onEditLocationRef = useRef(onEditLocation);
+    onEditLocationRef.current = onEditLocation;
+
     // Init map once
     useEffect(() => {
         let cancelled = false;
@@ -279,7 +288,7 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
 
         points.forEach((pt) => {
             const pinLabel = pt.sequence !== undefined ? String(pt.sequence) : pt.label.slice(0, 2);
-            const el = makePin(pt.kind, pinLabel, pt, onEditLocation);
+            const el = makePin(pt.kind, pinLabel, pt, onEditLocationRef.current);
 
             const marker = new window.google.maps.marker.AdvancedMarkerElement({
                 map,
@@ -292,9 +301,7 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
             el.addEventListener('mouseenter', () => { marker.zIndex = 1000; });
             el.addEventListener('mouseleave', () => { marker.zIndex = null; });
 
-            if (onPointClick) {
-                marker.addListener('click', () => onPointClick(pt.id));
-            }
+            marker.addListener('click', () => onPointClickRef.current?.(pt.id));
 
             markersRef.current.push(marker);
             bounds.extend({ lat: pt.lat, lng: pt.lng });
@@ -312,7 +319,7 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
                 map,
             });
         }
-    }, [points, showRoute, onPointClick, onEditLocation, mapReady]);
+    }, [points, showRoute, mapReady]);
 
     return (
         <div ref={containerRef} className={cn('w-full h-[400px] rounded-xl border border-border overflow-hidden', className)} />

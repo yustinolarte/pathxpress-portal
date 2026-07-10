@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { generatePortalToken } from "./portalAuth";
 import { getDb } from "./db";
 import { codRecords, orders } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
-function createMockContext(): TrpcContext {
+// portal.customer.createShipment authenticates via ctx.portalUser (set from an
+// HttpOnly cookie in real requests), not via a token field in the input — so the
+// mock context must set portalUser directly rather than passing a generated token.
+function createCustomerContext(): TrpcContext {
   return {
     user: null,
+    portalUser: { userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 },
     req: {
       protocol: "https",
       headers: {},
@@ -19,20 +22,11 @@ function createMockContext(): TrpcContext {
 
 describe("COD Integration Flow", () => {
   it("should create COD record automatically when shipment has COD", async () => {
-    const ctx = createMockContext();
+    const ctx = createCustomerContext();
     const caller = appRouter.createCaller(ctx);
-
-    // Generate token for customer
-    const token = generatePortalToken({
-      userId: 2,
-      email: "customer@techsolutions.ae",
-      role: "customer",
-      clientId: 1,
-    });
 
     // Create shipment with COD
     const shipment = await caller.portal.customer.createShipment({
-      token,
       shipment: {
         shipperName: "Test Shipper",
         shipperAddress: "123 Test St",
@@ -87,20 +81,11 @@ describe("COD Integration Flow", () => {
   });
 
   it("should NOT create COD record when shipment has no COD", async () => {
-    const ctx = createMockContext();
+    const ctx = createCustomerContext();
     const caller = appRouter.createCaller(ctx);
-
-    // Generate token for customer
-    const token = generatePortalToken({
-      userId: 2,
-      email: "customer@techsolutions.ae",
-      role: "customer",
-      clientId: 1,
-    });
 
     // Create shipment WITHOUT COD
     const shipment = await caller.portal.customer.createShipment({
-      token,
       shipment: {
         shipperName: "Test Shipper No COD",
         shipperAddress: "789 Test Ave",
@@ -141,20 +126,11 @@ describe("COD Integration Flow", () => {
   });
 
   it("should include COD info in shipment data for PDF generation", async () => {
-    const ctx = createMockContext();
+    const ctx = createCustomerContext();
     const caller = appRouter.createCaller(ctx);
-
-    // Generate token for customer
-    const token = generatePortalToken({
-      userId: 2,
-      email: "customer@techsolutions.ae",
-      role: "customer",
-      clientId: 1,
-    });
 
     // Create shipment with COD
     const shipment = await caller.portal.customer.createShipment({
-      token,
       shipment: {
         shipperName: "PDF Test Shipper",
         shipperAddress: "111 PDF St",

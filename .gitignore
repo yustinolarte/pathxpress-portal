@@ -32,6 +32,7 @@ temp/
 .env.development.local
 .env.test.local
 .env.production.local
+*.env.bak
 
 # NEVER expose DB dumps (but DO version drizzle migrations)
 *.sql

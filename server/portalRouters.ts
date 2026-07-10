@@ -3270,8 +3270,14 @@ export const rateRouter = router({
     .mutation(async ({ input, ctx }) => {
       if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
+      // Customers can only price their own account; only admins may pass an arbitrary clientId
+      // (e.g. AdminCreateOrderDialog quoting on behalf of a client).
+      const clientId = ctx.portalUser.role === 'customer'
+        ? (ctx.portalUser.clientId || 0)
+        : input.clientId;
+
       const result = await calculateShipmentRate({
-        clientId: input.clientId,
+        clientId,
         serviceType: input.serviceType,
         weight: input.weight,
         length: input.length,
@@ -3626,7 +3632,7 @@ const trackingRouter = router({
       return { success: true };
     }),
 
-  getEvents: portalProtectedProcedure
+  getEvents: portalAdminProcedure
     .input(z.object({ shipmentId: z.number() }))
     .query(async ({ input }) => {
       return getTrackingEventsByShipmentId(input.shipmentId);

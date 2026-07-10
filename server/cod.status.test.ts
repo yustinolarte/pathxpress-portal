@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { generatePortalToken } from "./portalAuth";
 import { getDb } from "./db";
 import { codRecords } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
-function createMockContext(): TrpcContext {
+// updateCODStatus/createShipment authenticate via ctx.portalUser (set from an
+// HttpOnly cookie in real requests), not via a token field in the input — so the
+// mock context must set portalUser directly rather than passing a generated token.
+function createMockContext(portalUser: TrpcContext["portalUser"] = null): TrpcContext {
   return {
     user: null,
+    portalUser,
     req: {
       protocol: "https",
       headers: {},
@@ -17,28 +20,16 @@ function createMockContext(): TrpcContext {
   };
 }
 
+const CUSTOMER_PORTAL_USER = { userId: 2, email: "customer@techsolutions.ae", role: "customer" as const, clientId: 1 };
+const ADMIN_PORTAL_USER = { userId: 1, email: "admin@pathxpress.ae", role: "admin" as const };
+
 describe("COD Status Update", () => {
   it("should update COD record status from pending_collection to collected", async () => {
-    const ctx = createMockContext();
-    const caller = appRouter.createCaller(ctx);
-
-    // Generate admin token
-    const adminToken = generatePortalToken({
-      userId: 1,
-      email: "admin@pathxpress.ae",
-      role: "admin",
-    });
+    const customerCaller = appRouter.createCaller(createMockContext(CUSTOMER_PORTAL_USER));
+    const adminCaller = appRouter.createCaller(createMockContext(ADMIN_PORTAL_USER));
 
     // First, create a shipment with COD
-    const customerToken = generatePortalToken({
-      userId: 2,
-      email: "customer@techsolutions.ae",
-      role: "customer",
-      clientId: 1,
-    });
-
-    const shipment = await caller.portal.customer.createShipment({
-      token: customerToken,
+    const shipment = await customerCaller.portal.customer.createShipment({
       shipment: {
         shipperName: "Test Shipper",
         shipperAddress: "123 Test St",
@@ -78,8 +69,7 @@ describe("COD Status Update", () => {
     expect(codRecord!.status).toBe("pending_collection");
 
     // Update status to collected
-    const updateResult = await caller.portal.cod.updateCODStatus({
-      token: adminToken,
+    const updateResult = await adminCaller.portal.cod.updateCODStatus({
       codRecordId: codRecord!.id,
       status: "collected",
     });
@@ -103,26 +93,11 @@ describe("COD Status Update", () => {
   });
 
   it("should update COD record status to remitted", async () => {
-    const ctx = createMockContext();
-    const caller = appRouter.createCaller(ctx);
-
-    // Generate admin token
-    const adminToken = generatePortalToken({
-      userId: 1,
-      email: "admin@pathxpress.ae",
-      role: "admin",
-    });
+    const customerCaller = appRouter.createCaller(createMockContext(CUSTOMER_PORTAL_USER));
+    const adminCaller = appRouter.createCaller(createMockContext(ADMIN_PORTAL_USER));
 
     // Create a shipment with COD
-    const customerToken = generatePortalToken({
-      userId: 2,
-      email: "customer@techsolutions.ae",
-      role: "customer",
-      clientId: 1,
-    });
-
-    const shipment = await caller.portal.customer.createShipment({
-      token: customerToken,
+    const shipment = await customerCaller.portal.customer.createShipment({
       shipment: {
         shipperName: "Test Shipper 2",
         shipperAddress: "789 Test Ave",
@@ -160,8 +135,7 @@ describe("COD Status Update", () => {
     const codRecord = codRecordsList[0];
 
     // Update status to remitted
-    await caller.portal.cod.updateCODStatus({
-      token: adminToken,
+    await adminCaller.portal.cod.updateCODStatus({
       codRecordId: codRecord!.id,
       status: "remitted",
     });
@@ -178,21 +152,11 @@ describe("COD Status Update", () => {
   });
 
   it("should reject status update from non-admin user", async () => {
-    const ctx = createMockContext();
-    const caller = appRouter.createCaller(ctx);
+    const customerCaller = appRouter.createCaller(createMockContext(CUSTOMER_PORTAL_USER));
 
-    // Generate customer token (not admin)
-    const customerToken = generatePortalToken({
-      userId: 2,
-      email: "customer@techsolutions.ae",
-      role: "customer",
-      clientId: 1,
-    });
-
-    // Try to update COD status as customer
+    // Try to update COD status as customer (not admin)
     await expect(
-      caller.portal.cod.updateCODStatus({
-        token: customerToken,
+      customerCaller.portal.cod.updateCODStatus({
         codRecordId: 1,
         status: "collected",
       })

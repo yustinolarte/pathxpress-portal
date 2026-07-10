@@ -1,27 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { generatePortalToken } from "./portalAuth";
+
+// portal.customer.createShipment authenticates via ctx.portalUser (set from an
+// HttpOnly cookie in real requests), not via a token field in the input — so the
+// mock context must set portalUser directly rather than passing a generated token.
+function createCustomerContext(): TrpcContext {
+  return {
+    user: null,
+    portalUser: { userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 },
+    req: {
+      protocol: "https",
+      headers: {},
+    } as TrpcContext["req"],
+    res: {} as TrpcContext["res"],
+  };
+}
 
 describe("Shipment Creation", () => {
   it("should generate unique waybill numbers", async () => {
-    // Create a mock context with customer token
-    const token = generatePortalToken({ userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 });
-    
-    const ctx: TrpcContext = {
-      user: null,
-      req: {
-        protocol: "https",
-        headers: {},
-      } as TrpcContext["req"],
-      res: {} as TrpcContext["res"],
-    };
-
-    const caller = appRouter.createCaller(ctx);
+    const caller = appRouter.createCaller(createCustomerContext());
 
     // Create first shipment
     const shipment1Data = {
-      token,
       shipment: {
         shipperName: "Test Shipper 1",
         shipperAddress: "123 Test St",
@@ -45,12 +46,11 @@ describe("Shipment Creation", () => {
 
     const result1 = await caller.portal.customer.createShipment(shipment1Data);
     expect(result1).toBeDefined();
-    expect(result1.waybillNumber).toMatch(/^PX\d{9}$/);
+    expect(result1.waybillNumber).toMatch(/^PX\d{9}-[A-Z0-9]{3}$/);
     console.log("✅ First shipment created:", result1.waybillNumber);
 
     // Create second shipment - should have different waybill
     const shipment2Data = {
-      token,
       shipment: {
         ...shipment1Data.shipment,
         shipperName: "Test Shipper 2",
@@ -60,28 +60,16 @@ describe("Shipment Creation", () => {
 
     const result2 = await caller.portal.customer.createShipment(shipment2Data);
     expect(result2).toBeDefined();
-    expect(result2.waybillNumber).toMatch(/^PX\d{9}$/);
+    expect(result2.waybillNumber).toMatch(/^PX\d{9}-[A-Z0-9]{3}$/);
     expect(result2.waybillNumber).not.toBe(result1.waybillNumber);
     console.log("✅ Second shipment created:", result2.waybillNumber);
     console.log("✅ Waybill numbers are unique!");
   });
 
   it("should create shipment with valid data", async () => {
-    const token = generatePortalToken({ userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 });
-    
-    const ctx: TrpcContext = {
-      user: null,
-      req: {
-        protocol: "https",
-        headers: {},
-      } as TrpcContext["req"],
-      res: {} as TrpcContext["res"],
-    };
-
-    const caller = appRouter.createCaller(ctx);
+    const caller = appRouter.createCaller(createCustomerContext());
 
     const shipmentData = {
-      token,
       shipment: {
         shipperName: "Valid Shipper",
         shipperAddress: "789 Valid St",
@@ -104,7 +92,7 @@ describe("Shipment Creation", () => {
     };
 
     const result = await caller.portal.customer.createShipment(shipmentData);
-    
+
     expect(result).toBeDefined();
     expect(result.shipperName).toBe("Valid Shipper");
     expect(result.customerName).toBe("Valid Customer");
