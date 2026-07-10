@@ -837,10 +837,14 @@ export default function CustomerDashboard() {
                           {[
                             { value: 'pending_pickup', label: 'Pending Pickup' },
                             { value: 'picked_up', label: 'Picked Up' },
+                            { value: 'failed_pickup', label: 'Failed Pickup' },
                             { value: 'in_transit', label: 'In Transit' },
                             { value: 'out_for_delivery', label: 'Out for Delivery' },
                             { value: 'delivered', label: 'Delivered' },
                             { value: 'failed_delivery', label: 'Failed / Returned' },
+                            { value: 'address_issue', label: 'Address Issue' },
+                            { value: 'rescheduled', label: 'Rescheduled' },
+                            { value: 'damaged', label: 'Damaged' },
                             { value: 'on_hold', label: 'On Hold' },
                             { value: 'cancelled', label: 'Cancelled' },
                           ].map((status) => (
@@ -1438,10 +1442,14 @@ export default function CustomerDashboard() {
                             <SelectItem value="all">All Status</SelectItem>
                             <SelectItem value="pending_pickup">Pending Pickup</SelectItem>
                             <SelectItem value="picked_up">Picked Up</SelectItem>
+                            <SelectItem value="failed_pickup">Failed Pickup</SelectItem>
                             <SelectItem value="in_transit">In Transit</SelectItem>
                             <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
                             <SelectItem value="delivered">Delivered</SelectItem>
                             <SelectItem value="failed_delivery">Failed / Returned</SelectItem>
+                            <SelectItem value="address_issue">Address Issue</SelectItem>
+                            <SelectItem value="rescheduled">Rescheduled</SelectItem>
+                            <SelectItem value="damaged">Damaged</SelectItem>
                             <SelectItem value="cancelled">Cancelled</SelectItem>
                           </SelectContent>
                         </Select>

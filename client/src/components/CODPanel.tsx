@@ -312,6 +312,23 @@ export default function CODPanel() {
     return <span className={config.className}>{config.label}</span>;
   };
 
+  // Cash vs card: collectedMethod once collected; before that show what the shipper allows
+  const getMethodBadge = (record: any) => {
+    if (record.collectedMethod === 'card') {
+      return (
+        <div className="flex flex-col gap-0.5">
+          <span className="badge2 b-blue">Card</span>
+          {record.paymentReference && <span className="font-mono text-[10px] text-muted-foreground">{record.paymentReference}</span>}
+        </div>
+      );
+    }
+    if (record.collectedMethod === 'cash') return <span className="badge2 b-gray">Cash</span>;
+    const allowed = record.allowedMethods || 'cash';
+    if (allowed === 'card') return <span className="badge2 b-blue">Card only</span>;
+    if (allowed === 'any') return <span className="badge2 b-gray">Cash / Card</span>;
+    return <span className="badge2 b-gray">Cash</span>;
+  };
+
   const totalSelected = pendingCOD
     ? selectedCODRecords.reduce((sum, id) => {
       const record = pendingCOD.find(r => r.id === id);
@@ -554,6 +571,7 @@ export default function CODPanel() {
                                 <TableHead className="w-[50px]">Select</TableHead>
                                 <TableHead>Waybill</TableHead>
                                 <TableHead>Amount</TableHead>
+                                <TableHead>Method</TableHead>
                                 <TableHead>Collected Date</TableHead>
                               </TableRow>
                             </TableHeader>
@@ -568,6 +586,7 @@ export default function CODPanel() {
                                   </TableCell>
                                   <TableCell>{record.order.waybillNumber}</TableCell>
                                   <TableCell>{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
+                                  <TableCell>{getMethodBadge(record)}</TableCell>
                                   <TableCell>{formatDate(record.collectedDate)}</TableCell>
                                 </TableRow>
                               ))}
@@ -744,6 +763,7 @@ export default function CODPanel() {
                   <TableHead>Waybill #</TableHead>
                   <TableHead>Client</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Method</TableHead>
                   <TableHead>Collected Date</TableHead>
                   <TableHead>Remitted Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -756,6 +776,7 @@ export default function CODPanel() {
                     <TableCell className="font-medium">{record.order.waybillNumber}</TableCell>
                     <TableCell>{record.client?.companyName || 'N/A'}</TableCell>
                     <TableCell className="font-semibold">{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
+                    <TableCell>{getMethodBadge(record)}</TableCell>
                     <TableCell>{formatDate(record.collectedDate)}</TableCell>
                     <TableCell>{formatDate(record.remittedToClientDate)}</TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>

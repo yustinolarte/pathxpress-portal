@@ -38,6 +38,7 @@ export interface WaybillShipment {
   codRequired?: number;
   codAmount?: string | null;
   codCurrency?: string | null;
+  codPaymentMethod?: string | null; // 'cash' | 'card' | 'any'
   specialInstructions?: string | null;
   hideShipperAddress?: number;
   hideConsigneeAddress?: number;
@@ -86,6 +87,7 @@ function encodePackageData(shipment: WaybillShipment): string {
     kg: shipment.weight,
     s: shipment.serviceType,
     cod: shipment.codRequired === 1 ? shipment.codAmount : '0',
+    cpm: shipment.codRequired === 1 ? (shipment.codPaymentMethod || 'cash') : undefined,
     pcs: shipment.pieces,
   };
   return Buffer.from(JSON.stringify(data)).toString('base64');
@@ -356,7 +358,11 @@ export async function renderWaybillPdf(shipment: WaybillShipment): Promise<Buffe
     pdf.setFontSize(6);
     pdf.setFont('helvetica', 'bold');
     pdf.setTextColor(white);
-    pdf.text('COD', margin + colWidth * 3 + colWidth / 2, y + 4, { align: 'center' });
+    // Driver + receiver must see at the door how payment is accepted
+    const codLabel = shipment.codPaymentMethod === 'card' ? 'COD CARD ONLY'
+      : shipment.codPaymentMethod === 'any' ? 'COD CASH/CARD'
+        : 'COD';
+    pdf.text(codLabel, margin + colWidth * 3 + colWidth / 2, y + 4, { align: 'center' });
     pdf.setFontSize(9);
     const codAmount = parseFloat(shipment.codAmount).toFixed(0);
     pdf.text(`${codAmount}`, margin + colWidth * 3 + colWidth / 2, y + 11, { align: 'center' });

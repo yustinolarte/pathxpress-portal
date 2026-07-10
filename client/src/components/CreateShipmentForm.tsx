@@ -64,12 +64,17 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     codRequired: 0,
     codAmount: '',
     codCurrency: 'AED',
+    codPaymentMethod: 'cash' as 'cash' | 'card' | 'any',
     fitOnDelivery: 0,
   });
 
   const [calculatedRate, setCalculatedRate] = useState<any>(null);
   const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
+  const [codCardFee, setCodCardFee] = useState<number>(0);
   const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
+  // Optional shipper (pickup) pin — improves route optimization for pickup legs
+  const [shipperPickedLocation, setShipperPickedLocation] = useState<PickedLocation | null>(null);
+  const [showShipperMap, setShowShipperMap] = useState(false);
   const [locationError, setLocationError] = useState(false);
   const consigneeSearchRef = useRef<HTMLInputElement>(null);
 
@@ -165,8 +170,20 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
   });
 
   const calculateCODMutation = trpc.portal.rates.calculateCOD.useMutation({
-    onSuccess: (data) => setCalculatedCODFee(data.fee),
+    onSuccess: (data) => {
+      setCalculatedCODFee(data.cashFee ?? data.fee);
+      setCodCardFee(data.cardFee ?? data.fee);
+    },
   });
+
+  const cardOnDeliveryAllowed = clientSettings?.cardOnDeliveryAllowed === 1;
+
+  // Fee shown depends on how the consignee is allowed to pay; 'any' shows the
+  // worst case since the outcome is decided at the door
+  const effectiveCODFee = formData.codRequired !== 1 ? 0
+    : formData.codPaymentMethod === 'card' ? codCardFee
+      : formData.codPaymentMethod === 'any' ? Math.max(calculatedCODFee, codCardFee)
+        : calculatedCODFee;
 
   // Rates calculation effect
   useEffect(() => {
@@ -204,6 +221,8 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     onSuccess: () => {
       toast.success('Shipment created successfully!');
       setPickedLocation(null);
+      setShipperPickedLocation(null);
+      setShowShipperMap(false);
       onSuccess();
     },
     onError: (error) => {
@@ -270,10 +289,13 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
         codRequired: formData.codRequired,
         codAmount: formData.codRequired === 1 ? formData.codAmount : undefined,
         codCurrency: formData.codCurrency,
+        codPaymentMethod: formData.codRequired === 1 ? formData.codPaymentMethod : undefined,
         fitOnDelivery: formData.fitOnDelivery,
 
         latitude: pickedLocation?.latitude,
         longitude: pickedLocation?.longitude,
+        shipperLat: shipperPickedLocation?.latitude,
+        shipperLng: shipperPickedLocation?.longitude,
 
         preferredDeliveryDate: (selectedService === 'PREFERRED_TIME' || selectedService === 'PREFERRED_TIME_SDD') ? preferredDate : undefined,
         preferredDeliveryTime: (selectedService === 'PREFERRED_TIME' || selectedService === 'PREFERRED_TIME_SDD') ? preferredTime : undefined,
@@ -327,7 +349,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
           isSubmitting={createMutation.isPending}
           codRequired={formData.codRequired}
           codAmount={formData.codAmount}
-          calculatedCODFee={calculatedCODFee}
+          calculatedCODFee={effectiveCODFee}
           fitOnDelivery={formData.fitOnDelivery}
           fodFee={clientSettings?.fodFee ? Number(clientSettings.fodFee) : 5.00}
           shipperName={formData.shipperName}
@@ -428,6 +450,23 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                       {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
+                </div>
+
+                {/* Optional pickup pin — helps the driver find the exact pickup spot */}
+                <div className="md:col-span-2 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowShipperMap(v => !v)}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    {showShipperMap ? '− Ocultar mapa de recogida' : '+ Ubicación de recogida en el mapa (opcional)'}
+                  </button>
+                  {showShipperMap && (
+                    <LocationPicker onLocationPicked={setShipperPickedLocation} />
+                  )}
+                  {shipperPickedLocation && (
+                    <p className="text-xs text-[var(--st-green)]">Pin de recogida listo.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -613,11 +652,42 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
               </div>
 
               {formData.codRequired === 1 && (
-                <div className="pl-8 -mt-2 animate-in fade-in slide-in-from-top-2">
-                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">COD Amount to Collect</label>
-                  <div className="relative">
-                    <input className={`${inputClass} pl-12 text-lg font-bold h-12`} placeholder="0.00" type="text" inputMode="decimal" required value={formData.codAmount} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); setFormData({...formData, codAmount: v}); }} />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">AED</span>
+                <div className="pl-8 -mt-2 animate-in fade-in slide-in-from-top-2 space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">COD Amount to Collect</label>
+                    <div className="relative">
+                      <input className={`${inputClass} pl-12 text-lg font-bold h-12`} placeholder="0.00" type="text" inputMode="decimal" required value={formData.codAmount} onChange={e => { const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'); setFormData({...formData, codAmount: v}); }} />
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">AED</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">How can the receiver pay?</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <label className={`flex flex-col p-3 border rounded-lg cursor-pointer transition-colors ${formData.codPaymentMethod === 'cash' ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
+                        <div className="flex items-center gap-2">
+                          <input className="text-primary focus:ring-primary w-3.5 h-3.5 rounded-full border border-primary bg-transparent" name="cod_payment_method" type="radio" checked={formData.codPaymentMethod === 'cash'} onChange={() => setFormData({ ...formData, codPaymentMethod: 'cash' })} />
+                          <span className="font-bold text-sm">Cash</span>
+                        </div>
+                        {calculatedCODFee > 0 && <span className="text-[11px] text-muted-foreground mt-1">Fee: {calculatedCODFee.toFixed(2)} AED</span>}
+                      </label>
+
+                      <label className={`flex flex-col p-3 border rounded-lg transition-colors ${!cardOnDeliveryAllowed ? 'opacity-50 cursor-not-allowed' : formData.codPaymentMethod === 'card' ? 'border-primary bg-primary/10 cursor-pointer' : 'border-border hover:bg-muted cursor-pointer'}`}>
+                        <div className="flex items-center gap-2">
+                          <input className="text-primary focus:ring-primary w-3.5 h-3.5 rounded-full border border-primary bg-transparent" name="cod_payment_method" type="radio" disabled={!cardOnDeliveryAllowed} checked={formData.codPaymentMethod === 'card'} onChange={() => setFormData({ ...formData, codPaymentMethod: 'card' })} />
+                          <span className="font-bold text-sm">Card</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground mt-1">{cardOnDeliveryAllowed ? (codCardFee > 0 ? `Fee: ${codCardFee.toFixed(2)} AED — Tap to Pay` : 'Tap to Pay on driver’s phone') : 'Not enabled for your account'}</span>
+                      </label>
+
+                      <label className={`flex flex-col p-3 border rounded-lg transition-colors ${!cardOnDeliveryAllowed ? 'opacity-50 cursor-not-allowed' : formData.codPaymentMethod === 'any' ? 'border-primary bg-primary/10 cursor-pointer' : 'border-border hover:bg-muted cursor-pointer'}`}>
+                        <div className="flex items-center gap-2">
+                          <input className="text-primary focus:ring-primary w-3.5 h-3.5 rounded-full border border-primary bg-transparent" name="cod_payment_method" type="radio" disabled={!cardOnDeliveryAllowed} checked={formData.codPaymentMethod === 'any'} onChange={() => setFormData({ ...formData, codPaymentMethod: 'any' })} />
+                          <span className="font-bold text-sm">Cash or Card</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground mt-1">{cardOnDeliveryAllowed ? 'Receiver decides at the door' : 'Not enabled for your account'}</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
@@ -642,10 +712,14 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
               Order Summary
             </p>
             <div className="space-y-3 text-sm relative z-10">
-              {calculatedCODFee > 0 && (
+              {effectiveCODFee > 0 && (
                 <div className="flex justify-between">
-                  <span className="opacity-70">COD Handling</span>
-                  <span className="font-medium">{calculatedCODFee.toFixed(2)} AED</span>
+                  <span className="opacity-70">
+                    {formData.codPaymentMethod === 'card' ? 'Card on Delivery Handling'
+                      : formData.codPaymentMethod === 'any' ? 'COD Handling (up to)'
+                        : 'COD Handling'}
+                  </span>
+                  <span className="font-medium">{effectiveCODFee.toFixed(2)} AED</span>
                 </div>
               )}
               {formData.fitOnDelivery === 1 && (

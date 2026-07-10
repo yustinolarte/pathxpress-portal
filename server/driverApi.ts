@@ -5,8 +5,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, and } from 'drizzle-orm';
-import { getDb } from './db';
+import { eq, and, inArray } from 'drizzle-orm';
+import { getDb, calculateCODFeeByMethod } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
 import { extractDeliveryPhotoBase64s, getProofPhotoUrls } from '../shared/podPhotos';
@@ -304,6 +304,7 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 // COD info (only relevant for delivery)
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+                codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
 
                 // Status
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',
@@ -493,6 +494,7 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 })(),
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+                codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',
                 proofPhotoUrl: item.routeOrder.proofPhotoUrl,
                 proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
@@ -651,6 +653,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
             customerPhone: order.customerPhone,
             address: order.address,
             codAmount: order.codAmount ? parseFloat(order.codAmount) : 0,
+            codPaymentMethod: order.codRequired === 1 ? (order.codPaymentMethod || 'cash') : null,
             type: order.codRequired === 1 ? 'COD' : 'PREPAID',
             weight: order.weight,
             routeId: routeId
@@ -664,7 +667,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
 router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { status, notes, collectedAmount, deliveredLat, deliveredLng } = req.body;
+        const { status, notes, collectedAmount, collectedMethod, paymentReference, deliveredLat, deliveredLng } = req.body;
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
@@ -693,6 +696,25 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
         const stopType = routeOrder.routeOrder.type || 'delivery';
         const isPickup = stopType === 'pickup';
         const statusLower = status.toLowerCase();
+
+        // CCOD validation — must pass before any writes so a failed card
+        // collection can never mark the stop delivered
+        const isCodDelivery = !isPickup && statusLower === 'delivered' && !!routeOrder.order.codRequired;
+        const allowedCodMethods = routeOrder.order.codPaymentMethod || 'cash'; // legacy COD rows = cash
+        const codMethod: 'cash' | 'card' = collectedMethod === 'card' ? 'card'
+            : collectedMethod === 'cash' ? 'cash'
+                : allowedCodMethods === 'card' ? 'card' : 'cash';
+        if (isCodDelivery) {
+            if (codMethod === 'cash' && allowedCodMethods === 'card') {
+                return res.status(400).json({ error: 'This shipment is Card on Delivery only — cash is not accepted' });
+            }
+            if (codMethod === 'card' && allowedCodMethods === 'cash') {
+                return res.status(400).json({ error: 'This shipment accepts cash only — card is not enabled for it' });
+            }
+            if (codMethod === 'card' && !paymentReference) {
+                return res.status(400).json({ error: 'Payment reference is required for card collection' });
+            }
+        }
 
         const [photoUrl, photoUrl2] = await resolveDeliveryPhotoUrls(
             req.body,
@@ -850,6 +872,19 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             // Use collectedAmount from request if available, otherwise fallback to expected amount
             const finalCodAmount = collectedAmount?.toString() || routeOrder.order.codAmount || '0';
 
+            // Freeze the fee at collection time, per the method actually used
+            const feeAmount = (
+                await calculateCODFeeByMethod(parseFloat(finalCodAmount) || 0, routeOrder.order.clientId, codMethod)
+            ).toFixed(2);
+            const collectionData = {
+                status: 'collected' as const,
+                collectedDate: new Date(),
+                codAmount: finalCodAmount,
+                collectedMethod: codMethod,
+                paymentReference: codMethod === 'card' ? paymentReference.toString() : null,
+                feeAmount,
+            };
+
             const [existingCod] = await db
                 .select()
                 .from(codRecords)
@@ -859,19 +894,14 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             if (existingCod) {
                 await db
                     .update(codRecords)
-                    .set({
-                        status: 'collected',
-                        collectedDate: new Date(),
-                        codAmount: finalCodAmount
-                    })
+                    .set(collectionData)
                     .where(eq(codRecords.id, existingCod.id));
             } else {
                 await db.insert(codRecords).values({
                     shipmentId: routeOrder.order.id,
-                    codAmount: finalCodAmount,
                     codCurrency: routeOrder.order.codCurrency || 'AED',
-                    status: 'collected',
-                    collectedDate: new Date(),
+                    allowedMethods: allowedCodMethods,
+                    ...collectionData,
                 });
             }
         }
@@ -919,13 +949,19 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             return res.status(403).json({ error: 'Access denied' });
         }
 
+        const statusLower = status.toLowerCase();
+
+        // Legacy endpoint only supports cash — block card-only shipments before any writes
+        if (statusLower === 'delivered' && routeOrder.order.codRequired && routeOrder.order.codPaymentMethod === 'card') {
+            return res.status(400).json({ error: 'This shipment is Card on Delivery — please update the driver app to collect card payments' });
+        }
+
         const [photoUrl, photoUrl2] = await resolveDeliveryPhotoUrls(
             req.body,
             routeOrder.routeOrder.proofPhotoUrl,
             routeOrder.routeOrder.proofPhotoUrl2,
         );
 
-        const statusLower = status.toLowerCase();
         const updateData: Record<string, unknown> = {
             status: statusLower,
             notes: notes || routeOrder.routeOrder.notes,
@@ -978,8 +1014,13 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             createdBy: 'driver',
         });
 
-        // Handle COD
+        // Handle COD — legacy endpoint only supports cash collection
         if (statusLower === 'delivered' && routeOrder.order.codRequired) {
+            const codAmount = routeOrder.order.codAmount || '0';
+            const feeAmount = (
+                await calculateCODFeeByMethod(parseFloat(codAmount) || 0, routeOrder.order.clientId, 'cash')
+            ).toFixed(2);
+
             const [existingCod] = await db
                 .select()
                 .from(codRecords)
@@ -989,15 +1030,18 @@ router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverReq
             if (existingCod) {
                 await db
                     .update(codRecords)
-                    .set({ status: 'collected', collectedDate: new Date() })
+                    .set({ status: 'collected', collectedDate: new Date(), collectedMethod: 'cash', feeAmount })
                     .where(eq(codRecords.id, existingCod.id));
             } else {
                 await db.insert(codRecords).values({
                     shipmentId: routeOrder.order.id,
-                    codAmount: routeOrder.order.codAmount || '0',
+                    codAmount,
                     codCurrency: routeOrder.order.codCurrency || 'AED',
+                    allowedMethods: routeOrder.order.codPaymentMethod || 'cash',
                     status: 'collected',
                     collectedDate: new Date(),
+                    collectedMethod: 'cash',
+                    feeAmount,
                 });
             }
         }
@@ -1271,6 +1315,7 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
                 totalExpected: 0,
                 totalCollected: 0,
                 discrepancy: 0,
+                cardCollected: 0,
                 orders: []
             });
         }
@@ -1292,19 +1337,35 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
         // Filter for COD orders
         const codStops = driverStops.filter(s => s.order.codRequired === 1);
 
-        let totalExpected = 0;
-        let totalCollected = 0;
+        // Collection method lives on codRecords — card payments are charged on
+        // the driver's phone and must stay out of the cash reconciliation
+        const shipmentIds = codStops.map(s => s.order.id);
+        const codRecordRows = shipmentIds.length > 0
+            ? await db.select().from(codRecords).where(inArray(codRecords.shipmentId, shipmentIds))
+            : [];
+        const codRecordByShipment = new Map(codRecordRows.map(r => [r.shipmentId, r]));
+
+        let totalExpected = 0;   // cash the driver should have in hand
+        let totalCollected = 0;  // cash actually reported
+        let cardCollected = 0;   // charged by card — never passes through the driver
 
         const codOrders = codStops.map(s => {
             const expected = parseFloat(s.order.codAmount || '0');
             const collected = s.routeOrder.collectedAmount ? parseFloat(s.routeOrder.collectedAmount) : 0;
             const status = s.routeOrder.status?.toLowerCase();
             const isDelivered = status === 'delivered';
+            const codRecord = codRecordByShipment.get(s.order.id);
+            const paymentMethod = codRecord?.collectedMethod
+                || (isDelivered ? 'cash' : (s.order.codPaymentMethod || 'cash'));
 
-            // Only count towards total if delivered
+            // Only count towards totals if delivered; card stays out of the cash discrepancy
             if (isDelivered) {
-                totalExpected += expected;
-                totalCollected += collected;
+                if (paymentMethod === 'card') {
+                    cardCollected += collected || expected;
+                } else {
+                    totalExpected += expected;
+                    totalCollected += collected;
+                }
             }
 
             return {
@@ -1313,6 +1374,8 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
                 customerName: s.order.customerName,
                 expectedAmount: expected,
                 collectedAmount: collected,
+                paymentMethod,
+                paymentReference: codRecord?.paymentReference || null,
                 status: status, // delivered, returned, etc.
                 isDelivered
             };
@@ -1322,6 +1385,7 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
             totalExpected,
             totalCollected,
             discrepancy: totalCollected - totalExpected,
+            cardCollected,
             orders: codOrders
         });
 

@@ -106,6 +106,16 @@ export default function CustomerCODPanel() {
     return <span className={config.className}>{config.label}</span>;
   };
 
+  // Cash vs card: how it was actually collected, or what the shipment allows while pending
+  const getMethodBadge = (record: any) => {
+    if (record.collectedMethod === 'card') return <span className="badge2 b-blue">Card</span>;
+    if (record.collectedMethod === 'cash') return <span className="badge2 b-gray">Cash</span>;
+    const allowed = record.allowedMethods || 'cash';
+    if (allowed === 'card') return <span className="badge2 b-blue">Card only</span>;
+    if (allowed === 'any') return <span className="badge2 b-gray">Cash / Card</span>;
+    return <span className="badge2 b-gray">Cash</span>;
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -325,6 +335,7 @@ export default function CustomerCODPanel() {
                   <TableHead className="font-semibold text-muted-foreground">Waybill #</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Customer</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Amount</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Payment</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Collected Date</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Remitted Date</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
@@ -343,6 +354,7 @@ export default function CustomerCODPanel() {
                     </TableCell>
                     <TableCell className="font-medium text-foreground">{record.order.customerName}</TableCell>
                     <TableCell className="font-black text-foreground">{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
+                    <TableCell>{getMethodBadge(record)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(record.collectedDate)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(record.remittedToClientDate)}</TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>

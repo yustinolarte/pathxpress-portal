@@ -45,6 +45,7 @@ export const appRouter = router({
             pieces: 1,
             codAmount: null,
             codCurrency: null,
+            codPaymentMethod: null,
             updatedAt: shipment.updatedAt,
             trackingEvents: [],
           };
@@ -73,6 +74,7 @@ export const appRouter = router({
           pieces: order.pieces,
           codAmount: order.codAmount,
           codCurrency: order.codCurrency,
+          codPaymentMethod: order.codRequired === 1 ? (order.codPaymentMethod || 'cash') : null,
 
           updatedAt: order.updatedAt,
           trackingEvents,

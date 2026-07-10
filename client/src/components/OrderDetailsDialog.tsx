@@ -86,6 +86,13 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                             <p className="font-display text-[22px] font-bold leading-none tracking-tight">
                                 {order.codRequired ? `${order.codAmount} ${order.codCurrency || 'AED'}` : '—'}
                             </p>
+                            {!!order.codRequired && (
+                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mt-1.5">
+                                    {order.codPaymentMethod === 'card' ? 'Card only (Tap to Pay)'
+                                        : order.codPaymentMethod === 'any' ? 'Cash or Card'
+                                            : 'Cash'}
+                                </p>
+                            )}
                         </div>
                     </div>
 

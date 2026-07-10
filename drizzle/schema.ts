@@ -122,6 +122,12 @@ export const clientAccounts = mysqlTable("clientAccounts", {
 
   codMinFee: varchar("codMinFee", { length: 50 }), // Custom min COD fee (null = use default)
   codMaxFee: varchar("codMaxFee", { length: 50 }), // Custom max COD fee (null = use default)
+
+  // Card on Delivery (CCOD) — driver's phone acts as Tap to Pay terminal
+  cardOnDeliveryAllowed: int("cardOnDeliveryAllowed").default(0).notNull(), // 0 = no, 1 = yes
+  cardFeePercent: varchar("cardFeePercent", { length: 50 }), // Custom CCOD percentage (null = use default)
+  cardMinFee: varchar("cardMinFee", { length: 50 }), // Custom min CCOD fee (null = use default)
+  cardMaxFee: varchar("cardMaxFee", { length: 50 }), // Custom max CCOD fee (null = use default)
   defaultRateTableId: int("defaultRateTableId"),
   manualRateTierId: int("manualRateTierId"), // Admin-assigned rate tier (overrides automatic volume calculation)
 
@@ -218,6 +224,8 @@ export const orders = mysqlTable("orders", {
   codRequired: int("codRequired").default(0).notNull(), // 0 = no, 1 = yes
   codAmount: varchar("codAmount", { length: 50 }),
   codCurrency: varchar("codCurrency", { length: 10 }),
+  // 'cash' | 'card' | 'any' — methods the shipper accepts at the door (null when no COD; legacy COD rows = cash)
+  codPaymentMethod: varchar("codPaymentMethod", { length: 10 }),
 
   // Fit on Delivery service
   fitOnDelivery: int("fitOnDelivery").default(0).notNull(), // 0 = no, 1 = yes
@@ -234,6 +242,11 @@ export const orders = mysqlTable("orders", {
   // Route optimization data
   latitude: varchar("latitude", { length: 50 }),
   longitude: varchar("longitude", { length: 50 }),
+  // 'exact' = pin/bot/import, 'approximate' = server geocode of the written address, 'none' = no coords
+  locationAccuracy: varchar("locationAccuracy", { length: 20 }).default("none").notNull(),
+  // Shipper (pickup) coordinates — pickup stops happen at the shipper, not the consignee
+  shipperLat: varchar("shipperLat", { length: 50 }),
+  shipperLng: varchar("shipperLng", { length: 50 }),
   timeWindowStart: varchar("timeWindowStart", { length: 20 }),
   timeWindowEnd: varchar("timeWindowEnd", { length: 20 }),
   priorityLevel: int("priorityLevel").default(1),
@@ -391,6 +404,11 @@ export const codRecords = mysqlTable("codRecords", {
   shipmentId: int("shipmentId").notNull(), // Foreign key to orders
   codAmount: varchar("codAmount", { length: 50 }).notNull(),
   codCurrency: varchar("codCurrency", { length: 10 }).notNull(),
+  // Intent vs outcome: allowedMethods is what the shipper accepts; collectedMethod is how the consignee actually paid
+  allowedMethods: varchar("allowedMethods", { length: 10 }).default("cash").notNull(), // 'cash' | 'card' | 'any'
+  collectedMethod: varchar("collectedMethod", { length: 10 }), // 'cash' | 'card' — set at collection
+  paymentReference: varchar("paymentReference", { length: 100 }), // Tap to Pay transaction ref — required when collectedMethod = 'card'
+  feeAmount: varchar("feeAmount", { length: 50 }), // COD/CCOD fee frozen at collection time (per actual method)
   collectedDate: timestamp("collectedDate"),
   remittedToClientDate: timestamp("remittedToClientDate"),
   status: mysqlEnum("status", ["pending_collection", "collected", "remitted", "disputed", "cancelled"]).default("pending_collection").notNull(),

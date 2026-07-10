@@ -172,6 +172,13 @@ export default function Tracking() {
                             <span className="text-xs uppercase font-medium">COD Amount</span>
                           </div>
                           <p className="font-semibold text-lg">{shipment.codAmount ? `${shipment.codAmount} ${shipment.codCurrency}` : 'N/A'}</p>
+                          {shipment.codAmount && (shipment as any).codPaymentMethod && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {(shipment as any).codPaymentMethod === 'card' ? 'Pay by card at the door (Tap to Pay)'
+                                : (shipment as any).codPaymentMethod === 'any' ? 'Pay by cash or card at the door'
+                                  : 'Pay by cash at the door'}
+                            </p>
+                          )}
                         </div>
                       </div>
 

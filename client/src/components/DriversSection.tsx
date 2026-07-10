@@ -22,12 +22,18 @@ import {
     Hash, Calendar, Building2, FileText, CheckCircle2, Loader2,
     DollarSign, RotateCcw, Weight, Boxes, UserPlus, QrCode,
     TrendingUp, BarChart2, Search, Filter, ChevronRight, Star,
-    Activity, Download
+    Activity, Download, ChevronUp, ChevronDown, ListOrdered, MapPinOff
 } from 'lucide-react';
 import CreateRouteWizard from '@/components/CreateRouteWizard';
-import OrderPickList, { type SelectedOrder } from '@/components/OrderPickList';
+import OrderPickList, { type SelectedOrder, type OrderMode } from '@/components/OrderPickList';
 import { OrdersMap } from '@/components/OrdersMap';
 import type { MapPoint, PinKind } from '@/components/OrdersMap';
+import DispatchFilters from '@/components/DispatchFilters';
+import SetLocationDialog from '@/components/SetLocationDialog';
+import {
+    type DispatchFilterState, EMPTY_DISPATCH_FILTERS, filterAvailableOrders,
+    distinctEmirates, distinctStatuses,
+} from '@/lib/orderFilters';
 import { getProofPhotoUrls } from '@shared/podPhotos';
 
 // Dubai zone presets
@@ -62,7 +68,7 @@ const ZONE_OPTIONS = [
 export default function DriversSection() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [routesView, setRoutesView] = useState<'list' | 'map'>('list');
-    const [dispatchSelectedIds, setDispatchSelectedIds] = useState<number[]>([]);
+    const [dispatchSelected, setDispatchSelected] = useState<SelectedOrder[]>([]);
     const [preloadedOrdersForWizard, setPreloadedOrdersForWizard] = useState<Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>>([]);
     const [routeDetailsTab, setRouteDetailsTab] = useState<'list' | 'map'>('list');
 
@@ -88,6 +94,14 @@ export default function DriversSection() {
     const [routeFilterDriver, setRouteFilterDriver] = useState('');
     const [deliveryFilterStatus, setDeliveryFilterStatus] = useState('all');
     const [deliveryFilterWaybill, setDeliveryFilterWaybill] = useState('');
+    const [dispatchFilters, setDispatchFilters] = useState<DispatchFilterState>({ ...EMPTY_DISPATCH_FILTERS });
+
+    // "Ubicar" dialog target (order without / with wrong coordinates)
+    const [locateOrder, setLocateOrder] = useState<any | null>(null);
+
+    // Manual stop reordering in route details
+    const [reorderMode, setReorderMode] = useState(false);
+    const [reorderStops, setReorderStops] = useState<any[]>([]);
 
     // Forms
     const [newDriver, setNewDriver] = useState({
@@ -244,6 +258,32 @@ export default function DriversSection() {
     const optimizeRouteMutation = trpc.portal.drivers.optimizeRoute.useMutation({
         onSuccess: (data) => {
             toast.success(`Ruta optimizada — ${data.optimized} paradas reordenadas`);
+            refetchRouteDetails();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
+    const { data: geoCaps } = trpc.portal.drivers.getGeoCapabilities.useQuery(undefined, {
+        enabled: routesView === 'map',
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const geocodePendingMutation = trpc.portal.drivers.geocodePendingOrders.useMutation({
+        onSuccess: (data) => {
+            if (data.geocoded > 0) {
+                toast.success(`${data.geocoded} pedido${data.geocoded !== 1 ? 's' : ''} ubicado${data.geocoded !== 1 ? 's' : ''} — ${data.remaining} restante${data.remaining !== 1 ? 's' : ''}`);
+            } else {
+                toast.info(`Sin resultados en este lote — ${data.remaining} pendiente${data.remaining !== 1 ? 's' : ''} (direcciones muy imprecisas: usar "Ubicar" manual)`);
+            }
+            refetchAvailableOrders();
+        },
+        onError: (error) => toast.error(error.message),
+    });
+
+    const reorderStopsMutation = trpc.portal.drivers.reorderRouteStops.useMutation({
+        onSuccess: () => {
+            toast.success('Secuencia guardada');
+            setReorderMode(false);
             refetchRouteDetails();
         },
         onError: (error) => toast.error(error.message),
@@ -540,13 +580,19 @@ export default function DriversSection() {
                         <CardContent className="space-y-4">
                             {/* Dispatch Map view */}
                             {routesView === 'map' && (() => {
-                                const availableWithCoords = (availableOrders || []).filter((o: any) => o.latitude && o.longitude);
-                                const dispatchPoints: MapPoint[] = availableWithCoords.map((o: any) => ({
+                                const allAvailable = (availableOrders as any[] | undefined) || [];
+                                const filtered = filterAvailableOrders(allAvailable, dispatchFilters);
+                                const withCoords = filtered.filter((o: any) => o.latitude && o.longitude);
+                                const withoutCoords = filtered.filter((o: any) => !o.latitude || !o.longitude);
+                                const byId = new Map(allAvailable.map((o: any) => [o.id, o]));
+                                const dispatchPoints: MapPoint[] = withCoords.map((o: any) => ({
                                     id: o.id,
                                     lat: parseFloat(o.latitude),
                                     lng: parseFloat(o.longitude),
                                     label: o.waybillNumber || String(o.id),
-                                    kind: dispatchSelectedIds.includes(o.id) ? 'selected' : 'available',
+                                    kind: dispatchSelected.some(s => s.id === o.id) ? 'selected' : 'available',
+                                    status: o.status,
+                                    accuracy: o.locationAccuracy,
                                     details: {
                                         customerName: o.customerName,
                                         address: o.address,
@@ -561,20 +607,28 @@ export default function DriversSection() {
                                 }));
                                 return (
                                     <div className="space-y-3">
-                                        {dispatchSelectedIds.length > 0 && (
+                                        <DispatchFilters
+                                            value={dispatchFilters}
+                                            onChange={setDispatchFilters}
+                                            statuses={distinctStatuses(allAvailable)}
+                                            emirates={distinctEmirates(allAvailable)}
+                                            shown={filtered.length}
+                                            total={allAvailable.length}
+                                        />
+                                        {dispatchSelected.length > 0 && (
                                             <div className="flex items-center justify-between p-3 rounded-lg bg-primary/10 border border-border">
                                                 <span className="text-sm text-primary font-medium">
-                                                    {dispatchSelectedIds.length} orden{dispatchSelectedIds.length > 1 ? 'es' : ''} seleccionada{dispatchSelectedIds.length > 1 ? 's' : ''}
+                                                    {dispatchSelected.length} orden{dispatchSelected.length > 1 ? 'es' : ''} seleccionada{dispatchSelected.length > 1 ? 's' : ''}
                                                 </span>
                                                 <div className="flex gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => setDispatchSelectedIds([])}>
+                                                    <Button variant="outline" size="sm" onClick={() => setDispatchSelected([])}>
                                                         Limpiar
                                                     </Button>
                                                     <Button size="sm" onClick={() => {
-                                                        setPreloadedOrdersForWizard(
-                                                            dispatchSelectedIds.map(id => ({ id, mode: 'delivery_only' as const }))
-                                                        );
-                                                        setDispatchSelectedIds([]);
+                                                        // Each card below lets the admin pick the stop mode;
+                                                        // the wizard receives exactly what was chosen.
+                                                        setPreloadedOrdersForWizard([...dispatchSelected]);
+                                                        setDispatchSelected([]);
                                                         setCreateRouteWizardOpen(true);
                                                     }}>
                                                         <Plus className="w-3.5 h-3.5 mr-1.5" />
@@ -583,25 +637,166 @@ export default function DriversSection() {
                                                 </div>
                                             </div>
                                         )}
-                                        {availableWithCoords.length === 0 ? (
-                                            <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-                                                <MapPin className="w-8 h-8 opacity-30" />
-                                                <p className="text-sm">No hay pedidos disponibles con coordenadas</p>
+                                        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+                                            <div className="min-w-0">
+                                                {withCoords.length === 0 ? (
+                                                    <div className="flex flex-col items-center justify-center h-[520px] gap-2 text-muted-foreground rounded-xl border border-border">
+                                                        <MapPin className="w-8 h-8 opacity-30" />
+                                                        <p className="text-sm">Ningún pedido filtrado tiene coordenadas</p>
+                                                        <p className="text-xs">Usa "Ubicar" en el panel para ponerles pin</p>
+                                                    </div>
+                                                ) : (
+                                                    <OrdersMap
+                                                        points={dispatchPoints}
+                                                        onPointClick={(id) => {
+                                                            setDispatchSelected(prev => {
+                                                                if (prev.some(s => s.id === id)) return prev.filter(s => s.id !== id);
+                                                                const o = byId.get(id);
+                                                                return [...prev, { id, mode: (o?.defaultMode ?? 'delivery_only') as OrderMode }];
+                                                            });
+                                                        }}
+                                                        onEditLocation={(id) => {
+                                                            const o = byId.get(id);
+                                                            if (o) setLocateOrder(o);
+                                                        }}
+                                                        className="h-[520px]"
+                                                    />
+                                                )}
+                                                <p className="text-xs text-muted-foreground text-center mt-2">
+                                                    Clic en un pin para seleccionarlo (✓). Color = estado del pedido · borde punteado = ubicación aproximada (geocodificada).
+                                                </p>
                                             </div>
-                                        ) : (
-                                            <OrdersMap
-                                                points={dispatchPoints}
-                                                onPointClick={(id) => {
-                                                    setDispatchSelectedIds(prev =>
-                                                        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-                                                    );
-                                                }}
-                                                className="h-[520px]"
-                                            />
+
+                                            {/* Pedidos sin ubicación — nunca se ocultan en silencio */}
+                                            <div className="rounded-xl border border-border flex flex-col max-h-[520px] min-w-0">
+                                                <div className="p-3 border-b border-border space-y-2">
+                                                    {withoutCoords.length > 0 ? (
+                                                        <span className="badge2 b-amber">
+                                                            <MapPinOff className="w-3 h-3 mr-1" />
+                                                            {withoutCoords.length} pedido{withoutCoords.length !== 1 ? 's' : ''} sin ubicación
+                                                        </span>
+                                                    ) : (
+                                                        <span className="badge2 b-green">
+                                                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                                                            Todos los pedidos tienen ubicación
+                                                        </span>
+                                                    )}
+                                                    {geoCaps?.geocoding && withoutCoords.length > 0 && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-full h-8 text-xs"
+                                                            disabled={geocodePendingMutation.isPending}
+                                                            onClick={() => geocodePendingMutation.mutate({ limit: 25 })}
+                                                        >
+                                                            {geocodePendingMutation.isPending
+                                                                ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Geocodificando...</>
+                                                                : <><MapPin className="w-3.5 h-3.5 mr-1.5" /> Geocodificar direcciones</>}
+                                                        </Button>
+                                                    )}
+                                                    {!geoCaps?.geocoding && withoutCoords.length > 0 && (
+                                                        <p className="text-[11px] text-muted-foreground leading-snug">
+                                                            Geocodificación automática no configurada (GOOGLE_MAPS_API_KEY) — ubica manualmente con "Ubicar".
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto divide-y divide-border">
+                                                    {withoutCoords.length === 0 ? (
+                                                        <p className="text-xs text-muted-foreground text-center py-8 px-3">
+                                                            Todos los pedidos filtrados aparecen en el mapa.
+                                                        </p>
+                                                    ) : withoutCoords.map((o: any) => (
+                                                        <div key={o.id} className="p-3 space-y-1">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <span className="font-mono text-xs font-medium truncate">{o.waybillNumber}</span>
+                                                                {getStatusBadge(o.status)}
+                                                            </div>
+                                                            <p className="text-sm font-medium truncate">{o.customerName}</p>
+                                                            <p className="text-xs text-muted-foreground line-clamp-2">
+                                                                {[o.address, o.city, o.emirate].filter(Boolean).join(', ')}
+                                                            </p>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-7 text-xs w-full mt-1"
+                                                                onClick={() => setLocateOrder(o)}
+                                                            >
+                                                                <MapPin className="w-3 h-3 mr-1" /> Ubicar
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Tarjetas de pedidos seleccionados — tipo de parada por pedido */}
+                                        {dispatchSelected.length > 0 && (
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                                    Seleccionados para la ruta ({dispatchSelected.length})
+                                                </p>
+                                                <div className="grid gap-2 md:grid-cols-2">
+                                                    {dispatchSelected.map((sel) => {
+                                                        const o = byId.get(sel.id);
+                                                        if (!o) return null;
+                                                        const canPickup = o.canPickup ?? true;
+                                                        const canDeliver = o.canDeliver ?? true;
+                                                        const canBoth = o.canBoth ?? (canPickup && canDeliver);
+                                                        const modeMeta: { mode: OrderMode; label: string; enabled: boolean }[] = [
+                                                            { mode: 'both', label: '🔄 Pickup + Entrega', enabled: canBoth },
+                                                            { mode: 'pickup_only', label: '📦 Solo Pickup', enabled: canPickup },
+                                                            { mode: 'delivery_only', label: '🚚 Solo Entrega', enabled: canDeliver },
+                                                        ];
+                                                        return (
+                                                            <div key={sel.id} className="rounded-lg border border-border bg-white/5 p-3 space-y-2">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <div className="flex items-center gap-2 min-w-0">
+                                                                        <span className="font-mono text-xs font-medium truncate">{o.waybillNumber}</span>
+                                                                        {getStatusBadge(o.status)}
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setDispatchSelected(prev => prev.filter(s => s.id !== sel.id))}
+                                                                        className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                                                                        aria-label="Quitar de la selección"
+                                                                    >
+                                                                        <XCircle className="w-4 h-4" />
+                                                                    </button>
+                                                                </div>
+                                                                <p className="text-sm font-medium truncate">{o.customerName}</p>
+                                                                <p className="text-xs text-muted-foreground truncate">
+                                                                    {[o.address, o.city].filter(Boolean).join(', ')}
+                                                                </p>
+                                                                <div className="grid grid-cols-3 gap-1.5">
+                                                                    {modeMeta.map(({ mode, label, enabled }) => {
+                                                                        const active = sel.mode === mode;
+                                                                        return (
+                                                                            <button
+                                                                                key={mode}
+                                                                                type="button"
+                                                                                disabled={!enabled}
+                                                                                onClick={() => enabled && setDispatchSelected(prev =>
+                                                                                    prev.map(s => (s.id === sel.id ? { ...s, mode } : s))
+                                                                                )}
+                                                                                className={`min-w-0 py-1.5 px-1 rounded-md text-[11px] font-semibold border transition-all text-center leading-tight ${
+                                                                                    active
+                                                                                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                                                                                        : enabled
+                                                                                        ? 'bg-background border-input hover:border-primary/50 hover:bg-muted/40'
+                                                                                        : 'bg-muted/30 border-border text-muted-foreground/40 cursor-not-allowed'
+                                                                                }`}
+                                                                            >
+                                                                                {label}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
                                         )}
-                                        <p className="text-xs text-muted-foreground text-center">
-                                            Haz clic en un pin para seleccionarlo. Los pines gris = disponibles, azul navy = seleccionados.
-                                        </p>
                                     </div>
                                 );
                             })()}
@@ -744,6 +939,7 @@ export default function DriversSection() {
                                                             title="View Details"
                                                             onClick={() => {
                                                                 setSelectedRouteId(route.id);
+                                                                setReorderMode(false);
                                                                 setRouteDetailsDialogOpen(true);
                                                             }}
                                                         >
@@ -1134,6 +1330,14 @@ export default function DriversSection() {
                 }}
             />
 
+            {/* "Ubicar" — quick pin dialog for orders without/with wrong coordinates */}
+            <SetLocationDialog
+                order={locateOrder}
+                open={!!locateOrder}
+                onOpenChange={(open) => { if (!open) setLocateOrder(null); }}
+                onSaved={() => refetchAvailableOrders()}
+            />
+
             {/* QR Code Dialog */}
             <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
                 <DialogContent className="bg-card border-border !w-[90vw] !max-w-[420px] p-0 gap-0 ">
@@ -1332,7 +1536,10 @@ export default function DriversSection() {
             </Dialog>
 
             {/* Route Details Dialog */}
-            <Dialog open={routeDetailsDialogOpen} onOpenChange={setRouteDetailsDialogOpen}>
+            <Dialog open={routeDetailsDialogOpen} onOpenChange={(open) => {
+                setRouteDetailsDialogOpen(open);
+                if (!open) setReorderMode(false);
+            }}>
                 <DialogContent className="bg-card border-border !w-[95vw] !max-w-[900px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
                     <div className="w-full h-1 bg-primary" />
 
@@ -1375,41 +1582,96 @@ export default function DriversSection() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={optimizeRouteMutation.isPending || !routeDetails?.deliveries?.length}
-                                    onClick={() => {
-                                        if (selectedRouteId) {
-                                            optimizeRouteMutation.mutate({ routeId: selectedRouteId });
-                                        }
-                                    }}
-                                    className="gap-2"
-                                >
-                                    {optimizeRouteMutation.isPending ? (
-                                        <><Loader2 className="h-4 w-4 animate-spin" /> Optimizando...</>
-                                    ) : (
-                                        <><TrendingUp className="h-4 w-4 text-[var(--st-green)]" /> Optimizar ruta</>
-                                    )}
-                                </Button>
-                                <Button onClick={() => setAddOrdersDialogOpen(true)}>
-                                    <Plus className="mr-2 h-4 w-4" /> Add Orders
-                                </Button>
+                                {reorderMode ? (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setReorderMode(false)}
+                                        >
+                                            Cancelar
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            disabled={reorderStopsMutation.isPending}
+                                            onClick={() => {
+                                                if (selectedRouteId) {
+                                                    reorderStopsMutation.mutate({
+                                                        routeId: selectedRouteId,
+                                                        stopIds: reorderStops.map((s: any) => s.id),
+                                                    });
+                                                }
+                                            }}
+                                            className="gap-2"
+                                        >
+                                            {reorderStopsMutation.isPending
+                                                ? <><Loader2 className="h-4 w-4 animate-spin" /> Guardando...</>
+                                                : <><CheckCircle2 className="h-4 w-4" /> Guardar secuencia</>}
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!routeDetails?.deliveries?.length}
+                                            onClick={() => {
+                                                setReorderStops(
+                                                    [...(routeDetails?.deliveries || [])]
+                                                        .sort((a: any, b: any) => (a.sequence ?? 0) - (b.sequence ?? 0))
+                                                );
+                                                setReorderMode(true);
+                                            }}
+                                            className="gap-2"
+                                        >
+                                            <ListOrdered className="h-4 w-4" /> Reordenar
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={optimizeRouteMutation.isPending || !routeDetails?.deliveries?.length}
+                                            onClick={() => {
+                                                if (selectedRouteId) {
+                                                    optimizeRouteMutation.mutate({ routeId: selectedRouteId });
+                                                }
+                                            }}
+                                            className="gap-2"
+                                        >
+                                            {optimizeRouteMutation.isPending ? (
+                                                <><Loader2 className="h-4 w-4 animate-spin" /> Optimizando...</>
+                                            ) : (
+                                                <><TrendingUp className="h-4 w-4 text-[var(--st-green)]" /> Optimizar ruta</>
+                                            )}
+                                        </Button>
+                                        <Button onClick={() => setAddOrdersDialogOpen(true)}>
+                                            <Plus className="mr-2 h-4 w-4" /> Add Orders
+                                        </Button>
+                                    </>
+                                )}
                             </div>
                         </div>
 
                         {/* Route map view */}
                         {routeDetailsTab === 'map' && (() => {
-                            const stopsWithCoords = (routeDetails?.deliveries || []).filter(
-                                (d: any) => d.latitude && d.longitude
-                            );
+                            // Position per leg: a pickup happens at the SHIPPER (except returns,
+                            // where the consignee pin is where the package is). Falls back to the
+                            // order pin when shipper coords are missing.
+                            const resolved = (routeDetails?.deliveries || []).map((d: any) => {
+                                const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
+                                const lat = consigneeSide ? d.latitude : (d.shipperLat || d.latitude);
+                                const lng = consigneeSide ? d.longitude : (d.shipperLng || d.longitude);
+                                return { ...d, _lat: lat, _lng: lng, _accuracy: consigneeSide ? d.locationAccuracy : null };
+                            });
+                            const stopsWithCoords = resolved.filter((d: any) => d._lat && d._lng);
+                            const stopsNoCoords = resolved.filter((d: any) => !d._lat || !d._lng);
                             const mapPoints: MapPoint[] = stopsWithCoords.map((d: any, idx: number) => ({
                                 id: d.id,
-                                lat: parseFloat(d.latitude),
-                                lng: parseFloat(d.longitude),
+                                lat: parseFloat(d._lat),
+                                lng: parseFloat(d._lng),
                                 label: d.waybillNumber || (d.sequence != null ? String(d.sequence) : String(idx + 1)),
                                 kind: (d.type === 'pickup' ? 'pickup' : 'delivery') as PinKind,
                                 sequence: d.sequence ?? idx + 1,
+                                accuracy: d._accuracy,
                                 details: {
                                     customerName: d.customerName,
                                     address: d.address,
@@ -1423,23 +1685,85 @@ export default function DriversSection() {
                                 },
                             })).sort((a: MapPoint, b: MapPoint) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
-                            return stopsWithCoords.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
-                                    <MapPin className="w-8 h-8 opacity-30" />
-                                    <p className="text-sm">No hay paradas con coordenadas en esta ruta</p>
-                                    <p className="text-xs">Agrega pedidos creados con el Location Picker para ver el mapa</p>
-                                </div>
-                            ) : (
-                                <div className="mb-4">
-                                    <OrdersMap points={mapPoints} showRoute className="h-[360px]" />
-                                    <p className="text-xs text-muted-foreground mt-2 text-center">
-                                        Verde = pickups · Azul = entregas · Número = secuencia actual
-                                    </p>
+                            return (
+                                <div className="mb-4 space-y-2">
+                                    {stopsNoCoords.length > 0 && (
+                                        <p className="text-xs px-3 py-2 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)]">
+                                            {stopsNoCoords.length} parada{stopsNoCoords.length !== 1 ? 's' : ''} sin coordenadas — se muestra{stopsNoCoords.length !== 1 ? 'n' : ''} solo en la lista:{' '}
+                                            {stopsNoCoords.map((d: any) => d.waybillNumber).filter(Boolean).join(', ')}
+                                        </p>
+                                    )}
+                                    {stopsWithCoords.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
+                                            <MapPin className="w-8 h-8 opacity-30" />
+                                            <p className="text-sm">No hay paradas con coordenadas en esta ruta</p>
+                                            <p className="text-xs">Usa "Ubicar" en el mapa de despacho para ponerles pin</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <OrdersMap points={mapPoints} showRoute className="h-[360px]" />
+                                            <p className="text-xs text-muted-foreground mt-2 text-center">
+                                                Verde = pickups (en el remitente) · Azul = entregas · Número = secuencia actual
+                                            </p>
+                                        </>
+                                    )}
                                 </div>
                             );
                         })()}
 
-                        <div className={routeDetailsTab === 'map' ? 'max-h-[250px] overflow-y-auto' : 'max-h-[450px] overflow-y-auto'}>
+                        {/* Reorder mode — compact list with up/down arrows */}
+                        {reorderMode && (
+                            <div className="max-h-[450px] overflow-y-auto space-y-1.5">
+                                {reorderStops.map((stop: any, idx: number) => (
+                                    <div key={stop.id} className="flex items-center gap-2 rounded-lg border bg-white/5 border-border px-3 py-2">
+                                        <span className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
+                                            {idx + 1}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono text-xs font-medium">{stop.waybillNumber}</span>
+                                                <span className={`text-[10px] font-bold uppercase ${stop.type === 'pickup' ? 'text-[var(--st-green)]' : 'text-[var(--st-blue)]'}`}>
+                                                    {stop.type === 'pickup' ? '📦 Pickup' : '🚚 Entrega'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                                {stop.customerName} · {stop.city}
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-col flex-shrink-0">
+                                            <button
+                                                type="button"
+                                                disabled={idx === 0}
+                                                onClick={() => setReorderStops(prev => {
+                                                    const next = [...prev];
+                                                    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                                    return next;
+                                                })}
+                                                className="p-1 rounded hover:bg-muted/50 disabled:opacity-25"
+                                                aria-label="Subir parada"
+                                            >
+                                                <ChevronUp className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={idx === reorderStops.length - 1}
+                                                onClick={() => setReorderStops(prev => {
+                                                    const next = [...prev];
+                                                    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                                    return next;
+                                                })}
+                                                className="p-1 rounded hover:bg-muted/50 disabled:opacity-25"
+                                                aria-label="Bajar parada"
+                                            >
+                                                <ChevronDown className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className={reorderMode ? 'hidden' : (routeDetailsTab === 'map' ? 'max-h-[250px] overflow-y-auto' : 'max-h-[450px] overflow-y-auto')}>
                             {routeDetails?.deliveries && routeDetails.deliveries.length > 0 ? (
                                 <div className="space-y-2">
                                     {routeDetails.deliveries.map((delivery: any) => {

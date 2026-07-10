@@ -42,6 +42,7 @@ interface Client {
     city: string;
     country: string;
     codAllowed: number;
+    cardOnDeliveryAllowed?: number;
     fodAllowed: number;
     bulletAllowed: number;
 }
@@ -64,6 +65,7 @@ export default function AdminCreateOrderDialog({
     const [overrideShipper, setOverrideShipper] = useState(false);
     const [calculatedRate, setCalculatedRate] = useState<{ baseRate: number; additionalKgCharge: number; totalRate: number; chargeableWeight?: number } | null>(null);
     const [calculatedCODFee, setCalculatedCODFee] = useState<number>(0);
+    const [codCardFee, setCodCardFee] = useState<number>(0);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -81,6 +83,7 @@ export default function AdminCreateOrderDialog({
         specialInstructions: '',
         codRequired: false,
         codAmount: '',
+        codPaymentMethod: 'cash' as 'cash' | 'card' | 'any',
         fitOnDelivery: false,
         preferredDate: '',
         preferredTime: '',
@@ -89,6 +92,9 @@ export default function AdminCreateOrderDialog({
     // Location pin state
     const [pickedLocation, setPickedLocation] = useState<PickedLocation | null>(null);
     const [locationError, setLocationError] = useState(false);
+    // Optional shipper (pickup) pin — improves route optimization for pickup legs
+    const [shipperPickedLocation, setShipperPickedLocation] = useState<PickedLocation | null>(null);
+    const [showShipperMap, setShowShipperMap] = useState(false);
     const [emirateError, setEmirateError] = useState(false);
     const consigneeSearchRef = useRef<HTMLInputElement>(null);
 
@@ -144,6 +150,7 @@ export default function AdminCreateOrderDialog({
                 specialInstructions: '',
                 codRequired: false,
                 codAmount: '',
+                codPaymentMethod: 'cash' as const,
                 fitOnDelivery: false,
                 preferredDate: '',
                 preferredTime: '',
@@ -175,8 +182,17 @@ export default function AdminCreateOrderDialog({
     });
 
     const calculateCODMutation = trpc.portal.rates.calculateCOD.useMutation({
-        onSuccess: (data) => setCalculatedCODFee(data.fee),
+        onSuccess: (data) => {
+            setCalculatedCODFee(data.cashFee ?? data.fee);
+            setCodCardFee(data.cardFee ?? data.fee);
+        },
     });
+
+    const cardOnDeliveryAllowed = selectedClient?.cardOnDeliveryAllowed === 1;
+    const effectiveCODFee = !formData.codRequired ? 0
+        : formData.codPaymentMethod === 'card' ? codCardFee
+            : formData.codPaymentMethod === 'any' ? Math.max(calculatedCODFee, codCardFee)
+                : calculatedCODFee;
 
     // Auto-calculate rate when relevant fields change
     useEffect(() => {
@@ -268,9 +284,12 @@ export default function AdminCreateOrderDialog({
                 codRequired: formData.codRequired ? 1 : 0,
                 codAmount: formData.codRequired ? formData.codAmount : undefined,
                 codCurrency: 'AED',
+                codPaymentMethod: formData.codRequired ? formData.codPaymentMethod : undefined,
                 fitOnDelivery: formData.fitOnDelivery ? 1 : 0,
                 latitude: pickedLocation?.latitude,
                 longitude: pickedLocation?.longitude,
+                shipperLat: shipperPickedLocation?.latitude,
+                shipperLng: shipperPickedLocation?.longitude,
                 preferredDeliveryDate: isPreferredTimeService(formData.serviceType) ? formData.preferredDate : undefined,
                 preferredDeliveryTime: isPreferredTimeService(formData.serviceType) ? formData.preferredTime : undefined,
                 // Shipper override fields
@@ -414,6 +433,23 @@ export default function AdminCreateOrderDialog({
                                                 </div>
                                             </div>
                                         )}
+
+                                        {/* Optional pickup pin — used by route optimization for pickup stops */}
+                                        <div className="mt-4 space-y-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowShipperMap(v => !v)}
+                                                className="text-xs font-medium text-primary hover:underline"
+                                            >
+                                                {showShipperMap ? '− Ocultar mapa de recogida' : '+ Ubicación de recogida en el mapa (opcional)'}
+                                            </button>
+                                            {showShipperMap && (
+                                                <LocationPicker onLocationPicked={setShipperPickedLocation} />
+                                            )}
+                                            {shipperPickedLocation && (
+                                                <p className="text-xs text-[var(--st-green)]">Pin de recogida listo.</p>
+                                            )}
+                                        </div>
                                     </div>
                                 </section>
 
@@ -592,10 +628,31 @@ export default function AdminCreateOrderDialog({
                                             </label>
 
                                             {formData.codRequired && (
-                                                <div className="pl-8 -mt-2 animate-in fade-in slide-in-from-top-2">
+                                                <div className="pl-8 -mt-2 animate-in fade-in slide-in-from-top-2 space-y-3">
                                                     <div className="relative">
                                                         <input className="w-full rounded-lg border border-input bg-background pl-12 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50 h-10 font-bold" placeholder="0.00" type="number" step="0.01" required value={formData.codAmount} onChange={e => setFormData({...formData, codAmount: e.target.value})} />
                                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">AED</span>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">Receiver pays with</label>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            {([
+                                                                { value: 'cash', label: 'Cash', hint: calculatedCODFee > 0 ? `${calculatedCODFee.toFixed(2)} AED fee` : '' },
+                                                                { value: 'card', label: 'Card', hint: cardOnDeliveryAllowed ? (codCardFee > 0 ? `${codCardFee.toFixed(2)} AED fee` : 'Tap to Pay') : 'Not allowed' },
+                                                                { value: 'any', label: 'Cash or Card', hint: cardOnDeliveryAllowed ? 'Decided at door' : 'Not allowed' },
+                                                            ] as const).map(opt => {
+                                                                const disabled = opt.value !== 'cash' && !cardOnDeliveryAllowed;
+                                                                return (
+                                                                    <label key={opt.value} className={`flex flex-col p-2 border rounded-lg transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : formData.codPaymentMethod === opt.value ? 'border-primary bg-primary/10 cursor-pointer' : 'border-border hover:bg-muted cursor-pointer'}`}>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <input type="radio" name="admin_cod_method" className="w-3.5 h-3.5" disabled={disabled} checked={formData.codPaymentMethod === opt.value} onChange={() => setFormData({ ...formData, codPaymentMethod: opt.value })} />
+                                                                            <span className="font-bold text-xs">{opt.label}</span>
+                                                                        </div>
+                                                                        {opt.hint && <span className="text-[10px] text-muted-foreground mt-0.5">{opt.hint}</span>}
+                                                                    </label>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )}
@@ -630,10 +687,10 @@ export default function AdminCreateOrderDialog({
                                                         <span className="font-medium">{calculatedRate.additionalKgCharge.toFixed(2)} AED</span>
                                                     </div>
                                                 )}
-                                                {calculatedCODFee > 0 && (
+                                                {effectiveCODFee > 0 && (
                                                     <div className="flex justify-between">
-                                                        <span className="opacity-70">COD Handling</span>
-                                                        <span className="font-medium">{calculatedCODFee.toFixed(2)} AED</span>
+                                                        <span className="opacity-70">{formData.codPaymentMethod === 'card' ? 'Card on Delivery Handling' : formData.codPaymentMethod === 'any' ? 'COD Handling (up to)' : 'COD Handling'}</span>
+                                                        <span className="font-medium">{effectiveCODFee.toFixed(2)} AED</span>
                                                     </div>
                                                 )}
                                                 {formData.fitOnDelivery && (
@@ -644,7 +701,7 @@ export default function AdminCreateOrderDialog({
                                                 )}
                                                 <div className="flex justify-between items-end pt-4 border-t border-white/20">
                                                     <span className="text-lg font-bold">Total Payable</span>
-                                                    <span className="font-display text-2xl font-bold tracking-tight text-foreground">{(calculatedRate.totalRate + calculatedCODFee + (formData.fitOnDelivery ? ((selectedClient as any)?.fodFee ? Number((selectedClient as any).fodFee) : 5.00) : 0)).toFixed(2)} AED</span>
+                                                    <span className="font-display text-2xl font-bold tracking-tight text-foreground">{(calculatedRate.totalRate + effectiveCODFee + (formData.fitOnDelivery ? ((selectedClient as any)?.fodFee ? Number((selectedClient as any).fodFee) : 5.00) : 0)).toFixed(2)} AED</span>
                                                 </div>
                                             </>
                                         ) : (

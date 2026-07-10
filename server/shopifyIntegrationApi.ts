@@ -7,7 +7,7 @@
  * which is not usable from external servers.
  */
 import { Router, Request, Response, NextFunction } from 'express';
-import { getDb, generateWaybillNumber, createOrder, createTrackingEvent, getAvailableServicesForClient, getOrderByWaybill } from './db';
+import { getDb, generateWaybillNumber, createOrder, createTrackingEvent, getAvailableServicesForClient, getOrderByWaybill, getClientAccountById } from './db';
 import { renderWaybillPdf } from './waybillPdf';
 import { codRecords } from '../drizzle/schema';
 
@@ -47,7 +47,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             customerName, customerPhone, address, city, emirate, postalCode, destinationCountry,
             pieces, weight, length, width, height,
             serviceType, specialInstructions, itemsDescription,
-            codRequired, codAmount, codCurrency,
+            codRequired, codAmount, codCurrency, codPaymentMethod: rawCodPaymentMethod,
             latitude, longitude,
         } = shipment;
 
@@ -60,6 +60,19 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             && destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES';
 
         const waybillNumber = await generateWaybillNumber(isInternational);
+
+        // Determine COD payment method: validate against client's CCOD setting
+        let codPaymentMethod: string | null = null;
+        if (codRequired === 1) {
+            const requestedMethod = (['cash', 'card', 'any'].includes(rawCodPaymentMethod)) ? rawCodPaymentMethod : 'cash';
+            if (requestedMethod !== 'cash') {
+                // 'card' or 'any' require the client to have CCOD enabled
+                const clientAccount = await getClientAccountById(clientId);
+                codPaymentMethod = clientAccount?.cardOnDeliveryAllowed === 1 ? requestedMethod : 'cash';
+            } else {
+                codPaymentMethod = 'cash';
+            }
+        }
 
         const order = await createOrder({
             clientId,
@@ -81,6 +94,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             codRequired: codRequired || 0,
             codAmount: codAmount || null,
             codCurrency: codCurrency || 'AED',
+            codPaymentMethod,
             latitude: latitude || null,
             longitude: longitude || null,
             status: 'pending_pickup',
@@ -109,6 +123,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
                     shipmentId: order.id,
                     codAmount: codAmount.toString(),
                     codCurrency: codCurrency || 'AED',
+                    allowedMethods: codPaymentMethod || 'cash',
                     status: 'pending_collection',
                     collectedDate: null,
                     remittedToClientDate: null,
@@ -140,10 +155,19 @@ router.get('/services', integrationAuth, async (req: Request, res: Response) => 
         const weightRaw = req.query.weight ? parseFloat(String(req.query.weight)) : undefined;
         const weight = weightRaw && weightRaw > 0 ? weightRaw : undefined;
 
-        const services = await getAvailableServicesForClient(clientId, { emirate, weight });
-        return res.json({ services });
+        const [services, clientAccount] = await Promise.all([
+            getAvailableServicesForClient(clientId, { emirate, weight }),
+            getClientAccountById(clientId)
+        ]);
+        
+        return res.json({ 
+            services,
+            clientSettings: {
+                cardOnDeliveryAllowed: clientAccount?.cardOnDeliveryAllowed === 1
+            }
+        });
     } catch (err: any) {
-        console.error('⛔ Shopify services error:', err);
+        console.error('⛔ Shopify integration services error:', err);
         return res.status(500).json({ error: err.message || 'Internal server error' });
     }
 });
@@ -190,6 +214,7 @@ router.get('/waybill/:waybill', integrationAuth, async (req: Request, res: Respo
             codRequired: order.codRequired,
             codAmount: order.codAmount,
             codCurrency: order.codCurrency,
+            codPaymentMethod: order.codPaymentMethod,
             specialInstructions: order.specialInstructions,
             hideConsigneeAddress: order.hideConsigneeAddress,
             isReturn: order.isReturn,

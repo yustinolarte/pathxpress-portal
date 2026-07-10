@@ -38,8 +38,8 @@ import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, Pagi
 const ORDERS_PAGE_SIZE = 50;
 
 const ALL_STATUSES = [
-  'pending_pickup', 'picked_up', 'in_transit', 'out_for_delivery',
-  'delivered', 'failed_delivery', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled', 'delivery_attempted'
+  'pending_pickup', 'picked_up', 'failed_pickup', 'in_transit', 'out_for_delivery',
+  'delivered', 'failed_delivery', 'address_issue', 'rescheduled', 'damaged', 'on_hold', 'returned', 'returned_to_sender', 'exchange', 'canceled', 'delivery_attempted'
 ];
 
 export default function AdminDashboard() {
@@ -56,6 +56,11 @@ export default function AdminDashboard() {
     codFeePercent: '',
     codMinFee: '',
     codMaxFee: '',
+    // Card on Delivery (CCOD) settings
+    cardOnDeliveryAllowed: false,
+    cardFeePercent: '',
+    cardMinFee: '',
+    cardMaxFee: '',
     // Custom rates
     customDomBaseRate: '',
     customDomPerKg: '',
@@ -91,7 +96,12 @@ export default function AdminDashboard() {
       const saved = localStorage.getItem('orderFilterStatuses');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          // Statuses added after this filter was first saved — merge them in so
+          // they show up checked by default instead of being silently excluded.
+          const newlyAddedStatuses = ['failed_pickup', 'rescheduled', 'address_issue', 'damaged'];
+          return Array.from(new Set([...parsed, ...newlyAddedStatuses.filter(s => !parsed.includes(s))]));
+        }
       }
     } catch {}
     return ALL_STATUSES;
@@ -255,6 +265,10 @@ export default function AdminDashboard() {
         codFeePercent: editForm.codFeePercent,
         codMinFee: editForm.codMinFee,
         codMaxFee: editForm.codMaxFee,
+        cardOnDeliveryAllowed: editForm.cardOnDeliveryAllowed,
+        cardFeePercent: editForm.cardFeePercent,
+        cardMinFee: editForm.cardMinFee,
+        cardMaxFee: editForm.cardMaxFee,
         fodAllowed: editForm.fodAllowed,
         fodFee: editForm.fodFee,
         bulletAllowed: editForm.bulletAllowed,
@@ -285,6 +299,10 @@ export default function AdminDashboard() {
         codFeePercent: editingClient.codFeePercent || '',
         codMinFee: editingClient.codMinFee || '',
         codMaxFee: editingClient.codMaxFee || '',
+        cardOnDeliveryAllowed: !!editingClient.cardOnDeliveryAllowed,
+        cardFeePercent: editingClient.cardFeePercent || '',
+        cardMinFee: editingClient.cardMinFee || '',
+        cardMaxFee: editingClient.cardMaxFee || '',
         customDomBaseRate: editingClient.customDomBaseRate || '',
         customDomPerKg: editingClient.customDomPerKg || '',
         customSddBaseRate: editingClient.customSddBaseRate || '',
@@ -1588,6 +1606,56 @@ export default function AdminDashboard() {
                           className="h-9 text-sm bg-background/50"
                           value={editForm.codMaxFee}
                           onChange={(e) => setEditForm({ ...editForm, codMaxFee: e.target.value })}
+                          placeholder="e.g. 50.00"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card on Delivery (CCOD) */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-border/50 bg-background/30 group transition-all hover:bg-background/50">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="editCardOnDeliveryAllowed" className="text-sm font-medium cursor-pointer">Enable Card on Delivery</Label>
+                        <p className="text-[10px] text-muted-foreground">Consignee pays by card on the driver's phone (Tap to Pay)</p>
+                      </div>
+                      <Checkbox
+                        id="editCardOnDeliveryAllowed"
+                        checked={editForm.cardOnDeliveryAllowed}
+                        onCheckedChange={(checked) => setEditForm({ ...editForm, cardOnDeliveryAllowed: checked as boolean })}
+                      />
+                    </div>
+
+                    <div className={`space-y-4 transition-all duration-300 ${!editForm.cardOnDeliveryAllowed ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] text-muted-foreground">Card Fee (%)</Label>
+                          <div className="relative">
+                            <Input
+                              className="h-9 pl-7 text-sm bg-background/50"
+                              value={editForm.cardFeePercent}
+                              onChange={(e) => setEditForm({ ...editForm, cardFeePercent: e.target.value })}
+                              placeholder="3.3"
+                            />
+                            <span className="absolute left-2.5 top-2.5 text-muted-foreground"><DollarSign className="w-3.5 h-3.5" /></span>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] text-muted-foreground">Min Fee (AED)</Label>
+                          <Input
+                            className="h-9 text-sm bg-background/50"
+                            value={editForm.cardMinFee}
+                            onChange={(e) => setEditForm({ ...editForm, cardMinFee: e.target.value })}
+                            placeholder="2.00"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] text-muted-foreground">Fee Cap (Optional)</Label>
+                        <Input
+                          className="h-9 text-sm bg-background/50"
+                          value={editForm.cardMaxFee}
+                          onChange={(e) => setEditForm({ ...editForm, cardMaxFee: e.target.value })}
                           placeholder="e.g. 50.00"
                         />
                       </div>

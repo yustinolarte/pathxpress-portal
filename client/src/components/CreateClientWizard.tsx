@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Check, Building2, MapPin, Zap, KeyRound, ChevronRight, ChevronLeft, Loader2, Rocket, Shirt, Globe, DollarSign } from 'lucide-react';
+import { Check, Building2, MapPin, Zap, KeyRound, ChevronRight, ChevronLeft, Loader2, Rocket, Shirt, Globe, DollarSign, CreditCard } from 'lucide-react';
 
 interface CreateClientWizardProps {
   open: boolean;
@@ -23,6 +23,10 @@ const defaultForm = {
   codFeePercent: '',
   codMinFee: '',
   codMaxFee: '',
+  cardOnDeliveryAllowed: false,
+  cardFeePercent: '',
+  cardMinFee: '',
+  cardMaxFee: '',
   bulletAllowed: false,
   customBulletBaseRate: '',
   customBulletPerKg: '',
@@ -201,11 +205,13 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           codAllowed: form.codAllowed,
           codFeePercent: form.codFeePercent || undefined,
           codMaxFee: form.codMaxFee || undefined,
+          cardOnDeliveryAllowed: form.cardOnDeliveryAllowed,
+          cardFeePercent: form.cardFeePercent || undefined,
           notes: undefined,
         },
       });
 
-      const needsSettings = form.bulletAllowed || form.fodAllowed || form.intlAllowed || !!form.codMinFee;
+      const needsSettings = form.bulletAllowed || form.fodAllowed || form.intlAllowed || !!form.codMinFee || form.cardOnDeliveryAllowed;
       if (needsSettings) {
         await updateSettingsMutation.mutateAsync({
           clientId: client.id,
@@ -213,6 +219,10 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           codFeePercent: form.codFeePercent || undefined,
           codMinFee: form.codMinFee || undefined,
           codMaxFee: form.codMaxFee || undefined,
+          cardOnDeliveryAllowed: form.cardOnDeliveryAllowed,
+          cardFeePercent: form.cardFeePercent || undefined,
+          cardMinFee: form.cardMinFee || undefined,
+          cardMaxFee: form.cardMaxFee || undefined,
           fodAllowed: form.fodAllowed,
           fodFee: form.fodFee || undefined,
           bulletAllowed: form.bulletAllowed,
@@ -406,6 +416,45 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           </div>
         </ServiceToggle>
 
+        {/* Card on Delivery (CCOD) */}
+        <ServiceToggle
+          enabled={form.cardOnDeliveryAllowed}
+          onToggle={() => setField('cardOnDeliveryAllowed', !form.cardOnDeliveryAllowed)}
+          icon={CreditCard}
+          label="Card on Delivery (Tap to Pay)"
+          colorClass="border-primary bg-primary/5"
+        >
+          <div className="grid grid-cols-3 gap-3 mt-2">
+            <Field label="Fee %">
+              <input
+                type="text"
+                value={form.cardFeePercent}
+                onChange={e => setField('cardFeePercent', e.target.value)}
+                placeholder="3.3"
+                className={textInputClass('cardFeePercent')}
+              />
+            </Field>
+            <Field label="Min Fee (AED)">
+              <input
+                type="text"
+                value={form.cardMinFee}
+                onChange={e => setField('cardMinFee', e.target.value)}
+                placeholder="2.00"
+                className={textInputClass('cardMinFee')}
+              />
+            </Field>
+            <Field label="Cap Fee (AED)">
+              <input
+                type="text"
+                value={form.cardMaxFee}
+                onChange={e => setField('cardMaxFee', e.target.value)}
+                placeholder="50.00"
+                className={textInputClass('cardMaxFee')}
+              />
+            </Field>
+          </div>
+        </ServiceToggle>
+
         {/* Bullet */}
         <ServiceToggle
           enabled={form.bulletAllowed}
@@ -507,9 +556,10 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
               <span className="text-slate-400">Ciudad</span>
               <span>{form.city}, {form.country}</span>
             </div>
-            {(form.codAllowed || form.bulletAllowed || form.fodAllowed || form.intlAllowed) && (
+            {(form.codAllowed || form.cardOnDeliveryAllowed || form.bulletAllowed || form.fodAllowed || form.intlAllowed) && (
               <div className="pt-2 border-t border-border flex flex-wrap gap-2">
                 {form.codAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">COD</span>}
+                {form.cardOnDeliveryAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">CCOD</span>}
                 {form.bulletAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">Bullet 4H</span>}
                 {form.fodAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">FOD</span>}
                 {form.intlAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">Internacional</span>}

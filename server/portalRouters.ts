@@ -52,6 +52,8 @@ import {
   getCODSummaryGlobal,
   calculateShipmentRate,
   calculateCODFee,
+  calculateCardCODFee,
+  calculateCODFeeByMethod,
   getAllRateTiers,
   createNotification,
   invalidateClientAccountsCache,
@@ -231,6 +233,8 @@ export const adminPortalRouter = router({
         codAllowed: z.boolean().default(false).transform((v) => (v ? 1 : 0)),
         codFeePercent: z.string().optional(),
         codMaxFee: z.string().optional(),
+        cardOnDeliveryAllowed: z.boolean().default(false).transform((v) => (v ? 1 : 0)),
+        cardFeePercent: z.string().optional(),
         notes: z.string().optional(),
       }),
     }))
@@ -450,6 +454,7 @@ export const adminPortalRouter = router({
         codRequired: z.number().min(0).max(1).optional(),
         codAmount: z.string().optional(),
         codCurrency: z.string().optional(),
+        codPaymentMethod: z.enum(['cash', 'card', 'any']).optional(),
         customerName: z.string().optional(),
         customerPhone: z.string().optional(),
         address: z.string().optional(),
@@ -458,6 +463,8 @@ export const adminPortalRouter = router({
         fitOnDelivery: z.number().min(0).max(1).optional(),
         preferredDeliveryDate: z.string().nullable().optional(),
         preferredDeliveryTime: z.string().nullable().optional(),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -1337,6 +1344,7 @@ export const adminPortalRouter = router({
         codRequired: z.number().default(0),
         codAmount: z.string().optional(),
         codCurrency: z.string().default('AED'),
+        codPaymentMethod: z.enum(['cash', 'card', 'any']).default('cash'),
         fitOnDelivery: z.number().default(0),
         // Shipper override fields (for walk-in customers)
         shipperOverride: z.boolean().optional(),
@@ -1345,6 +1353,9 @@ export const adminPortalRouter = router({
         shipperCity: z.string().optional(),
         shipperCountry: z.string().optional(),
         shipperPhone: z.string().optional(),
+        // Shipper (pickup) coordinates
+        shipperLat: z.string().optional(),
+        shipperLng: z.string().optional(),
         // Dimensions & customs (for international orders)
         length: z.number().optional(),
         width: z.number().optional(),
@@ -1378,6 +1389,12 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'COD not allowed for this client' });
       }
 
+      // Card on Delivery gating: 'card' and 'any' require the client to have CCOD enabled
+      if (input.shipment.codRequired === 1 && input.shipment.codPaymentMethod !== 'cash' && clientAccount.cardOnDeliveryAllowed !== 1) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Card on Delivery not allowed for this client' });
+      }
+      const adminCodMethod = input.shipment.codRequired === 1 ? input.shipment.codPaymentMethod : null;
+
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber();
 
@@ -1410,6 +1427,8 @@ export const adminPortalRouter = router({
         shipperCity,
         shipperCountry,
         shipperPhone,
+        shipperLat: input.shipment.shipperLat || null,
+        shipperLng: input.shipment.shipperLng || null,
 
         // Consignee info from input
         customerName: input.shipment.customerName,
@@ -1439,6 +1458,7 @@ export const adminPortalRouter = router({
         codRequired: input.shipment.codRequired,
         codAmount: input.shipment.codAmount || null,
         codCurrency: input.shipment.codCurrency || 'AED',
+        codPaymentMethod: adminCodMethod,
 
         // FOD
         fitOnDelivery: input.shipment.fitOnDelivery,
@@ -1478,6 +1498,7 @@ export const adminPortalRouter = router({
             shipmentId: order.id,
             codAmount: input.shipment.codAmount,
             codCurrency: input.shipment.codCurrency || 'AED',
+            allowedMethods: adminCodMethod || 'cash',
             status: 'pending_collection',
             collectedDate: null,
             remittedToClientDate: null,
@@ -1554,6 +1575,9 @@ export const customerPortalRouter = router({
         shipperCity: z.string().min(1),
         shipperCountry: z.string().min(1),
         shipperPhone: z.string().min(1),
+        // Shipper (pickup) coordinates
+        shipperLat: z.string().optional(),
+        shipperLng: z.string().optional(),
         customerName: z.string().min(1),
         customerPhone: z.string().min(1),
         address: z.string().min(1),
@@ -1571,6 +1595,7 @@ export const customerPortalRouter = router({
         codRequired: z.number().default(0),
         codAmount: z.string().optional(),
         codCurrency: z.string().optional(),
+        codPaymentMethod: z.enum(['cash', 'card', 'any']).default('cash'),
         fitOnDelivery: z.number().default(0),
 
         // Customs fields (optional for domestic, required for international in UI but optional here to preserve compat)
@@ -1589,6 +1614,18 @@ export const customerPortalRouter = router({
       }),
     }))
     .mutation(async ({ input, ctx }) => {
+      // COD gating against the client's account settings
+      if (input.shipment.codRequired === 1) {
+        const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
+        if (!clientAccount || clientAccount.codAllowed !== 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'COD not allowed for this client' });
+        }
+        if (input.shipment.codPaymentMethod !== 'cash' && clientAccount.cardOnDeliveryAllowed !== 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Card on Delivery not allowed for this client' });
+        }
+      }
+      const codMethod = input.shipment.codRequired === 1 ? input.shipment.codPaymentMethod : null;
+
       // Determine if international order
       const isInternational = input.shipment.destinationCountry.toUpperCase() !== 'UAE'
         && input.shipment.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES';
@@ -1601,6 +1638,7 @@ export const customerPortalRouter = router({
         clientId: ctx.portalUser.clientId,
         waybillNumber,
         ...input.shipment,
+        codPaymentMethod: codMethod,
         weight: input.shipment.weight.toString(),
         length: input.shipment.length?.toString() || null,
         width: input.shipment.width?.toString() || null,
@@ -1632,6 +1670,7 @@ export const customerPortalRouter = router({
             shipmentId: order.id,
             codAmount: input.shipment.codAmount,
             codCurrency: input.shipment.codCurrency || 'AED',
+            allowedMethods: codMethod || 'cash',
             status: 'pending_collection',
             collectedDate: null,
             remittedToClientDate: null,
@@ -2002,6 +2041,7 @@ export const customerPortalRouter = router({
         codRequired: clientAccount.codAllowed ? input.newShipment.codRequired : 0,
         codAmount: clientAccount.codAllowed && input.newShipment.codRequired ? (input.newShipment.codAmount || null) : null,
         codCurrency: clientAccount.codAllowed && input.newShipment.codRequired ? (input.newShipment.codCurrency || 'AED') : 'AED',
+        codPaymentMethod: clientAccount.codAllowed && input.newShipment.codRequired ? 'cash' : null,
         isReturn: 0,
         originalOrderId: input.orderId,
         orderType: 'exchange',
@@ -2168,6 +2208,7 @@ export const customerPortalRouter = router({
           codRequired: clientAccount.codAllowed ? input.exchangeCodRequired : 0,
           codAmount: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodAmount || null) : null,
           codCurrency: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodCurrency || 'AED') : 'AED',
+          codPaymentMethod: clientAccount.codAllowed && input.exchangeCodRequired ? 'cash' : null,
           isReturn: 0,
           orderType: 'exchange',
           exchangeOrderId: returnOrder.id,
@@ -3018,6 +3059,8 @@ const codRouter = router({
     .input(z.object({
       codRecordId: z.number(),
       status: z.enum(['pending_collection', 'collected', 'remitted', 'disputed', 'cancelled']),
+      collectedMethod: z.enum(['cash', 'card']).optional(),
+      paymentReference: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const db = await import('./db').then(m => m.getDb());
@@ -3035,6 +3078,25 @@ const codRouter = router({
 
       if (input.status === 'collected') {
         updateData.collectedDate = new Date();
+
+        // Record how it was paid and freeze the fee used later by remittances
+        const [record] = await db.select().from(codRecords)
+          .where(eq(codRecords.id, input.codRecordId))
+          .limit(1);
+        if (record) {
+          const method = input.collectedMethod || (record.allowedMethods === 'card' ? 'card' : 'cash');
+          if (method === 'card' && !input.paymentReference && !record.paymentReference) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment reference is required for card collections' });
+          }
+          updateData.collectedMethod = method;
+          if (input.paymentReference) updateData.paymentReference = input.paymentReference;
+
+          const order = await getOrderById(record.shipmentId);
+          if (order) {
+            const fee = await calculateCODFeeByMethod(parseFloat(record.codAmount), order.clientId, method);
+            updateData.feeAmount = fee.toFixed(2);
+          }
+        }
       }
 
       await db.update(codRecords)
@@ -3065,12 +3127,18 @@ const codRouter = router({
       const grossAmount = selectedRecords.reduce((sum, r) => sum + parseFloat(r.codAmount), 0);
       const currency = selectedRecords[0]?.codCurrency || 'AED';
 
-      // Calculate COD fee for each record and sum up
+      // Sum fees: prefer the fee frozen at collection time; fall back to
+      // recomputing by the method the consignee actually used (legacy records)
       let totalFee = 0;
       for (const record of selectedRecords) {
+        const frozenFee = record.feeAmount ? parseFloat(record.feeAmount) : NaN;
+        if (!isNaN(frozenFee)) {
+          totalFee += frozenFee;
+          continue;
+        }
         const recordAmount = parseFloat(record.codAmount);
-        const fee = await calculateCODFee(recordAmount, input.clientId);
-        totalFee += fee;
+        const method = record.collectedMethod === 'card' ? 'card' : 'cash';
+        totalFee += await calculateCODFeeByMethod(recordAmount, input.clientId, method);
       }
 
       // Get fee percentage from client settings
@@ -3230,8 +3298,18 @@ export const rateRouter = router({
         targetClientId = input.clientId;
       }
 
-      const fee = await calculateCODFee(input.codAmount, targetClientId);
-      return { fee };
+      const [cashFee, cardFee, client] = await Promise.all([
+        calculateCODFee(input.codAmount, targetClientId),
+        calculateCardCODFee(input.codAmount, targetClientId),
+        getClientAccountById(targetClientId),
+      ]);
+      // `fee` kept for backward compatibility (cash fee)
+      return {
+        fee: cashFee,
+        cashFee,
+        cardFee,
+        cardAllowed: client?.cardOnDeliveryAllowed === 1,
+      };
     }),
 
   getTiers: portalAdminProcedure
@@ -3289,6 +3367,10 @@ export const clientsRouter = router({
       codFeePercent: z.string().optional(),
       codMinFee: z.string().optional(),
       codMaxFee: z.string().optional(),
+      cardOnDeliveryAllowed: z.boolean().optional(),
+      cardFeePercent: z.string().optional(),
+      cardMinFee: z.string().optional(),
+      cardMaxFee: z.string().optional(),
       fodAllowed: z.boolean().optional(),
       fodFee: z.string().optional(),
       bulletAllowed: z.boolean().optional(),
@@ -3312,6 +3394,10 @@ export const clientsRouter = router({
           codFeePercent: input.codFeePercent || null,
           codMinFee: input.codMinFee || null,
           codMaxFee: input.codMaxFee || null,
+          cardOnDeliveryAllowed: input.cardOnDeliveryAllowed ? 1 : 0,
+          cardFeePercent: input.cardFeePercent || null,
+          cardMinFee: input.cardMinFee || null,
+          cardMaxFee: input.cardMaxFee || null,
           fodAllowed: input.fodAllowed ? 1 : 0,
           fodFee: input.fodFee || null,
           bulletAllowed: input.bulletAllowed ? 1 : 0,

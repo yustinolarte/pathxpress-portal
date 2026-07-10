@@ -258,6 +258,99 @@ export const driverRouter = router({
             return driverAdmin.optimizeRoute(input.routeId, input.origin);
         }),
 
+    reorderRouteStops: publicProcedure
+        .input(z.object({
+            routeId: z.string(),
+            stopIds: z.array(z.number()).min(1),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.reorderRouteStops(input.routeId, input.stopIds);
+        }),
+
+    // ============ ORDER LOCATION ============
+
+    // Manual pin from the dispatch map / edit dialogs — always 'exact'.
+    setOrderLocation: publicProcedure
+        .input(z.object({
+            orderId: z.number(),
+            latitude: z.string().min(1),
+            longitude: z.string().min(1),
+            address: z.string().optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            const { updateOrderLocation } = await import('./db');
+            const order = await updateOrderLocation(
+                input.orderId, input.latitude, input.longitude, 'exact', input.address,
+            );
+            if (!order) {
+                throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save location' });
+            }
+            return { success: true, latitude: order.latitude, longitude: order.longitude };
+        }),
+
+    // Whether server-side geocoding / the location bot are configured (UI hides buttons otherwise).
+    getGeoCapabilities: publicProcedure
+        .query(async ({ ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            const { isGeocodingConfigured } = await import('./geocoding');
+            const { ENV } = await import('./_core/env');
+            return {
+                geocoding: isGeocodingConfigured(),
+                locationBot: Boolean(ENV.botWebhookUrl),
+            };
+        }),
+
+    // Batch-geocode active orders without coordinates. Click-batched on purpose
+    // (no auto-loop) so Google billing stays under human control.
+    geocodePendingOrders: publicProcedure
+        .input(z.object({ limit: z.number().min(1).max(50).default(25) }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            const { geocodePendingOrders, isGeocodingConfigured } = await import('./geocoding');
+            if (!isGeocodingConfigured()) {
+                throw new TRPCError({
+                    code: 'PRECONDITION_FAILED',
+                    message: 'GOOGLE_MAPS_API_KEY no está configurada en el servidor',
+                });
+            }
+            return geocodePendingOrders(input.limit);
+        }),
+
+    // Re-fire the WhatsApp location bot for one order so the consignee is
+    // asked to share their pin again.
+    requestLocationViaBot: publicProcedure
+        .input(z.object({ orderId: z.number() }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            const { ENV } = await import('./_core/env');
+            if (!ENV.botWebhookUrl) return { sent: false };
+
+            const { getOrderById } = await import('./db');
+            const order = await getOrderById(input.orderId);
+            if (!order) {
+                throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found' });
+            }
+            const { notifyBotNewOrder } = await import('./_core/botWebhook');
+            notifyBotNewOrder({
+                waybillNumber: order.waybillNumber,
+                customerName: order.customerName,
+                customerPhone: order.customerPhone,
+            });
+            return { sent: true };
+        }),
+
     getDriverPerformance: publicProcedure
         .input(z.object({ driverId: z.number() }))
         .query(async ({ input, ctx }) => {

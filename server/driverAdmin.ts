@@ -285,9 +285,10 @@ export async function getRouteDetails(routeId: string) {
         city: item.order.city,
         latitude: item.order.latitude,
         longitude: item.order.longitude,
+        locationAccuracy: item.order.locationAccuracy,
         shipperCity: item.order.shipperCity,
-        shipperLat: null as string | null,
-        shipperLng: null as string | null,
+        shipperLat: item.order.shipperLat,
+        shipperLng: item.order.shipperLng,
         status: item.routeOrder.status,
         proofPhotoUrl: item.routeOrder.proofPhotoUrl,
         proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
@@ -419,25 +420,75 @@ export async function optimizeRoute(routeId: string, origin?: { lat: number; lng
             : null);
 
     const stops: OptimizableStop[] = stopsRaw.map(({ ro, o }) => {
-        const isPickup = ro.type === 'pickup';
-        const lat = isPickup ? null : (o.latitude ? parseFloat(o.latitude) : null);
-        const lng = isPickup ? null : (o.longitude ? parseFloat(o.longitude) : null);
+        const coords = resolveStopCoords(ro.type, o);
         return {
             id: ro.id,
             type: ro.type,
-            coords: lat !== null && lng !== null ? { lat, lng } : null,
+            coords,
         };
     });
 
     const optimizedIds = optimizeStops(stops, startOrigin);
-
-    for (let i = 0; i < optimizedIds.length; i++) {
-        await db.update(routeOrders)
-            .set({ sequence: i + 1 })
-            .where(eq(routeOrders.id, optimizedIds[i]));
-    }
+    await writeStopSequence(db, optimizedIds);
 
     return { optimized: optimizedIds.length };
+}
+
+/**
+ * Coordinate of a stop leg. orders.latitude/longitude es la ubicación de la
+ * persona a la que Bot Ubicación le pidió el pin: en una orden normal es el
+ * destinatario (delivery), pero en un return es quien tiene el paquete para
+ * devolver (pickup) — shipper/customer quedan intercambiados en returns.
+ * shipperLat/shipperLng es el otro extremo (donde se recoge en órdenes
+ * normales, donde se entrega en returns).
+ */
+function resolveStopCoords(
+    type: string,
+    o: { latitude: string | null; longitude: string | null; shipperLat: string | null; shipperLng: string | null; isReturn: number },
+): LatLng | null {
+    const isPickup = type === 'pickup';
+    const consigneeSide = o.isReturn === 1 ? isPickup : !isPickup;
+    const latStr = consigneeSide ? o.latitude : o.shipperLat;
+    const lngStr = consigneeSide ? o.longitude : o.shipperLng;
+    if (!latStr || !lngStr) return null;
+    const lat = parseFloat(latStr);
+    const lng = parseFloat(lngStr);
+    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+    return { lat, lng };
+}
+
+/** Persist a stop ordering as sequence 1..N in a single UPDATE. */
+async function writeStopSequence(
+    db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+    stopIds: number[],
+) {
+    if (stopIds.length === 0) return;
+    const cases = sql.join(stopIds.map((id, i) => sql`WHEN ${id} THEN ${i + 1}`), sql` `);
+    await db.execute(sql`
+        UPDATE ${routeOrders}
+        SET ${routeOrders.sequence} = CASE ${routeOrders.id} ${cases} END
+        WHERE ${routeOrders.id} IN (${sql.join(stopIds, sql`, `)})
+    `);
+}
+
+/**
+ * Manual stop reordering: stopIds must be EXACTLY the route's current stop set
+ * (rejects stale UIs that don't know about added/removed stops).
+ */
+export async function reorderRouteStops(routeId: string, stopIds: number[]) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const current = await db.select({ id: routeOrders.id })
+        .from(routeOrders).where(eq(routeOrders.routeId, routeId));
+    const currentIds = new Set(current.map(r => r.id));
+
+    if (stopIds.length !== currentIds.size || stopIds.some(id => !currentIds.has(id))) {
+        throw new Error('La lista de paradas no coincide con la ruta actual. Recarga e intenta de nuevo.');
+    }
+
+    await writeStopSequence(db, stopIds);
+    return { success: true };
 }
 
 export async function updateRouteStatus(routeId: string, status: 'pending' | 'in_progress' | 'completed' | 'cancelled') {
@@ -727,7 +778,15 @@ export interface AssignmentFlags { canPickup: boolean; canDeliver: boolean; canB
 // A route stop still "occupies" the order (blocks re-assigning that leg) while in these states.
 const ACTIVE_STOP_STATUSES = ['pending', 'in_progress', 'on_hold', 'attempted'];
 // Orders in these states are done/dead — never offered for assignment.
-const TERMINAL_ORDER_STATUSES = ['delivered', 'returned', 'returned_to_sender', 'canceled'];
+export const TERMINAL_ORDER_STATUSES = ['delivered', 'returned', 'returned_to_sender', 'canceled'];
+
+// International shipments aren't handled by local driver routes. Tolerant of
+// casing, spaces, spelling variants and empty values (local orders sometimes
+// omit the country). Keep in sync with isUAEDomestic() in geocoding.ts.
+export const DOMESTIC_COUNTRY_SQL = sql`(
+    ${orders.destinationCountry} = ''
+    OR UPPER(TRIM(${orders.destinationCountry})) IN ('UAE', 'UNITED ARAB EMIRATES', 'U.A.E', 'U.A.E.', 'AE', 'EMIRATES')
+)`;
 // Order-level statuses that mean the package was already physically picked up.
 const PICKED_UP_ORDER_STATUSES = ['picked_up', 'in_transit', 'out_for_delivery', 'delivery_attempted', 'failed_delivery'];
 // Order-level statuses that still require a pickup leg.
@@ -832,7 +891,10 @@ export async function getAvailableOrders() {
             emirate: orders.emirate,
             latitude: orders.latitude,
             longitude: orders.longitude,
+            locationAccuracy: orders.locationAccuracy,
             shipperCity: orders.shipperCity,
+            shipperLat: orders.shipperLat,
+            shipperLng: orders.shipperLng,
             status: orders.status,
             codRequired: orders.codRequired,
             codAmount: orders.codAmount,
@@ -844,12 +906,12 @@ export async function getAvailableOrders() {
             shipperName: orders.shipperName,
             clientId: orders.clientId,
             specialInstructions: orders.specialInstructions,
+            createdAt: orders.createdAt,
         })
         .from(orders)
         .where(and(
             notInArray(orders.status, TERMINAL_ORDER_STATUSES),
-            // International shipments aren't handled by local driver routes.
-            sql`UPPER(${orders.destinationCountry}) IN ('UAE', 'UNITED ARAB EMIRATES')`,
+            DOMESTIC_COUNTRY_SQL,
         ))
         .orderBy(desc(orders.createdAt));
 

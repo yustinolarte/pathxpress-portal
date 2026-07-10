@@ -11,6 +11,7 @@ export const ENV = {
   emailAppPassword: process.env.EMAIL_APP_PASSWORD ?? "",
   resendApiKey: process.env.RESEND_API_KEY ?? "",  // Email Studio (correos de marca vía Resend)
   botApiKey: process.env.BOT_API_KEY ?? "",  // Shared secret for Pathx WhatsApp bot
+  googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "", // Server-side Geocoding API key (NOT the VITE_ browser key)
   botWebhookUrl: process.env.BOT_WEBHOOK_URL ?? "",       // Bot Ubicación: notified on every new order
   botWebhookSecret: process.env.BOT_WEBHOOK_SECRET ?? "", // Shared secret for that webhook call
 };

@@ -176,6 +176,20 @@
       "when": 1782168722030,
       "tag": "0024_funny_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1783507367236,
+      "tag": "0025_neat_phil_sheldon",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1783675073419,
+      "tag": "0026_low_dorian_gray",
+      "breakpoints": true
     }
   ]
 }

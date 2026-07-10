@@ -458,7 +458,15 @@ export async function createOrder(order: InsertOrder): Promise<Order | null> {
   if (!db) return null;
 
   try {
-    const result = await db.insert(orders).values(order);
+    // Coords supplied at creation (pin/import) are 'exact'; otherwise the
+    // geocode below fills them in as 'approximate'.
+    const values: InsertOrder = {
+      ...order,
+      locationAccuracy: order.locationAccuracy
+        ?? (order.latitude && order.longitude ? 'exact' : 'none'),
+    };
+
+    const result = await db.insert(orders).values(values);
     const insertedId = Number(result[0].insertId);
     const inserted = await db.select().from(orders).where(eq(orders.id, insertedId)).limit(1);
     const createdOrder = inserted.length > 0 ? inserted[0] : null;
@@ -469,6 +477,24 @@ export async function createOrder(order: InsertOrder): Promise<Order | null> {
         customerName: createdOrder.customerName,
         customerPhone: createdOrder.customerPhone,
       });
+
+      // Fire-and-forget geocoding of missing coordinates (UAE only).
+      const { geocodeAndStoreOrderLocation, geocodeAndStoreShipperLocation, isUAEDomestic } =
+        await import('./geocoding');
+      if (!createdOrder.latitude && isUAEDomestic(createdOrder.destinationCountry)) {
+        geocodeAndStoreOrderLocation(createdOrder.id, {
+          address: createdOrder.address,
+          city: createdOrder.city,
+          emirate: createdOrder.emirate,
+        });
+      }
+      if (!createdOrder.shipperLat && createdOrder.shipperAddress
+        && isUAEDomestic(createdOrder.shipperCountry)) {
+        geocodeAndStoreShipperLocation(createdOrder.id, {
+          address: createdOrder.shipperAddress,
+          city: createdOrder.shipperCity,
+        });
+      }
     }
 
     return createdOrder;
@@ -719,6 +745,7 @@ export interface OrderUpdate {
   codRequired?: number; // 0 or 1
   codAmount?: string;
   codCurrency?: string;
+  codPaymentMethod?: string; // 'cash' | 'card' | 'any'
   customerName?: string;
   customerPhone?: string;
   address?: string;
@@ -727,6 +754,8 @@ export interface OrderUpdate {
   fitOnDelivery?: number;
   preferredDeliveryDate?: string | null;
   preferredDeliveryTime?: string | null;
+  latitude?: string;
+  longitude?: string;
 }
 
 export async function updateOrder(
@@ -804,22 +833,24 @@ export async function updateOrder(
         shipmentId: orderId,
         codAmount,
         codCurrency,
+        allowedMethods: updates.codPaymentMethod || existingOrder.codPaymentMethod || 'cash',
         status: 'pending_collection',
       });
     }
 
-    // Case C: COD stays enabled but amount changed -> update the active record
-    if (oldCodRequired && newCodRequired && activeRecord && updates.codAmount) {
+    // Case C: COD stays enabled but amount or payment method changed -> update the active record
+    if (oldCodRequired && newCodRequired && activeRecord && (updates.codAmount || updates.codPaymentMethod)) {
       if (remittedRecord) {
         return {
           success: false,
-          error: "Cannot modify COD amount: the amount has already been remitted to the client"
+          error: "Cannot modify COD: the amount has already been remitted to the client"
         };
       }
       await db.update(codRecords)
         .set({
-          codAmount: updates.codAmount,
-          codCurrency: updates.codCurrency || activeRecord.codCurrency
+          codAmount: updates.codAmount ?? activeRecord.codAmount,
+          codCurrency: updates.codCurrency || activeRecord.codCurrency,
+          allowedMethods: updates.codPaymentMethod ?? activeRecord.allowedMethods,
         })
         .where(eq(codRecords.id, activeRecord.id));
     }
@@ -833,6 +864,8 @@ export async function updateOrder(
     if (updates.codRequired !== undefined) orderUpdates.codRequired = updates.codRequired;
     if (updates.codAmount !== undefined) orderUpdates.codAmount = updates.codAmount;
     if (updates.codCurrency !== undefined) orderUpdates.codCurrency = updates.codCurrency;
+    if (updates.codPaymentMethod !== undefined) orderUpdates.codPaymentMethod = updates.codPaymentMethod;
+    if (!newCodRequired) orderUpdates.codPaymentMethod = null;
     if (updates.customerName !== undefined) orderUpdates.customerName = updates.customerName;
     if (updates.customerPhone !== undefined) orderUpdates.customerPhone = updates.customerPhone;
     if (updates.address !== undefined) orderUpdates.address = updates.address;
@@ -842,9 +875,39 @@ export async function updateOrder(
     if (updates.preferredDeliveryDate !== undefined) orderUpdates.preferredDeliveryDate = updates.preferredDeliveryDate;
     if (updates.preferredDeliveryTime !== undefined) orderUpdates.preferredDeliveryTime = updates.preferredDeliveryTime;
 
+    // Coordinates: an admin-placed pin is always 'exact'. If only the address
+    // text changed, approximate (geocoded) coords are stale — clear them and
+    // re-geocode; an exact pin (human/bot) is never wiped by a text edit.
+    const addressChanged =
+      (updates.address !== undefined && updates.address !== existingOrder.address) ||
+      (updates.city !== undefined && updates.city !== existingOrder.city);
+    let regeocodeAfterUpdate = false;
+
+    if (updates.latitude !== undefined && updates.longitude !== undefined) {
+      orderUpdates.latitude = updates.latitude;
+      orderUpdates.longitude = updates.longitude;
+      orderUpdates.locationAccuracy = 'exact';
+    } else if (addressChanged) {
+      if (existingOrder.locationAccuracy === 'approximate') {
+        orderUpdates.latitude = null;
+        orderUpdates.longitude = null;
+        orderUpdates.locationAccuracy = 'none';
+      }
+      regeocodeAfterUpdate = existingOrder.locationAccuracy !== 'exact';
+    }
+
     // 5. Update the order
     if (Object.keys(orderUpdates).length > 0) {
       await db.update(orders).set(orderUpdates).where(eq(orders.id, orderId));
+    }
+
+    if (regeocodeAfterUpdate) {
+      const { geocodeAndStoreOrderLocation } = await import('./geocoding');
+      geocodeAndStoreOrderLocation(orderId, {
+        address: updates.address ?? existingOrder.address,
+        city: updates.city ?? existingOrder.city,
+        emirate: existingOrder.emirate,
+      });
     }
 
     // 6. Return updated order
@@ -860,13 +923,17 @@ export async function updateOrder(
 export async function updateOrderLocation(
   id: number,
   latitude: string,
-  longitude: string
+  longitude: string,
+  accuracy: 'exact' | 'approximate' = 'exact',
+  address?: string
 ): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
 
   try {
-    await db.update(orders).set({ latitude, longitude }).where(eq(orders.id, id));
+    const values: Partial<InsertOrder> = { latitude, longitude, locationAccuracy: accuracy };
+    if (address && address.trim()) values.address = address.trim();
+    await db.update(orders).set(values).where(eq(orders.id, id));
     return await getOrderById(id);
   } catch (error) {
     console.error("[Database] Failed to update order location:", error);
@@ -1116,7 +1183,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         eq(orders.clientId, clientId),
         gte(orders.lastStatusUpdate, periodStart),
         lte(orders.lastStatusUpdate, periodEndFullDay),
-        inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
+        inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
         isNull(invoiceItems.id),
         inArray(orders.destinationCountry, UAE_VALUES)
       )
@@ -1208,7 +1275,7 @@ export async function generateInvoiceForClient(
         and(
           eq(orders.clientId, clientId),
           inArray(orders.id, shipmentIds),
-          inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
+          inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
           isNull(invoiceItems.id)
         )
       );
@@ -1397,7 +1464,7 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
         eq(orders.clientId, clientId),
         gte(orders.lastStatusUpdate, periodStart),
         lte(orders.lastStatusUpdate, periodEndFullDay),
-        drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
+        drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
         isNull(invoiceItems.id),
         notInArray(orders.destinationCountry, UAE_COUNTRIES)
       )
@@ -1472,7 +1539,7 @@ export async function generateIntlInvoiceForClient(
         and(
           eq(orders.clientId, clientId),
           drizzleInArray(orders.id, shipmentIds),
-          drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange']),
+          drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
           isNull(invoiceItems.id),
           notInArray(orders.destinationCountry, UAE_COUNTRIES)
         )
@@ -2116,7 +2183,9 @@ export async function getMonthlyShipmentCount(clientId: number): Promise<number>
  * Zone 3: everything else (remote areas)
  */
 export function getZoneFromEmirate(emirate: string): 1 | 2 | 3 {
-  const normalized = emirate.toLowerCase().trim();
+  // Normaliza guiones/dobles espacios (ej. "Ras al-Khaimah") para que no caigan
+  // silenciosamente en el default de Zona 3 por no matchear los strings de abajo.
+  const normalized = emirate.toLowerCase().trim().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
   const zone1 = ['dubai', 'sharjah', 'ajman', 'abu dhabi', 'abudhabi'];
   const zone2 = ['umm al quwain', 'uaq', 'ras al khaimah', 'rak', 'fujairah'];
   if (zone1.some(z => normalized.includes(z))) return 1;
@@ -2443,6 +2512,73 @@ export async function calculateCODFee(codAmount: number, clientId: number): Prom
   }
 
   return finalFee;
+}
+
+/**
+ * Calculate Card on Delivery (CCOD) fee — consignee pays by card on the
+ * driver's phone (Tap to Pay). Mirrors calculateCODFee but uses the card
+ * overrides on clientAccounts and the CARD_FEE_PERCENTAGE / CARD_MIN_FEE
+ * global config keys.
+ */
+export async function calculateCardCODFee(codAmount: number, clientId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const client = await getClientAccountById(clientId);
+  let percentage = 3.3; // Default
+  let minFee = 2.0;    // Default
+
+  if (client?.cardFeePercent) {
+    percentage = parseFloat(client.cardFeePercent);
+  } else {
+    const percentageConfig = await db
+      .select()
+      .from(serviceConfig)
+      .where(eq(serviceConfig.configKey, "CARD_FEE_PERCENTAGE"))
+      .limit(1);
+    if (percentageConfig[0]) {
+      percentage = parseFloat(percentageConfig[0].configValue);
+    }
+  }
+
+  if (client?.cardMinFee) {
+    minFee = parseFloat(client.cardMinFee);
+  } else {
+    const minFeeConfig = await db
+      .select()
+      .from(serviceConfig)
+      .where(eq(serviceConfig.configKey, "CARD_MIN_FEE"))
+      .limit(1);
+    if (minFeeConfig[0]) {
+      minFee = parseFloat(minFeeConfig[0].configValue);
+    }
+  }
+
+  const calculatedFee = (codAmount * percentage) / 100;
+  let finalFee = Math.max(calculatedFee, minFee);
+
+  if (client?.cardMaxFee) {
+    const maxFee = parseFloat(client.cardMaxFee);
+    if (!isNaN(maxFee) && maxFee > 0) {
+      finalFee = Math.min(finalFee, maxFee);
+    }
+  }
+
+  return finalFee;
+}
+
+/**
+ * Fee for the method the consignee actually used at the door.
+ * The fee is charged per outcome, not per what the shipper allowed.
+ */
+export async function calculateCODFeeByMethod(
+  codAmount: number,
+  clientId: number,
+  method: 'cash' | 'card',
+): Promise<number> {
+  return method === 'card'
+    ? calculateCardCODFee(codAmount, clientId)
+    : calculateCODFee(codAmount, clientId);
 }
 
 /**
