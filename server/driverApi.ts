@@ -322,6 +322,11 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
                 proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
                 notes: item.routeOrder.notes,
+                // The note the client wrote when creating/editing the waybill
+                // ("Any special handling instructions or notes for delivery...").
+                // Was missing from this payload entirely — the driver app already
+                // reads `specialInstructions` on the stop, it just never arrived.
+                specialInstructions: item.order.specialInstructions,
             };
         });
 
@@ -514,6 +519,7 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
                 proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
                 notes: item.routeOrder.notes,
+                specialInstructions: item.order.specialInstructions,
             };
         });
 
