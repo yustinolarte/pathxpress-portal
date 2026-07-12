@@ -277,25 +277,28 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 deliveryAddress: item.order.address,
                 deliveryCity: item.order.city,
 
-                // Coordinates (use shipper for pickup, customer for delivery)
-                latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
-                longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+                // Coordinates: only the delivery leg has real lat/lng (captured at the
+                // customer address). Pickups have no shipper coordinates in the schema,
+                // so emitting the customer's coords for a pickup stop would put the map
+                // pin at the wrong location — the app falls back to geocoding/address nav.
+                latitude: (!isPickup && item.order.latitude) ? parseFloat(item.order.latitude) : null,
+                longitude: (!isPickup && item.order.longitude) ? parseFloat(item.order.longitude) : null,
 
                 // Navigation links for driver app
                 mapsUrl: (() => {
-                    const lat = item.order.latitude;
-                    const lng = item.order.longitude;
                     const addr = isPickup ? item.order.shipperAddress : item.order.address;
                     const city = isPickup ? item.order.shipperCity : item.order.city;
+                    const lat = isPickup ? null : item.order.latitude;
+                    const lng = isPickup ? null : item.order.longitude;
                     return (lat && lng)
                         ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
                         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`;
                 })(),
                 wazeUrl: (() => {
-                    const lat = item.order.latitude;
-                    const lng = item.order.longitude;
                     const addr = isPickup ? item.order.shipperAddress : item.order.address;
                     const city = isPickup ? item.order.shipperCity : item.order.city;
+                    const lat = isPickup ? null : item.order.latitude;
+                    const lng = isPickup ? null : item.order.longitude;
                     return (lat && lng)
                         ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
                         : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
@@ -305,6 +308,13 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
+
+                // Return/exchange linkage — an exchange is two orders pointing at each
+                // other via exchangeOrderId, both pointing at the original via originalOrderId
+                orderType: item.order.orderType,
+                isReturn: item.order.isReturn,
+                originalOrderId: item.order.originalOrderId,
+                exchangeOrderId: item.order.exchangeOrderId,
 
                 // Status
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',
@@ -472,22 +482,22 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 customerPhone: item.order.customerPhone,
                 deliveryAddress: item.order.address,
                 deliveryCity: item.order.city,
-                latitude: item.order.latitude ? parseFloat(item.order.latitude) : null,
-                longitude: item.order.longitude ? parseFloat(item.order.longitude) : null,
+                latitude: (!isPickup && item.order.latitude) ? parseFloat(item.order.latitude) : null,
+                longitude: (!isPickup && item.order.longitude) ? parseFloat(item.order.longitude) : null,
                 mapsUrl: (() => {
-                    const lat = item.order.latitude;
-                    const lng = item.order.longitude;
                     const addr = isPickup ? item.order.shipperAddress : item.order.address;
                     const city = isPickup ? item.order.shipperCity : item.order.city;
+                    const lat = isPickup ? null : item.order.latitude;
+                    const lng = isPickup ? null : item.order.longitude;
                     return (lat && lng)
                         ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
                         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`;
                 })(),
                 wazeUrl: (() => {
-                    const lat = item.order.latitude;
-                    const lng = item.order.longitude;
                     const addr = isPickup ? item.order.shipperAddress : item.order.address;
                     const city = isPickup ? item.order.shipperCity : item.order.city;
+                    const lat = isPickup ? null : item.order.latitude;
+                    const lng = isPickup ? null : item.order.longitude;
                     return (lat && lng)
                         ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
                         : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
@@ -495,6 +505,10 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
+                orderType: item.order.orderType,
+                isReturn: item.order.isReturn,
+                originalOrderId: item.order.originalOrderId,
+                exchangeOrderId: item.order.exchangeOrderId,
                 status: item.routeOrder.status?.toUpperCase() || 'PENDING',
                 proofPhotoUrl: item.routeOrder.proofPhotoUrl,
                 proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
@@ -606,6 +620,50 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
         res.json({ message: 'Route status updated' });
     } catch (error) {
         console.error('Update route status error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Persist the driver's on-device route optimization so it survives a
+// reinstall/new device and is visible to dispatch in the portal. Purely a
+// sequence write — it does not change stop statuses or trigger any of the
+// side effects that claim/status endpoints do.
+router.put('/routes/:routeId/sequence', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { routeId } = req.params;
+        const { stops } = req.body as { stops?: Array<{ stopId: number; sequence: number }> };
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        if (!Array.isArray(stops) || stops.length === 0) {
+            return res.status(400).json({ error: 'stops must be a non-empty array of { stopId, sequence }' });
+        }
+
+        const [route] = await db
+            .select()
+            .from(driverRoutes)
+            .where(eq(driverRoutes.id, routeId))
+            .limit(1);
+
+        if (!route) {
+            return res.status(404).json({ error: 'Route not found' });
+        }
+
+        if (route.driverId !== null && route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        for (const { stopId, sequence } of stops) {
+            if (!Number.isFinite(stopId) || !Number.isFinite(sequence)) continue;
+            await db
+                .update(routeOrders)
+                .set({ sequence })
+                .where(and(eq(routeOrders.id, stopId), eq(routeOrders.routeId, routeId)));
+        }
+
+        res.json({ message: 'Route sequence updated' });
+    } catch (error) {
+        console.error('Update route sequence error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -746,7 +804,7 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             updateData.pickedUpAt = new Date();
         } else if (statusLower === 'delivered') {
             updateData.deliveredAt = new Date();
-        } else if (statusLower === 'attempted') {
+        } else if (statusLower === 'attempted' || statusLower === 'failed') {
             updateData.attemptedAt = new Date();
         }
 
@@ -808,8 +866,13 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
                     orderStatus = 'picked_up';
                     statusLabel = 'Picked Up';
                 }
+            } else if (statusLower === 'failed') {
+                orderStatus = 'pickup_failed';
+                statusLabel = 'Pickup Failed';
+            } else if (statusLower === 'attempted') {
+                orderStatus = 'pickup_attempted';
+                statusLabel = 'Pickup Attempted';
             }
-            // Handle other pickup statuses if any (e.g. failed pickup)
         } else {
             // DELIVERY stop
             if (statusLower === 'delivered') {
@@ -1302,11 +1365,18 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Get all routes for this driver
-        const routes = await db
+        // Scope to today's/active routes only — the wallet is a per-shift
+        // reconciliation view, not a lifetime ledger. A route counts if it's
+        // still in progress (covers overnight shifts) or dated today.
+        const allRoutes = await db
             .select()
             .from(driverRoutes)
             .where(eq(driverRoutes.driverId, req.driverId!));
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const routes = allRoutes.filter(r =>
+            r.status === 'in_progress' || new Date(r.date).toISOString().slice(0, 10) === todayStr
+        );
 
         const routeIds = routes.map(r => r.id);
 
