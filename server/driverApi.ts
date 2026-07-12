@@ -867,13 +867,13 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
                     statusLabel = 'Picked Up';
                 }
             } else if (statusLower === 'failed' || statusLower === 'attempted') {
-                // Reuse the existing 'pending_pickup' status rather than inventing a
-                // new one — a failed/attempted pickup means the order genuinely still
-                // needs to be picked up (dispatch already treats pending_pickup as
-                // "needs pickup" everywhere: NEEDS_PICKUP_STATUSES, the bot router,
-                // etc.). The specific outcome is preserved in the tracking event's
-                // statusLabel below, not by inventing a new order-level bucket.
-                orderStatus = 'pending_pickup';
+                // 'failed_pickup' is an existing, admin-recognized order status
+                // (AddTrackingEventDialog, statusStyles, AdminDashboard's known-status
+                // list in the portal client) — the portal has no separate "attempted
+                // but will retry" bucket for pickups the way it does for deliveries
+                // (delivery_attempted vs failed_delivery), so both map here; the
+                // specific outcome is preserved in the tracking event's statusLabel.
+                orderStatus = 'failed_pickup';
                 statusLabel = statusLower === 'failed' ? 'Pickup Failed' : 'Pickup Attempted';
             }
         } else {
