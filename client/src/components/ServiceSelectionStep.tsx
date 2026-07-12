@@ -62,11 +62,11 @@ function earliestSameDayTime(): string {
 }
 
 // Preferred Time is always booked by window. When an admin hasn't configured
-// custom slots the server still returns these hourly windows (06:00–22:00),
+// custom slots the server still returns these hourly windows (08:00–22:00),
 // but we keep a client default as a defensive fallback.
-const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 16 }, (_, i) => {
-  const start = String(6 + i).padStart(2, '0');
-  const end = String(7 + i).padStart(2, '0');
+const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 14 }, (_, i) => {
+  const start = String(8 + i).padStart(2, '0');
+  const end = String(9 + i).padStart(2, '0');
   return `${start}:00 - ${end}:00`;
 });
 

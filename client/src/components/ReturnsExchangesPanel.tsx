@@ -666,7 +666,16 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
             {/* Create Return/Exchange Dialog */}
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-                <DialogContent className="bg-background text-foreground !w-[98vw] !max-w-[1300px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl">
+                <DialogContent
+                    className="bg-background text-foreground !w-[98vw] !max-w-[1300px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl"
+                    onInteractOutside={(e) => {
+                        // El dropdown de Google Places (.pac-container) vive fuera del
+                        // diálogo — sin esto, elegir una sugerencia cierra el diálogo.
+                        if ((e.target as HTMLElement)?.closest?.('.pac-container')) {
+                            e.preventDefault();
+                        }
+                    }}
+                >
                     <div className="p-6 md:p-8">
                         <DialogHeader className="mb-8 border-b border-border pb-4">
                             <DialogTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
@@ -861,7 +870,16 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
             {/* Manual Return/Exchange Dialog (without existing waybill) */}
             <Dialog open={manualDialogOpen} onOpenChange={(open) => { setManualDialogOpen(open); if (!open) setPickedLocationManual(null); }}>
-                <DialogContent className="bg-background text-foreground !w-[98vw] !max-w-[1400px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl">
+                <DialogContent
+                    className="bg-background text-foreground !w-[98vw] !max-w-[1400px] p-0 gap-0 border-border max-h-[90vh] overflow-y-auto antialiased font-sans rounded-2xl shadow-xl"
+                    onInteractOutside={(e) => {
+                        // El dropdown de Google Places (.pac-container) vive fuera del
+                        // diálogo — sin esto, elegir una sugerencia cierra el diálogo.
+                        if ((e.target as HTMLElement)?.closest?.('.pac-container')) {
+                            e.preventDefault();
+                        }
+                    }}
+                >
                     <div className="p-6 md:p-8">
                         <DialogHeader className="mb-8 border-b border-border pb-4">
                             <DialogTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-3">

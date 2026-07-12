@@ -764,6 +764,7 @@ export default function CODPanel() {
                   <TableHead>Client</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Method</TableHead>
+                  <TableHead>Driver</TableHead>
                   <TableHead>Collected Date</TableHead>
                   <TableHead>Remitted Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -777,6 +778,7 @@ export default function CODPanel() {
                     <TableCell>{record.client?.companyName || 'N/A'}</TableCell>
                     <TableCell className="font-semibold">{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
                     <TableCell>{getMethodBadge(record)}</TableCell>
+                    <TableCell>{(record as any).collectedByDriver || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell>{formatDate(record.collectedDate)}</TableCell>
                     <TableCell>{formatDate(record.remittedToClientDate)}</TableCell>
                     <TableCell>{getStatusBadge(record.status)}</TableCell>

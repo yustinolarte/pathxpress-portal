@@ -1897,6 +1897,45 @@ export async function recalculateInvoiceTotals(invoiceId: number): Promise<void>
 
 // ==================== COD Functions ====================
 
+// Looks up which driver actually delivered each order (same driver who would have
+// collected the COD at the door), via routeOrders -> driverRoutes -> drivers.
+// Picks the most recent delivered stop per order in case of re-attempts across routes.
+async function attachCollectingDriver<T extends { order: { id: number } }>(records: T[]): Promise<(T & { collectedByDriver: string | null })[]> {
+  const db = await getDb();
+  if (!db || records.length === 0) return records.map(r => ({ ...r, collectedByDriver: null }));
+
+  const { routeOrders, driverRoutes, drivers } = await import("../drizzle/schema");
+  const orderIds = Array.from(new Set(records.map(r => r.order.id)));
+
+  const rows = await db
+    .select({
+      orderId: routeOrders.orderId,
+      deliveredAt: routeOrders.deliveredAt,
+      driverName: drivers.fullName,
+    })
+    .from(routeOrders)
+    .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+    .innerJoin(drivers, eq(driverRoutes.driverId, drivers.id))
+    .where(
+      and(
+        inArray(routeOrders.orderId, orderIds),
+        eq(routeOrders.type, 'delivery'),
+        eq(routeOrders.status, 'delivered')
+      )
+    );
+
+  const latestByOrder = new Map<number, { name: string; at: number }>();
+  for (const row of rows) {
+    const at = row.deliveredAt ? new Date(row.deliveredAt).getTime() : 0;
+    const existing = latestByOrder.get(row.orderId);
+    if (!existing || at > existing.at) {
+      latestByOrder.set(row.orderId, { name: row.driverName, at });
+    }
+  }
+
+  return records.map(r => ({ ...r, collectedByDriver: latestByOrder.get(r.order.id)?.name || null }));
+}
+
 export async function getCODRecordsByClient(clientId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -1935,7 +1974,8 @@ export async function getAllCODRecords() {
       .orderBy(desc(codRecords.createdAt))
       .limit(500);
 
-    return result.map(r => ({ ...r.codRecord, order: r.order, client: r.client }));
+    const records = result.map(r => ({ ...r.codRecord, order: r.order, client: r.client }));
+    return await attachCollectingDriver(records);
   });
 }
 
@@ -2619,11 +2659,11 @@ function domDefaultsForZone(zone: number): { name: string; time: string } {
 
 /**
  * Default delivery time-slot windows for Preferred Time services when an admin
- * hasn't configured custom slots. Hourly windows from 06:00 to 22:00.
+ * hasn't configured custom slots. Hourly windows from 08:00 to 22:00.
  */
-const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 16 }, (_, i) => {
-  const start = String(6 + i).padStart(2, '0');
-  const end = String(7 + i).padStart(2, '0');
+const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 14 }, (_, i) => {
+  const start = String(8 + i).padStart(2, '0');
+  const end = String(9 + i).padStart(2, '0');
   return `${start}:00 - ${end}:00`;
 });
 

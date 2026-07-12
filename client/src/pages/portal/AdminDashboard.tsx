@@ -23,6 +23,7 @@ import AdminAnalytics from '@/components/AdminAnalytics';
 import OrderDetailsDialog from '@/components/OrderDetailsDialog';
 import DriversSection from '@/components/DriversSection';
 import AdminCreateOrderDialog from '@/components/AdminCreateOrderDialog';
+import AdminReturnExchangeDialog from '@/components/AdminReturnExchangeDialog';
 import EditOrderDialog from '@/components/EditOrderDialog';
 import AdminInternationalShipping from '@/components/AdminInternationalShipping';
 import CreateClientWizard from '@/components/CreateClientWizard';
@@ -121,6 +122,10 @@ export default function AdminDashboard() {
   // Create client dialog state
   const [createClientWizardOpen, setCreateClientWizardOpen] = useState(false);
   const [createOrderDialogOpen, setCreateOrderDialogOpen] = useState(false);
+
+  // Admin return/exchange dialog state — order set for "from existing order", null for manual entry
+  const [returnExchangeDialogOpen, setReturnExchangeDialogOpen] = useState(false);
+  const [returnExchangeOrder, setReturnExchangeOrder] = useState<any>(null);
 
   // Client Notes Dialog State
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
@@ -882,6 +887,10 @@ export default function AdminDashboard() {
                       <Plus className="mr-2 h-4 w-4" />
                       Create Order
                     </Button>
+                    <Button variant="outline" onClick={() => { setReturnExchangeOrder(null); setReturnExchangeDialogOpen(true); }}>
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      New Return/Exchange
+                    </Button>
                     <Button variant="outline" size="sm" onClick={async () => {
                       if (ordersTotal === 0) {
                         toast.error("No orders to export");
@@ -1182,6 +1191,11 @@ export default function AdminDashboard() {
                                     <Button variant="ghost" size="sm" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }} title="Add Tracking Event">
                                       <Package className="h-4 w-4" />
                                     </Button>
+                                    {canCreateReturn && (
+                                      <Button variant="ghost" size="sm" onClick={() => { setReturnExchangeOrder(order); setReturnExchangeDialogOpen(true); }} title="Create Return/Exchange">
+                                        <RotateCcw className="h-4 w-4" />
+                                      </Button>
+                                    )}
                                     <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} title="Delete Order" disabled={deleteOrderMutation.isPending}>
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -1197,6 +1211,7 @@ export default function AdminDashboard() {
                     {/* Mobile Cards */}
                     <div className="md:hidden space-y-3">
                       {orders.map((order) => {
+                        const canCreateReturn = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'].includes(order.status) && !order.isReturn;
                         return (
                           <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
                             {/* Top row: waybill + status */}
@@ -1254,6 +1269,11 @@ export default function AdminDashboard() {
                               <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }}>
                                 <Package className="h-3.5 w-3.5 mr-1" />Track
                               </Button>
+                              {canCreateReturn && (
+                                <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setReturnExchangeOrder(order); setReturnExchangeDialogOpen(true); }}>
+                                  <RotateCcw className="h-3.5 w-3.5 mr-1" />Return
+                                </Button>
+                              )}
                               <Button variant="ghost" size="sm" className="h-8 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} disabled={deleteOrderMutation.isPending}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -1929,6 +1949,18 @@ export default function AdminDashboard() {
           clients={clients}
           onSuccess={() => {
             setCreateOrderDialogOpen(false);
+            refetchOrders();
+          }}
+        />
+
+        {/* Admin Return/Exchange Dialog */}
+        <AdminReturnExchangeDialog
+          open={returnExchangeDialogOpen}
+          onOpenChange={setReturnExchangeDialogOpen}
+          order={returnExchangeOrder}
+          clients={clients}
+          onSuccess={() => {
+            setReturnExchangeDialogOpen(false);
             refetchOrders();
           }}
         />

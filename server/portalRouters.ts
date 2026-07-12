@@ -1509,7 +1509,515 @@ export const adminPortalRouter = router({
 
       return order;
     }),
+
+  // Search a client's order by waybill to start a return/exchange on their behalf
+  adminSearchOrderForReturn: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      waybillNumber: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      return await doSearchOrderForReturn(input.clientId, input.waybillNumber);
+    }),
+
+  // Create a return on behalf of a client
+  adminCreateReturnRequest: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      orderId: z.number(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return await doCreateReturn(input.clientId, input.orderId, ctx.portalUser.email || 'admin');
+    }),
+
+  // Create an exchange (return + new shipment) on behalf of a client
+  adminCreateExchangeRequest: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      orderId: z.number(),
+      newShipment: z.object({
+        customerName: z.string(),
+        customerPhone: z.string(),
+        address: z.string(),
+        city: z.string(),
+        destinationCountry: z.string().default('UAE'),
+        pieces: z.number().default(1),
+        weight: z.number().default(0.5),
+        serviceType: z.string().default('DOM'),
+        specialInstructions: z.string().optional(),
+        codRequired: z.number().default(0),
+        codAmount: z.string().optional(),
+        codCurrency: z.string().default('AED'),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
+      }),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return await doCreateExchange(input.clientId, input.orderId, input.newShipment, ctx.portalUser.email || 'admin');
+    }),
+
+  // Create a manual return/exchange (no existing waybill) on behalf of a client
+  adminCreateManualReturnExchange: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      type: z.enum(['return', 'exchange']),
+      pickupName: z.string(),
+      pickupPhone: z.string(),
+      pickupAddress: z.string(),
+      pickupCity: z.string(),
+      pickupCountry: z.string().default('UAE'),
+      latitude: z.string().optional(),
+      longitude: z.string().optional(),
+      deliveryName: z.string(),
+      deliveryPhone: z.string(),
+      deliveryAddress: z.string(),
+      deliveryCity: z.string(),
+      deliveryCountry: z.string().default('UAE'),
+      pieces: z.number().default(1),
+      weight: z.number().default(0.5),
+      serviceType: z.string().default('DOM'),
+      specialInstructions: z.string().optional(),
+      preferredDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      preferredDeliveryTime: z.string().optional(),
+      exchangeCustomerName: z.string().optional(),
+      exchangeCustomerPhone: z.string().optional(),
+      exchangeAddress: z.string().optional(),
+      exchangeCity: z.string().optional(),
+      exchangePieces: z.number().default(1),
+      exchangeWeight: z.number().default(0.5),
+      exchangeCodRequired: z.number().default(0),
+      exchangeCodAmount: z.string().optional(),
+      exchangeCodCurrency: z.string().default('AED'),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { clientId, ...rest } = input;
+      return await doCreateManualReturnExchange(clientId, rest, ctx.portalUser.email || 'admin');
+    }),
 });
+
+// ---------------------------------------------------------------------------
+// Shared return/exchange creation logic — used by both the customer portal
+// (clientId comes from the session) and the admin portal (clientId is chosen
+// explicitly, so admins can create returns/exchanges on behalf of any client).
+// ---------------------------------------------------------------------------
+
+async function insertCodRecordForOrder(orderId: number, codAmount: string, codCurrency: string, allowedMethods: string) {
+  const db = await import('./db').then(m => m.getDb());
+  if (!db) return;
+  const { codRecords } = await import('../drizzle/schema');
+  await db.insert(codRecords).values({
+    shipmentId: orderId,
+    codAmount,
+    codCurrency: codCurrency || 'AED',
+    allowedMethods: allowedMethods || 'cash',
+    status: 'pending_collection',
+    collectedDate: null,
+    remittedToClientDate: null,
+    notes: null,
+  });
+}
+
+async function doSearchOrderForReturn(clientId: number, waybillNumber: string) {
+  const order = await getOrderByWaybill(waybillNumber);
+  if (!order) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found with this waybill number' });
+  }
+  if (order.clientId !== clientId) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'This order does not belong to this client' });
+  }
+  const allowedStatuses = ['delivered', 'failed_delivery'];
+  if (!allowedStatuses.includes(order.status)) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Returns/exchanges can only be created from orders with status "Delivered" or "Failed Delivery". Current status: ${order.status.replace(/_/g, ' ')}`
+    });
+  }
+  const client = await getClientAccountById(clientId);
+  const hideShipperAddress = client?.hideShipperAddress === 1;
+  return { ...order, shipperAddress: hideShipperAddress ? '' : order.shipperAddress };
+}
+
+async function doCreateReturn(clientId: number, orderId: number, actorLabel: string) {
+  const originalOrder = await getOrderById(orderId);
+  if (!originalOrder || originalOrder.clientId !== clientId) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
+  }
+
+  const client = await getClientAccountById(clientId);
+  const hideConsigneeOnReturn = client?.hideShipperAddress === 1 ? 1 : 0;
+
+  const returnWaybill = await generateWaybillNumber();
+  const returnOrder = await createOrder({
+    clientId,
+    orderNumber: `RTN-${originalOrder.waybillNumber}`,
+    waybillNumber: returnWaybill,
+
+    // Swap: consignee becomes shipper (show full address - this is the customer returning the package)
+    shipperName: originalOrder.customerName,
+    shipperAddress: originalOrder.address,
+    shipperCity: originalOrder.city,
+    shipperCountry: originalOrder.destinationCountry,
+    shipperPhone: originalOrder.customerPhone,
+
+    // Swap: shipper becomes consignee (hide address if client has privacy enabled)
+    customerName: originalOrder.shipperName,
+    customerPhone: originalOrder.shipperPhone,
+    address: originalOrder.shipperAddress,
+    city: originalOrder.shipperCity,
+    destinationCountry: originalOrder.shipperCountry,
+
+    pieces: originalOrder.pieces,
+    weight: originalOrder.weight,
+    serviceType: originalOrder.serviceType,
+    specialInstructions: `RETURN - Original order: ${originalOrder.waybillNumber}`,
+
+    codRequired: 0,
+
+    isReturn: 1,
+    originalOrderId: orderId,
+    returnCharged: 1,
+    orderType: 'return',
+    hideConsigneeAddress: hideConsigneeOnReturn,
+
+    status: 'pending_pickup',
+    lastStatusUpdate: new Date(),
+  });
+
+  if (!returnOrder) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create return' });
+  }
+
+  await createTrackingEvent({
+    shipmentId: returnOrder.id,
+    eventDatetime: new Date(),
+    statusCode: 'pending_pickup',
+    statusLabel: 'RETURN PENDING PICKUP',
+    description: `Return shipment created for ${originalOrder.waybillNumber}`,
+    createdBy: actorLabel,
+  });
+
+  return { success: true, message: `Return ${returnWaybill} created successfully`, returnOrder };
+}
+
+interface ExchangeNewShipmentInput {
+  customerName: string;
+  customerPhone: string;
+  address: string;
+  city: string;
+  destinationCountry: string;
+  pieces: number;
+  weight: number;
+  serviceType: string;
+  specialInstructions?: string;
+  codRequired: number;
+  codAmount?: string;
+  codCurrency: string;
+  latitude?: string;
+  longitude?: string;
+}
+
+async function doCreateExchange(clientId: number, orderId: number, newShipment: ExchangeNewShipmentInput, actorLabel: string) {
+  const originalOrder = await getOrderById(orderId);
+  if (!originalOrder || originalOrder.clientId !== clientId) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
+  }
+
+  const clientAccount = await getClientAccountById(clientId);
+  if (!clientAccount) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
+  }
+
+  const hideConsigneeOnReturn = clientAccount.hideShipperAddress === 1 ? 1 : 0;
+
+  // 1. Create return waybill (client becomes consignee, hide their address if privacy enabled)
+  const returnWaybill = await generateWaybillNumber();
+  const returnOrder = await createOrder({
+    clientId,
+    orderNumber: `EXC-RTN-${originalOrder.waybillNumber}`,
+    waybillNumber: returnWaybill,
+
+    shipperName: originalOrder.customerName,
+    shipperAddress: originalOrder.address,
+    shipperCity: originalOrder.city,
+    shipperCountry: originalOrder.destinationCountry,
+    shipperPhone: originalOrder.customerPhone,
+
+    customerName: originalOrder.shipperName,
+    customerPhone: originalOrder.shipperPhone,
+    address: originalOrder.shipperAddress,
+    city: originalOrder.shipperCity,
+    destinationCountry: originalOrder.shipperCountry,
+
+    pieces: originalOrder.pieces,
+    weight: originalOrder.weight,
+    serviceType: originalOrder.serviceType,
+    specialInstructions: `EXCHANGE RETURN - Original: ${originalOrder.waybillNumber}`,
+
+    codRequired: 0,
+    isReturn: 1,
+    originalOrderId: orderId,
+    returnCharged: 1,
+    orderType: 'exchange',
+    hideConsigneeAddress: hideConsigneeOnReturn,
+
+    status: 'pending_pickup',
+    lastStatusUpdate: new Date(),
+  });
+
+  if (!returnOrder) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create return for exchange' });
+  }
+
+  // 2. Create new shipment waybill
+  const newWaybill = await generateWaybillNumber();
+  const newOrder = await createOrder({
+    clientId,
+    orderNumber: `EXC-NEW-${originalOrder.waybillNumber}`,
+    waybillNumber: newWaybill,
+
+    shipperName: clientAccount.companyName,
+    shipperAddress: clientAccount.billingAddress || '',
+    shipperCity: clientAccount.city || 'Dubai',
+    shipperCountry: clientAccount.country || 'UAE',
+    shipperPhone: clientAccount.phone || '',
+
+    customerName: newShipment.customerName,
+    customerPhone: newShipment.customerPhone,
+    address: newShipment.address,
+    city: newShipment.city,
+    destinationCountry: newShipment.destinationCountry,
+    latitude: newShipment.latitude,
+    longitude: newShipment.longitude,
+
+    pieces: newShipment.pieces,
+    weight: newShipment.weight.toString(),
+    serviceType: newShipment.serviceType,
+    specialInstructions: newShipment.specialInstructions || `EXCHANGE NEW - Original: ${originalOrder.waybillNumber}`,
+
+    codRequired: clientAccount.codAllowed ? newShipment.codRequired : 0,
+    codAmount: clientAccount.codAllowed && newShipment.codRequired ? (newShipment.codAmount || null) : null,
+    codCurrency: clientAccount.codAllowed && newShipment.codRequired ? (newShipment.codCurrency || 'AED') : 'AED',
+    codPaymentMethod: clientAccount.codAllowed && newShipment.codRequired ? 'cash' : null,
+    isReturn: 0,
+    originalOrderId: orderId,
+    orderType: 'exchange',
+    exchangeOrderId: returnOrder.id,
+
+    status: 'pending_pickup',
+    lastStatusUpdate: new Date(),
+  });
+
+  if (!newOrder) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create new shipment for exchange' });
+  }
+
+  // Update return order with exchange link
+  const db = await import('./db').then(m => m.getDb());
+  const { orders } = await import('../drizzle/schema');
+  const { eq } = await import('drizzle-orm');
+  await db!.update(orders).set({ exchangeOrderId: newOrder.id }).where(eq(orders.id, returnOrder.id));
+
+  // COD bookkeeping so the exchange's new shipment shows up in COD reports/settlement,
+  // same as a normal shipment created via createShipment/adminCreateOrder.
+  if (clientAccount.codAllowed && newShipment.codRequired && newShipment.codAmount) {
+    await insertCodRecordForOrder(newOrder.id, newShipment.codAmount, newShipment.codCurrency, 'cash');
+  }
+
+  // Create tracking events
+  await createTrackingEvent({
+    shipmentId: returnOrder.id,
+    eventDatetime: new Date(),
+    statusCode: 'pending_pickup',
+    statusLabel: 'EXCHANGE RETURN PENDING',
+    description: `Exchange return created for ${originalOrder.waybillNumber}`,
+    createdBy: actorLabel,
+  });
+
+  await createTrackingEvent({
+    shipmentId: newOrder.id,
+    eventDatetime: new Date(),
+    statusCode: 'pending_pickup',
+    statusLabel: 'EXCHANGE NEW SHIPMENT PENDING',
+    description: `Exchange new shipment for ${originalOrder.waybillNumber}`,
+    createdBy: actorLabel,
+  });
+
+  notifyAdminNewOrder(newWaybill, newShipment.customerName, newShipment.customerPhone || '').catch((e: any) => {
+    console.warn('⚠️ Email notification unhandled error:', e.message);
+  });
+
+  return {
+    success: true,
+    message: `Exchange created! Return: ${returnWaybill}, New: ${newWaybill}`,
+    returnOrder,
+    newOrder,
+  };
+}
+
+interface ManualReturnExchangeInput {
+  type: 'return' | 'exchange';
+  pickupName: string;
+  pickupPhone: string;
+  pickupAddress: string;
+  pickupCity: string;
+  pickupCountry: string;
+  latitude?: string;
+  longitude?: string;
+  deliveryName: string;
+  deliveryPhone: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  deliveryCountry: string;
+  pieces: number;
+  weight: number;
+  serviceType: string;
+  specialInstructions?: string;
+  preferredDeliveryDate?: string;
+  preferredDeliveryTime?: string;
+  exchangeCustomerName?: string;
+  exchangeCustomerPhone?: string;
+  exchangeAddress?: string;
+  exchangeCity?: string;
+  exchangePieces: number;
+  exchangeWeight: number;
+  exchangeCodRequired: number;
+  exchangeCodAmount?: string;
+  exchangeCodCurrency: string;
+}
+
+async function doCreateManualReturnExchange(clientId: number, input: ManualReturnExchangeInput, actorLabel: string) {
+  const clientAccount = await getClientAccountById(clientId);
+  if (!clientAccount) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
+  }
+
+  // Create return/pickup waybill
+  const returnWaybill = await generateWaybillNumber();
+  const returnOrder = await createOrder({
+    clientId,
+    orderNumber: input.type === 'return' ? `RTN-MANUAL` : `EXC-RTN-MANUAL`,
+    waybillNumber: returnWaybill,
+
+    shipperName: input.pickupName,
+    shipperAddress: input.pickupAddress,
+    shipperCity: input.pickupCity,
+    shipperCountry: input.pickupCountry,
+    shipperPhone: input.pickupPhone,
+    shipperLat: input.latitude,
+    shipperLng: input.longitude,
+
+    customerName: input.deliveryName,
+    customerPhone: input.deliveryPhone,
+    address: input.deliveryAddress,
+    city: input.deliveryCity,
+    destinationCountry: input.deliveryCountry,
+
+    pieces: input.pieces,
+    weight: input.weight.toString(),
+    serviceType: input.serviceType,
+    specialInstructions: input.specialInstructions || `${input.type.toUpperCase()} - Manual creation`,
+    preferredDeliveryDate: input.preferredDeliveryDate || null,
+    preferredDeliveryTime: input.preferredDeliveryTime || null,
+
+    codRequired: 0,
+    isReturn: 1,
+    returnCharged: 1,
+    orderType: input.type,
+
+    status: 'pending_pickup',
+    lastStatusUpdate: new Date(),
+  });
+
+  if (!returnOrder) {
+    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
+  }
+
+  // Create tracking event
+  await createTrackingEvent({
+    shipmentId: returnOrder.id,
+    eventDatetime: new Date(),
+    statusCode: 'pending_pickup',
+    statusLabel: `${input.type.toUpperCase()} PENDING PICKUP`,
+    description: 'Manual return/exchange created',
+    createdBy: actorLabel,
+  });
+
+  let newOrder = null;
+
+  // If exchange, create new shipment
+  if (input.type === 'exchange' && input.exchangeCustomerName && input.exchangeAddress && input.exchangeCity) {
+    const newWaybill = await generateWaybillNumber();
+    newOrder = await createOrder({
+      clientId,
+      orderNumber: `EXC-NEW-MANUAL`,
+      waybillNumber: newWaybill,
+
+      shipperName: clientAccount.companyName,
+      shipperAddress: clientAccount.billingAddress || '',
+      shipperCity: clientAccount.city || 'Dubai',
+      shipperCountry: clientAccount.country || 'UAE',
+      shipperPhone: clientAccount.phone || '',
+
+      customerName: input.exchangeCustomerName,
+      customerPhone: input.exchangeCustomerPhone || '',
+      address: input.exchangeAddress,
+      city: input.exchangeCity,
+      destinationCountry: input.deliveryCountry,
+
+      pieces: input.exchangePieces,
+      weight: input.exchangeWeight.toString(),
+      serviceType: input.serviceType,
+      specialInstructions: 'EXCHANGE NEW - Manual creation',
+      preferredDeliveryDate: input.preferredDeliveryDate || null,
+      preferredDeliveryTime: input.preferredDeliveryTime || null,
+
+      codRequired: clientAccount.codAllowed ? input.exchangeCodRequired : 0,
+      codAmount: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodAmount || null) : null,
+      codCurrency: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodCurrency || 'AED') : 'AED',
+      codPaymentMethod: clientAccount.codAllowed && input.exchangeCodRequired ? 'cash' : null,
+      isReturn: 0,
+      orderType: 'exchange',
+      exchangeOrderId: returnOrder.id,
+
+      status: 'pending_pickup',
+      lastStatusUpdate: new Date(),
+    });
+
+    if (newOrder) {
+      // Link return to new order
+      const db = await import('./db').then(m => m.getDb());
+      const { orders } = await import('../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+      await db!.update(orders).set({ exchangeOrderId: newOrder.id }).where(eq(orders.id, returnOrder.id));
+
+      if (clientAccount.codAllowed && input.exchangeCodRequired && input.exchangeCodAmount) {
+        await insertCodRecordForOrder(newOrder.id, input.exchangeCodAmount, input.exchangeCodCurrency, 'cash');
+      }
+
+      await createTrackingEvent({
+        shipmentId: newOrder.id,
+        eventDatetime: new Date(),
+        statusCode: 'pending_pickup',
+        statusLabel: 'EXCHANGE NEW SHIPMENT PENDING',
+        description: 'Manual exchange new shipment created',
+        createdBy: actorLabel,
+      });
+
+      notifyAdminNewOrder(newWaybill, input.exchangeCustomerName, input.exchangeCustomerPhone || '').catch((e: any) => {
+        console.warn('⚠️ Email notification unhandled error:', e.message);
+      });
+    }
+  }
+
+  return {
+    success: true,
+    message: input.type === 'exchange' && newOrder
+      ? `Exchange created! Return: ${returnWaybill}, New: ${newOrder.waybillNumber}`
+      : `Return ${returnWaybill} created successfully`,
+    returnOrder,
+    newOrder,
+  };
+}
 
 /**
  * Customer portal router
@@ -1835,33 +2343,7 @@ export const customerPortalRouter = router({
       waybillNumber: z.string(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const order = await getOrderByWaybill(input.waybillNumber);
-      if (!order) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found with this waybill number' });
-      }
-
-      if (order.clientId !== ctx.portalUser.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'This order does not belong to your account' });
-      }
-
-      // Only allow returns from delivered or failed_delivery orders
-      const allowedStatuses = ['delivered', 'failed_delivery'];
-      if (!allowedStatuses.includes(order.status)) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: `Returns/exchanges can only be created from orders with status "Delivered" or "Failed Delivery". Current status: ${order.status.replace(/_/g, ' ')}`
-        });
-      }
-
-      // Check if client has hideShipperAddress enabled
-      const client = await getClientAccountById(ctx.portalUser.clientId);
-      const hideShipperAddress = client?.hideShipperAddress === 1;
-
-      // Return order with shipper address hidden if setting is enabled
-      return {
-        ...order,
-        shipperAddress: hideShipperAddress ? '' : order.shipperAddress,
-      };
+      return await doSearchOrderForReturn(ctx.portalUser.clientId, input.waybillNumber);
     }),
 
   // Create return request
@@ -1870,71 +2352,7 @@ export const customerPortalRouter = router({
       orderId: z.number(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const originalOrder = await getOrderById(input.orderId);
-      if (!originalOrder || originalOrder.clientId !== ctx.portalUser.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
-      }
-
-      // Check if client has hideShipperAddress enabled (for privacy on waybill)
-      const client = await getClientAccountById(ctx.portalUser.clientId);
-      const hideConsigneeOnReturn = client?.hideShipperAddress === 1 ? 1 : 0;
-
-      // Generate waybill for return
-      const returnWaybill = await generateWaybillNumber();
-
-      // Create return order (swap shipper/consignee)
-      // Note: On returns, the original client becomes the consignee, so we hide their address if they have privacy enabled
-      const returnOrder = await createOrder({
-        clientId: ctx.portalUser.clientId,
-        orderNumber: `RTN-${originalOrder.waybillNumber}`,
-        waybillNumber: returnWaybill,
-
-        // Swap: consignee becomes shipper (show full address - this is the customer returning the package)
-        shipperName: originalOrder.customerName,
-        shipperAddress: originalOrder.address,
-        shipperCity: originalOrder.city,
-        shipperCountry: originalOrder.destinationCountry,
-        shipperPhone: originalOrder.customerPhone,
-
-        // Swap: shipper becomes consignee (hide address if client has privacy enabled)
-        customerName: originalOrder.shipperName,
-        customerPhone: originalOrder.shipperPhone,
-        address: originalOrder.shipperAddress,
-        city: originalOrder.shipperCity,
-        destinationCountry: originalOrder.shipperCountry,
-
-        pieces: originalOrder.pieces,
-        weight: originalOrder.weight,
-        serviceType: originalOrder.serviceType,
-        specialInstructions: `RETURN - Original order: ${originalOrder.waybillNumber}`,
-
-        codRequired: 0,
-
-        isReturn: 1,
-        originalOrderId: input.orderId,
-        returnCharged: 1,
-        orderType: 'return',
-        hideConsigneeAddress: hideConsigneeOnReturn, // Hide consignee (client) address on waybill if privacy enabled
-
-        status: 'pending_pickup',
-        lastStatusUpdate: new Date(),
-      });
-
-      if (!returnOrder) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create return' });
-      }
-
-      // Create tracking event
-      await createTrackingEvent({
-        shipmentId: returnOrder.id,
-        eventDatetime: new Date(),
-        statusCode: 'pending_pickup',
-        statusLabel: 'RETURN PENDING PICKUP',
-        description: `Return shipment created for ${originalOrder.waybillNumber}`,
-        createdBy: ctx.portalUser.email || 'customer',
-      });
-
-      return { success: true, message: `Return ${returnWaybill} created successfully`, returnOrder };
+      return await doCreateReturn(ctx.portalUser.clientId, input.orderId, ctx.portalUser.email || 'customer');
     }),
 
   // Create exchange request (return + new shipment)
@@ -1954,138 +2372,12 @@ export const customerPortalRouter = router({
         codRequired: z.number().default(0),
         codAmount: z.string().optional(),
         codCurrency: z.string().default('AED'),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
-      const originalOrder = await getOrderById(input.orderId);
-      if (!originalOrder || originalOrder.clientId !== ctx.portalUser.clientId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
-      }
-
-      // Get client account for shipper info
-      const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
-      if (!clientAccount) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
-      }
-
-      // Check if client has privacy enabled (for hiding address on return waybills)
-      const hideConsigneeOnReturn = clientAccount.hideShipperAddress === 1 ? 1 : 0;
-
-      // 1. Create return waybill (client becomes consignee, hide their address if privacy enabled)
-      const returnWaybill = await generateWaybillNumber();
-      const returnOrder = await createOrder({
-        clientId: ctx.portalUser.clientId,
-        orderNumber: `EXC-RTN-${originalOrder.waybillNumber}`,
-        waybillNumber: returnWaybill,
-
-        // Swap: original consignee becomes shipper (show full address)
-        shipperName: originalOrder.customerName,
-        shipperAddress: originalOrder.address,
-        shipperCity: originalOrder.city,
-        shipperCountry: originalOrder.destinationCountry,
-        shipperPhone: originalOrder.customerPhone,
-
-        // Swap: original shipper (client) becomes consignee (hide if privacy enabled)
-        customerName: originalOrder.shipperName,
-        customerPhone: originalOrder.shipperPhone,
-        address: originalOrder.shipperAddress,
-        city: originalOrder.shipperCity,
-        destinationCountry: originalOrder.shipperCountry,
-
-        pieces: originalOrder.pieces,
-        weight: originalOrder.weight,
-        serviceType: originalOrder.serviceType,
-        specialInstructions: `EXCHANGE RETURN - Original: ${originalOrder.waybillNumber}`,
-
-        codRequired: 0,
-        isReturn: 1,
-        originalOrderId: input.orderId,
-        returnCharged: 1,
-        orderType: 'exchange',
-        hideConsigneeAddress: hideConsigneeOnReturn, // Hide consignee (client) address on waybill if privacy enabled
-
-        status: 'pending_pickup',
-        lastStatusUpdate: new Date(),
-      });
-
-      if (!returnOrder) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create return for exchange' });
-      }
-
-      // 2. Create new shipment waybill
-      const newWaybill = await generateWaybillNumber();
-      const newOrder = await createOrder({
-        clientId: ctx.portalUser.clientId,
-        orderNumber: `EXC-NEW-${originalOrder.waybillNumber}`,
-        waybillNumber: newWaybill,
-
-        // Shipper is the client
-        shipperName: clientAccount.companyName,
-        shipperAddress: clientAccount.billingAddress || '',
-        shipperCity: clientAccount.city || 'Dubai',
-        shipperCountry: clientAccount.country || 'UAE',
-        shipperPhone: clientAccount.phone || '',
-
-        // Consignee from input
-        customerName: input.newShipment.customerName,
-        customerPhone: input.newShipment.customerPhone,
-        address: input.newShipment.address,
-        city: input.newShipment.city,
-        destinationCountry: input.newShipment.destinationCountry,
-
-        pieces: input.newShipment.pieces,
-        weight: input.newShipment.weight.toString(),
-        serviceType: input.newShipment.serviceType,
-        specialInstructions: input.newShipment.specialInstructions || `EXCHANGE NEW - Original: ${originalOrder.waybillNumber}`,
-
-        codRequired: clientAccount.codAllowed ? input.newShipment.codRequired : 0,
-        codAmount: clientAccount.codAllowed && input.newShipment.codRequired ? (input.newShipment.codAmount || null) : null,
-        codCurrency: clientAccount.codAllowed && input.newShipment.codRequired ? (input.newShipment.codCurrency || 'AED') : 'AED',
-        codPaymentMethod: clientAccount.codAllowed && input.newShipment.codRequired ? 'cash' : null,
-        isReturn: 0,
-        originalOrderId: input.orderId,
-        orderType: 'exchange',
-        exchangeOrderId: returnOrder.id,
-
-        status: 'pending_pickup',
-        lastStatusUpdate: new Date(),
-      });
-
-      if (!newOrder) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create new shipment for exchange' });
-      }
-
-      // Update return order with exchange link
-      const db = await import('./db').then(m => m.getDb());
-      const { orders } = await import('../drizzle/schema');
-      const { eq } = await import('drizzle-orm');
-      await db!.update(orders).set({ exchangeOrderId: newOrder.id }).where(eq(orders.id, returnOrder.id));
-
-      // Create tracking events
-      await createTrackingEvent({
-        shipmentId: returnOrder.id,
-        eventDatetime: new Date(),
-        statusCode: 'pending_pickup',
-        statusLabel: 'EXCHANGE RETURN PENDING',
-        description: `Exchange return created for ${originalOrder.waybillNumber}`,
-        createdBy: ctx.portalUser.email || 'customer',
-      });
-
-      await createTrackingEvent({
-        shipmentId: newOrder.id,
-        eventDatetime: new Date(),
-        statusCode: 'pending_pickup',
-        statusLabel: 'EXCHANGE NEW SHIPMENT PENDING',
-        description: `Exchange new shipment for ${originalOrder.waybillNumber}`,
-        createdBy: ctx.portalUser.email || 'customer',
-      });
-
-      return {
-        success: true,
-        message: `Exchange created! Return: ${returnWaybill}, New: ${newWaybill}`,
-        returnOrder,
-        newOrder,
-      };
+      return await doCreateExchange(ctx.portalUser.clientId, input.orderId, input.newShipment, ctx.portalUser.email || 'customer');
     }),
 
   // Create manual return/exchange (without existing waybill)
@@ -2097,6 +2389,9 @@ export const customerPortalRouter = router({
       pickupAddress: z.string(),
       pickupCity: z.string(),
       pickupCountry: z.string().default('UAE'),
+      // Pickup pin from the map picker (maps to the return waybill's shipper coordinates)
+      latitude: z.string().optional(),
+      longitude: z.string().optional(),
       deliveryName: z.string(),
       deliveryPhone: z.string(),
       deliveryAddress: z.string(),
@@ -2122,127 +2417,7 @@ export const customerPortalRouter = router({
       exchangeCodCurrency: z.string().default('AED'),
     }))
     .mutation(async ({ input, ctx }) => {
-      const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
-      if (!clientAccount) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
-      }
-
-      // Create return/pickup waybill
-      const returnWaybill = await generateWaybillNumber();
-      const returnOrder = await createOrder({
-        clientId: ctx.portalUser.clientId,
-        orderNumber: input.type === 'return' ? `RTN-MANUAL` : `EXC-RTN-MANUAL`,
-        waybillNumber: returnWaybill,
-
-        shipperName: input.pickupName,
-        shipperAddress: input.pickupAddress,
-        shipperCity: input.pickupCity,
-        shipperCountry: input.pickupCountry,
-        shipperPhone: input.pickupPhone,
-
-        customerName: input.deliveryName,
-        customerPhone: input.deliveryPhone,
-        address: input.deliveryAddress,
-        city: input.deliveryCity,
-        destinationCountry: input.deliveryCountry,
-
-        pieces: input.pieces,
-        weight: input.weight.toString(),
-        serviceType: input.serviceType,
-        specialInstructions: input.specialInstructions || `${input.type.toUpperCase()} - Manual creation`,
-        preferredDeliveryDate: input.preferredDeliveryDate || null,
-        preferredDeliveryTime: input.preferredDeliveryTime || null,
-
-        codRequired: 0,
-        isReturn: 1,
-        returnCharged: 1,
-        orderType: input.type,
-
-        status: 'pending_pickup',
-        lastStatusUpdate: new Date(),
-      });
-
-      if (!returnOrder) {
-        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
-      }
-
-      // Create tracking event
-      await createTrackingEvent({
-        shipmentId: returnOrder.id,
-        eventDatetime: new Date(),
-        statusCode: 'pending_pickup',
-        statusLabel: `${input.type.toUpperCase()} PENDING PICKUP`,
-        description: 'Manual return/exchange created',
-        createdBy: ctx.portalUser.email || 'customer',
-      });
-
-      let newOrder = null;
-
-      // If exchange, create new shipment
-      if (input.type === 'exchange' && input.exchangeCustomerName && input.exchangeAddress && input.exchangeCity) {
-        const newWaybill = await generateWaybillNumber();
-        newOrder = await createOrder({
-          clientId: ctx.portalUser.clientId,
-          orderNumber: `EXC-NEW-MANUAL`,
-          waybillNumber: newWaybill,
-
-          shipperName: clientAccount.companyName,
-          shipperAddress: clientAccount.billingAddress || '',
-          shipperCity: clientAccount.city || 'Dubai',
-          shipperCountry: clientAccount.country || 'UAE',
-          shipperPhone: clientAccount.phone || '',
-
-          customerName: input.exchangeCustomerName,
-          customerPhone: input.exchangeCustomerPhone || '',
-          address: input.exchangeAddress,
-          city: input.exchangeCity,
-          destinationCountry: input.deliveryCountry,
-
-          pieces: input.exchangePieces,
-          weight: input.exchangeWeight.toString(),
-          serviceType: input.serviceType,
-          specialInstructions: 'EXCHANGE NEW - Manual creation',
-          preferredDeliveryDate: input.preferredDeliveryDate || null,
-          preferredDeliveryTime: input.preferredDeliveryTime || null,
-
-          codRequired: clientAccount.codAllowed ? input.exchangeCodRequired : 0,
-          codAmount: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodAmount || null) : null,
-          codCurrency: clientAccount.codAllowed && input.exchangeCodRequired ? (input.exchangeCodCurrency || 'AED') : 'AED',
-          codPaymentMethod: clientAccount.codAllowed && input.exchangeCodRequired ? 'cash' : null,
-          isReturn: 0,
-          orderType: 'exchange',
-          exchangeOrderId: returnOrder.id,
-
-          status: 'pending_pickup',
-          lastStatusUpdate: new Date(),
-        });
-
-        if (newOrder) {
-          // Link return to new order
-          const db = await import('./db').then(m => m.getDb());
-          const { orders } = await import('../drizzle/schema');
-          const { eq } = await import('drizzle-orm');
-          await db!.update(orders).set({ exchangeOrderId: newOrder.id }).where(eq(orders.id, returnOrder.id));
-
-          await createTrackingEvent({
-            shipmentId: newOrder.id,
-            eventDatetime: new Date(),
-            statusCode: 'pending_pickup',
-            statusLabel: 'EXCHANGE NEW SHIPMENT PENDING',
-            description: 'Manual exchange new shipment created',
-            createdBy: ctx.portalUser.email || 'customer',
-          });
-        }
-      }
-
-      return {
-        success: true,
-        message: input.type === 'exchange' && newOrder
-          ? `Exchange created! Return: ${returnWaybill}, New: ${newOrder.waybillNumber}`
-          : `Return ${returnWaybill} created successfully`,
-        returnOrder,
-        newOrder,
-      };
+      return await doCreateManualReturnExchange(ctx.portalUser.clientId, input, ctx.portalUser.email || 'customer');
     }),
 
   // Update COD on exchange order (only if pending_pickup)

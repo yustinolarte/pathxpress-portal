@@ -30,11 +30,11 @@ export const isPreferredTimeService = (code: string): boolean =>
 export const isSameDayPreferredService = (code: string): boolean =>
   code === "PREFERRED_TIME_SDD";
 
-// Default hourly delivery windows (06:00–22:00) for Preferred Time when no
+// Default hourly delivery windows (08:00–22:00) for Preferred Time when no
 // custom slots are configured. Mirrors the server's DEFAULT_PREFERRED_SLOTS.
-export const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 16 }, (_, i) => {
-  const start = String(6 + i).padStart(2, "0");
-  const end = String(7 + i).padStart(2, "0");
+export const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 14 }, (_, i) => {
+  const start = String(8 + i).padStart(2, "0");
+  const end = String(9 + i).padStart(2, "0");
   return `${start}:00 - ${end}:00`;
 });
 
