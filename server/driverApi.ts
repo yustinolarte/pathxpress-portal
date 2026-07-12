@@ -866,12 +866,15 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
                     orderStatus = 'picked_up';
                     statusLabel = 'Picked Up';
                 }
-            } else if (statusLower === 'failed') {
-                orderStatus = 'pickup_failed';
-                statusLabel = 'Pickup Failed';
-            } else if (statusLower === 'attempted') {
-                orderStatus = 'pickup_attempted';
-                statusLabel = 'Pickup Attempted';
+            } else if (statusLower === 'failed' || statusLower === 'attempted') {
+                // Reuse the existing 'pending_pickup' status rather than inventing a
+                // new one — a failed/attempted pickup means the order genuinely still
+                // needs to be picked up (dispatch already treats pending_pickup as
+                // "needs pickup" everywhere: NEEDS_PICKUP_STATUSES, the bot router,
+                // etc.). The specific outcome is preserved in the tracking event's
+                // statusLabel below, not by inventing a new order-level bucket.
+                orderStatus = 'pending_pickup';
+                statusLabel = statusLower === 'failed' ? 'Pickup Failed' : 'Pickup Attempted';
             }
         } else {
             // DELIVERY stop
@@ -1365,18 +1368,28 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Scope to today's/active routes only — the wallet is a per-shift
-        // reconciliation view, not a lifetime ledger. A route counts if it's
-        // still in progress (covers overnight shifts) or dated today.
+        const { routeId } = req.query as { routeId?: string };
+
         const allRoutes = await db
             .select()
             .from(driverRoutes)
             .where(eq(driverRoutes.driverId, req.driverId!));
 
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const routes = allRoutes.filter(r =>
-            r.status === 'in_progress' || new Date(r.date).toISOString().slice(0, 10) === todayStr
-        );
+        let routes;
+        if (routeId) {
+            // Scoped to exactly the route the driver is currently on — the wallet
+            // reads as "what this route collected", not a blend of every route
+            // worked today (a driver can finish one route and start a second
+            // one on the same day, and those shouldn't be summed together).
+            routes = allRoutes.filter(r => String(r.id) === String(routeId));
+        } else {
+            // No active route given (e.g. between routes) — fall back to
+            // today's/in-progress routes so the screen still shows something.
+            const todayStr = new Date().toISOString().slice(0, 10);
+            routes = allRoutes.filter(r =>
+                r.status === 'in_progress' || new Date(r.date).toISOString().slice(0, 10) === todayStr
+            );
+        }
 
         const routeIds = routes.map(r => r.id);
 
