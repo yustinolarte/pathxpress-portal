@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { RotateCcw, ArrowLeftRight } from 'lucide-react';
+import { RotateCcw, ArrowLeftRight, Search, X } from 'lucide-react';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 import { DOMESTIC_SERVICE_TYPES, DEFAULT_PREFERRED_SLOTS, isPreferredTimeService, isSameDayPreferredService, todayStr, tomorrowStr } from '@/const';
 
@@ -20,6 +20,12 @@ interface AdminClient {
 const UAE_CITIES = ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'];
 
 const PHONE_PREFIXES = ['+971', '+966', '+965', '+973', '+968', '+974'];
+
+function splitPhone(phone: string): { prefix: string; number: string } {
+    const match = (phone || '').match(/^(\+\d+)\s*(.*)$/);
+    if (match) return { prefix: match[1], number: match[2] };
+    return { prefix: '+971', number: phone || '' };
+}
 
 interface AdminReturnExchangeDialogProps {
     open: boolean;
@@ -62,6 +68,14 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
     const [pickedLocationManual, setPickedLocationManual] = useState<PickedLocation | null>(null);
     const [manualLocationError, setManualLocationError] = useState(false);
 
+    const [waybillQuery, setWaybillQuery] = useState('');
+    const [waybillResults, setWaybillResults] = useState<any[]>([]);
+    const [waybillSearching, setWaybillSearching] = useState(false);
+    const [waybillDropdownOpen, setWaybillDropdownOpen] = useState(false);
+    const [loadedSourceOrder, setLoadedSourceOrder] = useState<any | null>(null);
+
+    const utils = trpc.useUtils();
+
     useEffect(() => {
         if (!open) return;
         setCreateType('return');
@@ -76,7 +90,64 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
         setManualForm(emptyManualForm);
         setPickedLocationManual(null);
         setManualLocationError(false);
+        setWaybillQuery('');
+        setWaybillResults([]);
+        setWaybillDropdownOpen(false);
+        setLoadedSourceOrder(null);
     }, [open, order?.id]);
+
+    // Live search for an existing waybill so its details can be loaded into the manual form.
+    useEffect(() => {
+        if (mode !== 'manual' || !open) return;
+        const term = waybillQuery.trim();
+        if (term.length < 2 || (loadedSourceOrder && term === loadedSourceOrder.waybillNumber)) {
+            setWaybillResults([]);
+            return;
+        }
+        setWaybillSearching(true);
+        const handle = setTimeout(() => {
+            utils.portal.admin.searchOrders.fetch({ term, standardOnly: true })
+                .then((results: any[]) => setWaybillResults(results.filter((o) => !o.isReturn)))
+                .catch(() => setWaybillResults([]))
+                .finally(() => setWaybillSearching(false));
+        }, 300);
+        return () => clearTimeout(handle);
+    }, [waybillQuery, mode, open]);
+
+    function handleLoadSourceOrder(o: any) {
+        const pickupPhone = splitPhone(o.customerPhone);
+        const deliveryPhone = splitPhone(o.shipperPhone);
+        setManualForm(prev => ({
+            ...prev,
+            clientId: o.clientId.toString(),
+            pickupName: o.customerName || '',
+            pickupPhonePrefix: pickupPhone.prefix,
+            pickupPhone: pickupPhone.number,
+            pickupAddress: o.address || '',
+            pickupCity: o.city || '',
+            pickupCountry: o.destinationCountry || 'UAE',
+            deliveryName: o.shipperName || '',
+            deliveryPhonePrefix: deliveryPhone.prefix,
+            deliveryPhone: deliveryPhone.number,
+            deliveryAddress: o.shipperAddress || '',
+            deliveryCity: o.shipperCity || '',
+            deliveryCountry: o.shipperCountry || 'UAE',
+            pieces: o.pieces || 1,
+            weight: o.weight != null ? String(o.weight) : prev.weight,
+            serviceType: DOMESTIC_SERVICE_TYPES.some(s => s.code === o.serviceType) ? o.serviceType : prev.serviceType,
+        }));
+        setLoadedSourceOrder(o);
+        setWaybillQuery(o.waybillNumber);
+        setWaybillResults([]);
+        setWaybillDropdownOpen(false);
+        toast.success(`Loaded details from ${o.waybillNumber}`);
+    }
+
+    function handleClearSourceOrder() {
+        setLoadedSourceOrder(null);
+        setWaybillQuery('');
+        setWaybillResults([]);
+    }
 
     const selectedManualClient = clients?.find(c => c.id.toString() === manualForm.clientId);
     const codAllowedForOrder = clients?.find(c => c.id === order?.clientId)?.codAllowed === 1;
@@ -167,6 +238,7 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
         createManualMutation.mutate({
             clientId: parseInt(manualForm.clientId),
             type: manualForm.type,
+            sourceOrderId: loadedSourceOrder?.id,
             pickupName: manualForm.pickupName,
             pickupPhone: `${manualForm.pickupPhonePrefix} ${manualForm.pickupPhone}`,
             pickupAddress: manualForm.pickupAddress,
@@ -380,9 +452,60 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
                             New Return/Exchange (Admin)
                         </DialogTitle>
                         <DialogDescription className="text-muted-foreground text-base mt-2">
-                            For packages that don't have an existing waybill in the system. Select the client first.
+                            For packages that don't have an existing waybill in the system. Select the client first, or load an existing waybill below to autofill its details.
                         </DialogDescription>
                     </DialogHeader>
+
+                    <div className="mb-8 bg-card border border-border rounded-xl p-4">
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block mb-2">Load From Existing Waybill (optional)</Label>
+                        {loadedSourceOrder ? (
+                            <div className="flex items-center justify-between gap-3 bg-primary/10 border border-primary rounded-lg px-4 py-2.5">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Search className="h-4 w-4 text-primary shrink-0" />
+                                    <span className="font-bold">{loadedSourceOrder.waybillNumber}</span>
+                                    <span className="text-muted-foreground">— {loadedSourceOrder.customerName}</span>
+                                </div>
+                                <button type="button" onClick={handleClearSourceOrder} className="text-muted-foreground hover:text-foreground">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="relative">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                                    <Input
+                                        value={waybillQuery}
+                                        onChange={(e) => { setWaybillQuery(e.target.value); setWaybillDropdownOpen(true); }}
+                                        onFocus={() => setWaybillDropdownOpen(true)}
+                                        onBlur={() => setTimeout(() => setWaybillDropdownOpen(false), 150)}
+                                        placeholder="Search by waybill number, customer name or phone..."
+                                        className="bg-background border-border pl-9"
+                                    />
+                                </div>
+                                {waybillDropdownOpen && waybillQuery.trim().length >= 2 && (
+                                    <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto bg-popover border border-border rounded-lg shadow-lg">
+                                        {waybillSearching ? (
+                                            <div className="px-4 py-3 text-sm text-muted-foreground">Searching...</div>
+                                        ) : waybillResults.length > 0 ? (
+                                            waybillResults.map((o) => (
+                                                <button
+                                                    key={o.id}
+                                                    type="button"
+                                                    onClick={() => handleLoadSourceOrder(o)}
+                                                    className="w-full text-left px-4 py-2.5 hover:bg-muted transition-colors border-b border-border last:border-b-0"
+                                                >
+                                                    <div className="font-bold text-sm">{o.waybillNumber}</div>
+                                                    <div className="text-xs text-muted-foreground">{o.customerName} · {o.city} · {o.status}</div>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="px-4 py-3 text-sm text-muted-foreground">No matching orders found.</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
                         <div className="xl:col-span-2 space-y-8">
@@ -506,7 +629,11 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
                             <div className={`pt-4 border-t mt-4 ${manualLocationError ? 'border-destructive' : 'border-border'}`}>
                                 <Label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Pickup Map Location <span className="text-destructive ml-0.5">*</span></Label>
                                 <p className="text-xs text-muted-foreground mb-3">Pin the exact pickup address on the map to help the driver locate it.</p>
-                                <LocationPicker onLocationPicked={(loc) => { setPickedLocationManual(loc); if (loc) setManualLocationError(false); }} />
+                                <LocationPicker
+                                    key={loadedSourceOrder?.id ?? 'manual-blank'}
+                                    initialLocation={loadedSourceOrder?.latitude && loadedSourceOrder?.longitude ? { lat: parseFloat(loadedSourceOrder.latitude), lng: parseFloat(loadedSourceOrder.longitude) } : undefined}
+                                    onLocationPicked={(loc) => { setPickedLocationManual(loc); if (loc) setManualLocationError(false); }}
+                                />
                             </div>
                         </div>
 

@@ -403,9 +403,10 @@ export const adminPortalRouter = router({
     .input(z.object({
       term: z.string(),
       scope: z.enum(['domestic', 'intl']).optional(),
+      standardOnly: z.boolean().optional(),
     }))
     .query(async ({ input }) => {
-      return await searchOrders(input.term, { scope: input.scope });
+      return await searchOrders(input.term, { scope: input.scope, standardOnly: input.standardOnly });
     }),
 
   // Delete order (admin only)
@@ -1561,6 +1562,7 @@ export const adminPortalRouter = router({
     .input(z.object({
       clientId: z.number(),
       type: z.enum(['return', 'exchange']),
+      sourceOrderId: z.number().optional(),
       pickupName: z.string(),
       pickupPhone: z.string(),
       pickupAddress: z.string(),
@@ -1669,6 +1671,8 @@ async function doCreateReturn(clientId: number, orderId: number, actorLabel: str
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
     serviceType: originalOrder.serviceType,
+    preferredDeliveryDate: originalOrder.preferredDeliveryDate,
+    preferredDeliveryTime: originalOrder.preferredDeliveryTime,
     specialInstructions: `RETURN - Original order: ${originalOrder.waybillNumber}`,
 
     codRequired: 0,
@@ -1751,6 +1755,8 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
     serviceType: originalOrder.serviceType,
+    preferredDeliveryDate: originalOrder.preferredDeliveryDate,
+    preferredDeliveryTime: originalOrder.preferredDeliveryTime,
     specialInstructions: `EXCHANGE RETURN - Original: ${originalOrder.waybillNumber}`,
 
     codRequired: 0,
@@ -1856,6 +1862,7 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
 
 interface ManualReturnExchangeInput {
   type: 'return' | 'exchange';
+  sourceOrderId?: number;
   pickupName: string;
   pickupPhone: string;
   pickupAddress: string;
@@ -1891,6 +1898,16 @@ async function doCreateManualReturnExchange(clientId: number, input: ManualRetur
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Client account not found' });
   }
 
+  if (input.sourceOrderId) {
+    const sourceOrder = await getOrderById(input.sourceOrderId);
+    if (!sourceOrder) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Selected waybill not found' });
+    }
+    if (sourceOrder.clientId !== clientId) {
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Selected waybill does not belong to this client' });
+    }
+  }
+
   // Create return/pickup waybill
   const returnWaybill = await generateWaybillNumber();
   const returnOrder = await createOrder({
@@ -1923,6 +1940,7 @@ async function doCreateManualReturnExchange(clientId: number, input: ManualRetur
     isReturn: 1,
     returnCharged: 1,
     orderType: input.type,
+    originalOrderId: input.sourceOrderId,
 
     status: 'pending_pickup',
     lastStatusUpdate: new Date(),
@@ -1978,6 +1996,7 @@ async function doCreateManualReturnExchange(clientId: number, input: ManualRetur
       isReturn: 0,
       orderType: 'exchange',
       exchangeOrderId: returnOrder.id,
+      originalOrderId: input.sourceOrderId,
 
       status: 'pending_pickup',
       lastStatusUpdate: new Date(),
