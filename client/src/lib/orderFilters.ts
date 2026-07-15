@@ -60,8 +60,8 @@ function matchesType(order: any, type: OrderTypeFilter): boolean {
 
 // Already failed once — still assignable (not a terminal status, so retrying is
 // possible), but kept off the dispatch map/list by default to avoid clutter.
-// Filtering explicitly by one of these statuses brings it back into view.
-const HIDDEN_BY_DEFAULT_STATUSES = new Set(['failed_pickup', 'failed_delivery']);
+// Filtering explicitly by one of these statuses (where supported) brings it back into view.
+export const HIDDEN_BY_DEFAULT_STATUSES = new Set(['failed_pickup', 'failed_delivery']);
 
 export function filterAvailableOrders(orders: any[], f: DispatchFilterState): any[] {
   const q = f.search.trim().toLowerCase();

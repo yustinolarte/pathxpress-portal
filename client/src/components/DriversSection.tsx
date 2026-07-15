@@ -32,7 +32,7 @@ import DispatchFilters from '@/components/DispatchFilters';
 import SetLocationDialog from '@/components/SetLocationDialog';
 import {
     type DispatchFilterState, EMPTY_DISPATCH_FILTERS, filterAvailableOrders,
-    distinctEmirates, distinctStatuses,
+    distinctEmirates, distinctStatuses, HIDDEN_BY_DEFAULT_STATUSES,
 } from '@/lib/orderFilters';
 import { getProofPhotoUrls } from '@shared/podPhotos';
 
@@ -140,6 +140,16 @@ export default function DriversSection() {
         undefined,
         { enabled: addOrdersDialogOpen || routesView === 'map' }
     );
+
+    // failed_pickup/failed_delivery are still assignable (for a retry) but shouldn't
+    // clutter the plain "Add Orders" picker — same default-hide rule as the dispatch map.
+    // Orders already selected stay visible so they can still be reviewed/deselected here.
+    const pickableAvailableOrders = useMemo(() => {
+        const selectedIds = new Set(addOrders.map(o => o.id));
+        return (availableOrders as any[] | undefined)?.filter(
+            o => !HIDDEN_BY_DEFAULT_STATUSES.has(o.status) || selectedIds.has(o.id),
+        );
+    }, [availableOrders, addOrders]);
 
     const { data: driverProfile, isLoading: profileLoading } = trpc.portal.drivers.getDriverPerformance.useQuery(
         { driverId: profileDriverId || 0 },
@@ -1872,7 +1882,7 @@ export default function DriversSection() {
                         </DialogHeader>
 
                         <OrderPickList
-                            orders={availableOrders as any[] | undefined}
+                            orders={pickableAvailableOrders}
                             value={addOrders}
                             onChange={setAddOrders}
                             maxHeightClass="max-h-[55vh]"
