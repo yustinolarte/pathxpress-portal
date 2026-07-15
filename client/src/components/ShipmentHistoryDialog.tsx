@@ -16,7 +16,7 @@ export default function ShipmentHistoryDialog({ open, onOpenChange, shipmentId }
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="bg-card border-border max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogContent className="bg-card border-border sm:max-w-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Shipment Tracking History</DialogTitle>
                     <DialogDescription>

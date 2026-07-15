@@ -630,7 +630,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
 
             {/* Drill-down Modal */}
             <Dialog open={!!drillDownDate} onOpenChange={() => { setDrillDownDate(null); setDrillDownWaybills([]); }}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Package className="h-5 w-5 text-primary" />
