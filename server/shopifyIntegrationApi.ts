@@ -59,6 +59,13 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
         const isInternational = destinationCountry.toUpperCase() !== 'UAE'
             && destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES';
 
+        // COD cannot be fulfilled on international shipments — there is no
+        // PathXpress driver on the ground to collect cash/card at the door once
+        // the package leaves UAE for customs/an international carrier.
+        if (isInternational && codRequired === 1) {
+            return res.status(400).json({ error: 'Cash on Delivery is not available for international shipments' });
+        }
+
         const waybillNumber = await generateWaybillNumber(isInternational);
 
         // Determine COD payment method: validate against client's CCOD setting
@@ -99,6 +106,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             longitude: longitude || null,
             status: 'pending_pickup',
             lastStatusUpdate: new Date(),
+            source: 'shopify',
         });
 
         if (!order) {

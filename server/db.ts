@@ -1817,7 +1817,13 @@ export async function updateInvoiceStatus(id: number, status: 'pending' | 'paid'
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  await db.update(invoices).set({ status }).where(eq(invoices.id, id));
+  const [current] = await db.select({ status: invoices.status }).from(invoices).where(eq(invoices.id, id)).limit(1);
+  const updateData: { status: typeof status; paymentDate?: Date | null } = { status };
+  if (current && current.status !== status) {
+    updateData.paymentDate = status === 'paid' ? new Date() : null;
+  }
+
+  await db.update(invoices).set(updateData).where(eq(invoices.id, id));
   cacheInvalidate('admin:allInvoices');
 }
 
@@ -1837,7 +1843,15 @@ export async function updateInvoice(id: number, data: Partial<{
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  await db.update(invoices).set(data).where(eq(invoices.id, id));
+  const updateData: typeof data & { paymentDate?: Date | null } = { ...data };
+  if (data.status) {
+    const [current] = await db.select({ status: invoices.status }).from(invoices).where(eq(invoices.id, id)).limit(1);
+    if (current && current.status !== data.status) {
+      updateData.paymentDate = data.status === 'paid' ? new Date() : null;
+    }
+  }
+
+  await db.update(invoices).set(updateData).where(eq(invoices.id, id));
   cacheInvalidate('admin:allInvoices');
 }
 

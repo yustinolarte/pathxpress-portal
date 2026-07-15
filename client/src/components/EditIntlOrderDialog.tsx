@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Globe, Package, MapPin, FileText, Loader2, Scale, Hash, User, Phone, Ruler, Plane } from 'lucide-react';
+import { Globe, Package, MapPin, FileText, Loader2, Scale, Hash, User, Phone, Ruler, Plane, AlertTriangle, CreditCard } from 'lucide-react';
 
 interface EditIntlOrderDialogProps {
   open: boolean;
@@ -45,6 +45,9 @@ const buildFormData = (order: any) => ({
   customsDescription: order?.customsDescription || '',
   hsCode: order?.hsCode || '',
   specialInstructions: order?.specialInstructions || '',
+  // COD cannot be fulfilled on international shipments (no PathXpress driver
+  // abroad to collect it) — this field can only go from 1 to 0, never back.
+  codRequired: order?.codRequired || 0,
 });
 
 export default function EditIntlOrderDialog({ open, onOpenChange, order, countries, onSuccess }: EditIntlOrderDialogProps) {
@@ -141,6 +144,32 @@ export default function EditIntlOrderDialog({ open, onOpenChange, order, countri
                   </div>
                 </div>
               </div>
+
+              {formData.codRequired === 1 && (
+                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+                  <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-destructive" /> Cash on Delivery
+                  </h3>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {order.codAmount} {order.codCurrency} · {order.codPaymentMethod === 'card' ? 'Card only' : order.codPaymentMethod === 'any' ? 'Cash or Card' : 'Cash only'}
+                  </p>
+                  <div className="flex items-start gap-2 mt-3 p-2.5 rounded bg-background/40">
+                    <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+                    <p className="text-xs text-muted-foreground">
+                      COD can't be collected on international shipments — there's no PathXpress driver at destination. This was likely created via Shopify before that was blocked.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => setFormData({ ...formData, codRequired: 0 })}
+                  >
+                    Remove COD
+                  </Button>
+                </div>
+              )}
 
               <div className="p-4 rounded-lg bg-white/5 border border-border">
                 <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
