@@ -2,20 +2,29 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText } from 'lucide-react';
+import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText, RotateCcw } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
 import { getPodPhotoUrls } from '@shared/podPhotos';
+import { abbreviateServiceType } from '@/const';
 
 interface OrderDetailsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     order: any; // Using any for simplicity, but should be typed ideally
     clients?: any[]; // For resolving client name
+    /** When provided, shows a "Create Return/Exchange" action for eligible orders. */
+    onCreateReturnExchange?: (order: any) => void;
 }
 
-export default function OrderDetailsDialog({ open, onOpenChange, order, clients }: OrderDetailsDialogProps) {
+// A return/exchange only makes sense once the delivery cycle is over: the
+// customer received the package (delivered) or it couldn't be delivered
+// (failed_delivery). Statuses like 'returned'/'returned_to_sender' already
+// describe a return shipment itself, not a candidate for a new one.
+const RETURN_ELIGIBLE_STATUSES = ['delivered', 'failed_delivery'];
+
+export default function OrderDetailsDialog({ open, onOpenChange, order, clients, onCreateReturnExchange }: OrderDetailsDialogProps) {
     // Fetch tracking events just like in ShipmentHistoryDialog
     const { data: events, isLoading: eventsLoading } = trpc.portal.tracking.getEvents.useQuery(
         { shipmentId: order?.id },
@@ -25,6 +34,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
     if (!order) return null;
 
     const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
+    const canCreateReturn = !!onCreateReturnExchange && RETURN_ELIGIBLE_STATUSES.includes(order.status) && !order.isReturn;
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -61,6 +71,12 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                                 <span className="font-bold uppercase tracking-wide">{order.status.replace(/_/g, ' ')}</span>
                             </div>
 
+                            {canCreateReturn && (
+                                <Button onClick={() => onCreateReturnExchange!(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                    <RotateCcw className="w-4 h-4" /> Create Return/Exchange
+                                </Button>
+                            )}
+
                             <Button onClick={() => generateWaybillPDF(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
                                 <Download className="w-4 h-4" /> Waybill
                             </Button>
@@ -71,7 +87,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-border rounded-lg overflow-hidden border border-border">
                         <div className="p-4 bg-card">
                             <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Service</p>
-                            <p className="font-display text-[22px] font-bold leading-none tracking-tight">{order.serviceType}</p>
+                            <p className="font-display text-[22px] font-bold leading-none tracking-tight">{abbreviateServiceType(order.serviceType)}</p>
                         </div>
                         <div className="p-4 bg-card">
                             <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Pieces</p>
@@ -255,4 +271,3 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients 
         </Dialog>
     );
 }
-

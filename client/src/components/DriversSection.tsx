@@ -1656,12 +1656,16 @@ export default function DriversSection() {
                             // Position per leg: a pickup happens at the SHIPPER (except returns,
                             // where the consignee pin is where the package is). Falls back to the
                             // order pin when shipper coords are missing.
-                            const resolved = (routeDetails?.deliveries || []).map((d: any) => {
-                                const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
-                                const lat = consigneeSide ? d.latitude : (d.shipperLat || d.latitude);
-                                const lng = consigneeSide ? d.longitude : (d.shipperLng || d.longitude);
-                                return { ...d, _lat: lat, _lng: lng, _accuracy: consigneeSide ? d.locationAccuracy : null };
-                            });
+                            const resolved = (routeDetails?.deliveries || [])
+                                // Failed stops (failed pickup / failed delivery) are done for this route —
+                                // no need to keep pinning them on the route map. They still show in the list.
+                                .filter((d: any) => d.status !== 'failed')
+                                .map((d: any) => {
+                                    const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
+                                    const lat = consigneeSide ? d.latitude : (d.shipperLat || d.latitude);
+                                    const lng = consigneeSide ? d.longitude : (d.shipperLng || d.longitude);
+                                    return { ...d, _lat: lat, _lng: lng, _accuracy: consigneeSide ? d.locationAccuracy : null };
+                                });
                             const stopsWithCoords = resolved.filter((d: any) => d._lat && d._lng);
                             const stopsNoCoords = resolved.filter((d: any) => !d._lat || !d._lng);
                             const mapPoints: MapPoint[] = stopsWithCoords.map((d: any, idx: number) => ({

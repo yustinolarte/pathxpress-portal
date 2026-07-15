@@ -15,6 +15,7 @@ import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useEffect } from 'react';
+import { abbreviateServiceType } from '@/const';
 
 export default function BillingPanel() {
   const utils = trpc.useUtils();
@@ -804,7 +805,7 @@ export default function BillingPanel() {
                         <div className="grid gap-1.5 leading-none">
                           <label htmlFor={`shipment-${shipment.id}`} className="text-sm font-medium leading-none cursor-pointer">{shipment.waybillNumber}</label>
                           <p className="text-xs text-muted-foreground">
-                            {new Date(shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {shipment.serviceType}
+                            {new Date(shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {abbreviateServiceType(shipment.serviceType)}
                             {isIntl && shipment.destinationCountry ? ` - ${shipment.destinationCountry}` : ''}
                           </p>
                         </div>

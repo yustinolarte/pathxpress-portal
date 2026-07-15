@@ -8,8 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar } from 'lucide-react';
-import { APP_LOGO } from '@/const';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar, Ban, CheckCircle2 } from 'lucide-react';
+import { APP_LOGO, abbreviateServiceType } from '@/const';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import ModernDashboardLayout, { ModernMenuItem } from '@/components/ModernDashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
@@ -159,6 +159,29 @@ export default function AdminDashboard() {
     }
   };
 
+  // Active/Inactive/All filter for the clients table
+  const [clientStatusFilter, setClientStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+
+  const setClientStatusMutation = trpc.portal.admin.setClientStatus.useMutation({
+    onSuccess: (_data, variables) => {
+      toast.success(variables.status === 'active' ? 'Client reactivated' : 'Client deactivated');
+      refetchClients();
+    },
+    onError: (error) => {
+      toast.error(`Failed to update client status: ${error.message}`);
+    },
+  });
+
+  const handleToggleClientStatus = (client: any) => {
+    const nextStatus = client.status === 'active' ? 'inactive' : 'active';
+    const message = nextStatus === 'inactive'
+      ? `Deactivate ${client.companyName}? They will be hidden from new order creation and locked out of the customer portal (they'll see a "contact support" message on login). Order history is kept and this can be undone.`
+      : `Reactivate ${client.companyName}? They will reappear in order creation and regain portal login access.`;
+    if (confirm(message)) {
+      setClientStatusMutation.mutate({ clientId: client.id, status: nextStatus });
+    }
+  };
+
   // Update client notes mutation
   const updateNotesMutation = trpc.portal.admin.updateClientNotes.useMutation({
     onSuccess: () => {
@@ -222,6 +245,21 @@ export default function AdminDashboard() {
     clients?.forEach(c => map.set(c.id, { companyName: c.companyName }));
     return map;
   }, [clients]);
+
+  // Deactivated clients can't be picked when creating a new shipment
+  const activeClients = useMemo(() => clients?.filter(c => c.status === 'active'), [clients]);
+
+  const clientCounts = useMemo(() => ({
+    active: clients?.filter(c => c.status === 'active').length ?? 0,
+    inactive: clients?.filter(c => c.status === 'inactive').length ?? 0,
+    all: clients?.length ?? 0,
+  }), [clients]);
+
+  const visibleClients = useMemo(() => {
+    if (!clients) return clients;
+    if (clientStatusFilter === 'all') return clients;
+    return clients.filter(c => c.status === clientStatusFilter);
+  }, [clients, clientStatusFilter]);
 
   const { data: rateTiers } = trpc.portal.rates.listTiers.useQuery();
 
@@ -523,7 +561,20 @@ export default function AdminDashboard() {
                           {clientAlerts.inactiveClients.map(c => (
                             <div key={c.clientId} className="flex items-center justify-between text-sm">
                               <span className="font-medium">{c.companyName}</span>
-                              <span className="font-mono text-xs" style={{ color: 'var(--st-amber)' }}>{c.daysSinceLastOrder} days ago</span>
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono text-xs" style={{ color: 'var(--st-amber)' }}>{c.daysSinceLastOrder} days ago</span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 px-2 text-xs"
+                                  onClick={() => {
+                                    const client = clients?.find(cl => cl.id === c.clientId);
+                                    if (client) handleToggleClientStatus(client);
+                                  }}
+                                >
+                                  Deactivate
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -543,15 +594,30 @@ export default function AdminDashboard() {
                     <CardTitle className="text-xl">Client Accounts</CardTitle>
                     <CardDescription>Manage all registered client accounts</CardDescription>
                   </div>
-                  <Button onClick={() => setCreateClientWizardOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Client
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex gap-1 rounded-lg border border-border p-1">
+                      {(['active', 'inactive', 'all'] as const).map(f => (
+                        <Button
+                          key={f}
+                          variant={clientStatusFilter === f ? 'default' : 'ghost'}
+                          size="sm"
+                          className="h-7 px-3 text-xs capitalize"
+                          onClick={() => setClientStatusFilter(f)}
+                        >
+                          {f} ({clientCounts[f]})
+                        </Button>
+                      ))}
+                    </div>
+                    <Button onClick={() => setCreateClientWizardOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Client
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {clientsLoading ? (
                     <p className="text-center py-8 text-muted-foreground">Loading clients...</p>
-                  ) : clients && clients.length > 0 ? (
+                  ) : visibleClients && visibleClients.length > 0 ? (
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
@@ -568,14 +634,14 @@ export default function AdminDashboard() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {clients.map((client) => {
+                          {visibleClients.map((client) => {
                             const isOverdue = clientAlerts?.overdueClients.some(c => c.clientId === client.id);
                             const inactiveAlert = clientAlerts?.inactiveClients.find(c => c.clientId === client.id);
                             const isSelected = client360Id === client.id;
                             return (
                               <TableRow
                                 key={client.id}
-                                className={isSelected ? 'bg-primary/10' : ''}
+                                className={`${isSelected ? 'bg-primary/10' : ''} ${client.status === 'inactive' ? 'opacity-60' : ''}`}
                               >
                                 <TableCell className="font-medium">
                                   <div className="flex items-center gap-1.5">
@@ -663,6 +729,16 @@ export default function AdminDashboard() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
+                                      onClick={() => handleToggleClientStatus(client)}
+                                      title={client.status === 'active' ? 'Deactivate Client' : 'Reactivate Client'}
+                                      className={client.status === 'active' ? 'text-muted-foreground hover:text-foreground' : 'hover:text-primary'}
+                                      style={client.status === 'inactive' ? { color: 'var(--st-green)' } : undefined}
+                                    >
+                                      {client.status === 'active' ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
                                       className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
                                       onClick={() => handleDeleteClient(client.id)}
                                       title="Delete Client"
@@ -678,7 +754,9 @@ export default function AdminDashboard() {
                       </Table>
                     </div>
                   ) : (
-                    <p className="text-center py-8 text-muted-foreground">No clients found</p>
+                    <p className="text-center py-8 text-muted-foreground">
+                      {clientStatusFilter === 'all' ? 'No clients found' : `No ${clientStatusFilter} clients`}
+                    </p>
                   )}
                 </CardContent>
               </Card>
@@ -1109,8 +1187,6 @@ export default function AdminDashboard() {
                         </TableHeader>
                         <TableBody>
                           {orders.map((order) => {
-                            const canCreateReturn = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'].includes(order.status) && !order.isReturn;
-
                             return (
                               <TableRow key={order.id} className="[&>td]:px-1">
                                 <TableCell className="wb font-medium">
@@ -1158,7 +1234,7 @@ export default function AdminDashboard() {
                                   <span className="font-medium">{order.weight}</span>
                                   <span className="text-muted-foreground text-xs ml-1">kg</span>
                                 </TableCell>
-                                <TableCell>{order.serviceType}</TableCell>
+                                <TableCell>{abbreviateServiceType(order.serviceType)}</TableCell>
                                 <TableCell>
                                   {order.codRequired ? (
                                     <span className="money">
@@ -1191,11 +1267,6 @@ export default function AdminDashboard() {
                                     <Button variant="ghost" size="sm" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }} title="Add Tracking Event">
                                       <Package className="h-4 w-4" />
                                     </Button>
-                                    {canCreateReturn && (
-                                      <Button variant="ghost" size="sm" onClick={() => { setReturnExchangeOrder(order); setReturnExchangeDialogOpen(true); }} title="Create Return/Exchange">
-                                        <RotateCcw className="h-4 w-4" />
-                                      </Button>
-                                    )}
                                     <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} title="Delete Order" disabled={deleteOrderMutation.isPending}>
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
@@ -1211,7 +1282,6 @@ export default function AdminDashboard() {
                     {/* Mobile Cards */}
                     <div className="md:hidden space-y-3">
                       {orders.map((order) => {
-                        const canCreateReturn = ['failed_delivery', 'returned', 'returned_to_sender', 'exchange'].includes(order.status) && !order.isReturn;
                         return (
                           <div key={order.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
                             {/* Top row: waybill + status */}
@@ -1250,7 +1320,7 @@ export default function AdminDashboard() {
                             </div>
                             {/* Service + weight + COD */}
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="pill">{order.serviceType}</span>
+                              <span className="pill">{abbreviateServiceType(order.serviceType)}</span>
                               <span className="text-xs text-muted-foreground">{order.weight} kg</span>
                               {order.codRequired && (
                                 <span className="money text-xs">
@@ -1269,11 +1339,6 @@ export default function AdminDashboard() {
                               <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }}>
                                 <Package className="h-3.5 w-3.5 mr-1" />Track
                               </Button>
-                              {canCreateReturn && (
-                                <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => { setReturnExchangeOrder(order); setReturnExchangeDialogOpen(true); }}>
-                                  <RotateCcw className="h-3.5 w-3.5 mr-1" />Return
-                                </Button>
-                              )}
                               <Button variant="ghost" size="sm" className="h-8 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} disabled={deleteOrderMutation.isPending}>
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -1939,6 +2004,11 @@ export default function AdminDashboard() {
             onOpenChange={setViewOrderDialogOpen}
             order={selectedOrder}
             clients={clients}
+            onCreateReturnExchange={(order) => {
+              setViewOrderDialogOpen(false);
+              setReturnExchangeOrder(order);
+              setReturnExchangeDialogOpen(true);
+            }}
           />
         )}
 
@@ -1946,7 +2016,7 @@ export default function AdminDashboard() {
         <AdminCreateOrderDialog
           open={createOrderDialogOpen}
           onOpenChange={setCreateOrderDialogOpen}
-          clients={clients}
+          clients={activeClients}
           onSuccess={() => {
             setCreateOrderDialogOpen(false);
             refetchOrders();

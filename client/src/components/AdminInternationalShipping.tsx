@@ -30,16 +30,19 @@ import {
     Info,
     Search,
     Edit3,
+    Pencil,
     MapPin,
     Download,
     Plus,
     Trash2,
     RefreshCw
 } from 'lucide-react';
+import { abbreviateServiceType } from '@/const';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { generateQuotationPDF } from '@/lib/generateQuotationPDF';
 import AdminCreateIntlOrderDialog from './AdminCreateIntlOrderDialog';
 import AddIntlTrackingEventDialog from './AddIntlTrackingEventDialog';
+import EditIntlOrderDialog from './EditIntlOrderDialog';
 
 // ─── Inline Rate Calculator (reused from customer side) ─────────────────────
 
@@ -377,6 +380,7 @@ function AdminIntlOrdersTable() {
     const [newShipmentOpen, setNewShipmentOpen] = useState(false);
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
+    const [editingOrder, setEditingOrder] = useState<any | null>(null);
 
     // Intl is low-volume → load the full set (wide window) so the in-table search covers all.
     const { data: ordersResp, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery({ dateFrom: '2000-01-01', pageSize: 200 });
@@ -496,7 +500,7 @@ function AdminIntlOrdersTable() {
                                         <TableCell>{order.weight} kg</TableCell>
                                         <TableCell>
                                             <span className="pill">
-                                                {order.serviceType}
+                                                {abbreviateServiceType(order.serviceType)}
                                             </span>
                                         </TableCell>
                                         <TableCell>
@@ -519,6 +523,14 @@ function AdminIntlOrdersTable() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setEditingOrder(order)}
+                                                    title="Edit Order"
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
@@ -579,6 +591,13 @@ function AdminIntlOrdersTable() {
             onOpenChange={(open) => { if (!open) setTrackingOrderId(null); }}
             shipmentId={trackingOrderId ?? 0}
             onSuccess={() => { setTrackingOrderId(null); refetch(); }}
+        />
+        <EditIntlOrderDialog
+            open={editingOrder !== null}
+            onOpenChange={(open) => { if (!open) setEditingOrder(null); }}
+            order={editingOrder}
+            countries={countries || []}
+            onSuccess={() => { setEditingOrder(null); refetch(); }}
         />
         </>
     );

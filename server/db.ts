@@ -349,6 +349,20 @@ export async function updatePortalUserPassword(id: number, passwordHash: string)
   }
 }
 
+// Flips every portal login tied to a client (e.g. deactivating a client must
+// also lock out their portal users, not just hide them from the admin UI).
+export async function updatePortalUsersStatusByClientId(clientId: number, status: "active" | "inactive"): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  try {
+    await db.update(portalUsers).set({ status }).where(eq(portalUsers.clientId, clientId));
+  } catch (error) {
+    console.error("[Database] Failed to update portal users status:", error);
+    throw error;
+  }
+}
+
 /**
  * Client Accounts
  */
@@ -756,6 +770,16 @@ export interface OrderUpdate {
   preferredDeliveryTime?: string | null;
   latitude?: string;
   longitude?: string;
+  // International / customs fields (intl orders only)
+  destinationCountry?: string;
+  postalCode?: string;
+  length?: string | null;
+  width?: string | null;
+  height?: string | null;
+  customsValue?: string | null;
+  customsCurrency?: string;
+  customsDescription?: string | null;
+  hsCode?: string | null;
 }
 
 export async function updateOrder(
@@ -865,7 +889,14 @@ export async function updateOrder(
     if (updates.codAmount !== undefined) orderUpdates.codAmount = updates.codAmount;
     if (updates.codCurrency !== undefined) orderUpdates.codCurrency = updates.codCurrency;
     if (updates.codPaymentMethod !== undefined) orderUpdates.codPaymentMethod = updates.codPaymentMethod;
-    if (!newCodRequired) orderUpdates.codPaymentMethod = null;
+    if (!newCodRequired) {
+      // Disabling COD must wipe the amount too — a stale non-null codAmount
+      // left on the order is what made the driver app keep showing COD on
+      // orders where it had just been removed (some payloads there key off
+      // the amount instead of the codRequired flag).
+      orderUpdates.codPaymentMethod = null;
+      orderUpdates.codAmount = null;
+    }
     if (updates.customerName !== undefined) orderUpdates.customerName = updates.customerName;
     if (updates.customerPhone !== undefined) orderUpdates.customerPhone = updates.customerPhone;
     if (updates.address !== undefined) orderUpdates.address = updates.address;
@@ -874,6 +905,15 @@ export async function updateOrder(
     if (updates.fitOnDelivery !== undefined) orderUpdates.fitOnDelivery = updates.fitOnDelivery;
     if (updates.preferredDeliveryDate !== undefined) orderUpdates.preferredDeliveryDate = updates.preferredDeliveryDate;
     if (updates.preferredDeliveryTime !== undefined) orderUpdates.preferredDeliveryTime = updates.preferredDeliveryTime;
+    if (updates.destinationCountry !== undefined) orderUpdates.destinationCountry = updates.destinationCountry;
+    if (updates.postalCode !== undefined) orderUpdates.postalCode = updates.postalCode;
+    if (updates.length !== undefined) orderUpdates.length = updates.length;
+    if (updates.width !== undefined) orderUpdates.width = updates.width;
+    if (updates.height !== undefined) orderUpdates.height = updates.height;
+    if (updates.customsValue !== undefined) orderUpdates.customsValue = updates.customsValue;
+    if (updates.customsCurrency !== undefined) orderUpdates.customsCurrency = updates.customsCurrency;
+    if (updates.customsDescription !== undefined) orderUpdates.customsDescription = updates.customsDescription;
+    if (updates.hsCode !== undefined) orderUpdates.hsCode = updates.hsCode;
 
     // Coordinates: an admin-placed pin is always 'exact'. If only the address
     // text changed, approximate (geocoded) coords are stale — clear them and

@@ -11,6 +11,7 @@ import { DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle, Package, MapPi
 import RemittanceDetailsDialog from './RemittanceDetailsDialog';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
+import { abbreviateServiceType } from '@/const';
 
 export default function CustomerCODPanel() {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
@@ -397,7 +398,7 @@ export default function CustomerCODPanel() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Service Type</p>
-                  <p className="font-semibold">{shipmentDetails.order.serviceType}</p>
+                  <p className="font-semibold">{abbreviateServiceType(shipmentDetails.order.serviceType)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Weight</p>

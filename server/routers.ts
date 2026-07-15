@@ -72,7 +72,7 @@ export const appRouter = router({
           serviceType: order.serviceType,
           weight: `${order.weight} kg`,
           pieces: order.pieces,
-          codAmount: order.codAmount,
+          codAmount: order.codRequired === 1 ? order.codAmount : null,
           codCurrency: order.codCurrency,
           codPaymentMethod: order.codRequired === 1 ? (order.codPaymentMethod || 'cash') : null,
 

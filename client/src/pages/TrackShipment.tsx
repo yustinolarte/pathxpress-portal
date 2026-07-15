@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Package, Search, MapPin, Calendar, Weight, Box, CheckCircle2 } from 'lucide-react';
-import { APP_LOGO, APP_TITLE } from '@/const';
+import { APP_LOGO, APP_TITLE, abbreviateServiceType } from '@/const';
 import { getPodPhotoUrls } from '@shared/podPhotos';
 
 export default function TrackShipment() {
@@ -137,7 +137,7 @@ export default function TrackShipment() {
                     <Box className="h-5 w-5 text-blue-400" />
                     <div>
                       <div className="text-sm text-gray-400">Service Type</div>
-                      <div className="font-medium text-white">{data.order.serviceType}</div>
+                      <div className="font-medium text-white">{abbreviateServiceType(data.order.serviceType)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 text-gray-300">

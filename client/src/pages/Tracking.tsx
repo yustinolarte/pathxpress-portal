@@ -12,6 +12,7 @@ import { Package, Loader2, AlertCircle, HelpCircle, MapPin, Calendar, Scale, Tru
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { getPodPhotoUrls } from '@shared/podPhotos';
+import { abbreviateServiceType } from '@/const';
 
 export default function Tracking() {
   const { t } = useTranslation();
@@ -144,7 +145,7 @@ export default function Tracking() {
                             <Truck className="w-4 h-4" />
                             <span className="text-xs uppercase font-medium">{t('tracking.serviceType')}</span>
                           </div>
-                          <p className="font-semibold text-lg">{shipment.serviceType || '-'}</p>
+                          <p className="font-semibold text-lg">{abbreviateServiceType(shipment.serviceType) || '-'}</p>
                         </div>
 
                         {/* Weight */}

@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { loadGoogleMaps } from '@/lib/googleMaps';
 import { STATUS_TONE } from '@/lib/statusStyles';
+import { abbreviateServiceType } from '@/const';
 
 declare global {
     interface Window { google?: typeof google; }
@@ -89,7 +90,7 @@ function serviceLabel(s?: string | null): string {
     if (!s) return '';
     if (s === 'same-day') return 'Same Day';
     if (s === 'express') return 'Express';
-    return s.charAt(0).toUpperCase() + s.slice(1);
+    return abbreviateServiceType(s);
 }
 
 /** Rich hover card shown above a pin (replaces the bare waybill tooltip). */

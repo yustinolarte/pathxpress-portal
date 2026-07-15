@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { APP_LOGO } from '@/const';
+import { APP_LOGO, abbreviateServiceType } from '@/const';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 import { getPodPhotoUrls } from '@shared/podPhotos';
 import {
@@ -953,7 +953,7 @@ export default function CustomerDashboard() {
                                 <span className="font-medium">{order.weight}</span>
                                 <span className="text-muted-foreground text-xs ml-1">kg</span>
                               </TableCell>
-                              <TableCell>{order.serviceType}</TableCell>
+                              <TableCell>{abbreviateServiceType(order.serviceType)}</TableCell>
                               <TableCell>
                                 {order.codRequired === 1 && order.codAmount ? (
                                   <span className="money">
@@ -1038,7 +1038,7 @@ export default function CustomerDashboard() {
                           </div>
                           {/* Service + weight + COD + date */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="pill">{order.serviceType}</span>
+                            <span className="pill">{abbreviateServiceType(order.serviceType)}</span>
                             <span className="text-xs text-muted-foreground">{order.weight} kg</span>
                             {order.codRequired === 1 && order.codAmount && (
                               <span className="money text-xs">
@@ -1166,7 +1166,7 @@ export default function CustomerDashboard() {
                       <Truck className="w-4 h-4" />
                       <span className="text-xs uppercase font-bold">Service</span>
                     </div>
-                    <p className="text-xl font-semibold">{trackingData.order.serviceType}</p>
+                    <p className="text-xl font-semibold">{abbreviateServiceType(trackingData.order.serviceType)}</p>
                   </div>
                   <div className="p-4 rounded-xl bg-card border border-border hover:bg-muted/50 transition-colors group">
                     <div className="flex items-center gap-2 mb-2 text-muted-foreground group-hover:text-primary transition-colors">
@@ -1530,7 +1530,7 @@ export default function CustomerDashboard() {
                                 <TableCell>{order.weight} kg</TableCell>
                                 <TableCell>
                                   <span className="pill">
-                                    {order.serviceType}
+                                    {abbreviateServiceType(order.serviceType)}
                                   </span>
                                 </TableCell>
                                 <TableCell>
@@ -1639,7 +1639,7 @@ export default function CustomerDashboard() {
               </div>
               <div className="grid md:grid-cols-2 gap-4 text-sm bg-muted/30 p-3 rounded-lg">
                 <div><span className="text-muted-foreground">Waybill:</span> <span className="ml-2 font-medium">{trackingData?.order?.waybillNumber}</span></div>
-                <div><span className="text-muted-foreground">Service:</span> <span className="ml-2 font-medium">{trackingData?.order?.serviceType}</span></div>
+                <div><span className="text-muted-foreground">Service:</span> <span className="ml-2 font-medium">{abbreviateServiceType(trackingData?.order?.serviceType)}</span></div>
                 <div><span className="text-muted-foreground">Destination:</span> <span className="ml-2 font-medium">{trackingData?.order?.city}, {trackingData?.order?.destinationCountry}</span></div>
                 <div><span className="text-muted-foreground">Weight:</span> <span className="ml-2 font-medium">{trackingData?.order?.weight} kg</span></div>
               </div>

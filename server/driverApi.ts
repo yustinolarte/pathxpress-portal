@@ -306,7 +306,7 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
 
                 // COD info (only relevant for delivery)
                 codRequired: item.order.codRequired === 1,
-                codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+                codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
 
                 // Return/exchange linkage — an exchange is two orders pointing at each
@@ -508,7 +508,7 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                         : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
                 })(),
                 codRequired: item.order.codRequired === 1,
-                codAmount: item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+                codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
                 orderType: item.order.orderType,
                 isReturn: item.order.isReturn,
@@ -716,7 +716,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
             customerName: order.customerName,
             customerPhone: order.customerPhone,
             address: order.address,
-            codAmount: order.codAmount ? parseFloat(order.codAmount) : 0,
+            codAmount: order.codRequired === 1 && order.codAmount ? parseFloat(order.codAmount) : 0,
             codPaymentMethod: order.codRequired === 1 ? (order.codPaymentMethod || 'cash') : null,
             type: order.codRequired === 1 ? 'COD' : 'PREPAID',
             weight: order.weight,

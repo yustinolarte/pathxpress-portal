@@ -267,6 +267,27 @@ export const adminPortalRouter = router({
       return { success: true };
     }),
 
+  // Activate/deactivate a client account. Deactivating hides the client from
+  // new-order creation and locks out their portal login (see portalAuthRouter.login),
+  // without touching order history — the reversible alternative to deleteClient.
+  setClientStatus: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      status: z.enum(['active', 'inactive']),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const updated = await updateClientAccount(input.clientId, { status: input.status });
+      if (!updated) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Client not found' });
+      }
+
+      const { updatePortalUsersStatusByClientId } = await import('./db');
+      await updatePortalUsersStatusByClientId(input.clientId, input.status);
+
+      invalidateClientAccountsCache();
+      return { success: true };
+    }),
+
 
 
   // Create customer user for a client
@@ -449,7 +470,12 @@ export const adminPortalRouter = router({
     .input(z.object({
       orderId: z.number(),
       updates: z.object({
-        serviceType: z.enum(['DOM', 'SDD', 'BULLET', 'EXPRESS_ZONE2', 'PREFERRED_TIME', 'PREFERRED_TIME_SDD']).optional(),
+        serviceType: z.enum([
+          // Domestic
+          'DOM', 'SDD', 'BULLET', 'EXPRESS_ZONE2', 'PREFERRED_TIME', 'PREFERRED_TIME_SDD',
+          // International
+          'PRIME_EXPRESS', 'PRIME_TRACKED', 'PRIME_REGISTERED_POD', 'GCC', 'PREMIUM_EXPORT',
+        ]).optional(),
         weight: z.string().optional(),
         pieces: z.number().optional(),
         codRequired: z.number().min(0).max(1).optional(),
@@ -466,6 +492,16 @@ export const adminPortalRouter = router({
         preferredDeliveryTime: z.string().nullable().optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
+        // International / customs fields (intl orders only)
+        destinationCountry: z.string().optional(),
+        postalCode: z.string().optional(),
+        length: z.string().nullable().optional(),
+        width: z.string().nullable().optional(),
+        height: z.string().nullable().optional(),
+        customsValue: z.string().nullable().optional(),
+        customsCurrency: z.string().optional(),
+        customsDescription: z.string().nullable().optional(),
+        hsCode: z.string().nullable().optional(),
       }),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -487,6 +523,7 @@ export const adminPortalRouter = router({
           changed.push(`COD: ${input.updates.codRequired === 0 ? 'Removed' : `${input.updates.codAmount || ''} ${input.updates.codCurrency || 'AED'}`}`);
         if (input.updates.fitOnDelivery !== undefined)
           changed.push(`FOD: ${input.updates.fitOnDelivery === 1 ? 'Enabled' : 'Disabled'}`);
+        if (input.updates.destinationCountry) changed.push(`Destination: ${input.updates.destinationCountry}`);
 
         if (changed.length > 0 && result.order?.clientId) {
           await createNotification(
@@ -2467,16 +2504,25 @@ export const customerPortalRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'COD is not enabled for your account' });
       }
 
-      const db = await import('./db').then(m => m.getDb());
-      const { orders } = await import('../drizzle/schema');
-      const { eq } = await import('drizzle-orm');
-
-      await db!.update(orders).set({
+      // Route through the same updateOrder() used by admin edits — it owns the
+      // full codRecords lifecycle (cancel on disable, create on enable, blocks
+      // if already remitted) and clears codAmount when COD is turned off. This
+      // mutation used to write orders.codRequired/codAmount directly, bypassing
+      // all of that — an exchange order's COD could be silently disabled after
+      // ops had already remitted the amount to the client.
+      const { updateOrder } = await import('./db');
+      const result = await updateOrder(input.orderId, {
         codRequired: input.codRequired,
-        codAmount: input.codRequired ? (input.codAmount || null) : null,
-        codCurrency: input.codRequired ? input.codCurrency : 'AED',
-      }).where(eq(orders.id, input.orderId));
+        codAmount: input.codRequired ? (input.codAmount || undefined) : undefined,
+        codCurrency: input.codRequired ? input.codCurrency : undefined,
+        codPaymentMethod: input.codRequired ? 'cash' : undefined,
+      });
 
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.error || 'Failed to update COD' });
+      }
+
+      invalidateOrderCaches();
       return { success: true, message: input.codRequired ? 'COD updated successfully' : 'COD removed successfully' };
     }),
 

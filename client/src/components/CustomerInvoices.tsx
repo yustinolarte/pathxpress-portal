@@ -387,6 +387,14 @@ export default function CustomerInvoices() {
                     {formatDate(invoiceDetails.invoice.dueDate)}
                   </p>
                 </div>
+                {invoiceDetails.invoice.status === 'paid' && invoiceDetails.invoice.paymentDate && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Paid On</p>
+                    <p className="font-medium" style={{ color: 'var(--st-green)' }}>
+                      {formatDate(invoiceDetails.invoice.paymentDate)}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>

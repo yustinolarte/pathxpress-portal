@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   XCircle,
   RotateCcw,
+  RotateCw,
   Pause,
   Loader2,
   Calendar,
@@ -63,6 +64,7 @@ const STATUS_OPTIONS = [
   { value: 'failed_pickup', label: 'Failed Pickup', description: 'Pickup attempt failed — sender unavailable, address incorrect, or package not ready.', icon: PackageX, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
   { value: 'in_transit', label: 'In Transit', description: 'Package is moving through the network toward its destination hub.', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
   { value: 'out_for_delivery', label: 'Out for Delivery', description: 'Package is with the driver on the final leg to the recipient.', icon: Truck, color: 'text-[var(--st-blue)]', bg: 'bg-[var(--st-blue-bg)]', border: 'border-[var(--st-blue)]/30' },
+  { value: 'delivery_attempted', label: 'Delivery Attempted', description: 'Driver attempted delivery but it was not completed — will be retried; add the reason below.', icon: RotateCw, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
   { value: 'delivered', label: 'Delivered', description: 'Package was successfully handed to the recipient.', icon: CheckCircle2, color: 'text-[var(--st-green)]', bg: 'bg-[var(--st-green-bg)]', border: 'border-[var(--st-green)]/30' },
   { value: 'failed_delivery', label: 'Failed Delivery', description: 'Delivery attempt failed — recipient unavailable, refused, or address unreachable.', icon: XCircle, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
   { value: 'address_issue', label: 'Address Issue', description: 'Address is incomplete or incorrect; recipient/sender must be contacted to confirm the location.', icon: MapPinOff, color: 'text-[var(--st-amber)]', bg: 'bg-[var(--st-amber-bg)]', border: 'border-[var(--st-amber)]/30' },
@@ -73,6 +75,25 @@ const STATUS_OPTIONS = [
   { value: 'returned_to_sender', label: 'Return to Sender', description: 'Package was returned and handed back to the original sender.', icon: RotateCcw, color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30' },
 ] as const;
 
+// Statuses that require picking a reason from a predefined list (plus optional free-text detail)
+const REASON_STATUSES = new Set(['failed_pickup', 'failed_delivery', 'delivery_attempted']);
+
+// Pickup-leg reasons are worded around the sender; delivery-leg reasons around the recipient.
+const PICKUP_REASON_OPTIONS = [
+  'Sender not available / unreachable',
+  'Wrong / incomplete address',
+  'Package not ready',
+  'Access denied / gate closed',
+  'Other',
+];
+const DELIVERY_REASON_OPTIONS = [
+  'Recipient not available / unreachable',
+  'Wrong / incomplete address',
+  'Recipient refused delivery',
+  'Access denied / gate closed',
+  'Other',
+];
+
 // Default location for each status — can still be changed by the user
 const STATUS_DEFAULT_LOCATION: Record<string, string> = {
   pending_pickup:     'sender_location',
@@ -80,6 +101,7 @@ const STATUS_DEFAULT_LOCATION: Record<string, string> = {
   failed_pickup:      'sender_location',
   in_transit:         'pathxpress_hub_dubai',
   out_for_delivery:   'driver_vehicle',
+  delivery_attempted: 'customer_location',
   delivered:          'customer_location',
   failed_delivery:    'customer_location',
   damaged:            'driver_vehicle',
@@ -124,6 +146,7 @@ export default function AddTrackingEventDialog({
     statusCode: 'in_transit',
     statusLabel: 'IN TRANSIT',
     description: '',
+    reason: '',
     courierName: '',
     courierTracking: '',
   });
@@ -159,6 +182,7 @@ export default function AddTrackingEventDialog({
       statusCode: 'in_transit',
       statusLabel: 'IN TRANSIT',
       description: '',
+      reason: '',
       courierName: '',
       courierTracking: '',
     });
@@ -173,6 +197,7 @@ export default function AddTrackingEventDialog({
       ...formData,
       statusCode: value,
       statusLabel: option?.label.toUpperCase() || value.toUpperCase(),
+      reason: '', // reason list depends on pickup vs delivery, so don't carry it across statuses
       ...(defaultLocation ? { locationKey: defaultLocation, customLocation: '' } : {}),
     });
   };
@@ -209,6 +234,11 @@ export default function AddTrackingEventDialog({
       return;
     }
 
+    if (REASON_STATUSES.has(formData.statusCode) && !formData.reason) {
+      toast.error('Please select a reason');
+      return;
+    }
+
     const eventDatetimeWithOffset = `${formData.eventDatetime}:00+04:00`;
 
     // Construct description
@@ -219,6 +249,12 @@ export default function AddTrackingEventDialog({
       finalDescription = finalDescription
         ? `${courierInfo}. ${finalDescription}`
         : courierInfo;
+    }
+
+    // No dedicated "reason" column on trackingEvents — fold it into the description
+    if (formData.reason) {
+      const reasonLine = `Reason: ${formData.reason}.`;
+      finalDescription = finalDescription ? `${reasonLine} ${finalDescription}` : reasonLine;
     }
 
     await addEventMutation.mutateAsync({
@@ -428,17 +464,42 @@ export default function AddTrackingEventDialog({
               </div>
             )}
 
+            {/* Reason — required for attempt/failure statuses, picked from a predefined list */}
+            {REASON_STATUSES.has(formData.statusCode) && (
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                  Reason *
+                </Label>
+                <Select
+                  value={formData.reason}
+                  onValueChange={(value) => setFormData({ ...formData, reason: value })}
+                >
+                  <SelectTrigger className="bg-white/5 border-border">
+                    <SelectValue placeholder="Select a reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(formData.statusCode === 'failed_pickup' ? PICKUP_REASON_OPTIONS : DELIVERY_REASON_OPTIONS).map((r) => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Description */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-muted-foreground" />
-                Description
+                {REASON_STATUSES.has(formData.statusCode) ? 'Additional Details (optional)' : 'Description'}
               </Label>
               <Textarea
-                placeholder="Additional details about this event..."
+                placeholder={REASON_STATUSES.has(formData.statusCode)
+                  ? 'Any extra detail about this reason...'
+                  : 'Additional details about this event...'}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
+                rows={REASON_STATUSES.has(formData.statusCode) ? 2 : 3}
                 className="bg-white/5 border-border resize-none"
               />
             </div>

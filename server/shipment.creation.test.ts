@@ -5,10 +5,13 @@ import type { TrpcContext } from "./_core/context";
 // portal.customer.createShipment authenticates via ctx.portalUser (set from an
 // HttpOnly cookie in real requests), not via a token field in the input — so the
 // mock context must set portalUser directly rather than passing a generated token.
+//
+// clientId 28 = dedicated test-fixture client account (companyName starts with
+// "__TEST FIXTURE__", codAllowed=1) — see cod.integration.test.ts for details.
 function createCustomerContext(): TrpcContext {
   return {
     user: null,
-    portalUser: { userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 },
+    portalUser: { userId: 2, email: "test-customer@pathxpress.internal", role: "customer", clientId: 28 },
     req: {
       protocol: "https",
       headers: {},

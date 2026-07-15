@@ -20,8 +20,13 @@ function createMockContext(portalUser: TrpcContext["portalUser"] = null): TrpcCo
   };
 }
 
-const CUSTOMER_PORTAL_USER = { userId: 2, email: "customer@techsolutions.ae", role: "customer" as const, clientId: 1 };
-const ADMIN_PORTAL_USER = { userId: 1, email: "admin@pathxpress.ae", role: "admin" as const };
+// clientId 28 = dedicated test-fixture client account (companyName starts with
+// "__TEST FIXTURE__", codAllowed=1) — see cod.integration.test.ts for details.
+// Neither mock user is looked up against the DB (portalAdminProcedure/
+// portalCustomerProcedure only check ctx.portalUser.role), so the emails below
+// are cosmetic; only clientId needs to reference a real, COD-enabled client.
+const CUSTOMER_PORTAL_USER = { userId: 2, email: "test-customer@pathxpress.internal", role: "customer" as const, clientId: 28 };
+const ADMIN_PORTAL_USER = { userId: 1, email: "test-admin@pathxpress.internal", role: "admin" as const };
 
 describe("COD Status Update", () => {
   it("should update COD record status from pending_collection to collected", async () => {

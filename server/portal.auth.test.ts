@@ -3,35 +3,49 @@ import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import bcrypt from 'bcryptjs';
 
-// Mock context for testing
-function createMockContext(): TrpcContext {
+// Mock context for testing. `login()` sets the session via ctx.res.cookie()
+// (HttpOnly cookie, not a token in the response body) — cookieCalls records
+// what was set so tests can assert on it without needing a real Express res.
+function createMockContext(): TrpcContext & { cookieCalls: any[][] } {
+  const cookieCalls: any[][] = [];
   return {
     user: null,
     req: {
       protocol: "https",
       headers: {},
     } as TrpcContext["req"],
-    res: {} as TrpcContext["res"],
+    res: { cookie: (...args: any[]) => { cookieCalls.push(args); } } as unknown as TrpcContext["res"],
+    cookieCalls,
   };
 }
+
+// Dedicated test-fixture admin portal user (test-admin@pathxpress.internal) —
+// not a real employee account. See cod.integration.test.ts for the sibling
+// client fixture (clientId 28) these integration tests share.
+const FIXTURE_ADMIN_EMAIL = "test-admin@pathxpress.internal";
+const FIXTURE_ADMIN_PASSWORD = "TestFixtureAdmin!2026";
 
 describe("portal.auth.login", () => {
   it("should successfully login with valid credentials", async () => {
     const ctx = createMockContext();
     const caller = appRouter.createCaller(ctx);
 
-    // Test with the seeded admin credentials
+    // Test with the seeded fixture admin credentials
     const result = await caller.portal.auth.login({
-      email: "admin@pathxpress.ae",
-      password: "admin123",
+      email: FIXTURE_ADMIN_EMAIL,
+      password: FIXTURE_ADMIN_PASSWORD,
     });
 
-    expect(result).toHaveProperty("token");
+    // login() no longer returns the session token in the response body — it's
+    // set as an HttpOnly cookie only (ctx.res.cookie), so assert on that instead.
     expect(result).toHaveProperty("user");
-    expect(result.user.email).toBe("admin@pathxpress.ae");
+    expect(result.user.email).toBe(FIXTURE_ADMIN_EMAIL);
     expect(result.user.role).toBe("admin");
-    expect(typeof result.token).toBe("string");
-    expect(result.token.length).toBeGreaterThan(0);
+    expect(ctx.cookieCalls.length).toBe(1);
+    const [cookieName, cookieValue] = ctx.cookieCalls[0];
+    expect(cookieName).toBe("pathxpress_portal_token");
+    expect(typeof cookieValue).toBe("string");
+    expect(cookieValue.length).toBeGreaterThan(0);
   });
 
   it("should fail login with invalid password", async () => {
@@ -40,7 +54,7 @@ describe("portal.auth.login", () => {
 
     await expect(
       caller.portal.auth.login({
-        email: "admin@pathxpress.ae",
+        email: FIXTURE_ADMIN_EMAIL,
         password: "wrongpassword",
       })
     ).rejects.toThrow();
@@ -66,7 +80,7 @@ describe("portal.customer.createShipment", () => {
     // the mock context sets portalUser directly instead of logging in for real.
     const ctx: TrpcContext = {
       ...createMockContext(),
-      portalUser: { userId: 2, email: "customer@techsolutions.ae", role: "customer", clientId: 1 },
+      portalUser: { userId: 2, email: "test-customer@pathxpress.internal", role: "customer", clientId: 28 },
     };
     const caller = appRouter.createCaller(ctx);
 

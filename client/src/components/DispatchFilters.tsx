@@ -21,6 +21,7 @@ const STATUS_LABELS: Record<string, string> = {
     in_transit: 'En tránsito',
     out_for_delivery: 'En reparto',
     delivery_attempted: 'Intento fallido',
+    failed_pickup: 'Pickup fallido',
     failed_delivery: 'Entrega fallida',
     on_hold: 'En espera',
     address_issue: 'Problema de dirección',
