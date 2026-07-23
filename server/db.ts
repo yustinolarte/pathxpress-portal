@@ -1505,8 +1505,11 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
     .where(
       and(
         eq(orders.clientId, clientId),
-        gte(orders.lastStatusUpdate, periodStart),
-        lte(orders.lastStatusUpdate, periodEndFullDay),
+        // createdAt, not lastStatusUpdate: shipments are now billable in any
+        // status, so the period should reflect when the order was placed,
+        // not when it happened to last change status (e.g. delivery date).
+        gte(orders.createdAt, periodStart),
+        lte(orders.createdAt, periodEndFullDay),
         ne(orders.status, 'canceled'),
         isNull(invoiceItems.id),
         notInArray(orders.destinationCountry, UAE_COUNTRIES)
