@@ -1489,7 +1489,7 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
   if (!db) return [];
 
   const { invoiceItems } = await import("../drizzle/schema");
-  const { isNull, inArray: drizzleInArray } = await import("drizzle-orm");
+  const { isNull } = await import("drizzle-orm");
   const { loadRatesFromDB, quote, normalizeCountryName } = await import('./internationalRateEngine');
 
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
@@ -1507,7 +1507,7 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
         eq(orders.clientId, clientId),
         gte(orders.lastStatusUpdate, periodStart),
         lte(orders.lastStatusUpdate, periodEndFullDay),
-        drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
+        ne(orders.status, 'canceled'),
         isNull(invoiceItems.id),
         notInArray(orders.destinationCountry, UAE_COUNTRIES)
       )
@@ -1582,7 +1582,7 @@ export async function generateIntlInvoiceForClient(
         and(
           eq(orders.clientId, clientId),
           drizzleInArray(orders.id, shipmentIds),
-          drizzleInArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
+          ne(orders.status, 'canceled'),
           isNull(invoiceItems.id),
           notInArray(orders.destinationCountry, UAE_COUNTRIES)
         )
@@ -1692,6 +1692,71 @@ export async function generateIntlInvoiceForClient(
 
   cacheInvalidate('admin:allInvoices');
   return invoice.insertId;
+}
+
+// Updates the internal courier cost for an order. Deliberately bypasses the
+// "already invoiced" lock in updateOrder — cost tracking doesn't affect what
+// the client was billed, so it must stay editable after invoicing too.
+export async function updateOrderCost(orderId: number, costAmount: string | null) {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+
+  await db.update(orders).set({ costAmount }).where(eq(orders.id, orderId));
+  cacheInvalidate('admin:allInvoices');
+  return { success: true };
+}
+
+export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd?: Date; clientId?: number } = {}) {
+  const db = await getDb();
+  if (!db) return { rows: [], totalCharged: 0, totalCost: 0, totalProfit: 0, marginPct: 0, itemsMissingCost: 0 };
+
+  const { invoiceItems } = await import("../drizzle/schema");
+
+  const conditions = [sql`${invoices.invoiceNumber} LIKE 'INTLINV-%'`];
+  if (filters.clientId) conditions.push(eq(invoices.clientId, filters.clientId));
+  if (filters.periodStart) conditions.push(gte(invoices.issueDate, filters.periodStart));
+  if (filters.periodEnd) {
+    const endFullDay = new Date(filters.periodEnd);
+    endFullDay.setHours(23, 59, 59, 999);
+    conditions.push(lte(invoices.issueDate, endFullDay));
+  }
+
+  const results = await db
+    .select({
+      invoiceItemId: invoiceItems.id,
+      invoiceId: invoices.id,
+      invoiceNumber: invoices.invoiceNumber,
+      issueDate: invoices.issueDate,
+      clientId: invoices.clientId,
+      shipmentId: invoiceItems.shipmentId,
+      unitPrice: invoiceItems.unitPrice,
+      waybillNumber: orders.waybillNumber,
+      destinationCountry: orders.destinationCountry,
+      serviceType: orders.serviceType,
+      costAmount: orders.costAmount,
+    })
+    .from(invoiceItems)
+    .innerJoin(invoices, eq(invoiceItems.invoiceId, invoices.id))
+    .leftJoin(orders, eq(invoiceItems.shipmentId, orders.id))
+    .where(and(...conditions))
+    .orderBy(desc(invoices.issueDate));
+
+  let totalCharged = 0;
+  let totalCost = 0;
+  let itemsMissingCost = 0;
+
+  const rows = results.map(r => {
+    const charged = parseFloat(r.unitPrice || '0');
+    const cost = r.costAmount !== null && r.costAmount !== undefined ? parseFloat(r.costAmount) : null;
+    totalCharged += charged;
+    if (cost !== null) totalCost += cost; else itemsMissingCost++;
+    return { ...r, charged, cost };
+  });
+
+  const totalProfit = totalCharged - totalCost;
+  const marginPct = totalCharged > 0 ? (totalProfit / totalCharged) * 100 : 0;
+
+  return { rows, totalCharged, totalCost, totalProfit, marginPct, itemsMissingCost };
 }
 
 export async function getInvoicesByClient(clientId: number) {

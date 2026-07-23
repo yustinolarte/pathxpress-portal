@@ -645,6 +645,128 @@ export default function BillingPanel() {
     );
   };
 
+  // ─── International profit panel: our cost vs. what the client was charged ─
+
+  const IntlProfitPanel = () => {
+    const { data: profitData, isLoading: isLoadingProfit } = trpc.portal.billing.getIntlProfitSummary.useQuery({
+      periodStart: filterDateFrom || undefined,
+      periodEnd: filterDateTo || undefined,
+      clientId: filterClientId !== 'all' ? parseInt(filterClientId) : undefined,
+    });
+
+    const updateCost = trpc.portal.billing.updateOrderCost.useMutation({
+      onSuccess: () => { utils.portal.billing.getIntlProfitSummary.invalidate(); },
+      onError: (error) => toast.error(error.message || 'Failed to update cost'),
+    });
+
+    const handleCostBlur = (shipmentId: number, value: string) => {
+      if (!value.trim()) {
+        updateCost.mutate({ orderId: shipmentId, costAmount: null });
+        return;
+      }
+      const parsed = parseFloat(value);
+      if (isNaN(parsed) || parsed < 0) { toast.error('Enter a valid cost amount'); return; }
+      updateCost.mutate({ orderId: shipmentId, costAmount: parsed.toFixed(2) });
+    };
+
+    if (isLoadingProfit) {
+      return <div className="text-center py-8 text-sm text-muted-foreground">Loading profit data...</div>;
+    }
+
+    const rows = profitData?.rows ?? [];
+    const totalCharged = profitData?.totalCharged ?? 0;
+    const totalCost = profitData?.totalCost ?? 0;
+    const totalProfit = profitData?.totalProfit ?? 0;
+    const marginPct = profitData?.marginPct ?? 0;
+    const itemsMissingCost = profitData?.itemsMissingCost ?? 0;
+
+    return (
+      <div className="space-y-4">
+        <div>
+          <h3 className="font-display text-lg font-bold tracking-tight flex items-center gap-2">
+            <Banknote className="w-5 h-5 text-primary" /> Profit — Cost vs. Client Charge
+          </h3>
+          <p className="text-sm text-muted-foreground">Our courier cost vs. what clients were billed, per invoiced international shipment</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="kpi">
+            <div className="kt"><span className="lab">Charged to Clients</span></div>
+            <div className="val" style={{ fontSize: 26 }}>AED {totalCharged.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">{rows.length} invoiced shipment{rows.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div className="kpi">
+            <div className="kt"><span className="lab">Our Cost</span></div>
+            <div className="val" style={{ fontSize: 26 }}>AED {totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">{itemsMissingCost > 0 ? `${itemsMissingCost} shipment${itemsMissingCost !== 1 ? 's' : ''} missing cost` : 'All shipments have cost recorded'}</div>
+          </div>
+          <div className="kpi accent">
+            <div className="kt"><span className="lab">Net Profit</span></div>
+            <div className="val" style={{ fontSize: 26 }}>AED {totalProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">{marginPct.toFixed(1)}% margin</div>
+          </div>
+        </div>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-0">
+            {rows.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">No international invoice items found for this period.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Waybill</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Service</TableHead>
+                      <TableHead>Country</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Charged</TableHead>
+                      <TableHead className="text-right">Our Cost</TableHead>
+                      <TableHead className="text-right">Profit</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row: any) => {
+                      const profit = row.cost !== null ? row.charged - row.cost : null;
+                      return (
+                        <TableRow key={row.invoiceItemId}>
+                          <TableCell className="font-mono text-xs">{row.waybillNumber || '—'}</TableCell>
+                          <TableCell className="font-mono text-xs">{row.invoiceNumber}</TableCell>
+                          <TableCell className="text-xs">{row.serviceType ? abbreviateServiceType(row.serviceType) : '—'}</TableCell>
+                          <TableCell className="text-xs">{row.destinationCountry || '—'}</TableCell>
+                          <TableCell className="text-xs">{new Date(row.issueDate).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">AED {row.charged.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              key={`${row.invoiceItemId}-${row.cost ?? 'null'}`}
+                              type="number" step="0.01" min="0"
+                              placeholder="—"
+                              disabled={!row.shipmentId}
+                              defaultValue={row.cost !== null ? row.cost.toFixed(2) : ''}
+                              className="h-8 w-24 ml-auto text-right font-mono text-xs bg-white/5 border-border"
+                              onBlur={(e) => {
+                                if (!row.shipmentId) return;
+                                handleCostBlur(row.shipmentId, e.target.value);
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className={`text-right font-mono text-xs ${profit !== null && profit < 0 ? 'text-primary' : ''}`}>
+                            {profit !== null ? `AED ${profit.toFixed(2)}` : '—'}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   // ─── Generate dialog (reusable for dom/intl) ──────────────────────────────
 
   const GenerateDialog = ({
@@ -795,7 +917,9 @@ export default function BillingPanel() {
                   <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
                 ) : !shipments || shipments.length === 0 ? (
                   <div className="text-center py-4 text-sm text-primary">
-                    No {isIntl ? 'international ' : ''}delivered shipments found for this period.
+                    {isIntl
+                      ? 'No international shipments found for this period.'
+                      : 'No delivered shipments found for this period.'}
                   </div>
                 ) : (
                   <div className="max-h-[200px] overflow-y-auto space-y-2">
@@ -956,6 +1080,7 @@ export default function BillingPanel() {
             />
           </div>
           <StatsCards invoiceList={intlInvoices} />
+          <IntlProfitPanel />
           <InvoiceTable invoiceList={intlInvoices} exportFilename={`international_invoices_${new Date().toISOString().slice(0, 10)}.csv`} />
         </TabsContent>
       </Tabs>

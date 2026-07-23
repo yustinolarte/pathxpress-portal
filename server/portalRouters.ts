@@ -3045,6 +3045,37 @@ export const billingRouter = router({
       );
     }),
 
+  // Admin: International invoices — charged vs. our cost, for the profit panel
+  getIntlProfitSummary: portalAdminProcedure
+    .input(z.object({
+      periodStart: z.string().optional(),
+      periodEnd: z.string().optional(),
+      clientId: z.number().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getIntlProfitData } = await import('./db');
+      return await getIntlProfitData({
+        periodStart: input.periodStart ? new Date(input.periodStart) : undefined,
+        periodEnd: input.periodEnd ? new Date(input.periodEnd) : undefined,
+        clientId: input.clientId,
+      });
+    }),
+
+  // Admin: Set/update the internal courier cost for an order (profit tracking, editable even after invoicing)
+  updateOrderCost: portalAdminProcedure
+    .input(z.object({
+      orderId: z.number(),
+      costAmount: z.string().nullable(),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateOrderCost } = await import('./db');
+      const result = await updateOrderCost(input.orderId, input.costAmount);
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.error || 'Failed to update cost' });
+      }
+      return result;
+    }),
+
   // Admin: Generate international invoice for a client
   generateIntlInvoice: portalAdminProcedure
     .input(z.object({

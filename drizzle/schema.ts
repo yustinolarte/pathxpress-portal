@@ -276,6 +276,7 @@ export const orders = mysqlTable("orders", {
   customsCurrency: varchar("customsCurrency", { length: 10 }), // Currency of declared value (e.g. "USD")
   customsDescription: text("customsDescription"),              // Description of goods for customs declaration
   hsCode: varchar("hsCode", { length: 20 }),                   // Harmonized System tariff code (optional)
+  costAmount: decimal("costAmount", { precision: 10, scale: 2 }), // Our actual courier cost (intl only, admin-entered, for profit tracking)
 
   // Preferred Time Delivery service fields
   preferredDeliveryDate: varchar("preferredDeliveryDate", { length: 10 }),  // 'YYYY-MM-DD'
