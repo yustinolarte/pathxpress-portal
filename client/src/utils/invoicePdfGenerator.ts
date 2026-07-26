@@ -259,7 +259,7 @@ export function generateInvoicePDF(invoice: Invoice, options?: { output?: 'save'
   
   yPos += 6;
   const taxAmount = invoice.tax || '0';
-  doc.text('Tax (5%):', totalsX, yPos);
+  doc.text('Tax:', totalsX, yPos);
   doc.text(`${invoice.currency} ${parseFloat(taxAmount).toFixed(2)}`, pageWidth - 17, yPos, { align: 'right' });
   
   yPos += 6;

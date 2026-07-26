@@ -128,7 +128,6 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   cardFeePercent: varchar("cardFeePercent", { length: 50 }), // Custom CCOD percentage (null = use default)
   cardMinFee: varchar("cardMinFee", { length: 50 }), // Custom min CCOD fee (null = use default)
   cardMaxFee: varchar("cardMaxFee", { length: 50 }), // Custom max CCOD fee (null = use default)
-  defaultRateTableId: int("defaultRateTableId"),
   manualRateTierId: int("manualRateTierId"), // Admin-assigned rate tier (overrides automatic volume calculation)
 
   // Custom rates - when set, these override tier rates completely
@@ -316,32 +315,6 @@ export type TrackingEvent = typeof trackingEvents.$inferSelect;
 export type InsertTrackingEvent = typeof trackingEvents.$inferInsert;
 
 /**
- * Rate tables for pricing configuration
- */
-export const rateTables = mysqlTable("rateTables", {
-  id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 255 }).notNull(),
-  clientId: int("clientId"), // Nullable for default/global rate table
-  originZone: varchar("originZone", { length: 100 }).notNull(),
-  destinationZone: varchar("destinationZone", { length: 100 }).notNull(),
-  minWeight: varchar("minWeight", { length: 50 }).notNull(),
-  maxWeight: varchar("maxWeight", { length: 50 }).notNull(),
-  pricePerKg: varchar("pricePerKg", { length: 50 }).notNull(),
-  basePrice: varchar("basePrice", { length: 50 }).notNull(),
-  fuelSurchargePercent: varchar("fuelSurchargePercent", { length: 50 }).default("0"),
-  codFeeFixed: varchar("codFeeFixed", { length: 50 }).default("0"),
-  codFeePercent: varchar("codFeePercent", { length: 50 }).default("0"),
-  additionalSurcharges: text("additionalSurcharges"), // JSON string for flexible surcharges
-  serviceType: varchar("serviceType", { length: 100 }), // standard, express, same-day
-  status: mysqlEnum("status", ["active", "inactive"]).default("active").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
-export type RateTable = typeof rateTables.$inferSelect;
-export type InsertRateTable = typeof rateTables.$inferInsert;
-
-/**
  * Invoices table for billing
  */
 export const invoices = mysqlTable("invoices", {
@@ -419,6 +392,8 @@ export const codRecords = mysqlTable("codRecords", {
 }, (table) => ({
   shipmentIdIdx: index("codRecords_shipmentId_idx").on(table.shipmentId),
   statusIdx: index("codRecords_status_idx").on(table.status),
+  collectedDateIdx: index("codRecords_collectedDate_idx").on(table.collectedDate),
+  remittedToClientDateIdx: index("codRecords_remittedToClientDate_idx").on(table.remittedToClientDate),
 }));
 
 export type CODRecord = typeof codRecords.$inferSelect;
@@ -463,7 +438,9 @@ export const codRemittanceItems = mysqlTable("codRemittanceItems", {
   amount: varchar("amount", { length: 50 }).notNull(),
   currency: varchar("currency", { length: 10 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  remittanceIdIdx: index("codRemittanceItems_remittanceId_idx").on(table.remittanceId),
+}));
 
 export type CODRemittanceItem = typeof codRemittanceItems.$inferSelect;
 export type InsertCODRemittanceItem = typeof codRemittanceItems.$inferInsert;

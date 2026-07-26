@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import * as XLSX from 'xlsx';
+import { statusBadgeClass } from '@/lib/statusStyles';
 
 export default function CustomerInvoices() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
@@ -127,18 +128,9 @@ export default function CustomerInvoices() {
     { enabled: !!selectedInvoiceId }
   );
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return <span className="badge2 b-green">Paid</span>;
-      case 'pending':
-        return <span className="badge2 b-amber">Pending</span>;
-      case 'overdue':
-        return <span className="badge2 b-red">Overdue</span>;
-      default:
-        return <span className="badge2 b-gray">{status}</span>;
-    }
-  };
+  const getStatusBadge = (status: string) => (
+    <span className={statusBadgeClass(status)}>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+  );
 
   const formatDate = (date: Date | string) => {
     return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });

@@ -1,15 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from '@/components/ui/pagination';
 import { toast } from 'sonner';
 import {
   DollarSign,
@@ -22,14 +22,22 @@ import {
   BadgeCheck,
   Calendar,
   Download,
-  Filter
+  Filter,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 import RemittanceDetailsDialog from './RemittanceDetailsDialog';
 
+const CODRECORDS_PAGE_SIZE = 50;
+const REMITTANCES_PAGE_SIZE = 25;
+
 export default function CODPanel() {
   const utils = trpc.useUtils();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createAllConfirmOpen, setCreateAllConfirmOpen] = useState(false);
+  const [isCreatingAll, setIsCreatingAll] = useState(false);
+  const [expandedReadyClientId, setExpandedReadyClientId] = useState<number | null>(null);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedRemittanceId, setSelectedRemittanceId] = useState<number | null>(null);
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
@@ -39,34 +47,73 @@ export default function CODPanel() {
   const [notes, setNotes] = useState('');
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [reportMonth, setReportMonth] = useState<string>('all'); // 'all' or 'YYYY-MM' format
+  const [codPage, setCodPage] = useState(0);
+  const [remittancePage, setRemittancePage] = useState(0);
 
-  // Get COD summary
+  const handleFilterClientChange = (value: string) => {
+    setFilterClientId(value);
+    setCodPage(0);
+    setRemittancePage(0);
+  };
+
+  // Get COD summary (SQL-aggregated global totals — not affected by pagination)
   const { data: codSummary } = trpc.portal.cod.getCODSummary.useQuery();
 
-  // Get all COD records
-  const { data: allCODRecords, isLoading: codLoading, refetch: refetchCOD } = trpc.portal.cod.getAllCODRecords.useQuery();
+  // Full (capped) COD record set — used only for "Collected Today" and the
+  // month-filtered PDF exports below, which need to scan across records
+  // rather than a single page of them.
+  const { data: allCODRecords } = trpc.portal.cod.getAllCODRecords.useQuery();
 
-  // Filter COD records by client
-  const codRecords = allCODRecords?.filter(record =>
-    filterClientId === 'all' || record.order.clientId.toString() === filterClientId
-  );
+  // Paginated COD records — this is what actually renders in the "All COD
+  // Records" table, so it can reach records past the 500-row cap above.
+  const {
+    data: codRecordsPagedData,
+    isLoading: codLoading,
+    refetch: refetchCODPaged,
+  } = trpc.portal.cod.getCODRecordsPaged.useQuery({
+    page: codPage,
+    pageSize: CODRECORDS_PAGE_SIZE,
+    clientId: filterClientId === 'all' ? undefined : parseInt(filterClientId),
+  });
+  const codRecordsRows = codRecordsPagedData?.rows ?? [];
+  const codRecordsTotal = codRecordsPagedData?.total ?? 0;
+  const codPageCount = Math.max(1, Math.ceil(codRecordsTotal / CODRECORDS_PAGE_SIZE));
 
-  // Get all remittances
-  const { data: remittances, isLoading: remittancesLoading, refetch: refetchRemittances } = trpc.portal.cod.getAllRemittances.useQuery();
+  // Paginated remittances — replaces the old unbounded fetch of the whole table.
+  const {
+    data: remittancesPagedData,
+    isLoading: remittancesLoading,
+    refetch: refetchRemittancesPaged,
+  } = trpc.portal.cod.getRemittancesPaged.useQuery({
+    page: remittancePage,
+    pageSize: REMITTANCES_PAGE_SIZE,
+    clientId: filterClientId === 'all' ? undefined : parseInt(filterClientId),
+  });
+  const remittancesRows = remittancesPagedData?.rows ?? [];
+  const remittancesTotal = remittancesPagedData?.total ?? 0;
+  const remittancePageCount = Math.max(1, Math.ceil(remittancesTotal / REMITTANCES_PAGE_SIZE));
 
   // Get clients for dropdown
   const { data: clients } = trpc.portal.admin.getClients.useQuery();
 
-  // Get pending COD for selected client
-  const { data: pendingCOD, refetch: refetchPending } = trpc.portal.cod.getPendingCODByClient.useQuery(
+  // Per-client totals already past the last weekly cutoff (Friday 18:00 Dubai) —
+  // the automated "Ready to Remit" list that replaces manual checkbox selection.
+  const { data: readyToRemit, isLoading: readyLoading, refetch: refetchReady } = trpc.portal.cod.getReadyToRemit.useQuery();
+
+  // Per-client totals collected after the cutoff — read-only, building towards next week.
+  const { data: accumulating, refetch: refetchAccumulating } = trpc.portal.cod.getAccumulating.useQuery();
+
+  // Drill-down: which shipments make up one client's ready-to-remit total (expandable row)
+  const { data: expandedRecords } = trpc.portal.cod.getReadyToRemitRecords.useQuery(
+    { clientId: expandedReadyClientId || 0 },
+    { enabled: !!expandedReadyClientId }
+  );
+
+  // Eligible (cutoff-bound) COD for the manual/override "Create Remittance" dialog
+  const { data: eligibleCOD, refetch: refetchEligible } = trpc.portal.cod.getReadyToRemitRecords.useQuery(
     { clientId: selectedClient || 0 },
     { enabled: !!selectedClient }
   );
-
-  // Filter to ensure only collected COD are shown
-  const filteredPendingCOD = pendingCOD?.filter(record => record.status === 'collected');
-
-
 
   // Calculate today's collected amount
   const today = new Date();
@@ -80,13 +127,13 @@ export default function CODPanel() {
     })
     .reduce((sum, record) => sum + parseFloat(record.codAmount), 0) || 0;
 
-  // Calculate pending settlement (collected but not remitted)
-  const totalPendingSettlement = allCODRecords
-    ?.filter(record => record.status === 'collected')
-    .reduce((sum, record) => sum + parseFloat(record.codAmount), 0) || 0;
+  // Pending settlement (collected but not remitted) — SQL-aggregated, accurate
+  // regardless of the 500-row cap on allCODRecords.
+  const totalPendingSettlement = parseFloat(codSummary?.collected || '0');
 
-  // Calculate next payout date (example: every Friday)
-  const getNextPayoutDate = () => {
+  // Calculate next payout date (display only — every Friday; the authoritative
+  // cutoff instant, 18:00 Dubai time, is computed server-side in getLastWeeklyCutoff)
+  const getNextCutoffDate = () => {
     const today = new Date();
     const dayOfWeek = today.getDay();
     const daysUntilFriday = (5 - dayOfWeek + 7) % 7 || 7;
@@ -135,6 +182,16 @@ export default function CODPanel() {
         return { value, label };
       });
   }, [allCODRecords]);
+
+  // Totals by currency for the "Create All" confirmation dialog
+  const readyTotalsByCurrency = useMemo(() => {
+    if (!readyToRemit) return [] as { currency: string; total: number }[];
+    const map = new Map<string, number>();
+    readyToRemit.forEach(c => {
+      map.set(c.currency, (map.get(c.currency) || 0) + parseFloat(c.netAmount));
+    });
+    return Array.from(map.entries()).map(([currency, total]) => ({ currency, total }));
+  }, [readyToRemit]);
 
   // Download Pending Settlement PDF (only collected, not yet remitted)
   const handleDownloadSettlementPDF = async () => {
@@ -203,7 +260,19 @@ export default function CODPanel() {
     }
   };
 
-  // Create remittance mutation
+  const refetchEverything = () => {
+    refetchCODPaged();
+    refetchRemittancesPaged();
+    refetchReady();
+    refetchAccumulating();
+    if (selectedClient) refetchEligible();
+    utils.portal.cod.getAllCODRecords.invalidate();
+    utils.portal.cod.getCODSummary.invalidate();
+  };
+
+  // Create remittance mutation — used both by the manual dialog (with an
+  // explicit codRecordIds override) and by the one-click "Ready to Remit" flow
+  // (clientId only, server resolves everything past cutoff for that client).
   const createRemittanceMutation = trpc.portal.cod.createRemittance.useMutation({
     onSuccess: (data) => {
       toast.success(`Remittance ${data.remittanceNumber} created successfully`);
@@ -213,9 +282,7 @@ export default function CODPanel() {
       setPaymentMethod('');
       setPaymentReference('');
       setNotes('');
-      refetchCOD();
-      refetchRemittances();
-      refetchPending();
+      refetchEverything();
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to create remittance');
@@ -226,7 +293,7 @@ export default function CODPanel() {
   const updateStatusMutation = trpc.portal.cod.updateRemittanceStatus.useMutation({
     onSuccess: () => {
       toast.success('Remittance status updated');
-      refetchRemittances();
+      refetchRemittancesPaged();
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to update status');
@@ -237,7 +304,8 @@ export default function CODPanel() {
   const updateCODStatusMutation = trpc.portal.cod.updateCODStatus.useMutation({
     onSuccess: () => {
       toast.success('COD status updated');
-      refetchCOD();
+      refetchCODPaged();
+      utils.portal.cod.getAllCODRecords.invalidate();
     },
     onError: (error: any) => {
       toast.error(error.message || 'Failed to update COD status');
@@ -262,6 +330,37 @@ export default function CODPanel() {
       paymentReference: paymentReference || undefined,
       notes: notes || undefined,
     });
+  };
+
+  // One-click confirm from the "Ready to Remit" list — no manual selection,
+  // the server resolves everything past cutoff for this client.
+  const handleQuickCreateRemittance = (clientId: number) => {
+    createRemittanceMutation.mutate({ clientId });
+  };
+
+  const handleCreateAll = async () => {
+    if (!readyToRemit || readyToRemit.length === 0) return;
+    setIsCreatingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const c of readyToRemit) {
+      try {
+        await createRemittanceMutation.mutateAsync({ clientId: c.clientId });
+        successCount++;
+      } catch (_) {
+        failCount++;
+      }
+    }
+
+    setIsCreatingAll(false);
+    setCreateAllConfirmOpen(false);
+    if (failCount === 0) {
+      toast.success(`Created ${successCount} remittance${successCount !== 1 ? 's' : ''}`);
+    } else {
+      toast.error(`Created ${successCount} remittance${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
+    }
+    refetchEverything();
   };
 
   const handleStatusChange = (remittanceId: number, status: 'pending' | 'processed' | 'completed') => {
@@ -329,9 +428,9 @@ export default function CODPanel() {
     return <span className="badge2 b-gray">Cash</span>;
   };
 
-  const totalSelected = pendingCOD
+  const totalSelected = eligibleCOD
     ? selectedCODRecords.reduce((sum, id) => {
-      const record = pendingCOD.find(r => r.id === id);
+      const record = eligibleCOD.find(r => r.id === id);
       return sum + (record ? parseFloat(record.codAmount) : 0);
     }, 0)
     : 0;
@@ -351,7 +450,7 @@ export default function CODPanel() {
           <div className="flex gap-4 items-end">
             <div className="flex-1">
               <Label htmlFor="filterClient">Select Client</Label>
-              <Select value={filterClientId} onValueChange={setFilterClientId}>
+              <Select value={filterClientId} onValueChange={handleFilterClientChange}>
                 <SelectTrigger id="filterClient">
                   <SelectValue />
                 </SelectTrigger>
@@ -368,7 +467,7 @@ export default function CODPanel() {
             {filterClientId !== 'all' && (
               <Button
                 variant="outline"
-                onClick={() => setFilterClientId('all')}
+                onClick={() => handleFilterClientChange('all')}
               >
                 Clear Filter
               </Button>
@@ -425,18 +524,18 @@ export default function CODPanel() {
               </div>
             </div>
 
-            {/* Next Payout Date */}
+            {/* Ready to Remit (real cutoff-based data, replaces the old static "Next Payout" placeholder) */}
             <div className="kpi accent">
               <div className="kt">
-                <span className="lab">Next Payout</span>
+                <span className="lab">Ready to Remit</span>
                 <span className="ic"><Calendar className="h-[18px] w-[18px]" /></span>
               </div>
               <div className="val" style={{ fontSize: 24 }}>
-                {getNextPayoutDate()}
+                {readyToRemit?.length || 0} client{(readyToRemit?.length || 0) !== 1 ? 's' : ''}
               </div>
               <div className="sub">
                 <TrendingUp className="h-3 w-3 opacity-50" />
-                Weekly schedule
+                Next cutoff: {getNextCutoffDate()}
               </div>
             </div>
 
@@ -511,18 +610,188 @@ export default function CODPanel() {
         </CardContent>
       </Card>
 
-      {/* Remittances Section */}
+      {/* Ready to Remit — automated cutoff-based grouping, replaces manual per-shipment selection */}
+      <Card className="bg-card rounded-2xl border border-border shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <BadgeCheck className="h-5 w-5" style={{ color: 'var(--st-green)' }} />
+              Ready to Remit
+            </CardTitle>
+            <CardDescription>Grouped by the weekly cutoff — every Friday 18:00 (Dubai time). Review the total, then confirm.</CardDescription>
+          </div>
+          {readyToRemit && readyToRemit.length > 0 && (
+            <Button onClick={() => setCreateAllConfirmOpen(true)} disabled={isCreatingAll || createRemittanceMutation.isPending}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create All ({readyToRemit.length})
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {readyLoading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading...</div>
+          ) : !readyToRemit || readyToRemit.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Nothing ready to remit yet — check back after the next Friday cutoff.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Shipments</TableHead>
+                  <TableHead>Gross</TableHead>
+                  <TableHead>Fee</TableHead>
+                  <TableHead>Net</TableHead>
+                  <TableHead>Oldest Collection</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {readyToRemit.map((c) => (
+                  <Fragment key={`${c.clientId}-${c.currency}`}>
+                    <TableRow>
+                      <TableCell className="font-medium">{c.companyName}</TableCell>
+                      <TableCell>{c.count}</TableCell>
+                      <TableCell className="money">{formatCurrency(c.grossAmount, c.currency)}</TableCell>
+                      <TableCell className="text-muted-foreground font-mono">
+                        {parseFloat(c.feeAmount) > 0 ? `− ${formatCurrency(c.feeAmount, c.currency)}` : '—'}
+                      </TableCell>
+                      <TableCell className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(c.netAmount, c.currency)}</TableCell>
+                      <TableCell>{formatDate(c.oldestCollectedDate)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setExpandedReadyClientId(expandedReadyClientId === c.clientId ? null : c.clientId)}
+                          >
+                            {expandedReadyClientId === c.clientId ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleQuickCreateRemittance(c.clientId)}
+                            disabled={isCreatingAll || createRemittanceMutation.isPending}
+                          >
+                            Create Remittance
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {expandedReadyClientId === c.clientId && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="bg-secondary/40 p-0">
+                          <div className="p-4">
+                            {!expandedRecords || expandedRecords.length === 0 ? (
+                              <div className="text-sm text-muted-foreground py-2">Loading shipments...</div>
+                            ) : (
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Waybill</TableHead>
+                                    <TableHead>Amount</TableHead>
+                                    <TableHead>Method</TableHead>
+                                    <TableHead>Collected Date</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {expandedRecords.map((record: any) => (
+                                    <TableRow key={record.id}>
+                                      <TableCell>{record.order.waybillNumber}</TableCell>
+                                      <TableCell>{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
+                                      <TableCell>{getMethodBadge(record)}</TableCell>
+                                      <TableCell>{formatDate(record.collectedDate)}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Create All confirmation */}
+      <Dialog open={createAllConfirmOpen} onOpenChange={setCreateAllConfirmOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Create {readyToRemit?.length || 0} remittances?</DialogTitle>
+            <DialogDescription>
+              This creates one remittance per client below and moves all of it to "remitted". Review before confirming.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1 max-h-[240px] overflow-y-auto border border-border rounded-xl p-3 bg-white/5">
+            {readyToRemit?.map(c => (
+              <div key={`${c.clientId}-${c.currency}`} className="flex justify-between text-sm py-1">
+                <span>{c.companyName}</span>
+                <span className="money">{formatCurrency(c.netAmount, c.currency)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-between items-center p-3 bg-secondary border border-border rounded-xl text-sm">
+            <span className="font-medium">Total</span>
+            <div className="flex flex-col items-end">
+              {readyTotalsByCurrency.map(t => (
+                <span key={t.currency} className="money">{t.currency} {t.total.toFixed(2)}</span>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setCreateAllConfirmOpen(false)} disabled={isCreatingAll}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateAll} disabled={isCreatingAll}>
+              {isCreatingAll ? 'Creating...' : 'Confirm & Create All'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Accumulating for next cutoff — read-only */}
+      <Card className="bg-card rounded-2xl border border-border shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            Accumulating for Next Cutoff
+          </CardTitle>
+          <CardDescription>Collected after the last Friday 18:00 cutoff — will be ready to remit after the next one.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!accumulating || accumulating.length === 0 ? (
+            <div className="text-center py-4 text-sm text-muted-foreground">Nothing accumulating right now</div>
+          ) : (
+            <div className="space-y-1">
+              {accumulating.map(c => (
+                <div key={`${c.clientId}-${c.currency}`} className="flex justify-between text-sm py-1.5 border-b border-border/40 last:border-0">
+                  <span>{c.companyName}</span>
+                  <span className="text-muted-foreground">{c.count} shipment{c.count !== 1 ? 's' : ''}</span>
+                  <span className="money">{formatCurrency(c.grossAmount, c.currency)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Remittances Section (manual/override path) */}
       <Card className="bg-card rounded-2xl border border-border shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>COD Remittances</CardTitle>
-            <CardDescription>Manage batch payments to clients</CardDescription>
+            <CardDescription>All remittance batches. Use "Ready to Remit" above for the normal weekly flow — this manual form is for overrides.</CardDescription>
           </div>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button variant="outline">
                 <Plus className="w-4 h-4 mr-2" />
-                Create Remittance
+                Manual Remittance
               </Button>
             </DialogTrigger>
             <DialogContent className="bg-card border-border !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
@@ -560,7 +829,7 @@ export default function CODPanel() {
                     </Select>
                   </div>
 
-                  {selectedClient && filteredPendingCOD && filteredPendingCOD.length > 0 && (
+                  {selectedClient && eligibleCOD && eligibleCOD.length > 0 && (
                     <>
                       <div className="space-y-2">
                         <Label>Select Shipments ({selectedCODRecords.length} selected)</Label>
@@ -576,7 +845,7 @@ export default function CODPanel() {
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {filteredPendingCOD.map((record) => (
+                              {eligibleCOD.map((record) => (
                                 <TableRow key={record.id}>
                                   <TableCell>
                                     <Checkbox
@@ -654,9 +923,9 @@ export default function CODPanel() {
                     </>
                   )}
 
-                  {selectedClient && filteredPendingCOD && filteredPendingCOD.length === 0 && (
+                  {selectedClient && eligibleCOD && eligibleCOD.length === 0 && (
                     <div className="text-center py-8 text-muted-foreground">
-                      No pending COD collections for this client
+                      No COD past the weekly cutoff for this client
                     </div>
                   )}
                 </div>
@@ -667,71 +936,102 @@ export default function CODPanel() {
         <CardContent>
           {remittancesLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading remittances...</div>
-          ) : !remittances || remittances.length === 0 ? (
+          ) : remittancesRows.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No remittances created yet
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Remittance #</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Shipments</TableHead>
-                  <TableHead>Gross</TableHead>
-                  <TableHead>Commission</TableHead>
-                  <TableHead>Net to Client</TableHead>
-                  <TableHead>Payment Method</TableHead>
-                  <TableHead>Created Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {remittances.map((remittance) => (
-                  <TableRow key={remittance.id}>
-                    <TableCell
-                      className="font-medium text-primary cursor-pointer hover:underline"
-                      onClick={() => {
-                        setSelectedRemittanceId(remittance.id);
-                        setDetailsDialogOpen(true);
-                      }}
-                    >
-                      {remittance.remittanceNumber}
-                    </TableCell>
-                    <TableCell>{remittance.client?.companyName || 'N/A'}</TableCell>
-                    <TableCell>{remittance.shipmentCount}</TableCell>
-                    <TableCell className="money">{formatCurrency((remittance as any).grossAmount || remittance.totalAmount, remittance.currency)}</TableCell>
-                    <TableCell className="text-muted-foreground font-mono">
-                      {(remittance as any).feeAmount && parseFloat((remittance as any).feeAmount) > 0
-                        ? `− ${formatCurrency((remittance as any).feeAmount, remittance.currency)}`
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
-                    <TableCell>{remittance.paymentMethod || 'N/A'}</TableCell>
-                    <TableCell>{formatDate(remittance.createdAt)}</TableCell>
-                    <TableCell>{getStatusBadge(remittance.status)}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={remittance.status}
-                        onValueChange={(value: 'pending' | 'processed' | 'completed') =>
-                          handleStatusChange(remittance.id, value)
-                        }
-                      >
-                        <SelectTrigger className="w-[130px] h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="processed">Processed</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Remittance #</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Shipments</TableHead>
+                    <TableHead>Gross</TableHead>
+                    <TableHead>Commission</TableHead>
+                    <TableHead>Net to Client</TableHead>
+                    <TableHead>Payment Method</TableHead>
+                    <TableHead>Created Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {remittancesRows.map((remittance) => (
+                    <TableRow key={remittance.id}>
+                      <TableCell
+                        className="font-medium text-primary cursor-pointer hover:underline"
+                        onClick={() => {
+                          setSelectedRemittanceId(remittance.id);
+                          setDetailsDialogOpen(true);
+                        }}
+                      >
+                        {remittance.remittanceNumber}
+                      </TableCell>
+                      <TableCell>{remittance.client?.companyName || 'N/A'}</TableCell>
+                      <TableCell>{remittance.shipmentCount}</TableCell>
+                      <TableCell className="money">{formatCurrency((remittance as any).grossAmount || remittance.totalAmount, remittance.currency)}</TableCell>
+                      <TableCell className="text-muted-foreground font-mono">
+                        {(remittance as any).feeAmount && parseFloat((remittance as any).feeAmount) > 0
+                          ? `− ${formatCurrency((remittance as any).feeAmount, remittance.currency)}`
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
+                      <TableCell>{remittance.paymentMethod || 'N/A'}</TableCell>
+                      <TableCell>{formatDate(remittance.createdAt)}</TableCell>
+                      <TableCell>{getStatusBadge(remittance.status)}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={remittance.status}
+                          onValueChange={(value: 'pending' | 'processed' | 'completed') =>
+                            handleStatusChange(remittance.id, value)
+                          }
+                        >
+                          <SelectTrigger className="w-[130px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="processed">Processed</SelectItem>
+                            <SelectItem value="completed">Completed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {remittancesTotal > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Showing {remittancePage * REMITTANCES_PAGE_SIZE + 1}–{remittancePage * REMITTANCES_PAGE_SIZE + remittancesRows.length} of {remittancesTotal}
+                  </p>
+                  <Pagination className="mx-0 w-auto justify-end">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); if (remittancePage > 0) setRemittancePage(remittancePage - 1); }}
+                          className={remittancePage === 0 ? 'pointer-events-none opacity-50' : ''}
+                        />
+                      </PaginationItem>
+                      <PaginationItem>
+                        <span className="px-3 text-sm text-muted-foreground">Page {remittancePage + 1} of {remittancePageCount}</span>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); if (remittancePage + 1 < remittancePageCount) setRemittancePage(remittancePage + 1); }}
+                          className={remittancePage + 1 >= remittancePageCount ? 'pointer-events-none opacity-50' : ''}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -752,64 +1052,93 @@ export default function CODPanel() {
         <CardContent>
           {codLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading COD records...</div>
-          ) : !codRecords || codRecords.length === 0 ? (
+          ) : codRecordsRows.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No COD records found
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Waybill #</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Driver</TableHead>
-                  <TableHead>Collected Date</TableHead>
-                  <TableHead>Remitted Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {codRecords.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell className="font-medium">{record.order.waybillNumber}</TableCell>
-                    <TableCell>{record.client?.companyName || 'N/A'}</TableCell>
-                    <TableCell className="font-semibold">{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
-                    <TableCell>{getMethodBadge(record)}</TableCell>
-                    <TableCell>{(record as any).collectedByDriver || <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell>{formatDate(record.collectedDate)}</TableCell>
-                    <TableCell>{formatDate(record.remittedToClientDate)}</TableCell>
-                    <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    <TableCell>
-                      <Select
-                        value={record.status}
-                        onValueChange={(value: 'pending_collection' | 'collected' | 'remitted' | 'disputed') =>
-                          handleCODStatusChange(record.id, value)
-                        }
-                      >
-                        <SelectTrigger className="w-[160px] h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending_collection">Pending Collection</SelectItem>
-                          <SelectItem value="collected">Collected</SelectItem>
-                          <SelectItem value="remitted">Remitted</SelectItem>
-                          <SelectItem value="disputed">Disputed</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Waybill #</TableHead>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Driver</TableHead>
+                    <TableHead>Collected Date</TableHead>
+                    <TableHead>Remitted Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {codRecordsRows.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell className="font-medium">{record.order.waybillNumber}</TableCell>
+                      <TableCell>{record.client?.companyName || 'N/A'}</TableCell>
+                      <TableCell className="font-semibold">{formatCurrency(record.codAmount, record.codCurrency)}</TableCell>
+                      <TableCell>{getMethodBadge(record)}</TableCell>
+                      <TableCell>{(record as any).collectedByDriver || <span className="text-muted-foreground">—</span>}</TableCell>
+                      <TableCell>{formatDate(record.collectedDate)}</TableCell>
+                      <TableCell>{formatDate(record.remittedToClientDate)}</TableCell>
+                      <TableCell>{getStatusBadge(record.status)}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={record.status}
+                          onValueChange={(value: 'pending_collection' | 'collected' | 'remitted' | 'disputed') =>
+                            handleCODStatusChange(record.id, value)
+                          }
+                        >
+                          <SelectTrigger className="w-[160px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending_collection">Pending Collection</SelectItem>
+                            <SelectItem value="collected">Collected</SelectItem>
+                            <SelectItem value="remitted">Remitted</SelectItem>
+                            <SelectItem value="disputed">Disputed</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {codRecordsTotal > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                  <p className="text-xs text-muted-foreground">
+                    Showing {codPage * CODRECORDS_PAGE_SIZE + 1}–{codPage * CODRECORDS_PAGE_SIZE + codRecordsRows.length} of {codRecordsTotal}
+                  </p>
+                  <Pagination className="mx-0 w-auto justify-end">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); if (codPage > 0) setCodPage(codPage - 1); }}
+                          className={codPage === 0 ? 'pointer-events-none opacity-50' : ''}
+                        />
+                      </PaginationItem>
+                      <PaginationItem>
+                        <span className="px-3 text-sm text-muted-foreground">Page {codPage + 1} of {codPageCount}</span>
+                      </PaginationItem>
+                      <PaginationItem>
+                        <PaginationNext
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); if (codPage + 1 < codPageCount) setCodPage(codPage + 1); }}
+                          className={codPage + 1 >= codPageCount ? 'pointer-events-none opacity-50' : ''}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-

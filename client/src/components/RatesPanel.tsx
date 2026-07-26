@@ -92,12 +92,17 @@ export default function RatesPanel() {
   const [expandedService, setExpandedService] = useState<ServiceCode | null>(null);
   const [svcDrafts, setSvcDrafts] = useState<Partial<Record<ServiceCode, ServiceDraft>>>({});
 
+  // COD config state
+  const [editingCod, setEditingCod] = useState(false);
+  const [codDraft, setCodDraft] = useState({ COD_FEE_PERCENTAGE: '', COD_MIN_FEE: '', CARD_FEE_PERCENTAGE: '', CARD_MIN_FEE: '' });
+
   // Data
   const { data: clients, isLoading, refetch } = trpc.portal.clients.getWithTiers.useQuery();
   const { data: svcSettings, refetch: refetchSvc } = trpc.portal.clients.getServiceSettings.useQuery(
     { clientId: serviceClientId! },
     { enabled: serviceClientId !== null }
   );
+  const { data: codConfig, refetch: refetchCodConfig } = trpc.portal.rates.getGlobalCodConfig.useQuery();
 
   // Mutations
   const updateZoneMutation = trpc.portal.clients.updateZoneRates.useMutation({
@@ -109,6 +114,25 @@ export default function RatesPanel() {
     onSuccess: () => { toast.success('Service settings saved.'); refetchSvc(); },
     onError: (e) => toast.error(e.message || 'Failed to save.'),
   });
+
+  const updateCodConfigMutation = trpc.portal.rates.updateGlobalCodConfig.useMutation({
+    onSuccess: () => { toast.success('COD configuration saved.'); setEditingCod(false); refetchCodConfig(); },
+    onError: (e) => toast.error(e.message || 'Failed to save COD configuration.'),
+  });
+
+  function startEditCod() {
+    setCodDraft({
+      COD_FEE_PERCENTAGE: codConfig?.COD_FEE_PERCENTAGE ?? '',
+      COD_MIN_FEE: codConfig?.COD_MIN_FEE ?? '',
+      CARD_FEE_PERCENTAGE: codConfig?.CARD_FEE_PERCENTAGE ?? '',
+      CARD_MIN_FEE: codConfig?.CARD_MIN_FEE ?? '',
+    });
+    setEditingCod(true);
+  }
+
+  function saveCodConfig() {
+    updateCodConfigMutation.mutate(codDraft);
+  }
 
   // Zone rates helpers
   function startEdit(client: any) {
@@ -515,41 +539,78 @@ export default function RatesPanel() {
       {/* COD Configuration */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="w-5 h-5" />
-            Cash on Delivery (COD) Configuration
-          </CardTitle>
-          <CardDescription>COD fee structure for both DOM and SDD services</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="w-5 h-5" />
+                Cash / Card on Delivery — Global Defaults
+              </CardTitle>
+              <CardDescription>Used when a client has no per-client COD/CCOD override. These are the live values — editing here changes what gets charged.</CardDescription>
+            </div>
+            {!editingCod && (
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-primary" onClick={startEditCod}>
+                <Pencil className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
-              <div>
-                <p className="font-medium">COD Fee Percentage</p>
-                <p className="text-sm text-muted-foreground">Applied to collected amount</p>
-              </div>
-              <span className="money text-2xl" style={{ color: 'var(--st-green)' }}>3.3%</span>
-            </div>
-            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
-              <div>
-                <p className="font-medium">Minimum COD Fee</p>
-                <p className="text-sm text-muted-foreground">Minimum charge regardless of amount</p>
-              </div>
-              <span className="money text-2xl" style={{ color: 'var(--st-green)' }}>2.00 AED</span>
-            </div>
-            <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
-              <div>
-                <p className="font-medium">Maximum COD Amount</p>
-                <p className="text-sm text-muted-foreground">Per shipment limit</p>
-              </div>
-              <span className="money text-2xl" style={{ color: 'var(--st-green)' }}>3,000 AED</span>
-            </div>
-            <div className="p-4 bg-secondary rounded-lg border border-border">
-              <p className="text-sm text-muted-foreground">
-                <strong>Note:</strong> COD fees are calculated as 3.3% of the collected value, with a minimum of 2 AED.
-                Settlement is processed on a weekly or bi-weekly basis as per client agreement.
-              </p>
-            </div>
+            {editingCod ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className={labelCls}>COD Fee %</label>
+                    <input type="number" step="0.1" value={codDraft.COD_FEE_PERCENTAGE} onChange={e => setCodDraft(d => ({ ...d, COD_FEE_PERCENTAGE: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className={labelCls}>COD Minimum Fee (AED)</label>
+                    <input type="number" step="0.01" value={codDraft.COD_MIN_FEE} onChange={e => setCodDraft(d => ({ ...d, COD_MIN_FEE: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className={labelCls}>Card (CCOD) Fee %</label>
+                    <input type="number" step="0.1" value={codDraft.CARD_FEE_PERCENTAGE} onChange={e => setCodDraft(d => ({ ...d, CARD_FEE_PERCENTAGE: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className={labelCls}>Card (CCOD) Minimum Fee (AED)</label>
+                    <input type="number" step="0.01" value={codDraft.CARD_MIN_FEE} onChange={e => setCodDraft(d => ({ ...d, CARD_MIN_FEE: e.target.value }))} className={inputCls} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setEditingCod(false)}>Cancel</Button>
+                  <Button size="sm" onClick={saveCodConfig} disabled={updateCodConfigMutation.isPending} className="gap-1.5">
+                    <Save className="w-3.5 h-3.5" />
+                    {updateCodConfigMutation.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
+                  <div>
+                    <p className="font-medium">Cash COD Fee</p>
+                    <p className="text-sm text-muted-foreground">Applied to collected amount, min fee applies</p>
+                  </div>
+                  <span className="money text-2xl" style={{ color: 'var(--st-green)' }}>
+                    {codConfig ? `${codConfig.COD_FEE_PERCENTAGE}% / ${codConfig.COD_MIN_FEE} AED min` : '—'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
+                  <div>
+                    <p className="font-medium">Card (CCOD) Fee</p>
+                    <p className="text-sm text-muted-foreground">Tap to Pay on driver's phone, min fee applies</p>
+                  </div>
+                  <span className="money text-2xl" style={{ color: 'var(--st-green)' }}>
+                    {codConfig ? `${codConfig.CARD_FEE_PERCENTAGE}% / ${codConfig.CARD_MIN_FEE} AED min` : '—'}
+                  </span>
+                </div>
+                <div className="p-4 bg-secondary rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Note:</strong> per-client overrides (set on Client 360) take priority over these global defaults. There is no system-enforced maximum COD amount per shipment.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>

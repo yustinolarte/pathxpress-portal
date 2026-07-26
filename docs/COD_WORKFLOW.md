@@ -30,31 +30,39 @@ Fee que paga el cliente: 16.50 AED
 
 ---
 
-### 2. **Tabla de COD Records**
+### 2. **Tabla de COD Records** (actualizado — refleja `drizzle/schema.ts`)
 
-Cada envío COD crea un registro con:
+Cada envío COD crea un registro en `codRecords` con:
 
 ```typescript
 {
   id: 1,
-  shipmentId: 123,           // FK a orders.id
-  codAmount: "500.00",       // Monto a cobrar
+  shipmentId: 123,             // FK a orders.id
+  codAmount: "500.00",         // Monto a cobrar
   codCurrency: "AED",
-  collectionStatus: "pending", // pending | collected | remitted
-  collectedAmount: null,     // Se llena cuando se cobra
+  allowedMethods: "cash",      // 'cash' | 'card' | 'any' — lo que el shipper permite
+  collectedMethod: null,       // 'cash' | 'card' — lo que realmente pasó en la puerta
+  feeAmount: null,              // Fee congelado al momento de cobrar (depende del método)
+  paymentReference: null,
+  status: "pending_collection", // pending_collection | collected | remitted | disputed | cancelled
   collectedDate: null,
-  remittanceId: null,        // FK a codRemittances cuando se agrupa
-  createdAt: "2025-01-15"
+  remittedToClientDate: null,
+  notes: null,
+  createdAt: "2025-01-15",
 }
 ```
+
+Nota: además de COD en efectivo, existe **CCOD (Card on Delivery)** — el driver cobra con Tap to Pay en su teléfono. Es el mismo registro (`codRecords`), pero `collectedMethod: 'card'` y el fee se calcula con `CARD_FEE_PERCENTAGE`/`CARD_MIN_FEE` en vez de los de cash.
 
 ---
 
 ### 3. **Estados del COD**
 
-1. **pending**: Envío creado, aún no se ha cobrado
-2. **collected**: El courier cobró el dinero al destinatario
+1. **pending_collection**: Envío creado, aún no se ha cobrado
+2. **collected**: El courier cobró el dinero (o card) al destinatario
 3. **remitted**: El dinero fue incluido en una remesa y pagado al cliente
+4. **disputed**: Marcado para revisión manual
+5. **cancelled**: COD desactivado en la orden (ej. se quitó el COD) — no cuenta en ninguna vista de COD Management/Customer COD
 
 ---
 
@@ -68,19 +76,28 @@ El administrador agrupa múltiples cobros COD en **remesas**:
 4. Registra el pago de la remesa
 5. Los COD cambian a estado "remitted"
 
-**Tabla codRemittances:**
+**Tabla `codRemittances`** (actualizado):
 ```typescript
 {
   id: 1,
   clientId: 5,
   remittanceNumber: "REM-2025-001",
-  totalAmount: "1500.00",    // Suma de todos los CODs
+  grossAmount: "1500.00",     // Suma de los codAmount incluidos
+  feeAmount: "49.50",         // Suma de los feeAmount (COD/CCOD) descontados
+  feePercentage: "3.3",
+  totalAmount: "1450.50",     // grossAmount - feeAmount = lo que realmente se transfiere al cliente
   currency: "AED",
-  status: "pending",         // pending | paid
-  createdAt: "2025-01-20",
-  paidAt: null
+  shipmentCount: 10,
+  status: "pending",          // pending | processed | completed
+  paymentMethod: null,
+  paymentReference: null,
+  processedDate: null,
+  createdBy: "admin@pathxpress.net",
 }
 ```
+Los CODs individuales de una remesa se vinculan vía la tabla `codRemittanceItems` (no hay un `remittanceId` directo en `codRecords`).
+
+**Ojo con monedas mixtas:** `createRemittance` no valida que todos los `codRecords` seleccionados tengan la misma `codCurrency` — si se mezclan, la remesa queda etiquetada con la moneda del primer registro sin conversión. En la práctica casi todo es AED (COD internacional está bloqueado desde el checkout de Shopify), pero si aparece algún registro histórico en otra moneda, revisarlo a mano antes de crear la remesa.
 
 ---
 
@@ -185,8 +202,8 @@ COD Tab:
 ## Archivos Clave del Sistema
 
 ### Backend:
-- `drizzle/schema.ts` - Tablas `codRecords`, `codRemittances`, `codTransactions`
-- `server/db.ts` - Funciones `createCODRecord`, `createRemittance`, etc.
+- `drizzle/schema.ts` - Tablas `codRecords`, `codRemittances`, `codRemittanceItems` (no existe `codTransactions`)
+- `server/db.ts` - Funciones `calculateCODFee`, `calculateCardCODFee`, `createRemittance`, etc.
 - `server/portalRouters.ts` - Router `cod` con endpoints
 
 ### Frontend:
@@ -212,7 +229,7 @@ COD Tab:
 El cliente (remitente) paga el fee, no el destinatario.
 
 **¿Cuándo se cobra el COD Fee?**
-Se incluye en la factura mensual del cliente junto con los costos de envío.
+**No se incluye en la factura mensual de shipping.** El fee se descuenta directamente al momento de crear la remesa: se le transfiere al cliente `grossAmount - feeAmount`, nunca el monto completo cobrado. El fee de COD/CCOD y el costo de envío son dos flujos de dinero completamente separados — no hay ninguna línea de "COD Fee" en el invoice de `server/db.ts` (`generateInvoiceForClient`).
 
 **¿Qué pasa si el destinatario no paga?**
 El envío se devuelve y el COD queda como "pending". No se cobra el COD amount pero sí el costo del envío.

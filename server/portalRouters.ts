@@ -40,14 +40,17 @@ import {
   updateInvoice,
   getCODRecordsByClient,
   getAllCODRecords,
-  getPendingCODByClient,
+  getCODRecordsPaged,
+  getReadyToRemitByClient,
+  getReadyToRemitRecordsByClient,
+  getAccumulatingByClient,
   createCODRemittance,
   getRemittancesByClient,
   getAllRemittances,
+  getRemittancesPaged,
   getRemittanceById,
   getRemittanceItems,
   updateRemittanceStatus,
-  generateRemittanceNumber,
   getCODSummaryByClient,
   getCODSummaryGlobal,
   calculateShipmentRate,
@@ -3061,6 +3064,22 @@ export const billingRouter = router({
       });
     }),
 
+  // Admin: invoices that required a manual adjustment after generation — who, when, why.
+  getInvoiceAdjustmentsReport: portalAdminProcedure
+    .input(z.object({
+      periodStart: z.string().optional(),
+      periodEnd: z.string().optional(),
+      clientId: z.number().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getInvoiceAdjustmentsReport } = await import('./db');
+      return await getInvoiceAdjustmentsReport({
+        periodStart: input.periodStart ? new Date(input.periodStart) : undefined,
+        periodEnd: input.periodEnd ? new Date(input.periodEnd) : undefined,
+        clientId: input.clientId,
+      });
+    }),
+
   // Admin: Set/update the internal courier cost for an order (profit tracking, editable even after invoicing)
   updateOrderCost: portalAdminProcedure
     .input(z.object({
@@ -3087,7 +3106,7 @@ export const billingRouter = router({
     }))
     .mutation(async ({ input }) => {
       const { generateIntlInvoiceForClient } = await import('./db');
-      const invoiceId = await generateIntlInvoiceForClient(
+      const result = await generateIntlInvoiceForClient(
         input.clientId,
         new Date(input.periodStart),
         new Date(input.periodEnd),
@@ -3095,9 +3114,11 @@ export const billingRouter = router({
         input.settlementPeriod
       );
 
-      if (!invoiceId) {
+      if (!result) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'No international shipments found for this period' });
       }
+
+      const { invoiceId, mismatchedShipments } = result;
 
       try {
         const from = new Date(input.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
@@ -3111,7 +3132,25 @@ export const billingRouter = router({
         );
       } catch (_) { /* notification errors must never break invoicing */ }
 
-      return { invoiceId };
+      return { invoiceId, mismatchedShipments };
+    }),
+
+  // Admin: list active clients whose settlement period has elapsed and have
+  // billable shipments waiting — backs the "Generate Pending Invoices" batch action.
+  getClientsDueForBilling: portalAdminProcedure
+    .input(z.object({ isIntl: z.boolean() }))
+    .query(async ({ input }) => {
+      const { getClientsDueForBilling } = await import('./db');
+      return await getClientsDueForBilling(input.isIntl);
+    }),
+
+  // Admin: generate one invoice per selected client in a single call, each left
+  // 'pending' for review — the confirm step of the batch generation flow.
+  generateBatchInvoices: portalAdminProcedure
+    .input(z.object({ isIntl: z.boolean(), clientIds: z.array(z.number()) }))
+    .mutation(async ({ input }) => {
+      const { generateBatchInvoices } = await import('./db');
+      return await generateBatchInvoices(input.isIntl, input.clientIds);
     }),
 
   // Admin: Get billing info for a specific client (last invoice, pending balance, etc.)
@@ -3126,6 +3165,38 @@ export const billingRouter = router({
   getAllInvoices: portalAdminProcedure
     .query(async ({ ctx }) => {
       return await getAllInvoices();
+    }),
+
+  // Admin: paginated + server-filtered invoice list for the Billing tab table.
+  getInvoicesPaged: portalAdminProcedure
+    .input(z.object({
+      isIntl: z.boolean().optional(),
+      clientId: z.number().optional(),
+      status: z.enum(['pending', 'paid', 'overdue']).optional(),
+      search: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      sort: z.enum(['newest', 'oldest']).optional(),
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(200).optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getInvoicesPaged } = await import('./db');
+      return await getInvoicesPaged(input);
+    }),
+
+  // Admin: KPI aggregates matching the same scope as getInvoicesPaged (minus pagination/status).
+  getInvoiceStats: portalAdminProcedure
+    .input(z.object({
+      isIntl: z.boolean().optional(),
+      clientId: z.number().optional(),
+      search: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getInvoiceStats } = await import('./db');
+      return await getInvoiceStats(input);
     }),
 
   // Customer: Get my invoices
@@ -3310,19 +3381,47 @@ const codRouter = router({
       return await getAllCODRecords();
     }),
 
+  // Admin: Get COD records, paginated (server-side filter + LIMIT/OFFSET —
+  // getAllCODRecords above caps at 500 with no way to reach older rows)
+  getCODRecordsPaged: portalAdminProcedure
+    .input(z.object({
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(200).optional(),
+      clientId: z.number().int().optional(),
+      status: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const key = `admin:codRecordsPaged:${JSON.stringify(input)}`;
+      return await cachedQuery(key, 60, () => getCODRecordsPaged(input));
+    }),
+
   // Admin: Get COD summary
   getCODSummary: portalAdminProcedure
     .query(async ({ ctx }) => {
       return await getCODSummaryGlobal();
     }),
 
-  // Admin: Get pending COD for a client
-  getPendingCODByClient: portalAdminProcedure
+  // Admin: Per-client totals of everything past the last weekly cutoff (Friday
+  // 18:00 Dubai) — the "Ready to Remit" list that replaces manual checkbox selection.
+  getReadyToRemit: portalAdminProcedure
+    .query(async () => {
+      return await getReadyToRemitByClient();
+    }),
+
+  // Admin: Read-only drill-down — which shipments make up one client's ready-to-remit total.
+  getReadyToRemitRecords: portalAdminProcedure
     .input(z.object({
       clientId: z.number(),
     }))
-    .query(async ({ input, ctx }) => {
-      return await getPendingCODByClient(input.clientId);
+    .query(async ({ input }) => {
+      return await getReadyToRemitRecordsByClient(input.clientId);
+    }),
+
+  // Admin: Per-client totals collected after the last cutoff — read-only, building
+  // towards next week's batch, nothing to confirm yet.
+  getAccumulating: portalAdminProcedure
+    .query(async () => {
+      return await getAccumulatingByClient();
     }),
 
   // Admin: Update COD record status
@@ -3377,26 +3476,42 @@ const codRouter = router({
       return { success: true };
     }),
 
-  // Admin: Create COD remittance
+  // Admin: Create COD remittance. Resolves "everything collected and past the
+  // last weekly cutoff for this client" server-side — codRecordIds is only an
+  // optional override to exclude a shipment (e.g. a dispute), never to include
+  // one that hasn't reached cutoff yet.
   createRemittance: portalAdminProcedure
     .input(z.object({
       clientId: z.number(),
-      codRecordIds: z.array(z.number()),
+      codRecordIds: z.array(z.number()).optional(),
       paymentMethod: z.string().optional(),
       paymentReference: z.string().optional(),
       notes: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      // Calculate total amount
-      const codRecords = await getPendingCODByClient(input.clientId);
-      const selectedRecords = codRecords.filter(r => input.codRecordIds.includes(r.id));
+      const eligibleRecords = await getReadyToRemitRecordsByClient(input.clientId);
+      const selectedRecords = input.codRecordIds
+        ? eligibleRecords.filter(r => input.codRecordIds!.includes(r.id))
+        : eligibleRecords;
 
       if (selectedRecords.length === 0) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No valid COD records selected' });
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No COD records past the weekly cutoff for this client' });
+      }
+
+      // Guard against silently mixing currencies: summing amounts in different
+      // codCurrency values under one label (previously just the first record's
+      // currency) would misreport the remittance total. No FX conversion exists
+      // in this system, so require staff to remit each currency separately.
+      const distinctCurrencies = Array.from(new Set(selectedRecords.map(r => r.codCurrency || 'AED')));
+      if (distinctCurrencies.length > 1) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Selected COD records mix currencies (${distinctCurrencies.join(', ')}) — select records in a single currency per remittance.`,
+        });
       }
 
       const grossAmount = selectedRecords.reduce((sum, r) => sum + parseFloat(r.codAmount), 0);
-      const currency = selectedRecords[0]?.codCurrency || 'AED';
+      const currency = distinctCurrencies[0];
 
       // Sum fees: prefer the fee frozen at collection time; fall back to
       // recomputing by the method the consignee actually used (legacy records)
@@ -3419,19 +3534,14 @@ const codRouter = router({
       // Net amount after fee deduction
       const netAmount = grossAmount - totalFee;
 
-      // Generate remittance number
-      const remittanceNumber = await generateRemittanceNumber();
-
-      const remittanceId = await createCODRemittance({
+      const { remittanceId, remittanceNumber } = await createCODRemittance({
         clientId: input.clientId,
-        remittanceNumber,
         grossAmount: grossAmount.toFixed(2),
         feeAmount: totalFee.toFixed(2),
         feePercentage: feePercentage,
         totalAmount: netAmount.toFixed(2),
         currency,
-        shipmentCount: selectedRecords.length,
-        codRecordIds: input.codRecordIds,
+        codRecordIds: selectedRecords.map(r => r.id),
         paymentMethod: input.paymentMethod,
         paymentReference: input.paymentReference,
         notes: input.notes,
@@ -3445,6 +3555,20 @@ const codRouter = router({
   getAllRemittances: portalAdminProcedure
     .query(async ({ ctx }) => {
       return await getAllRemittances();
+    }),
+
+  // Admin: Get remittances, paginated (server-side filter + LIMIT/OFFSET —
+  // getAllRemittances above caps at 500 with no way to reach older rows)
+  getRemittancesPaged: portalAdminProcedure
+    .input(z.object({
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(200).optional(),
+      clientId: z.number().int().optional(),
+      status: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const key = `admin:remittancesPaged:${JSON.stringify(input)}`;
+      return await cachedQuery(key, 60, () => getRemittancesPaged(input));
     }),
 
   // Admin: Get remittance details
@@ -3593,6 +3717,25 @@ export const rateRouter = router({
     .query(async ({ ctx }) => {
       const tiers = await getAllRateTiers();
       return tiers;
+    }),
+
+  getGlobalCodConfig: portalAdminProcedure
+    .query(async () => {
+      const { getGlobalCodConfig } = await import('./db');
+      return await getGlobalCodConfig();
+    }),
+
+  updateGlobalCodConfig: portalAdminProcedure
+    .input(z.object({
+      COD_FEE_PERCENTAGE: z.string().optional(),
+      COD_MIN_FEE: z.string().optional(),
+      CARD_FEE_PERCENTAGE: z.string().optional(),
+      CARD_MIN_FEE: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateGlobalCodConfig } = await import('./db');
+      await updateGlobalCodConfig(input);
+      return { success: true };
     }),
 });
 

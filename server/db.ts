@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, desc, sql, inArray, ne, or, notInArray, isNull } from "drizzle-orm";
+import { eq, and, gte, gt, lte, desc, sql, inArray, ne, or, notInArray, isNull } from "drizzle-orm";
 import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
@@ -1238,7 +1238,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
 
       // Exchange free return — second leg is free
       if (order.orderType === 'exchange' && order.isReturn === 1) {
-        return { ...order, calculatedRate: 0 };
+        return { ...order, calculatedRate: 0, rateSource: 'exchangeFree' as const, emirateMissing: !order.emirate };
       }
 
       const serviceType = (order.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
@@ -1252,10 +1252,16 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
           serviceType,
           weight: parseFloat(order.weight || '0'),
           emirate: emirateForZone,
+          asOfDate: order.createdAt,
         });
         const zoneRate = returnRateResult.totalRate;
         const fallback = client.returnFee ? parseFloat(client.returnFee) : 0;
-        return { ...order, calculatedRate: zoneRate > 0 ? zoneRate : fallback };
+        return {
+          ...order,
+          calculatedRate: zoneRate > 0 ? zoneRate : fallback,
+          rateSource: zoneRate > 0 ? 'return' as const : 'returnFeeFallback' as const,
+          emirateMissing: !order.emirate,
+        };
       }
 
       // For exchange delivery leg, charge the most expensive zone between pickup and delivery
@@ -1276,6 +1282,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         serviceType,
         weight: parseFloat(order.weight || '0'),
         emirate: billingEmirate,
+        asOfDate: order.createdAt,
       });
 
       let total = rateResult.totalRate;
@@ -1286,7 +1293,21 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         total += fodFee;
       }
 
-      return { ...order, calculatedRate: Math.round(total * 100) / 100 };
+      // Which cascade rule produced this price — surfaced in the Generate Invoice dialog
+      // so staff can audit a price without reading the pricing code.
+      const rateSource = rateResult.usingManualTier
+        ? 'manualTier' as const
+        : rateResult.usingCustomRates
+          ? 'customOrZone' as const
+          : 'autoTier' as const;
+
+      return {
+        ...order,
+        calculatedRate: Math.round(total * 100) / 100,
+        rateSource,
+        rateTierLabel: rateResult.appliedTier ? `${rateResult.appliedTier.minVolume}+/mo` : null,
+        emirateMissing: !order.emirate,
+      };
     })
   );
 
@@ -1358,6 +1379,7 @@ export async function generateInvoiceForClient(
         serviceType,
         weight: parseFloat(shipment.weight || '0'),
         emirate: emirateForZone,
+        asOfDate: shipment.createdAt,
       });
       const zoneRate = returnRateResult.totalRate;
       const fallback = client.returnFee ? parseFloat(client.returnFee) : 0;
@@ -1380,6 +1402,7 @@ export async function generateInvoiceForClient(
         serviceType,
         weight: parseFloat(shipment.weight || '0'),
         emirate: billingEmirate,
+        asOfDate: shipment.createdAt,
       });
       totalRate = rateResult.totalRate;
     }
@@ -1547,12 +1570,20 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
           },
         }, discountPct);
 
-        const matchingOption = quoteResult.options.find(o => o.serviceKey === order.serviceType)
-          ?? quoteResult.options[0];
+        const exactMatch = quoteResult.options.find(o => o.serviceKey === order.serviceType);
+        const matchingOption = exactMatch ?? quoteResult.options[0];
         const rate = matchingOption ? (matchingOption.totalAfterDiscount ?? matchingOption.total) : 0;
-        return { ...order, calculatedRate: Math.round(rate * 100) / 100 };
+        // Flag when the order's stored serviceType doesn't match any option the rate engine
+        // currently returns (e.g. destination tables changed since the order was created) —
+        // the shipment still gets a fallback price so it can be reviewed, but staff should see it.
+        return {
+          ...order,
+          calculatedRate: Math.round(rate * 100) / 100,
+          rateServiceTypeMismatch: !exactMatch,
+          rateAppliedServiceKey: matchingOption?.serviceKey ?? null,
+        };
       } catch {
-        return { ...order, calculatedRate: 0 };
+        return { ...order, calculatedRate: 0, rateServiceTypeMismatch: true, rateAppliedServiceKey: null };
       }
     })
   );
@@ -1606,6 +1637,7 @@ export async function generateIntlInvoiceForClient(
 
   let subtotal = 0;
   const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number }[] = [];
+  const mismatchedShipments: { id: number; waybillNumber: string | null; storedServiceType: string | null; appliedServiceKey: string | null }[] = [];
 
   for (const shipment of shipments) {
     let totalRate = 0;
@@ -1627,11 +1659,27 @@ export async function generateIntlInvoiceForClient(
           },
         }, discountPct);
 
-        const matchingOption = quoteResult.options.find(o => o.serviceKey === shipment.serviceType)
-          ?? quoteResult.options[0];
+        const exactMatch = quoteResult.options.find(o => o.serviceKey === shipment.serviceType);
+        const matchingOption = exactMatch ?? quoteResult.options[0];
         totalRate = matchingOption ? (matchingOption.totalAfterDiscount ?? matchingOption.total) : 0;
+        // Same fallback as getBillableIntlShipments: still price it so the invoice can be
+        // generated, but record the mismatch so the caller can warn staff to review it.
+        if (!exactMatch) {
+          mismatchedShipments.push({
+            id: shipment.id,
+            waybillNumber: shipment.waybillNumber,
+            storedServiceType: shipment.serviceType,
+            appliedServiceKey: matchingOption?.serviceKey ?? null,
+          });
+        }
       } catch {
         totalRate = 0;
+        mismatchedShipments.push({
+          id: shipment.id,
+          waybillNumber: shipment.waybillNumber,
+          storedServiceType: shipment.serviceType,
+          appliedServiceKey: null,
+        });
       }
     }
 
@@ -1694,7 +1742,7 @@ export async function generateIntlInvoiceForClient(
   }
 
   cacheInvalidate('admin:allInvoices');
-  return invoice.insertId;
+  return { invoiceId: invoice.insertId, mismatchedShipments };
 }
 
 // Updates the internal courier cost for an order. Deliberately bypasses the
@@ -1814,6 +1862,171 @@ export async function getAllInvoices() {
   });
 }
 
+// ─── Paginated invoice list + stats ────────────────────────────────────────────
+// Replaces getAllInvoices' hard .limit(500) for the admin Billing table — that cap
+// silently dropped both the oldest invoices AND made client-side KPI math wrong once
+// total invoices passed 500. getInvoicesPaged/getInvoiceStats mirror the getOrdersPaged/
+// getOrdersStats split already used for Orders (server-side page/pageSize, unbounded stats).
+
+export interface InvoiceListFilters {
+  isIntl?: boolean; // split by invoice number prefix — see Fase 4 plan to replace with a real column
+  clientId?: number;
+  status?: 'pending' | 'paid' | 'overdue';
+  search?: string; // invoice number substring
+  dateFrom?: Date | string; // issueDate >=
+  dateTo?: Date | string;   // issueDate <=
+  sort?: 'newest' | 'oldest';
+  page?: number;     // 0-based
+  pageSize?: number; // default 50
+}
+
+function buildInvoiceConditions(filters: InvoiceListFilters) {
+  const conds: any[] = [];
+
+  if (filters.isIntl !== undefined) {
+    conds.push(filters.isIntl ? sql`${invoices.invoiceNumber} LIKE 'INTLINV-%'` : sql`${invoices.invoiceNumber} NOT LIKE 'INTLINV-%'`);
+  }
+  if (filters.clientId !== undefined) conds.push(eq(invoices.clientId, filters.clientId));
+  if (filters.status) conds.push(eq(invoices.status, filters.status));
+  if (filters.search) conds.push(sql`${invoices.invoiceNumber} LIKE ${'%' + filters.search + '%'}`);
+  if (filters.dateFrom) conds.push(gte(invoices.issueDate, new Date(filters.dateFrom)));
+  if (filters.dateTo) {
+    const to = new Date(filters.dateTo);
+    to.setHours(23, 59, 59, 999);
+    conds.push(lte(invoices.issueDate, to));
+  }
+
+  return conds.length > 0 ? and(...conds) : undefined;
+}
+
+export async function getInvoicesPaged(filters: InvoiceListFilters): Promise<{ rows: any[]; total: number }> {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+
+  try {
+    const where = buildInvoiceConditions(filters);
+    const page = Math.max(0, filters.page ?? 0);
+    const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 50));
+    const orderExpr = filters.sort === 'oldest' ? invoices.createdAt : desc(invoices.createdAt);
+
+    const rows = await db
+      .select({
+        id: invoices.id,
+        clientId: invoices.clientId,
+        invoiceNumber: invoices.invoiceNumber,
+        periodFrom: invoices.periodFrom,
+        periodTo: invoices.periodTo,
+        issueDate: invoices.issueDate,
+        dueDate: invoices.dueDate,
+        currency: invoices.currency,
+        subtotal: invoices.subtotal,
+        taxes: invoices.taxes,
+        total: invoices.total,
+        amountPaid: invoices.amountPaid,
+        balance: invoices.balance,
+        status: invoices.status,
+        settlementPeriod: invoices.settlementPeriod,
+        paymentDate: invoices.paymentDate,
+        paymentReference: invoices.paymentReference,
+        notes: invoices.notes,
+        adjustmentNotes: invoices.adjustmentNotes,
+        isAdjusted: invoices.isAdjusted,
+        lastAdjustedBy: invoices.lastAdjustedBy,
+        lastAdjustedAt: invoices.lastAdjustedAt,
+        createdAt: invoices.createdAt,
+        updatedAt: invoices.updatedAt,
+        shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
+      })
+      .from(invoices)
+      .leftJoin(invoiceItems, eq(invoices.id, invoiceItems.invoiceId))
+      .where(where)
+      .groupBy(invoices.id)
+      .orderBy(orderExpr)
+      .limit(pageSize)
+      .offset(page * pageSize);
+
+    const [countRow] = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(invoices)
+      .where(where);
+
+    return { rows, total: Number(countRow?.count ?? 0) };
+  } catch (error) {
+    console.error("[Database] Failed to get paged invoices:", error);
+    return { rows: [], total: 0 };
+  }
+}
+
+export interface InvoiceStats {
+  totalCount: number;
+  totalRevenue: number;
+  paidCount: number;
+  pendingCount: number;
+  overdueCount: number;
+  outstandingBalance: number;
+  overdueBalance: number;
+  thisMonthRevenue: number;
+  thisMonthCount: number;
+  lastMonthRevenue: number;
+  lastMonthCount: number;
+}
+
+const EMPTY_INVOICE_STATS: InvoiceStats = {
+  totalCount: 0, totalRevenue: 0, paidCount: 0, pendingCount: 0, overdueCount: 0,
+  outstandingBalance: 0, overdueBalance: 0, thisMonthRevenue: 0, thisMonthCount: 0,
+  lastMonthRevenue: 0, lastMonthCount: 0,
+};
+
+// KPI aggregates for the Billing tab — deliberately ignores the `status` filter (unlike
+// the row query) since collection-rate/overdue-balance are cross-status summaries by
+// definition; it does respect isIntl/clientId/search/date so the KPIs match what's
+// actually visible. Runs as one grouped SUM query so it stays correct past any row cap.
+export async function getInvoiceStats(filters: Omit<InvoiceListFilters, 'page' | 'pageSize' | 'sort' | 'status'>): Promise<InvoiceStats> {
+  const db = await getDb();
+  if (!db) return EMPTY_INVOICE_STATS;
+
+  try {
+    const where = buildInvoiceConditions(filters);
+    const thisMonthStart = startOfCurrentMonth();
+    const lastMonthStart = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() - 1, 1);
+
+    const [row] = await db
+      .select({
+        totalCount: sql<number>`COUNT(*)`,
+        totalRevenue: sql<string>`COALESCE(SUM(CAST(${invoices.total} AS DECIMAL(12,2))), 0)`,
+        paidCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'paid' THEN 1 ELSE 0 END), 0)`,
+        pendingCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'pending' THEN 1 ELSE 0 END), 0)`,
+        overdueCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'overdue' THEN 1 ELSE 0 END), 0)`,
+        outstandingBalance: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.status} != 'paid' THEN CAST(COALESCE(${invoices.balance}, ${invoices.total}) AS DECIMAL(12,2)) ELSE 0 END), 0)`,
+        overdueBalance: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'overdue' THEN CAST(COALESCE(${invoices.balance}, ${invoices.total}) AS DECIMAL(12,2)) ELSE 0 END), 0)`,
+        thisMonthRevenue: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${thisMonthStart} THEN CAST(${invoices.total} AS DECIMAL(12,2)) ELSE 0 END), 0)`,
+        thisMonthCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${thisMonthStart} THEN 1 ELSE 0 END), 0)`,
+        lastMonthRevenue: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${lastMonthStart} AND ${invoices.issueDate} < ${thisMonthStart} THEN CAST(${invoices.total} AS DECIMAL(12,2)) ELSE 0 END), 0)`,
+        lastMonthCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${lastMonthStart} AND ${invoices.issueDate} < ${thisMonthStart} THEN 1 ELSE 0 END), 0)`,
+      })
+      .from(invoices)
+      .where(where);
+
+    if (!row) return EMPTY_INVOICE_STATS;
+    return {
+      totalCount: Number(row.totalCount ?? 0),
+      totalRevenue: Number(row.totalRevenue ?? 0),
+      paidCount: Number(row.paidCount ?? 0),
+      pendingCount: Number(row.pendingCount ?? 0),
+      overdueCount: Number(row.overdueCount ?? 0),
+      outstandingBalance: Number(row.outstandingBalance ?? 0),
+      overdueBalance: Number(row.overdueBalance ?? 0),
+      thisMonthRevenue: Number(row.thisMonthRevenue ?? 0),
+      thisMonthCount: Number(row.thisMonthCount ?? 0),
+      lastMonthRevenue: Number(row.lastMonthRevenue ?? 0),
+      lastMonthCount: Number(row.lastMonthCount ?? 0),
+    };
+  } catch (error) {
+    console.error("[Database] Failed to get invoice stats:", error);
+    return EMPTY_INVOICE_STATS;
+  }
+}
+
 export async function getClientBillingInfo(clientId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -1864,6 +2077,199 @@ export async function getClientBillingInfo(clientId: number) {
     totalInvoices: stats?.totalInvoices ?? 0,
     suggestedPeriodStart,
   };
+}
+
+// ─── Batch invoice generation ──────────────────────────────────────────────────
+// Mirrors BillingPanel.tsx's applySettlementPreset() so the suggested period here
+// matches what a staff member would land on picking it manually (Friday-to-Friday).
+
+function prevFriday(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const diff = (d.getDay() - 5 + 7) % 7; // 0 if already Friday
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+function lastFridayOfMonth(year: number, month: number): Date {
+  return prevFriday(new Date(year, month + 1, 0));
+}
+
+function computeSuggestedPeriod(
+  type: 'weekly' | 'biweekly' | 'monthly',
+  suggestedStart: string | null
+): { periodStart: Date; periodEnd: Date } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let startFriday: Date;
+  if (suggestedStart) {
+    const s = new Date(suggestedStart);
+    s.setHours(0, 0, 0, 0);
+    startFriday = new Date(s.getTime() - 86400000);
+  } else if (type === 'monthly') {
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    startFriday = lastFridayOfMonth(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+  } else {
+    const days = type === 'weekly' ? 7 : 14;
+    startFriday = new Date(prevFriday(today).getTime() - days * 86400000);
+  }
+
+  let endFriday: Date;
+  if (type === 'monthly') {
+    const nm = new Date(startFriday);
+    nm.setMonth(nm.getMonth() + 1);
+    endFriday = lastFridayOfMonth(nm.getFullYear(), nm.getMonth());
+  } else {
+    const days = type === 'weekly' ? 7 : 14;
+    endFriday = new Date(startFriday.getTime() + days * 86400000);
+  }
+
+  return { periodStart: startFriday, periodEnd: endFriday };
+}
+
+/**
+ * Active clients whose configured settlement period has fully elapsed and who have
+ * at least one billable shipment waiting — the list behind the "Generate Pending
+ * Invoices" batch action. Clients on a 'custom' settlement period are never
+ * auto-suggested since there's no cadence to compute a period from.
+ */
+export async function getClientsDueForBilling(isIntl: boolean) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const activeClients = await db
+    .select()
+    .from(clientAccounts)
+    .where(and(eq(clientAccounts.status, 'active'), isIntl ? eq(clientAccounts.intlAllowed, 1) : sql`1=1`));
+
+  const due: {
+    clientId: number;
+    companyName: string;
+    periodStart: string;
+    periodEnd: string;
+    settlementPeriod: 'weekly' | 'biweekly' | 'monthly';
+    billableCount: number;
+    estimatedTotal: number;
+  }[] = [];
+
+  for (const client of activeClients) {
+    if (client.defaultSettlementPeriod === 'custom') continue;
+
+    const billingInfo = await getClientBillingInfo(client.id);
+    if (!billingInfo) continue;
+
+    const settlementPeriod = client.defaultSettlementPeriod as 'weekly' | 'biweekly' | 'monthly';
+    const { periodStart, periodEnd } = computeSuggestedPeriod(settlementPeriod, billingInfo.suggestedPeriodStart);
+    if (periodEnd > today) continue; // period hasn't fully elapsed yet
+
+    const billable = isIntl
+      ? await getBillableIntlShipments(client.id, periodStart, periodEnd)
+      : await getBillableShipments(client.id, periodStart, periodEnd);
+    if (billable.length === 0) continue;
+
+    due.push({
+      clientId: client.id,
+      companyName: client.companyName,
+      periodStart: periodStart.toISOString().split('T')[0],
+      periodEnd: periodEnd.toISOString().split('T')[0],
+      settlementPeriod,
+      billableCount: billable.length,
+      estimatedTotal: Math.round(billable.reduce((sum, s: any) => sum + (s.calculatedRate ?? 0), 0) * 100) / 100,
+    });
+  }
+
+  return due;
+}
+
+/**
+ * Generates one invoice per client in a single batch call, each left in 'pending'
+ * status for staff review (never auto-sent). Re-derives each client's period from
+ * getClientsDueForBilling rather than trusting client-supplied dates, so a batch
+ * run can't be tricked into billing an arbitrary date range.
+ */
+export async function generateBatchInvoices(isIntl: boolean, clientIds: number[]) {
+  const dueClients = await getClientsDueForBilling(isIntl);
+  const dueById = new Map(dueClients.map(c => [c.clientId, c]));
+
+  const results: {
+    clientId: number;
+    companyName: string;
+    success: boolean;
+    invoiceId?: number;
+    mismatchedCount?: number;
+    error?: string;
+  }[] = [];
+
+  for (const clientId of clientIds) {
+    const due = dueById.get(clientId);
+    if (!due) {
+      results.push({ clientId, companyName: `#${clientId}`, success: false, error: 'No longer due (already billed or no billable shipments)' });
+      continue;
+    }
+
+    try {
+      const periodStart = new Date(due.periodStart);
+      const periodEnd = new Date(due.periodEnd);
+      if (isIntl) {
+        const result = await generateIntlInvoiceForClient(clientId, periodStart, periodEnd, undefined, due.settlementPeriod);
+        if (!result) throw new Error('No international shipments found for this period');
+        results.push({
+          clientId, companyName: due.companyName, success: true, invoiceId: result.invoiceId,
+          mismatchedCount: result.mismatchedShipments.length || undefined,
+        });
+      } else {
+        const invoiceId = await generateInvoiceForClient(clientId, periodStart, periodEnd, undefined, due.settlementPeriod);
+        if (!invoiceId) throw new Error('No shipments found for this period');
+        results.push({ clientId, companyName: due.companyName, success: true, invoiceId });
+      }
+    } catch (err: any) {
+      results.push({ clientId, companyName: due.companyName, success: false, error: err?.message || 'Unknown error' });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Invoices staff had to manually adjust after generation (isAdjusted=1) — added charges,
+ * status/amount overrides, or a free-text adjustment note. Surfaces who adjusted what and
+ * why, so recurring correction patterns (the reason this whole feature exists) show up in
+ * the data instead of only being discoverable by reading the pricing code.
+ */
+export async function getInvoiceAdjustmentsReport(filters: { periodStart?: Date; periodEnd?: Date; clientId?: number } = {}) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const { portalUsers } = await import("../drizzle/schema");
+
+  const conditions = [eq(invoices.isAdjusted, 1)];
+  if (filters.periodStart) conditions.push(gte(invoices.lastAdjustedAt, filters.periodStart));
+  if (filters.periodEnd) conditions.push(lte(invoices.lastAdjustedAt, filters.periodEnd));
+  if (filters.clientId) conditions.push(eq(invoices.clientId, filters.clientId));
+
+  const rows = await db
+    .select({
+      invoiceId: invoices.id,
+      invoiceNumber: invoices.invoiceNumber,
+      clientId: invoices.clientId,
+      companyName: clientAccounts.companyName,
+      total: invoices.total,
+      adjustmentNotes: invoices.adjustmentNotes,
+      lastAdjustedAt: invoices.lastAdjustedAt,
+      adjustedByEmail: portalUsers.email,
+    })
+    .from(invoices)
+    .leftJoin(clientAccounts, eq(invoices.clientId, clientAccounts.id))
+    .leftJoin(portalUsers, eq(invoices.lastAdjustedBy, portalUsers.id))
+    .where(and(...conditions))
+    .orderBy(desc(invoices.lastAdjustedAt));
+
+  return rows;
 }
 
 export async function getInvoiceById(id: number) {
@@ -2101,9 +2507,92 @@ export async function getAllCODRecords() {
   });
 }
 
-export async function getPendingCODByClient(clientId: number) {
+export type CODRecordListFilters = {
+  clientId?: number;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+// Real server-side pagination for the admin "All COD Records" table — getAllCODRecords
+// above caps at 500 with no way to reach older rows once that's exceeded.
+export async function getCODRecordsPaged(filters: CODRecordListFilters): Promise<{ rows: any[]; total: number }> {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+
+  const page = Math.max(0, filters.page ?? 0);
+  const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 50));
+
+  const conditions = [ne(codRecords.status, 'cancelled')];
+  if (filters.clientId) conditions.push(eq(orders.clientId, filters.clientId));
+  if (filters.status) conditions.push(eq(codRecords.status, filters.status as typeof codRecords.status.enumValues[number]));
+  const where = and(...conditions);
+
+  const result = await db
+    .select({
+      codRecord: codRecords,
+      order: orders,
+      client: clientAccounts,
+    })
+    .from(codRecords)
+    .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
+    .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
+    .where(where)
+    .orderBy(desc(codRecords.createdAt))
+    .limit(pageSize)
+    .offset(page * pageSize);
+
+  const records = result.map(r => ({ ...r.codRecord, order: r.order, client: r.client }));
+  const rows = await attachCollectingDriver(records);
+
+  const [countRow] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(codRecords)
+    .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
+    .where(where);
+
+  return { rows, total: Number(countRow?.count ?? 0) };
+}
+
+/**
+ * Weekly remittance cutoff: every Friday 18:00 Dubai time (UTC+4, no DST — same
+ * convention as isCutoffNotPassed). A COD collected after that instant belongs
+ * to the following week's batch, not the one about to close.
+ * Returns the most recent cutoff instant that is <= referenceDate, as a UTC Date.
+ */
+export function getLastWeeklyCutoff(referenceDate: Date = new Date()): Date {
+  const DUBAI_OFFSET_MS = 4 * 60 * 60 * 1000;
+  const dubaiNow = new Date(referenceDate.getTime() + DUBAI_OFFSET_MS);
+  const dubaiDay = dubaiNow.getUTCDay(); // 0=Sun..6=Sat, in Dubai-local terms
+  const daysSinceFriday = (dubaiDay - 5 + 7) % 7;
+
+  const candidateDubaiLocal = new Date(Date.UTC(
+    dubaiNow.getUTCFullYear(),
+    dubaiNow.getUTCMonth(),
+    dubaiNow.getUTCDate() - daysSinceFriday,
+    18, 0, 0, 0
+  ));
+  let cutoffUtc = new Date(candidateDubaiLocal.getTime() - DUBAI_OFFSET_MS);
+
+  // If today is Friday but 18:00 Dubai hasn't happened yet, the candidate is in
+  // the future relative to referenceDate — fall back to the previous Friday.
+  if (cutoffUtc.getTime() > referenceDate.getTime()) {
+    cutoffUtc = new Date(cutoffUtc.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return cutoffUtc;
+}
+
+/**
+ * COD records that are 'collected' and past the last weekly cutoff for a given
+ * client — i.e. ready to be grouped into a remittance right now. Records
+ * collected after the cutoff are excluded; they belong to next week's batch.
+ */
+export async function getReadyToRemitRecordsByClient(clientId: number, referenceDate: Date = new Date()) {
   const db = await getDb();
   if (!db) return [];
+
+  const cutoff = getLastWeeklyCutoff(referenceDate);
 
   const result = await db
     .select({
@@ -2115,7 +2604,8 @@ export async function getPendingCODByClient(clientId: number) {
     .where(
       and(
         eq(orders.clientId, clientId),
-        eq(codRecords.status, 'collected')
+        eq(codRecords.status, 'collected'),
+        lte(codRecords.collectedDate, cutoff)
       )
     )
     .orderBy(desc(codRecords.collectedDate));
@@ -2123,65 +2613,176 @@ export async function getPendingCODByClient(clientId: number) {
   return result.map(r => ({ ...r.codRecord, order: r.order }));
 }
 
+/**
+ * Per-client totals for everything past the last weekly cutoff — the "Ready to
+ * Remit" list. Replaces the manual "pick a client, tick every shipment"
+ * workflow: the grouping and math are already done, the admin just confirms.
+ */
+export async function getReadyToRemitByClient(referenceDate: Date = new Date()) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const cutoff = getLastWeeklyCutoff(referenceDate);
+
+  const rows = await db
+    .select({
+      clientId: orders.clientId,
+      companyName: clientAccounts.companyName,
+      currency: codRecords.codCurrency,
+      count: sql<number>`COUNT(*)`,
+      grossAmount: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`,
+      feeAmount: sql<string>`COALESCE(SUM(CAST(${codRecords.feeAmount} AS DECIMAL(15,2))), 0)`,
+      oldestCollectedDate: sql<string | null>`MIN(${codRecords.collectedDate})`,
+    })
+    .from(codRecords)
+    .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
+    .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
+    .where(and(eq(codRecords.status, 'collected'), lte(codRecords.collectedDate, cutoff)))
+    .groupBy(orders.clientId, clientAccounts.companyName, codRecords.codCurrency);
+
+  return rows.map(r => {
+    const gross = parseFloat(r.grossAmount);
+    const fee = parseFloat(r.feeAmount);
+    return {
+      clientId: r.clientId,
+      companyName: r.companyName || 'N/A',
+      currency: r.currency,
+      count: Number(r.count),
+      grossAmount: gross.toFixed(2),
+      feeAmount: fee.toFixed(2),
+      netAmount: (gross - fee).toFixed(2),
+      oldestCollectedDate: r.oldestCollectedDate,
+    };
+  });
+}
+
+/**
+ * Mirror of getReadyToRemitByClient for the other side of the cutoff — COD
+ * collected AFTER the last Friday 18:00 Dubai cutoff, still building up
+ * towards next week's batch. Read-only; nothing here can be remitted yet.
+ */
+export async function getAccumulatingByClient(referenceDate: Date = new Date()) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const cutoff = getLastWeeklyCutoff(referenceDate);
+
+  const rows = await db
+    .select({
+      clientId: orders.clientId,
+      companyName: clientAccounts.companyName,
+      currency: codRecords.codCurrency,
+      count: sql<number>`COUNT(*)`,
+      grossAmount: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`,
+    })
+    .from(codRecords)
+    .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
+    .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
+    .where(and(eq(codRecords.status, 'collected'), gt(codRecords.collectedDate, cutoff)))
+    .groupBy(orders.clientId, clientAccounts.companyName, codRecords.codCurrency);
+
+  return rows.map(r => ({
+    clientId: r.clientId,
+    companyName: r.companyName || 'N/A',
+    currency: r.currency,
+    count: Number(r.count),
+    grossAmount: parseFloat(r.grossAmount).toFixed(2),
+  }));
+}
+
+// Generates the next sequential REM-YYYY-NNNNNN number. Must only be called
+// from inside createCODRemittance's named-lock section — read-then-increment
+// is not safe to call standalone under concurrency.
+async function generateRemittanceNumberTx(tx: any): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `REM-${year}-`;
+
+  const [latest] = await tx
+    .select()
+    .from(codRemittances)
+    .where(sql`${codRemittances.remittanceNumber} LIKE ${prefix + '%'}`)
+    .orderBy(desc(codRemittances.createdAt))
+    .limit(1);
+
+  let nextNumber = 1;
+  if (latest) {
+    const lastNumber = parseInt(latest.remittanceNumber.split('-').pop() || '0');
+    nextNumber = lastNumber + 1;
+  }
+
+  return `${prefix}${String(nextNumber).padStart(6, '0')}`;
+}
+
 export async function createCODRemittance(data: {
   clientId: number;
-  remittanceNumber: string;
   grossAmount: string;
   feeAmount: string;
   feePercentage: string;
   totalAmount: string;
   currency: string;
-  shipmentCount: number;
   codRecordIds: number[];
   paymentMethod?: string;
   paymentReference?: string;
   notes?: string;
   createdBy: number;
-}) {
+}): Promise<{ remittanceId: number; remittanceNumber: string }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Create remittance
-  const [remittance] = await db.insert(codRemittances).values({
-    clientId: data.clientId,
-    remittanceNumber: data.remittanceNumber,
-    grossAmount: data.grossAmount,
-    feeAmount: data.feeAmount,
-    feePercentage: data.feePercentage,
-    totalAmount: data.totalAmount,
-    currency: data.currency,
-    shipmentCount: data.shipmentCount,
-    status: 'pending',
-    paymentMethod: data.paymentMethod || null,
-    paymentReference: data.paymentReference || null,
-    notes: data.notes || null,
-    createdBy: data.createdBy,
+  return await db.transaction(async (tx) => {
+    // MySQL named lock — serializes remittance-number generation across
+    // concurrent transactions even for the very first number of a new year,
+    // when SELECT ... FOR UPDATE would have nothing to lock onto.
+    await tx.execute(sql`SELECT GET_LOCK('cod_remittance_number', 10)`);
+    try {
+      const remittanceNumber = await generateRemittanceNumberTx(tx);
+
+      const [remittance] = await tx.insert(codRemittances).values({
+        clientId: data.clientId,
+        remittanceNumber,
+        grossAmount: data.grossAmount,
+        feeAmount: data.feeAmount,
+        feePercentage: data.feePercentage,
+        totalAmount: data.totalAmount,
+        currency: data.currency,
+        shipmentCount: data.codRecordIds.length,
+        status: 'pending',
+        paymentMethod: data.paymentMethod || null,
+        paymentReference: data.paymentReference || null,
+        notes: data.notes || null,
+        createdBy: data.createdBy,
+      });
+
+      const remittanceId = remittance.insertId;
+
+      // Link COD records to remittance — batch instead of N+1 loop
+      const allCodRecords = await tx.select().from(codRecords).where(inArray(codRecords.id, data.codRecordIds));
+
+      if (allCodRecords.length > 0) {
+        await tx.insert(codRemittanceItems).values(
+          allCodRecords.map(codRecord => ({
+            remittanceId,
+            codRecordId: codRecord.id,
+            shipmentId: codRecord.shipmentId,
+            amount: codRecord.codAmount,
+            currency: codRecord.codCurrency,
+          }))
+        );
+
+        await tx.update(codRecords)
+          .set({ status: 'remitted', remittedToClientDate: new Date() })
+          .where(inArray(codRecords.id, allCodRecords.map(r => r.id)));
+      }
+
+      return { remittanceId, remittanceNumber };
+    } finally {
+      await tx.execute(sql`SELECT RELEASE_LOCK('cod_remittance_number')`);
+    }
+  }).then((result) => {
+    cacheInvalidate('admin:allRemittances');
+    cacheInvalidate('admin:allCODRecords');
+    return result;
   });
-
-  const remittanceId = remittance.insertId;
-
-  // Link COD records to remittance — batch instead of N+1 loop
-  const allCodRecords = await db.select().from(codRecords).where(inArray(codRecords.id, data.codRecordIds));
-
-  if (allCodRecords.length > 0) {
-    await db.insert(codRemittanceItems).values(
-      allCodRecords.map(codRecord => ({
-        remittanceId,
-        codRecordId: codRecord.id,
-        shipmentId: codRecord.shipmentId,
-        amount: codRecord.codAmount,
-        currency: codRecord.codCurrency,
-      }))
-    );
-
-    await db.update(codRecords)
-      .set({ status: 'remitted', remittedToClientDate: new Date() })
-      .where(inArray(codRecords.id, allCodRecords.map(r => r.id)));
-  }
-
-  cacheInvalidate('admin:allRemittances');
-  cacheInvalidate('admin:allCODRecords');
-  return remittanceId;
 }
 
 export async function getRemittancesByClient(clientId: number) {
@@ -2210,6 +2811,49 @@ export async function getAllRemittances() {
 
     return result.map(r => ({ ...r.remittance, client: r.client }));
   });
+}
+
+export type RemittanceListFilters = {
+  clientId?: number;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+// Real server-side pagination for the admin "COD Remittances" table — getAllRemittances
+// above caps at 500 with no way to reach older rows once that's exceeded.
+export async function getRemittancesPaged(filters: RemittanceListFilters): Promise<{ rows: any[]; total: number }> {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+
+  const page = Math.max(0, filters.page ?? 0);
+  const pageSize = Math.min(200, Math.max(1, filters.pageSize ?? 50));
+
+  const conditions = [];
+  if (filters.clientId) conditions.push(eq(codRemittances.clientId, filters.clientId));
+  if (filters.status) conditions.push(eq(codRemittances.status, filters.status as typeof codRemittances.status.enumValues[number]));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const result = await db
+    .select({
+      remittance: codRemittances,
+      client: clientAccounts,
+    })
+    .from(codRemittances)
+    .leftJoin(clientAccounts, eq(codRemittances.clientId, clientAccounts.id))
+    .where(where)
+    .orderBy(desc(codRemittances.createdAt))
+    .limit(pageSize)
+    .offset(page * pageSize);
+
+  const rows = result.map(r => ({ ...r.remittance, client: r.client }));
+
+  const [countRow] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(codRemittances)
+    .where(where);
+
+  return { rows, total: Number(countRow?.count ?? 0) };
 }
 
 export async function getRemittanceById(id: number) {
@@ -2251,50 +2895,28 @@ export async function updateRemittanceStatus(id: number, status: 'pending' | 'pr
   cacheInvalidate('admin:allRemittances');
 }
 
-export async function generateRemittanceNumber(): Promise<string> {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const year = new Date().getFullYear();
-  const prefix = `REM-${year}-`;
-
-  // Get the latest remittance number for this year
-  const [latest] = await db
-    .select()
-    .from(codRemittances)
-    .where(sql`${codRemittances.remittanceNumber} LIKE ${prefix + '%'}`)
-    .orderBy(desc(codRemittances.createdAt))
-    .limit(1);
-
-  let nextNumber = 1;
-  if (latest) {
-    const lastNumber = parseInt(latest.remittanceNumber.split('-').pop() || '0');
-    nextNumber = lastNumber + 1;
-  }
-
-  return `${prefix}${String(nextNumber).padStart(6, '0')}`;
-}
-
 export async function getCODSummaryByClient(clientId: number) {
   const db = await getDb();
   if (!db) return { pending: '0', collected: '0', remitted: '0', total: '0' };
 
-  const records = await db
-    .select()
+  // Aggregate in SQL — avoids loading the client's entire COD history into memory
+  const rows = await db
+    .select({
+      status: codRecords.status,
+      total: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`,
+    })
     .from(codRecords)
     .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
-    .where(eq(orders.clientId, clientId));
+    .where(eq(orders.clientId, clientId))
+    .groupBy(codRecords.status);
 
-  let pending = 0;
-  let collected = 0;
-  let remitted = 0;
-
-  records.forEach(r => {
-    const amount = parseFloat(r.codRecords.codAmount);
-    if (r.codRecords.status === 'pending_collection') pending += amount;
-    else if (r.codRecords.status === 'collected') collected += amount;
-    else if (r.codRecords.status === 'remitted') remitted += amount;
-  });
+  let pending = 0, collected = 0, remitted = 0;
+  for (const row of rows) {
+    const amount = parseFloat(row.total);
+    if (row.status === 'pending_collection') pending = amount;
+    else if (row.status === 'collected') collected = amount;
+    else if (row.status === 'remitted') remitted = amount;
+  }
 
   return {
     pending: pending.toFixed(2),
@@ -2341,12 +2963,11 @@ export async function getCODSummaryGlobal() {
 /**
  * Get monthly shipment count for a client
  */
-export async function getMonthlyShipmentCount(clientId: number): Promise<number> {
+export async function getMonthlyShipmentCount(clientId: number, asOfDate: Date = new Date()): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
 
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const firstDayOfMonth = new Date(asOfDate.getFullYear(), asOfDate.getMonth(), 1);
 
   const result = await db
     .select()
@@ -2354,7 +2975,8 @@ export async function getMonthlyShipmentCount(clientId: number): Promise<number>
     .where(
       and(
         eq(orders.clientId, clientId),
-        gte(orders.createdAt, firstDayOfMonth)
+        gte(orders.createdAt, firstDayOfMonth),
+        lte(orders.createdAt, asOfDate)
       )
     );
 
@@ -2412,6 +3034,10 @@ export async function calculateShipmentRate(params: {
   width?: number; // cm
   height?: number; // cm
   emirate?: string; // destination emirate for zone-based pricing
+  // Date to evaluate the automatic monthly-volume tier as of. Defaults to now (live quote
+  // at order-creation time). Invoice generation should pass the shipment's own createdAt so
+  // re-generating the same invoice on a later date can't change the tier/price.
+  asOfDate?: Date;
 }): Promise<{
   baseRate: number;
   additionalKgCharge: number;
@@ -2577,10 +3203,26 @@ export async function calculateShipmentRate(params: {
   }
 
   let applicableTier: RateTier | null = null;
+  let usingManualTier = false;
 
-  // PRIORITY 1 (fallback): calculate based on monthly volume tier
-  {
-    const monthlyVolume = await getMonthlyShipmentCount(params.clientId);
+  // PRIORITY 1: admin-pinned manual tier (Client 360 "Rate Tier"), only if it matches this service type.
+  // Previously this field was saved but never read here, so pinning a client to a tier had no effect on price.
+  if (client?.manualRateTierId && (params.serviceType === "DOM" || params.serviceType === "SDD")) {
+    const [manualTier] = await db
+      .select()
+      .from(rateTiers)
+      .where(and(eq(rateTiers.id, client.manualRateTierId), eq(rateTiers.isActive, 1)))
+      .limit(1);
+    if (manualTier && manualTier.serviceType === params.serviceType) {
+      applicableTier = manualTier;
+      usingManualTier = true;
+    }
+  }
+
+  // PRIORITY 2 (fallback): calculate based on monthly volume tier as of the shipment's own date
+  // (params.asOfDate), not "now" — so re-generating an invoice on a later date doesn't change the price.
+  if (!applicableTier) {
+    const monthlyVolume = await getMonthlyShipmentCount(params.clientId, params.asOfDate);
 
     // Find applicable rate tier
     const tiers = await db
@@ -2639,7 +3281,7 @@ export async function calculateShipmentRate(params: {
     additionalKgCharge,
     totalRate,
     appliedTier: applicableTier,
-    usingManualTier: false,
+    usingManualTier,
     chargeableWeight,
   };
 }
@@ -2767,6 +3409,46 @@ export async function calculateCODFeeByMethod(
   return method === 'card'
     ? calculateCardCODFee(codAmount, clientId)
     : calculateCODFee(codAmount, clientId);
+}
+
+const GLOBAL_COD_CONFIG_KEYS = ['COD_FEE_PERCENTAGE', 'COD_MIN_FEE', 'CARD_FEE_PERCENTAGE', 'CARD_MIN_FEE'] as const;
+type GlobalCodConfigKey = typeof GLOBAL_COD_CONFIG_KEYS[number];
+const GLOBAL_COD_CONFIG_DEFAULTS: Record<GlobalCodConfigKey, string> = {
+  COD_FEE_PERCENTAGE: '3.3',
+  COD_MIN_FEE: '2.0',
+  CARD_FEE_PERCENTAGE: '3.3',
+  CARD_MIN_FEE: '2.0',
+};
+
+/**
+ * Global COD/CCOD fee defaults used when a client has no override — same keys/fallbacks
+ * as calculateCODFee/calculateCardCODFee, surfaced here for the Rates & Pricing admin UI.
+ */
+export async function getGlobalCodConfig(): Promise<Record<GlobalCodConfigKey, string>> {
+  const db = await getDb();
+  if (!db) return { ...GLOBAL_COD_CONFIG_DEFAULTS };
+
+  const rows = await db.select().from(serviceConfig).where(inArray(serviceConfig.configKey, [...GLOBAL_COD_CONFIG_KEYS]));
+  const result = { ...GLOBAL_COD_CONFIG_DEFAULTS };
+  for (const row of rows) {
+    if ((GLOBAL_COD_CONFIG_KEYS as readonly string[]).includes(row.configKey)) {
+      result[row.configKey as GlobalCodConfigKey] = row.configValue;
+    }
+  }
+  return result;
+}
+
+export async function updateGlobalCodConfig(values: Partial<Record<GlobalCodConfigKey, string>>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  for (const key of GLOBAL_COD_CONFIG_KEYS) {
+    const value = values[key];
+    if (value === undefined) continue;
+    await db.insert(serviceConfig)
+      .values({ configKey: key, configValue: value })
+      .onDuplicateKeyUpdate({ set: { configValue: value } });
+  }
 }
 
 /**

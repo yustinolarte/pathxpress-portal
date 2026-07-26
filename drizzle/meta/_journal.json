@@ -197,6 +197,20 @@
       "when": 1784787109249,
       "tag": "0027_add_intl_cost_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1785052417707,
+      "tag": "0028_cold_leper_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1785054457052,
+      "tag": "0029_stale_black_crow",
+      "breakpoints": true
     }
   ]
 }

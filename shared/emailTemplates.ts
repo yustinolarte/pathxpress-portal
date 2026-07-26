@@ -413,8 +413,8 @@ export const TEMPLATES: EmailTemplate[] = [
       { name: 'period', label: 'Period', type: 'text', value: '01–07 Jun 2026' },
       { name: 'shipment_count', label: 'No. of shipments', type: 'text', value: '128' },
       { name: 'subtotal', label: 'Subtotal', type: 'text', value: 'AED 2,062.00' },
-      { name: 'vat', label: 'VAT (5%)', type: 'text', value: 'AED 103.10' },
-      { name: 'total', label: 'Total due', type: 'text', value: 'AED 2,165.10' },
+      { name: 'vat', label: 'Tax', type: 'text', value: 'AED 0.00' },
+      { name: 'total', label: 'Total due', type: 'text', value: 'AED 2,062.00' },
       { name: 'invoice_number', label: 'Invoice number', type: 'text', value: 'INV-2026-0418' },
       { name: 'issued_date', label: 'Issue date', type: 'text', value: '12 Jun 2026' },
       { name: 'due_date', label: 'Due date', type: 'text', value: '26 Jun 2026' },
@@ -427,7 +427,7 @@ export const TEMPLATES: EmailTemplate[] = [
       lede('Hi ' + esc(v.client_name) + ', please find your invoice for the period ' + bold(v.period) + ' (' + esc(v.shipment_count) + ' shipments). Payment is due on ' + bold(v.due_date) + '.') +
       sumtable([
         { label: 'Subtotal', value: v.subtotal },
-        { label: 'VAT (5%)', value: v.vat },
+        { label: 'Tax', value: v.vat },
       ], { label: 'Total due', value: v.total }) +
       addrGrid(
         { label: 'Invoice', html: bold(v.invoice_number) + '<br/>Issued ' + esc(v.issued_date) },

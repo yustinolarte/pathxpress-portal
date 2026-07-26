@@ -10,12 +10,18 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package, TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight, Banknote } from 'lucide-react';
+import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package, TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight, Banknote, Zap, Mail } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useEffect } from 'react';
 import { abbreviateServiceType } from '@/const';
+import { statusBadgeClass } from '@/lib/statusStyles';
+import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from '@/components/ui/pagination';
+import * as XLSX from 'xlsx';
+import type { InvoiceStats } from '../../../server/db';
+
+const INVOICES_PAGE_SIZE = 50;
 
 export default function BillingPanel() {
   const utils = trpc.useUtils();
@@ -51,13 +57,67 @@ export default function BillingPanel() {
 
   // Filter states (shared by both tabs)
   const [filterClientId, setFilterClientId] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Pagination state — separate per tab since domestic/international are independently paginated
+  const [domPage, setDomPage] = useState(0);
+  const [intlPage, setIntlPage] = useState(0);
+
+  // Export-in-progress state, lifted out of InvoiceTable (which is redefined every
+  // BillingPanel render) so an unrelated re-render mid-export can't reset the button.
+  const [exportingTab, setExportingTab] = useState<'dom' | 'intl' | null>(null);
+
+  // Reset to page 0 whenever a shared filter changes, so a stale page number
+  // doesn't land past the end of a newly-filtered (smaller) result set.
+  useEffect(() => {
+    setDomPage(0);
+    setIntlPage(0);
+  }, [filterClientId, filterStatus, filterDateFrom, filterDateTo, searchQuery]);
+
   // ─── Queries ──────────────────────────────────────────────────────────────
 
-  const { data: allInvoices, isLoading, refetch } = trpc.portal.billing.getAllInvoices.useQuery();
+  const refetch = () => {
+    utils.portal.billing.getInvoicesPaged.invalidate();
+    utils.portal.billing.getInvoiceStats.invalidate();
+    utils.portal.billing.getAllInvoices.invalidate();
+  };
+
+  const sharedFilterInput = useMemo(() => ({
+    clientId: filterClientId !== 'all' ? parseInt(filterClientId) : undefined,
+    search: searchQuery || undefined,
+    dateFrom: filterDateFrom || undefined,
+    dateTo: filterDateTo || undefined,
+  }), [filterClientId, searchQuery, filterDateFrom, filterDateTo]);
+
+  const domQueryInput = useMemo(() => ({
+    ...sharedFilterInput,
+    isIntl: false,
+    status: filterStatus !== 'all' ? filterStatus : undefined,
+    page: domPage,
+    pageSize: INVOICES_PAGE_SIZE,
+  }), [sharedFilterInput, filterStatus, domPage]);
+
+  const intlQueryInput = useMemo(() => ({
+    ...sharedFilterInput,
+    isIntl: true,
+    status: filterStatus !== 'all' ? filterStatus : undefined,
+    page: intlPage,
+    pageSize: INVOICES_PAGE_SIZE,
+  }), [sharedFilterInput, filterStatus, intlPage]);
+
+  const { data: domInvoicesData, isLoading: isDomLoading } = trpc.portal.billing.getInvoicesPaged.useQuery(domQueryInput);
+  const { data: intlInvoicesData, isLoading: isIntlLoading } = trpc.portal.billing.getInvoicesPaged.useQuery(intlQueryInput);
+  const domInvoices = domInvoicesData?.rows ?? [];
+  const domTotal = domInvoicesData?.total ?? 0;
+  const intlInvoices = intlInvoicesData?.rows ?? [];
+  const intlTotal = intlInvoicesData?.total ?? 0;
+
+  const { data: domStats } = trpc.portal.billing.getInvoiceStats.useQuery({ ...sharedFilterInput, isIntl: false });
+  const { data: intlStats } = trpc.portal.billing.getInvoiceStats.useQuery({ ...sharedFilterInput, isIntl: true });
+
   const { data: clients } = trpc.portal.admin.getClients.useQuery();
 
   // Domestic billable shipments
@@ -99,8 +159,15 @@ export default function BillingPanel() {
   });
 
   const generateIntlInvoice = trpc.portal.billing.generateIntlInvoice.useMutation({
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       toast.success('International invoice generated successfully');
+      if (result?.mismatchedShipments?.length) {
+        const list = result.mismatchedShipments.map((m: any) => m.waybillNumber).filter(Boolean).join(', ');
+        toast.warning(
+          `${result.mismatchedShipments.length} shipment(s) were priced using a fallback service (stored service type not found in current rates) — review: ${list}`,
+          { duration: 10000 }
+        );
+      }
       setIntlGenerateDialogOpen(false);
       setIntlSelectedClient(null);
       setIntlPeriodStart('');
@@ -158,30 +225,6 @@ export default function BillingPanel() {
       applySettlementPreset(sp, intlClientBillingInfo.suggestedPeriodStart ?? null, setIntlPeriodStart, setIntlPeriodEnd);
     }
   }, [intlClientBillingInfo]);
-
-  // ─── Filtered invoice lists ───────────────────────────────────────────────
-
-  const applyFilters = (list: any[]) => list.filter(invoice => {
-    if (filterClientId !== 'all' && invoice.clientId.toString() !== filterClientId) return false;
-    if (searchQuery && !invoice.invoiceNumber?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (filterDateFrom && new Date(invoice.issueDate) < new Date(filterDateFrom)) return false;
-    if (filterDateTo) {
-      const to = new Date(filterDateTo);
-      to.setHours(23, 59, 59, 999);
-      if (new Date(invoice.issueDate) > to) return false;
-    }
-    return true;
-  });
-
-  const domInvoices = useMemo(() => {
-    if (!allInvoices) return [];
-    return applyFilters(allInvoices.filter(i => !i.invoiceNumber?.startsWith('INTLINV-')));
-  }, [allInvoices, filterClientId, filterDateFrom, filterDateTo, searchQuery]);
-
-  const intlInvoices = useMemo(() => {
-    if (!allInvoices) return [];
-    return applyFilters(allInvoices.filter(i => i.invoiceNumber?.startsWith('INTLINV-')));
-  }, [allInvoices, filterClientId, filterDateFrom, filterDateTo, searchQuery]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -255,6 +298,85 @@ export default function BillingPanel() {
     }
   };
 
+  const sendInvoiceEmailMutation = trpc.portal.email.send.useMutation({
+    onSuccess: (res: any) => toast.success(`Invoice emailed to ${res.to}`),
+    onError: (error) => toast.error(error.message || 'Failed to send invoice email'),
+  });
+
+  // Sends the invoice PDF straight from the invoice row using the same template/PDF
+  // logic as Email Studio's "load from existing invoice" picker, so staff don't have to
+  // leave the Billing tab and re-find the invoice there just to email it.
+  const handleSendInvoiceEmail = async (invoice: any) => {
+    const client = clients?.find((c: any) => c.id === invoice.clientId);
+    if (!client?.billingEmail) { toast.error('This client has no billing email on file'); return; }
+    try {
+      const response = await fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })));
+      const result = await response.json();
+      if (!result.result?.data?.json) { toast.error('Failed to load invoice details'); return; }
+      const details = result.result.data.json;
+      const currency = details.invoice.currency || 'AED';
+      const fmtMoney = (amount: string | number) => {
+        const n = Number(amount);
+        return isFinite(n) ? `${currency} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${currency} ${amount}`;
+      };
+
+      const blob = generateInvoicePDF({
+        id: details.invoice.id,
+        invoiceNumber: details.invoice.invoiceNumber,
+        clientName: client.companyName,
+        billingAddress: client.billingAddress || null,
+        billingEmail: client.billingEmail || null,
+        issueDate: new Date(details.invoice.issueDate),
+        dueDate: new Date(details.invoice.dueDate),
+        periodStart: new Date(details.invoice.periodFrom),
+        periodEnd: new Date(details.invoice.periodTo),
+        subtotal: details.invoice.subtotal,
+        tax: details.invoice.taxes || '0',
+        total: details.invoice.total,
+        amountPaid: details.invoice.amountPaid || '0',
+        balance: details.invoice.balance || details.invoice.total,
+        status: details.invoice.status,
+        currency: details.invoice.currency,
+        isAdjusted: !!details.invoice.isAdjusted,
+        adjustmentNotes: details.invoice.adjustmentNotes || null,
+        items: details.items.map((item: any) => ({ id: item.id, description: item.description, quantity: item.quantity, unitPrice: item.unitPrice, amount: item.total })),
+      }, { output: 'blob' }) as Blob;
+
+      const base64: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const s = String(reader.result || '');
+          resolve(s.includes(',') ? s.slice(s.indexOf(',') + 1) : s);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+
+      sendInvoiceEmailMutation.mutate({
+        templateKey: 'invoice',
+        from: 'PATHXPRESS Billing <billing@pathxpress.net>',
+        to: client.billingEmail,
+        vars: {
+          client_name: client.companyName,
+          period: `${formatDate(details.invoice.periodFrom)} – ${formatDate(details.invoice.periodTo)}`,
+          shipment_count: String(details.items?.length ?? ''),
+          subtotal: fmtMoney(details.invoice.subtotal),
+          vat: fmtMoney(details.invoice.taxes || '0'),
+          total: fmtMoney(details.invoice.total),
+          invoice_number: details.invoice.invoiceNumber,
+          issued_date: formatDate(details.invoice.issueDate),
+          due_date: formatDate(details.invoice.dueDate),
+          pdf_url: 'https://pathxpress.net/portal/customer?tab=invoices',
+          pay_url: client.paymentLink || 'https://pathxpress.net/portal/customer?tab=invoices',
+        },
+        attachments: [{ filename: `Invoice-${details.invoice.invoiceNumber}.pdf`, content: base64, contentType: 'application/pdf' }],
+      });
+    } catch (error) {
+      console.error('Error sending invoice email:', error);
+      toast.error('Failed to prepare invoice email');
+    }
+  };
+
   const handlePreviewInvoice = async (invoice: any) => {
     setPreviewLoading(true);
     setPreviewDialogOpen(true);
@@ -274,35 +396,7 @@ export default function BillingPanel() {
     }
   };
 
-  const handleExportToExcel = (invoiceList: any[], filename: string) => {
-    if (!invoiceList || invoiceList.length === 0) { toast.error('No invoices to export'); return; }
-    const headers = ['Invoice Number', 'Client', 'Period From', 'Period To', 'Issue Date', 'Due Date', 'Total Amount', 'Balance Due', 'Currency', 'Status', 'Adjustment Notes'];
-    const escape = (str: string | null | undefined) => str ? `"${str.toString().replace(/"/g, '""')}"` : '';
-    const rows = invoiceList.map(inv => {
-      const clientName = clients?.find(c => c.id === inv.clientId)?.companyName || `Client #${inv.clientId}`;
-      return [escape(inv.invoiceNumber), escape(clientName), escape(formatDate(inv.periodFrom)), escape(formatDate(inv.periodTo)), escape(formatDate(inv.issueDate)), escape(formatDate(inv.dueDate)), inv.total, inv.balance || inv.total, inv.currency, inv.status, escape(inv.adjustmentNotes)].join(',');
-    });
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'paid': return <span className="badge2 b-green">Paid</span>;
-      case 'pending': return <span className="badge2 b-amber">Pending</span>;
-      case 'overdue': return <span className="badge2 b-red">Overdue</span>;
-      default: return <span className="badge2 b-gray">{status}</span>;
-    }
-  };
 
   const formatDate = (date: Date | string) => new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   const formatCurrency = (amount: string, currency: string = 'AED') => `${currency} ${parseFloat(amount).toFixed(2)}`;
@@ -364,6 +458,20 @@ export default function BillingPanel() {
 
   const settlementLabel = (p: string) => ({ weekly: 'Weekly', biweekly: 'Biweekly', monthly: 'Monthly', custom: 'Custom' }[p] ?? p);
 
+  // Which pricing cascade rule produced a domestic shipment's price — shown next to the price
+  // in the Generate Invoice dialog so staff can audit it without reading the pricing code.
+  const rateSourceLabel = (shipment: any): string | null => {
+    switch (shipment.rateSource) {
+      case 'manualTier': return 'manual tier';
+      case 'customOrZone': return 'zone/custom rate';
+      case 'autoTier': return shipment.rateTierLabel ? `tier ${shipment.rateTierLabel}` : 'auto tier';
+      case 'return': return 'return (zone)';
+      case 'returnFeeFallback': return 'return fee';
+      case 'exchangeFree': return 'exchange (free)';
+      default: return null;
+    }
+  };
+
   const getDueDaysLabel = (dueDate: Date | string, status: string) => {
     if (status === 'paid') return null;
     const due = new Date(dueDate);
@@ -389,16 +497,64 @@ export default function BillingPanel() {
 
   // ─── Shared sub-components ────────────────────────────────────────────────
 
-  const InvoiceTable = ({ invoiceList, exportFilename }: { invoiceList: any[]; exportFilename: string }) => (
+  const InvoiceTable = ({ invoiceList, total, page, setPage, isLoadingList, isIntl, exportFilename, isExporting, setIsExporting }: {
+    invoiceList: any[]; total: number; page: number; setPage: (p: number) => void;
+    isLoadingList: boolean; isIntl: boolean; exportFilename: string;
+    isExporting: boolean; setIsExporting: (v: boolean) => void;
+  }) => {
+    const pageCount = Math.max(1, Math.ceil(total / INVOICES_PAGE_SIZE));
+
+    const runExport = async () => {
+      setIsExporting(true);
+      try {
+        const baseInput = { ...sharedFilterInput, isIntl, status: filterStatus !== 'all' ? filterStatus : undefined, sort: 'newest' as const, pageSize: 200 };
+        let all: any[] = [];
+        let exportPage = 0;
+        while (true) {
+          const result = await utils.portal.billing.getInvoicesPaged.fetch({ ...baseInput, page: exportPage });
+          all = all.concat(result.rows);
+          if (result.rows.length < 200 || all.length >= result.total) break;
+          exportPage++;
+        }
+        if (all.length === 0) { toast.error('No invoices to export'); return; }
+
+        const data = all.map(inv => ({
+          'Invoice #': inv.invoiceNumber,
+          'Client': clients?.find(c => c.id === inv.clientId)?.companyName || `Client #${inv.clientId}`,
+          'Period Start': formatDate(inv.periodFrom),
+          'Period End': formatDate(inv.periodTo),
+          'Issue Date': formatDate(inv.issueDate),
+          'Due Date': formatDate(inv.dueDate),
+          'Amount': parseFloat(inv.total).toFixed(2),
+          'Balance': parseFloat(inv.balance || inv.total).toFixed(2),
+          'Currency': inv.currency,
+          'Status': inv.status.toUpperCase(),
+          'Adjustment Notes': inv.adjustmentNotes || '',
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Invoices');
+        worksheet['!cols'] = Object.keys(data[0]).map(() => ({ wch: 16 }));
+        XLSX.writeFile(workbook, exportFilename);
+        toast.success(`${all.length} invoice(s) exported to Excel`);
+      } catch (error) {
+        console.error('Error exporting invoices:', error);
+        toast.error('Failed to export invoices');
+      } finally {
+        setIsExporting(false);
+      }
+    };
+
+    return (
     <Card className="bg-card rounded-2xl border border-border shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle>Invoices</CardTitle>
           <CardDescription>View and manage client invoices</CardDescription>
         </div>
-        <Button variant="outline" size="sm" onClick={() => handleExportToExcel(invoiceList, exportFilename)}>
+        <Button variant="outline" size="sm" onClick={runExport} disabled={isExporting}>
           <Download className="w-4 h-4 mr-2" />
-          Export to Excel
+          {isExporting ? 'Exporting...' : 'Export to Excel'}
         </Button>
       </CardHeader>
       <CardContent>
@@ -418,6 +574,18 @@ export default function BillingPanel() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex-1 min-w-[160px]">
+            <Label className="text-sm font-medium mb-2 block">Status</Label>
+            <Select value={filterStatus} onValueChange={(v: 'all' | 'pending' | 'paid' | 'overdue') => setFilterStatus(v)}>
+              <SelectTrigger><SelectValue placeholder="All Statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex-1 min-w-[180px]">
             <Label className="text-sm font-medium mb-2 block">From Date</Label>
             <Input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
@@ -426,21 +594,24 @@ export default function BillingPanel() {
             <Label className="text-sm font-medium mb-2 block">To Date</Label>
             <Input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
           </div>
-          {(filterClientId !== 'all' || filterDateFrom || filterDateTo || searchQuery) && (
+          {(filterClientId !== 'all' || filterStatus !== 'all' || filterDateFrom || filterDateTo || searchQuery) && (
             <div className="flex items-end">
-              <Button variant="outline" onClick={() => { setFilterClientId('all'); setFilterDateFrom(''); setFilterDateTo(''); setSearchQuery(''); }}>
+              <Button variant="outline" onClick={() => { setFilterClientId('all'); setFilterStatus('all'); setFilterDateFrom(''); setFilterDateTo(''); setSearchQuery(''); }}>
                 Clear Filters
               </Button>
             </div>
           )}
         </div>
 
-        {!invoiceList || invoiceList.length === 0 ? (
+        {isLoadingList ? (
+          <div className="text-center py-8 text-muted-foreground">Loading invoices...</div>
+        ) : !invoiceList || invoiceList.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
             <p>No invoices found</p>
           </div>
         ) : (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
@@ -486,7 +657,7 @@ export default function BillingPanel() {
                     <TableCell className={balance > 0 ? 'money text-primary' : 'text-muted-foreground'}>
                       {balance > 0 ? formatCurrency(invoice.balance || invoice.total, invoice.currency) : '—'}
                     </TableCell>
-                    <TableCell>{getStatusBadge(invoice.status)}</TableCell>
+                    <TableCell><span className={statusBadgeClass(invoice.status)}>{invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}</span></TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Select value={invoice.status} onValueChange={(value: 'pending' | 'paid' | 'overdue') => handleStatusChange(invoice.id, value)}>
@@ -503,6 +674,9 @@ export default function BillingPanel() {
                         <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(invoice)} title="Download PDF">
                           <Download className="w-4 h-4" />
                         </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleSendInvoiceEmail(invoice)} disabled={sendInvoiceEmailMutation.isPending} title="Email invoice to client">
+                          <Mail className="w-4 h-4" />
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => handleDeleteInvoice(invoice.id, invoice.invoiceNumber)} title={invoice.status === 'pending' ? 'Delete invoice' : 'Only pending invoices can be deleted'} disabled={invoice.status !== 'pending' || deleteInvoiceMutation.isPending} className={invoice.status === 'pending' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'opacity-50'}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -513,62 +687,59 @@ export default function BillingPanel() {
               })}
             </TableBody>
           </Table>
+          {total > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+              <p className="text-xs text-muted-foreground">
+                Showing {page * INVOICES_PAGE_SIZE + 1}–{page * INVOICES_PAGE_SIZE + invoiceList.length} of {total}
+              </p>
+              <Pagination className="mx-0 w-auto justify-end">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious href="#"
+                      onClick={(e) => { e.preventDefault(); if (page > 0) setPage(page - 1); }}
+                      className={page === 0 ? 'pointer-events-none opacity-50' : ''} />
+                  </PaginationItem>
+                  <PaginationItem>
+                    <span className="px-3 text-sm text-muted-foreground">Page {page + 1} of {pageCount}</span>
+                  </PaginationItem>
+                  <PaginationItem>
+                    <PaginationNext href="#"
+                      onClick={(e) => { e.preventDefault(); if (page + 1 < pageCount) setPage(page + 1); }}
+                      className={page + 1 >= pageCount ? 'pointer-events-none opacity-50' : ''} />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
+          </>
         )}
       </CardContent>
     </Card>
-  );
+    );
+  };
 
-  const StatsCards = ({ invoiceList }: { invoiceList: any[] }) => {
-    // ── Compute financial metrics ──
+  // KPIs are computed server-side (getInvoiceStats) over the full filtered scope, not
+  // just the current page — so they stay correct regardless of how many invoices exist
+  // (the old version computed these client-side from a hard-capped 500-row fetch).
+  const StatsCards = ({ stats }: { stats: InvoiceStats | undefined }) => {
+    const s = stats ?? {
+      totalCount: 0, totalRevenue: 0, paidCount: 0, pendingCount: 0, overdueCount: 0,
+      outstandingBalance: 0, overdueBalance: 0, thisMonthRevenue: 0, thisMonthCount: 0,
+      lastMonthRevenue: 0, lastMonthCount: 0,
+    };
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
 
-    // Monthly earnings: invoices issued in the current calendar month
-    const thisMonthInvoices = invoiceList.filter(i => {
-      const d = new Date(i.issueDate);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
-    const thisMonthRevenue = thisMonthInvoices.reduce((s, i) => s + parseFloat(i.total || '0'), 0);
-
-    // Previous month invoices
-    const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const prevYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    const lastMonthInvoices = invoiceList.filter(i => {
-      const d = new Date(i.issueDate);
-      return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
-    });
-    const lastMonthRevenue = lastMonthInvoices.reduce((s, i) => s + parseFloat(i.total || '0'), 0);
-
-    // Month-over-month change
-    const momChange = lastMonthRevenue > 0
-      ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
-      : thisMonthRevenue > 0 ? 100 : 0;
+    const momChange = s.lastMonthRevenue > 0
+      ? ((s.thisMonthRevenue - s.lastMonthRevenue) / s.lastMonthRevenue) * 100
+      : s.thisMonthRevenue > 0 ? 100 : 0;
     const momPositive = momChange >= 0;
 
-    // Total revenue (all invoices)
-    const totalRevenue = invoiceList.reduce((s, i) => s + parseFloat(i.total || '0'), 0);
-
-    // Average invoice value
-    const avgInvoice = invoiceList.length > 0 ? totalRevenue / invoiceList.length : 0;
-
-    // Collection rate (% of invoices that are paid)
-    const paidCount = invoiceList.filter(i => i.status === 'paid').length;
-    const collectionRate = invoiceList.length > 0 ? Math.round((paidCount / invoiceList.length) * 100) : 0;
-
-    // Outstanding balance (pending + overdue)
-    const outstandingBalance = invoiceList
-      .filter(i => i.status !== 'paid')
-      .reduce((s, i) => s + parseFloat(i.balance || i.total || '0'), 0);
-
-    // Overdue balance
-    const overdueBalance = invoiceList
-      .filter(i => i.status === 'overdue')
-      .reduce((s, i) => s + parseFloat(i.balance || i.total || '0'), 0);
+    const avgInvoice = s.totalCount > 0 ? s.totalRevenue / s.totalCount : 0;
+    const collectionRate = s.totalCount > 0 ? Math.round((s.paidCount / s.totalCount) * 100) : 0;
 
     const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(2);
-
-    const overdueCount = invoiceList.filter(i => i.status === 'overdue').length;
 
     return (
       <div className="space-y-4">
@@ -580,8 +751,8 @@ export default function BillingPanel() {
               <span className="lab">Monthly Earnings</span>
               <span className="pill">{now.toLocaleString('en-US', { month: 'short', year: 'numeric' })}</span>
             </div>
-            <div className="val" style={{ fontSize: 26 }}>AED {thisMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            <div className="sub">{thisMonthInvoices.length} invoice{thisMonthInvoices.length !== 1 ? 's' : ''} this month</div>
+            <div className="val" style={{ fontSize: 26 }}>AED {s.thisMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">{s.thisMonthCount} invoice{s.thisMonthCount !== 1 ? 's' : ''} this month</div>
           </div>
 
           {/* Month vs Previous */}
@@ -593,13 +764,13 @@ export default function BillingPanel() {
               </span>
             </div>
             <div className="val" style={{ fontSize: 26 }}>
-              AED {lastMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              AED {s.lastMonthRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <div className="sub">
               <span className={`trend ${momPositive ? 'up' : 'down'}`}>
                 {momPositive ? '▲' : '▼'} {Math.abs(momChange).toFixed(1)}%
               </span>
-              {lastMonthInvoices.length} invoice{lastMonthInvoices.length !== 1 ? 's' : ''} in {new Date(prevYear, prevMonth).toLocaleString('en-US', { month: 'short' })}
+              {s.lastMonthCount} invoice{s.lastMonthCount !== 1 ? 's' : ''} in {new Date(prevYear, prevMonth).toLocaleString('en-US', { month: 'short' })}
             </div>
           </div>
 
@@ -609,8 +780,8 @@ export default function BillingPanel() {
               <span className="lab">Total Revenue</span>
               <span className="ic"><BarChart3 className="w-[18px] h-[18px]" /></span>
             </div>
-            <div className="val" style={{ fontSize: 26 }}>AED {totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            <div className="sub">Across {invoiceList.length} total invoices</div>
+            <div className="val" style={{ fontSize: 26 }}>AED {s.totalRevenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="sub">Across {s.totalCount} total invoices</div>
           </div>
         </div>
 
@@ -624,20 +795,20 @@ export default function BillingPanel() {
             <div className="s">
               <div className="l">Collection Rate</div>
               <div className="v" style={{ fontSize: 20, color: collectionRate >= 80 ? 'var(--st-green)' : collectionRate >= 50 ? 'var(--st-amber)' : 'var(--primary)' }}>{collectionRate}%</div>
-              <div className="l">{paidCount}/{invoiceList.length} paid</div>
+              <div className="l">{s.paidCount}/{s.totalCount} paid</div>
             </div>
             <div className="s">
               <div className="l">Pending</div>
-              <div className="v" style={{ fontSize: 20, color: 'var(--st-amber)' }}>{invoiceList.filter(i => i.status === 'pending').length}</div>
+              <div className="v" style={{ fontSize: 20, color: 'var(--st-amber)' }}>{s.pendingCount}</div>
             </div>
             <div className="s">
               <div className="l">Outstanding</div>
-              <div className="v" style={{ fontSize: 20 }}>AED {fmt(outstandingBalance)}</div>
+              <div className="v" style={{ fontSize: 20 }}>AED {fmt(s.outstandingBalance)}</div>
             </div>
             <div className="s">
               <div className="l">Overdue</div>
-              <div className="v red" style={{ fontSize: 20 }}>AED {fmt(overdueBalance)}</div>
-              <div className="l">{overdueCount} invoice{overdueCount !== 1 ? 's' : ''}</div>
+              <div className="v red" style={{ fontSize: 20 }}>AED {fmt(s.overdueBalance)}</div>
+              <div className="l">{s.overdueCount} invoice{s.overdueCount !== 1 ? 's' : ''}</div>
             </div>
           </div>
         </div>
@@ -933,8 +1104,28 @@ export default function BillingPanel() {
                             {isIntl && shipment.destinationCountry ? ` - ${shipment.destinationCountry}` : ''}
                           </p>
                         </div>
-                        <div className="ml-auto text-xs font-mono font-medium">
-                          AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
+                        <div className="ml-auto flex items-center gap-1.5">
+                          {isIntl && shipment.rateServiceTypeMismatch && (
+                            <span
+                              title={`Stored service type "${shipment.serviceType || '—'}" not found in current rates — priced using ${shipment.rateAppliedServiceKey || 'a fallback service'} instead. Review before confirming.`}
+                              style={{ color: 'var(--st-amber)' }}
+                            >
+                              <AlertCircle className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                          {!isIntl && shipment.emirateMissing && (
+                            <span title="No emirate on file for this shipment — zone was guessed from city, or defaulted to Zone 1. Verify the price." style={{ color: 'var(--st-amber)' }}>
+                              <AlertCircle className="w-3.5 h-3.5" />
+                            </span>
+                          )}
+                          {!isIntl && rateSourceLabel(shipment) && (
+                            <span className="text-muted-foreground text-[10px] uppercase tracking-wide font-sans" title="Pricing rule applied">
+                              {rateSourceLabel(shipment)}
+                            </span>
+                          )}
+                          <div className="text-xs font-mono font-medium">
+                            AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1007,7 +1198,161 @@ export default function BillingPanel() {
     </Dialog>
   );
 
-  if (isLoading) return <div className="text-center py-8">Loading invoices...</div>;
+  // Batch generation — one invoice per client whose settlement period has elapsed,
+  // instead of generating them one by one via GenerateDialog. Every invoice still
+  // lands in 'pending' status for review; nothing is emailed automatically.
+  const BatchGenerateDialog = ({ isIntl }: { isIntl: boolean }) => {
+    const [open, setOpen] = useState(false);
+    const [selectedClientIds, setSelectedClientIds] = useState<number[]>([]);
+    const [results, setResults] = useState<any[] | null>(null);
+
+    const { data: dueClients, isLoading: isLoadingDue } = trpc.portal.billing.getClientsDueForBilling.useQuery(
+      { isIntl },
+      { enabled: open }
+    );
+
+    useEffect(() => {
+      if (dueClients) setSelectedClientIds(dueClients.map((c: any) => c.clientId));
+    }, [dueClients]);
+
+    const batchMutation = trpc.portal.billing.generateBatchInvoices.useMutation({
+      onSuccess: (res: any[]) => {
+        setResults(res);
+        const successCount = res.filter(r => r.success).length;
+        const failCount = res.length - successCount;
+        if (failCount === 0) toast.success(`${successCount} invoice(s) generated successfully.`);
+        else toast.warning(`${successCount} generated, ${failCount} failed — see details below.`);
+        refetch();
+      },
+      onError: (error) => toast.error(error.message || 'Batch generation failed'),
+    });
+
+    function toggle(id: number) {
+      setSelectedClientIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    }
+
+    function handleOpenChange(v: boolean) {
+      setOpen(v);
+      if (!v) setResults(null);
+    }
+
+    return (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
+          <Button variant="outline">
+            <Zap className="w-4 h-4 mr-2" />
+            Generate Pending
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="bg-card border-border !w-[90vw] !max-w-[640px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Generate Pending {isIntl ? 'International ' : ''}Invoices</DialogTitle>
+            <DialogDescription>
+              Active clients whose settlement period has elapsed and have billable shipments waiting. Each becomes a separate 'pending' invoice for your review — nothing is emailed automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          {results ? (
+            <div className="space-y-2">
+              {results.map((r: any) => (
+                <div key={r.clientId} className={`flex items-center justify-between p-2 rounded-lg border text-sm ${r.success ? 'border-border' : 'border-primary/40 bg-primary/5'}`}>
+                  <span className="font-medium">{r.companyName}</span>
+                  {r.success ? (
+                    <span className="text-xs flex items-center gap-1" style={{ color: r.mismatchedCount ? 'var(--st-amber)' : 'var(--st-green)' }}>
+                      {r.mismatchedCount ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                      {r.mismatchedCount ? `Generated — ${r.mismatchedCount} shipment(s) need review` : 'Generated'}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-primary">{r.error}</span>
+                  )}
+                </div>
+              ))}
+              <Button className="w-full mt-2" onClick={() => handleOpenChange(false)}>Close</Button>
+            </div>
+          ) : isLoadingDue ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">Checking clients...</div>
+          ) : !dueClients || dueClients.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">No clients are due for billing right now.</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="max-h-[320px] overflow-y-auto space-y-2">
+                {dueClients.map((c: any) => (
+                  <div key={c.clientId} className="flex items-start gap-2 p-2 rounded-lg border border-border">
+                    <Checkbox checked={selectedClientIds.includes(c.clientId)} onCheckedChange={() => toggle(c.clientId)} />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{c.companyName}</p>
+                      <p className="text-xs text-muted-foreground">{c.periodStart} → {c.periodEnd} · {c.billableCount} shipment(s)</p>
+                    </div>
+                    <div className="text-xs font-mono">AED {c.estimatedTotal.toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                className="w-full"
+                disabled={selectedClientIds.length === 0 || batchMutation.isPending}
+                onClick={() => batchMutation.mutate({ isIntl, clientIds: selectedClientIds })}
+              >
+                {batchMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</> : `Generate ${selectedClientIds.length} Invoice(s)`}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // Invoices staff had to manually correct after generation — surfaces isAdjusted/
+  // adjustmentNotes/lastAdjustedBy (already recorded by EditInvoiceDialog) as a report,
+  // so recurring correction reasons show up in the data instead of only in the code.
+  const AdjustmentsReportCard = () => {
+    const [expanded, setExpanded] = useState(false);
+    const periodStart = useMemo(() => {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString().split('T')[0];
+    }, []);
+    const { data: adjustments, isLoading: isLoadingAdj } = trpc.portal.billing.getInvoiceAdjustmentsReport.useQuery(
+      { periodStart },
+      { enabled: expanded }
+    );
+
+    return (
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-3 cursor-pointer select-none" onClick={() => setExpanded(e => !e)}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Edit className="w-4 h-4 text-primary" />
+              <CardTitle className="text-base">Manual Adjustments (last 30 days)</CardTitle>
+            </div>
+            <span className="text-xs text-muted-foreground">{expanded ? 'Hide' : 'Show'}</span>
+          </div>
+          <CardDescription>Invoices staff corrected after generation — recurring reasons here point at what to fix in pricing.</CardDescription>
+        </CardHeader>
+        {expanded && (
+          <CardContent>
+            {isLoadingAdj ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>
+            ) : !adjustments || adjustments.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No manually adjusted invoices in this period.</p>
+            ) : (
+              <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                {adjustments.map((a: any) => (
+                  <div key={a.invoiceId} className="p-2 rounded-lg border border-border text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-medium">{a.invoiceNumber}</span>
+                      <span className="text-xs text-muted-foreground">{a.lastAdjustedAt ? new Date(a.lastAdjustedAt).toLocaleDateString() : '—'}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{a.companyName} · by {a.adjustedByEmail || 'unknown'}</p>
+                    {a.adjustmentNotes && <p className="text-xs mt-1">{a.adjustmentNotes}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -1017,17 +1362,19 @@ export default function BillingPanel() {
         <p className="text-muted-foreground">Manage client invoices and payments</p>
       </div>
 
+      <AdjustmentsReportCard />
+
       <Tabs defaultValue="domestic" className="space-y-6">
         <TabsList className="">
           <TabsTrigger value="domestic" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Domestic Invoices
-            {domInvoices.length > 0 && <span className="ml-1 font-mono text-[10.5px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">{domInvoices.length}</span>}
+            {domTotal > 0 && <span className="ml-1 font-mono text-[10.5px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">{domTotal}</span>}
           </TabsTrigger>
           <TabsTrigger value="international" className="flex items-center gap-2">
             <Globe className="w-4 h-4" />
             International Invoices
-            {intlInvoices.length > 0 && <span className="ml-1 font-mono text-[10.5px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">{intlInvoices.length}</span>}
+            {intlTotal > 0 && <span className="ml-1 font-mono text-[10.5px] font-bold bg-primary text-white px-1.5 py-0.5 rounded-full">{intlTotal}</span>}
           </TabsTrigger>
         </TabsList>
 
@@ -1035,6 +1382,8 @@ export default function BillingPanel() {
         <TabsContent value="domestic" className="space-y-6">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">UAE domestic shipments invoicing (DOM, SDD, BULLET)</p>
+            <div className="flex items-center gap-2">
+            <BatchGenerateDialog isIntl={false} />
             <GenerateDialog
               open={generateDialogOpen} onOpenChange={setGenerateDialogOpen} isIntl={false}
               client={selectedClient} setClient={setSelectedClient}
@@ -1052,15 +1401,23 @@ export default function BillingPanel() {
               }}
               isPending={generateInvoice.isPending}
             />
+            </div>
           </div>
-          <StatsCards invoiceList={domInvoices} />
-          <InvoiceTable invoiceList={domInvoices} exportFilename={`domestic_invoices_${new Date().toISOString().slice(0, 10)}.csv`} />
+          <StatsCards stats={domStats} />
+          <InvoiceTable
+            invoiceList={domInvoices} total={domTotal} page={domPage} setPage={setDomPage}
+            isLoadingList={isDomLoading} isIntl={false}
+            exportFilename={`domestic_invoices_${new Date().toISOString().slice(0, 10)}.xlsx`}
+            isExporting={exportingTab === 'dom'} setIsExporting={(v) => setExportingTab(v ? 'dom' : null)}
+          />
         </TabsContent>
 
         {/* ── International Tab ── */}
         <TabsContent value="international" className="space-y-6">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">International shipments invoicing (PRIME, GCC, PREMIUM) — uses international rate engine</p>
+            <div className="flex items-center gap-2">
+            <BatchGenerateDialog isIntl={true} />
             <GenerateDialog
               open={intlGenerateDialogOpen} onOpenChange={setIntlGenerateDialogOpen} isIntl={true}
               client={intlSelectedClient} setClient={setIntlSelectedClient}
@@ -1078,10 +1435,16 @@ export default function BillingPanel() {
               }}
               isPending={generateIntlInvoice.isPending}
             />
+            </div>
           </div>
-          <StatsCards invoiceList={intlInvoices} />
+          <StatsCards stats={intlStats} />
           <IntlProfitPanel />
-          <InvoiceTable invoiceList={intlInvoices} exportFilename={`international_invoices_${new Date().toISOString().slice(0, 10)}.csv`} />
+          <InvoiceTable
+            invoiceList={intlInvoices} total={intlTotal} page={intlPage} setPage={setIntlPage}
+            isLoadingList={isIntlLoading} isIntl={true}
+            exportFilename={`international_invoices_${new Date().toISOString().slice(0, 10)}.xlsx`}
+            isExporting={exportingTab === 'intl'} setIsExporting={(v) => setExportingTab(v ? 'intl' : null)}
+          />
         </TabsContent>
       </Tabs>
 
@@ -1123,7 +1486,7 @@ export default function BillingPanel() {
                     <p className="text-sm"><span className="text-muted-foreground">Issue Date:</span> {formatDate(previewInvoice.issueDate)}</p>
                     <p className="text-sm"><span className="text-muted-foreground">Due Date:</span> {formatDate(previewInvoice.dueDate)}</p>
                     <p className="text-sm"><span className="text-muted-foreground">Period:</span> {formatDate(previewInvoice.periodFrom)} - {formatDate(previewInvoice.periodTo)}</p>
-                    <div className="mt-2">{getStatusBadge(previewInvoice.status)}</div>
+                    <div className="mt-2"><span className={statusBadgeClass(previewInvoice.status)}>{previewInvoice.status.charAt(0).toUpperCase() + previewInvoice.status.slice(1)}</span></div>
                   </div>
                 </div>
 
