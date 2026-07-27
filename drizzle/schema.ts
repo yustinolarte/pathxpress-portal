@@ -603,10 +603,23 @@ export const driverRoutes = mysqlTable("driverRoutes", {
   startAddress: varchar("startAddress", { length: 255 }),
   startLat: varchar("startLat", { length: 50 }),
   startLng: varchar("startLng", { length: 50 }),
+  // Shift this route was worked under — a shift can span multiple routes
+  // (a driver may finish one route and start another the same day), so the
+  // link lives here rather than a single routeId on driverShifts.
+  shiftId: int("shiftId"),
+  startedAt: timestamp("startedAt"), // when the driver opened this route in the app
+  finishedAt: timestamp("finishedAt"), // when handleFinishRoute reported completion
+  activeSeconds: int("activeSeconds"), // app-computed active time, excludes paused time
+  // App-reported snapshots at finish time — kept for reconciliation/audit only.
+  // The admin view must recompute the authoritative figures from codRecords/
+  // routeOrders (delivered stops only), never trust these as source of truth.
+  codCollectedReported: decimal("codCollectedReported", { precision: 10, scale: 2 }),
+  completedStopsReported: int("completedStopsReported"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
   driverIdIdx: index("driverRoutes_driverId_idx").on(table.driverId),
+  shiftIdIdx: index("driverRoutes_shiftId_idx").on(table.shiftId),
 }));
 
 export type DriverRoute = typeof driverRoutes.$inferSelect;

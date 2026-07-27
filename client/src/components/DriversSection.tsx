@@ -65,6 +65,16 @@ const ZONE_OPTIONS = [
     { value: 'other', label: 'Other' },
 ];
 
+// A pickup stop happens at the shipper (except on returns, where the pickup
+// is at the consignee and the "delivery" leg goes back to the shipper) — so
+// the non-consignee side always corresponds to the shipperLat/shipperLng
+// columns on the order. Shared by the route-detail map and list views so
+// "Ubicar" corrects the same pin the map is actually showing.
+function stopLocationTarget(d: { type?: string; isReturn?: number }): 'delivery' | 'shipper' {
+    const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
+    return consigneeSide ? 'delivery' : 'shipper';
+}
+
 export default function DriversSection() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [routesView, setRoutesView] = useState<'list' | 'map'>('list');
@@ -94,10 +104,13 @@ export default function DriversSection() {
     const [routeFilterDriver, setRouteFilterDriver] = useState('');
     const [deliveryFilterStatus, setDeliveryFilterStatus] = useState('all');
     const [deliveryFilterWaybill, setDeliveryFilterWaybill] = useState('');
+    const [shiftReportDate, setShiftReportDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [dispatchFilters, setDispatchFilters] = useState<DispatchFilterState>({ ...EMPTY_DISPATCH_FILTERS });
 
     // "Ubicar" dialog target (order without / with wrong coordinates)
     const [locateOrder, setLocateOrder] = useState<any | null>(null);
+    // Which pin the dialog is correcting — the consignee (default) or the shipper/pickup address.
+    const [locateTarget, setLocateTarget] = useState<'delivery' | 'shipper'>('delivery');
 
     // Manual stop reordering in route details
     const [reorderMode, setReorderMode] = useState(false);
@@ -130,6 +143,9 @@ export default function DriversSection() {
 
     const { data: reports, isLoading: reportsLoading, refetch: refetchReports } =
         trpc.portal.drivers.getAllReports.useQuery({});
+
+    const { data: shiftReport, isLoading: shiftReportLoading, refetch: refetchShiftReport } =
+        trpc.portal.drivers.getShiftReport.useQuery({ date: shiftReportDate });
 
     const { data: routeDetails, refetch: refetchRouteDetails } = trpc.portal.drivers.getRouteDetails.useQuery(
         { routeId: selectedRouteId || '' },
@@ -389,6 +405,13 @@ export default function DriversSection() {
         );
     };
 
+    const formatActiveTime = (seconds: number | null) => {
+        if (seconds === null || seconds === undefined) return '—';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.round((seconds % 3600) / 60);
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+
     const getSuccessRateColor = (rate: number) => {
         if (rate >= 90) return 'text-[var(--st-green)]';
         if (rate >= 70) return 'text-[var(--st-amber)]';
@@ -398,7 +421,7 @@ export default function DriversSection() {
     return (
         <div className="space-y-4">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-5 h-auto">
+                <TabsList className="grid w-full grid-cols-6 h-auto">
                     <TabsTrigger
                         value="dashboard"
                         className="flex items-center gap-2 py-3"
@@ -416,6 +439,12 @@ export default function DriversSection() {
                         className="flex items-center gap-2 py-3"
                     >
                         <MapPin className="h-4 w-4" /> Routes
+                    </TabsTrigger>
+                    <TabsTrigger
+                        value="shifts"
+                        className="flex items-center gap-2 py-3"
+                    >
+                        <Clock className="h-4 w-4" /> Shifts
                     </TabsTrigger>
                     <TabsTrigger
                         value="deliveries"
@@ -667,7 +696,7 @@ export default function DriversSection() {
                                                         }}
                                                         onEditLocation={(id) => {
                                                             const o = byId.get(id);
-                                                            if (o) setLocateOrder(o);
+                                                            if (o) { setLocateTarget('delivery'); setLocateOrder(o); }
                                                         }}
                                                         className="h-[520px]"
                                                     />
@@ -729,7 +758,7 @@ export default function DriversSection() {
                                                                 variant="outline"
                                                                 size="sm"
                                                                 className="h-7 text-xs w-full mt-1"
-                                                                onClick={() => setLocateOrder(o)}
+                                                                onClick={() => { setLocateTarget('delivery'); setLocateOrder(o); }}
                                                             >
                                                                 <MapPin className="w-3 h-3 mr-1" /> Ubicar
                                                             </Button>
@@ -972,6 +1001,98 @@ export default function DriversSection() {
                             ) : (
                                 <p className="text-center py-8 text-muted-foreground">No routes found</p>
                             )}</>}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Shifts Tab */}
+                <TabsContent value="shifts" className="space-y-4">
+                    <Card className="bg-card border-border">
+                        <CardHeader>
+                            <div className="flex items-center justify-between flex-wrap gap-3">
+                                <div>
+                                    <CardTitle>Shifts</CardTitle>
+                                    <CardDescription>Active time and COD collected per route, grouped by driver shift</CardDescription>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="date"
+                                        value={shiftReportDate}
+                                        onChange={(e) => setShiftReportDate(e.target.value)}
+                                        className="w-auto"
+                                    />
+                                    <Button variant="outline" size="sm" onClick={() => refetchShiftReport()}>
+                                        <RefreshCw className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {shiftReportLoading ? (
+                                <p className="text-center py-8 text-muted-foreground">Loading shifts...</p>
+                            ) : shiftReport && shiftReport.length > 0 ? (
+                                shiftReport.map((group: any) => (
+                                    <div key={`${group.driverId}-${group.shiftId ?? 'unlinked'}`} className="border border-border rounded-lg p-4 space-y-3">
+                                        <div className="flex items-center justify-between flex-wrap gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Users className="h-4 w-4 text-muted-foreground" />
+                                                <span className="font-medium">{group.driverName}</span>
+                                                {group.shiftId ? (
+                                                    <span className="text-sm text-muted-foreground">
+                                                        {new Date(group.shiftStartTime).toLocaleString()}
+                                                        {' → '}
+                                                        {group.shiftEndTime ? new Date(group.shiftEndTime).toLocaleString() : (
+                                                            <span className="badge2 b-blue ml-1">on duty</span>
+                                                        )}
+                                                    </span>
+                                                ) : (
+                                                    <span className="badge2 b-amber">not linked to a reported shift yet</span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-4 text-sm">
+                                                <span className="flex items-center gap-1 text-muted-foreground">
+                                                    <Clock className="h-3.5 w-3.5" /> {formatActiveTime(group.totalActiveSeconds)}
+                                                </span>
+                                                <span className="flex items-center gap-1 font-medium">
+                                                    <DollarSign className="h-3.5 w-3.5" /> {group.totalCodCollected} AED
+                                                </span>
+                                                <span className="text-muted-foreground">{group.totalCompletedStops} stops</span>
+                                            </div>
+                                        </div>
+
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Route ID</TableHead>
+                                                    <TableHead>Zone</TableHead>
+                                                    <TableHead>Status</TableHead>
+                                                    <TableHead>Started</TableHead>
+                                                    <TableHead>Finished</TableHead>
+                                                    <TableHead>Active time</TableHead>
+                                                    <TableHead>Stops</TableHead>
+                                                    <TableHead>COD collected</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {group.routes.map((route: any) => (
+                                                    <TableRow key={route.routeId}>
+                                                        <TableCell className="font-mono text-xs">{route.routeId}</TableCell>
+                                                        <TableCell>{route.zone || '-'}</TableCell>
+                                                        <TableCell>{getStatusBadge(route.status)}</TableCell>
+                                                        <TableCell>{route.startedAt ? new Date(route.startedAt).toLocaleTimeString() : '—'}</TableCell>
+                                                        <TableCell>{route.finishedAt ? new Date(route.finishedAt).toLocaleTimeString() : '—'}</TableCell>
+                                                        <TableCell>{formatActiveTime(route.activeSeconds)}</TableCell>
+                                                        <TableCell>{route.completedStops}</TableCell>
+                                                        <TableCell>{route.codCollected} AED</TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center py-8 text-muted-foreground">No shifts or routes found for this date</p>
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -1344,8 +1465,9 @@ export default function DriversSection() {
             <SetLocationDialog
                 order={locateOrder}
                 open={!!locateOrder}
-                onOpenChange={(open) => { if (!open) setLocateOrder(null); }}
-                onSaved={() => refetchAvailableOrders()}
+                target={locateTarget}
+                onOpenChange={(open) => { if (!open) { setLocateOrder(null); setLocateTarget('delivery'); } }}
+                onSaved={() => { refetchAvailableOrders(); refetchRouteDetails(); }}
             />
 
             {/* QR Code Dialog */}
@@ -1671,7 +1793,7 @@ export default function DriversSection() {
                                 // no need to keep pinning them on the route map. They still show in the list.
                                 .filter((d: any) => d.status !== 'failed')
                                 .map((d: any) => {
-                                    const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
+                                    const consigneeSide = stopLocationTarget(d) === 'delivery';
                                     const lat = consigneeSide ? d.latitude : (d.shipperLat || d.latitude);
                                     const lng = consigneeSide ? d.longitude : (d.shipperLng || d.longitude);
                                     return { ...d, _lat: lat, _lng: lng, _accuracy: consigneeSide ? d.locationAccuracy : null };
@@ -1715,9 +1837,30 @@ export default function DriversSection() {
                                         </div>
                                     ) : (
                                         <>
-                                            <OrdersMap points={mapPoints} showRoute className="h-[360px]" />
+                                            <OrdersMap
+                                                points={mapPoints}
+                                                showRoute
+                                                className="h-[360px]"
+                                                onEditLocation={(stopId) => {
+                                                    const stop = resolved.find((d: any) => d.id === stopId);
+                                                    if (!stop) return;
+                                                    setLocateTarget(stopLocationTarget(stop));
+                                                    setLocateOrder({
+                                                        id: stop.orderId,
+                                                        waybillNumber: stop.waybillNumber,
+                                                        customerName: stop.customerName,
+                                                        address: stop.address,
+                                                        city: stop.city,
+                                                        latitude: stop.latitude,
+                                                        longitude: stop.longitude,
+                                                        locationAccuracy: stop.locationAccuracy,
+                                                        shipperLat: stop.shipperLat,
+                                                        shipperLng: stop.shipperLng,
+                                                    });
+                                                }}
+                                            />
                                             <p className="text-xs text-muted-foreground mt-2 text-center">
-                                                Verde = pickups (en el remitente) · Azul = entregas · Número = secuencia actual
+                                                Verde = pickups (en el remitente) · Azul = entregas · Número = secuencia actual · Pasa el mouse sobre un pin para corregir su ubicación
                                             </p>
                                         </>
                                     )}
@@ -1831,6 +1974,27 @@ export default function DriversSection() {
 
                                                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
                                                         {getStatusBadge(delivery.status)}
+                                                        <button
+                                                            onClick={() => {
+                                                                setLocateTarget(stopLocationTarget(delivery));
+                                                                setLocateOrder({
+                                                                    id: delivery.orderId,
+                                                                    waybillNumber: delivery.waybillNumber,
+                                                                    customerName: delivery.customerName,
+                                                                    address: delivery.address,
+                                                                    city: delivery.city,
+                                                                    latitude: delivery.latitude,
+                                                                    longitude: delivery.longitude,
+                                                                    locationAccuracy: delivery.locationAccuracy,
+                                                                    shipperLat: delivery.shipperLat,
+                                                                    shipperLng: delivery.shipperLng,
+                                                                });
+                                                            }}
+                                                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors"
+                                                        >
+                                                            <MapPin className="w-3 h-3" />
+                                                            Ubicar
+                                                        </button>
                                                         <button
                                                             onClick={() => {
                                                                 if (confirm(`¿Eliminar el paquete ${delivery.waybillNumber} de esta ruta?`)) {

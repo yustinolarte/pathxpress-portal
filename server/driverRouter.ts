@@ -273,16 +273,28 @@ export const driverRouter = router({
     // ============ ORDER LOCATION ============
 
     // Manual pin from the dispatch map / edit dialogs — always 'exact'.
+    // `target: 'shipper'` corrects the pickup-side pin (shipperLat/shipperLng)
+    // instead of the consignee's latitude/longitude — used for pickup stops
+    // and return-delivery stops, which render off the shipper columns.
     setOrderLocation: publicProcedure
         .input(z.object({
             orderId: z.number(),
             latitude: z.string().min(1),
             longitude: z.string().min(1),
             address: z.string().optional(),
+            target: z.enum(['delivery', 'shipper']).optional().default('delivery'),
         }))
         .mutation(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            if (input.target === 'shipper') {
+                const { updateOrderShipperLocation } = await import('./db');
+                const order = await updateOrderShipperLocation(input.orderId, input.latitude, input.longitude);
+                if (!order) {
+                    throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save location' });
+                }
+                return { success: true, latitude: order.shipperLat, longitude: order.shipperLng };
             }
             const { updateOrderLocation } = await import('./db');
             const order = await updateOrderLocation(
@@ -358,5 +370,17 @@ export const driverRouter = router({
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
             return driverAdmin.getDriverPerformance(input.driverId);
+        }),
+
+    // Per-driver, per-shift breakdown of routes worked on a given day: active
+    // time per route (app-reported) and COD collected per route (recomputed
+    // server-side from delivered stops only). date defaults to today.
+    getShiftReport: publicProcedure
+        .input(z.object({ date: z.string().optional() }))
+        .query(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.getDriverShiftReport(input.date);
         }),
 });

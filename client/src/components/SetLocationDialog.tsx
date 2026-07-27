@@ -20,17 +20,21 @@ export interface SetLocationOrder {
     latitude?: string | null;
     longitude?: string | null;
     locationAccuracy?: string | null;
+    shipperLat?: string | null;
+    shipperLng?: string | null;
 }
 
 interface SetLocationDialogProps {
     order: SetLocationOrder | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /** Which pin is being corrected — the consignee (default) or the shipper/pickup address. */
+    target?: 'delivery' | 'shipper';
     /** Called after a successful save so the caller can refetch. */
     onSaved?: () => void;
 }
 
-export default function SetLocationDialog({ order, open, onOpenChange, onSaved }: SetLocationDialogProps) {
+export default function SetLocationDialog({ order, open, onOpenChange, target = 'delivery', onSaved }: SetLocationDialogProps) {
     const [picked, setPicked] = useState<PickedLocation | null>(null);
 
     // Reset the pin state whenever a different order is opened.
@@ -60,9 +64,14 @@ export default function SetLocationDialog({ order, open, onOpenChange, onSaved }
 
     if (!order) return null;
 
-    const initialLocation = order.latitude && order.longitude
-        ? { lat: parseFloat(order.latitude), lng: parseFloat(order.longitude) }
-        : undefined;
+    const isShipper = target === 'shipper';
+    const initialLocation = isShipper
+        ? (order.shipperLat && order.shipperLng
+            ? { lat: parseFloat(order.shipperLat), lng: parseFloat(order.shipperLng) }
+            : undefined)
+        : (order.latitude && order.longitude
+            ? { lat: parseFloat(order.latitude), lng: parseFloat(order.longitude) }
+            : undefined);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,10 +88,12 @@ export default function SetLocationDialog({ order, open, onOpenChange, onSaved }
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-primary" />
-                        Ubicar pedido {order.waybillNumber || `#${order.id}`}
+                        {isShipper ? 'Ubicar recogida (remitente)' : 'Ubicar pedido'} {order.waybillNumber || `#${order.id}`}
                     </DialogTitle>
                     <DialogDescription>
-                        Busca la dirección o coloca el pin en el mapa. La ubicación guardada se marca como exacta.
+                        {isShipper
+                            ? 'Corrige el pin del remitente/recogida. No afecta la ubicación de entrega del cliente.'
+                            : 'Busca la dirección o coloca el pin en el mapa. La ubicación guardada se marca como exacta.'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -100,7 +111,7 @@ export default function SetLocationDialog({ order, open, onOpenChange, onSaved }
                 />
 
                 <DialogFooter className="gap-2 sm:gap-0">
-                    {geoCaps?.locationBot && (
+                    {!isShipper && geoCaps?.locationBot && (
                         <Button
                             type="button"
                             variant="outline"
@@ -122,6 +133,7 @@ export default function SetLocationDialog({ order, open, onOpenChange, onSaved }
                             orderId: order.id,
                             latitude: picked.latitude,
                             longitude: picked.longitude,
+                            target,
                         })}
                     >
                         {setLocationMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

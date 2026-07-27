@@ -4,9 +4,9 @@
  */
 import bcrypt from 'bcryptjs';
 import { customAlphabet } from 'nanoid';
-import { eq, and, desc, sql, gte, notInArray, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, lt, notInArray, inArray } from 'drizzle-orm';
 import { getDb } from './db';
-import { drivers, driverRoutes, routeOrders, orders, driverReports, clientAccounts } from '../drizzle/schema';
+import { drivers, driverRoutes, driverShifts, routeOrders, orders, driverReports, clientAccounts } from '../drizzle/schema';
 import { optimizeStops } from './routeOptimizer';
 import type { OptimizableStop, LatLng } from './routeOptimizer';
 import { cachedQuery } from './_core/queryCache';
@@ -938,4 +938,183 @@ export async function getAvailableOrders() {
         ...o,
         companyName: clientMap[o.clientId] || 'Unknown',
     }));
+}
+
+// ============ SHIFT / ROUTE TIME & COD REPORT ============
+
+// Stops the driver has finished handling, regardless of outcome — used for
+// the "completed stops" count. 'on_hold' is excluded: the driver postponed
+// it, it isn't done.
+const FINISHED_STOP_STATUSES = ['picked_up', 'delivered', 'attempted', 'returned', 'failed'];
+
+export interface DriverShiftReportRoute {
+    routeId: string;
+    zone: string | null;
+    status: string;
+    startedAt: Date | null;
+    finishedAt: Date | null;
+    activeSeconds: number | null;
+    completedStops: number;
+    codCollected: number;
+}
+
+export interface DriverShiftReportGroup {
+    driverId: number;
+    driverName: string;
+    shiftId: number | null; // null = these routes aren't linked to a reported shift yet (still in progress)
+    shiftStartTime: Date | null;
+    shiftEndTime: Date | null;
+    routes: DriverShiftReportRoute[];
+    totalActiveSeconds: number;
+    totalCodCollected: number;
+    totalCompletedStops: number;
+}
+
+/**
+ * Per-driver, per-shift breakdown of routes worked on a given calendar day:
+ * active time per route (as reported by the app via /driver/shifts/route-report)
+ * and COD actually collected per route, recomputed server-side from
+ * routeOrders.collectedAmount for delivered stops only — never trusts the
+ * app-reported codCollectedReported snapshot as the authoritative figure,
+ * same reasoning as the wallet/summary and stops/:id/status guards.
+ *
+ * Routes still in progress won't have a shiftId yet (that link is only set
+ * when the app reports the route finished) — those are grouped under a
+ * shiftId: null bucket per driver so they still show up instead of vanishing
+ * from the view until the driver finishes the route.
+ */
+export async function getDriverShiftReport(dateStr?: string): Promise<DriverShiftReportGroup[]> {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const dayStart = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    const [dayRoutes, dayShifts] = await Promise.all([
+        db.select().from(driverRoutes).where(and(
+            gte(driverRoutes.date, dayStart),
+            lt(driverRoutes.date, dayEnd),
+        )),
+        // Overlapping the day: started before day's end, and either still open or closed after day's start.
+        db.select().from(driverShifts).where(and(
+            lt(driverShifts.startTime, dayEnd),
+            sql`(${driverShifts.endTime} IS NULL OR ${driverShifts.endTime} >= ${dayStart})`,
+        )),
+    ]);
+
+    if (dayRoutes.length === 0 && dayShifts.length === 0) return [];
+
+    const driverIds = Array.from(new Set([
+        ...dayRoutes.map(r => r.driverId).filter((id): id is number => id !== null),
+        ...dayShifts.map(s => s.driverId),
+    ]));
+    const driversMap = new Map<number, string>();
+    if (driverIds.length > 0) {
+        const driverRows = await db.select({ id: drivers.id, fullName: drivers.fullName })
+            .from(drivers).where(inArray(drivers.id, driverIds));
+        for (const d of driverRows) driversMap.set(d.id, d.fullName);
+    }
+
+    const routeIds = dayRoutes.map(r => r.id);
+    const routeStops = routeIds.length > 0
+        ? await db.select({
+            routeId: routeOrders.routeId,
+            type: routeOrders.type,
+            status: routeOrders.status,
+            collectedAmount: routeOrders.collectedAmount,
+            orderId: routeOrders.orderId,
+        }).from(routeOrders).where(inArray(routeOrders.routeId, routeIds))
+        : [];
+
+    const stopOrderIds = Array.from(new Set(routeStops.map(s => s.orderId)));
+    const codRequiredByOrder = new Map<number, boolean>();
+    if (stopOrderIds.length > 0) {
+        const orderRows = await db.select({ id: orders.id, codRequired: orders.codRequired })
+            .from(orders).where(inArray(orders.id, stopOrderIds));
+        for (const o of orderRows) codRequiredByOrder.set(o.id, o.codRequired === 1);
+    }
+
+    const stopsByRoute = new Map<string, typeof routeStops>();
+    for (const s of routeStops) {
+        if (!stopsByRoute.has(s.routeId)) stopsByRoute.set(s.routeId, []);
+        stopsByRoute.get(s.routeId)!.push(s);
+    }
+
+    const routeReportById = new Map<string, DriverShiftReportRoute>();
+    for (const route of dayRoutes) {
+        const stops = stopsByRoute.get(route.id) || [];
+        const completedStops = stops.filter(s => FINISHED_STOP_STATUSES.includes(s.status)).length;
+        const codCollected = stops
+            .filter(s => s.type === 'delivery' && s.status === 'delivered' && codRequiredByOrder.get(s.orderId))
+            .reduce((sum, s) => sum + (s.collectedAmount ? parseFloat(s.collectedAmount) : 0), 0);
+
+        routeReportById.set(route.id, {
+            routeId: route.id,
+            zone: route.zone,
+            status: route.status,
+            startedAt: route.startedAt,
+            finishedAt: route.finishedAt,
+            activeSeconds: route.activeSeconds,
+            completedStops,
+            codCollected: Math.round(codCollected * 100) / 100,
+        });
+    }
+
+    // Group: key = `${driverId}:${shiftId ?? 'unlinked'}`
+    const groups = new Map<string, DriverShiftReportGroup>();
+
+    const getGroup = (driverId: number, shiftId: number | null, shiftStartTime: Date | null, shiftEndTime: Date | null) => {
+        const key = `${driverId}:${shiftId ?? 'unlinked'}`;
+        let group = groups.get(key);
+        if (!group) {
+            group = {
+                driverId,
+                driverName: driversMap.get(driverId) || 'Unknown',
+                shiftId,
+                shiftStartTime,
+                shiftEndTime,
+                routes: [],
+                totalActiveSeconds: 0,
+                totalCodCollected: 0,
+                totalCompletedStops: 0,
+            };
+            groups.set(key, group);
+        }
+        return group;
+    };
+
+    // Seed a group per shift so shifts with no routes yet still show up.
+    for (const shift of dayShifts) {
+        getGroup(shift.driverId, shift.id, shift.startTime, shift.endTime);
+    }
+
+    for (const route of dayRoutes) {
+        if (route.driverId === null) continue; // unassigned route — nothing to attribute it to
+        const shift = route.shiftId !== null ? dayShifts.find(s => s.id === route.shiftId) : undefined;
+        const group = getGroup(
+            route.driverId,
+            route.shiftId ?? null,
+            shift?.startTime ?? null,
+            shift?.endTime ?? null,
+        );
+        const report = routeReportById.get(route.id)!;
+        group.routes.push(report);
+        group.totalActiveSeconds += report.activeSeconds || 0;
+        group.totalCodCollected += report.codCollected;
+        group.totalCompletedStops += report.completedStops;
+    }
+
+    const allGroups = Array.from(groups.values());
+    for (const group of allGroups) {
+        group.totalCodCollected = Math.round(group.totalCodCollected * 100) / 100;
+    }
+
+    return allGroups.sort((a, b) => {
+        if (a.driverName !== b.driverName) return a.driverName.localeCompare(b.driverName);
+        const aTime = a.shiftStartTime?.getTime() ?? 0;
+        const bTime = b.shiftStartTime?.getTime() ?? 0;
+        return bTime - aTime;
+    });
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, Fragment } from 'react';
+import { useState, useMemo, useEffect, Fragment } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +42,7 @@ export default function CODPanel() {
   const [selectedRemittanceId, setSelectedRemittanceId] = useState<number | null>(null);
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
   const [selectedCODRecords, setSelectedCODRecords] = useState<number[]>([]);
+  const [preselectAllOnLoad, setPreselectAllOnLoad] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
   const [notes, setNotes] = useState('');
@@ -114,6 +115,16 @@ export default function CODPanel() {
     { clientId: selectedClient || 0 },
     { enabled: !!selectedClient }
   );
+
+  // When opened from a "Ready to Remit" row, pre-check every eligible shipment
+  // once it loads — the admin reviews the pre-filled list and can uncheck one
+  // instead of building the selection from scratch.
+  useEffect(() => {
+    if (preselectAllOnLoad && eligibleCOD) {
+      setSelectedCODRecords(eligibleCOD.map(r => r.id));
+      setPreselectAllOnLoad(false);
+    }
+  }, [preselectAllOnLoad, eligibleCOD]);
 
   // Calculate today's collected amount
   const today = new Date();
@@ -279,6 +290,7 @@ export default function CODPanel() {
       setCreateDialogOpen(false);
       setSelectedClient(null);
       setSelectedCODRecords([]);
+      setPreselectAllOnLoad(false);
       setPaymentMethod('');
       setPaymentReference('');
       setNotes('');
@@ -332,10 +344,15 @@ export default function CODPanel() {
     });
   };
 
-  // One-click confirm from the "Ready to Remit" list — no manual selection,
-  // the server resolves everything past cutoff for this client.
-  const handleQuickCreateRemittance = (clientId: number) => {
-    createRemittanceMutation.mutate({ clientId });
+  // From a "Ready to Remit" row: open the same dialog used for manual/override
+  // remittances, pre-filled with this client and every eligible shipment
+  // already checked — reviewable and editable before confirming, in case one
+  // needs to be excluded (a dispute, a miscollected COD, etc.).
+  const handleReviewRemittance = (clientId: number) => {
+    setSelectedClient(clientId);
+    setSelectedCODRecords([]);
+    setPreselectAllOnLoad(true);
+    setCreateDialogOpen(true);
   };
 
   const handleCreateAll = async () => {
@@ -670,10 +687,10 @@ export default function CODPanel() {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => handleQuickCreateRemittance(c.clientId)}
-                            disabled={isCreatingAll || createRemittanceMutation.isPending}
+                            onClick={() => handleReviewRemittance(c.clientId)}
+                            disabled={isCreatingAll}
                           >
-                            Create Remittance
+                            Review &amp; Create
                           </Button>
                         </div>
                       </TableCell>
@@ -787,7 +804,7 @@ export default function CODPanel() {
             <CardTitle>COD Remittances</CardTitle>
             <CardDescription>All remittance batches. Use "Ready to Remit" above for the normal weekly flow — this manual form is for overrides.</CardDescription>
           </div>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) setPreselectAllOnLoad(false); }}>
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Plus className="w-4 h-4 mr-2" />
@@ -815,6 +832,7 @@ export default function CODPanel() {
                     <Select value={selectedClient?.toString() || ''} onValueChange={(value) => {
                       setSelectedClient(parseInt(value));
                       setSelectedCODRecords([]);
+                      setPreselectAllOnLoad(false);
                     }}>
                       <SelectTrigger id="client" className="bg-white/5 border-border">
                         <SelectValue placeholder="Select a client" />
@@ -910,7 +928,7 @@ export default function CODPanel() {
                       </div>
 
                       <div className="flex justify-end gap-2 pt-4 border-t border-border">
-                        <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => { setCreateDialogOpen(false); setPreselectAllOnLoad(false); }}>
                           Cancel
                         </Button>
                         <Button

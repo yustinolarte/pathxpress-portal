@@ -794,8 +794,10 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
             proofPhotoUrl2: photoUrl2,
         };
 
-        // Save collected amount if provided
-        if (collectedAmount) {
+        // Save collected amount only for delivered stops — a stale/incorrect value
+        // sent by an old app build (or a direct API call) for an attempted/failed/
+        // returned stop must never persist as if it were actually collected.
+        if (collectedAmount && statusLower === 'delivered') {
             updateData.collectedAmount = collectedAmount.toString();
         }
 
@@ -1255,6 +1257,74 @@ router.get('/shifts/status', driverAuthMiddleware, async (req: DriverRequest, re
     }
 });
 
+// Called by the app in handleFinishRoute. Persists per-route timing on
+// driverRoutes and links it to whichever shift is currently open for this
+// driver — a shift can span multiple routes, so the link lives on the route,
+// not the other way around. codCollected/completedStops are stored as
+// "*Reported" snapshots only; the admin view recomputes the authoritative
+// figures from codRecords/routeOrders (delivered stops only) rather than
+// trusting client-side math, same principle as the wallet/summary and
+// stops/:id/status guards above.
+router.post('/shifts/route-report', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { routeId, clockIn, clockOut, activeSeconds, codCollected, completedStops } = req.body as {
+            routeId?: string;
+            clockIn?: string;
+            clockOut?: string;
+            activeSeconds?: number;
+            codCollected?: number;
+            completedStops?: number;
+        };
+
+        if (!routeId) {
+            return res.status(400).json({ error: 'routeId is required' });
+        }
+
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
+        if (!route) {
+            return res.status(404).json({ error: 'Route not found' });
+        }
+        if (route.driverId !== null && route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const [openShift] = await db
+            .select()
+            .from(driverShifts)
+            .where(and(
+                eq(driverShifts.driverId, req.driverId!),
+                eq(driverShifts.endTime, null as unknown as Date)
+            ))
+            .limit(1);
+
+        const updateData: Record<string, unknown> = {};
+        if (openShift) updateData.shiftId = openShift.id;
+        if (clockIn) updateData.startedAt = new Date(clockIn);
+        if (clockOut) updateData.finishedAt = new Date(clockOut);
+        if (typeof activeSeconds === 'number' && Number.isFinite(activeSeconds)) {
+            updateData.activeSeconds = Math.max(0, Math.round(activeSeconds));
+        }
+        if (typeof codCollected === 'number' && Number.isFinite(codCollected)) {
+            updateData.codCollectedReported = codCollected.toFixed(2);
+        }
+        if (typeof completedStops === 'number' && Number.isFinite(completedStops)) {
+            updateData.completedStopsReported = Math.max(0, Math.round(completedStops));
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            await db.update(driverRoutes).set(updateData).where(eq(driverRoutes.id, routeId));
+        }
+
+        res.json({ message: 'Route report saved' });
+    } catch (error) {
+        console.error('Route report error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ============ PICKUPS ============
 
 // Scan and mark a waybill as picked up (direct flow - no assignment required)
@@ -1462,7 +1532,10 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
                 waybillNumber: s.order.waybillNumber,
                 customerName: s.order.customerName,
                 expectedAmount: expected,
-                collectedAmount: collected,
+                // Never report a collected amount for a non-delivered stop, even if
+                // routeOrders.collectedAmount has a stale/leftover value — mirrors the
+                // isDelivered gate already applied to the totals above.
+                collectedAmount: isDelivered ? collected : 0,
                 paymentMethod,
                 paymentReference: codRecord?.paymentReference || null,
                 status: status, // delivered, returned, etc.

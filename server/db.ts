@@ -982,6 +982,24 @@ export async function updateOrderLocation(
   }
 }
 
+/** Corrects the shipper (pickup) pin — separate columns from the consignee location above. */
+export async function updateOrderShipperLocation(
+  id: number,
+  latitude: string,
+  longitude: string,
+): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    await db.update(orders).set({ shipperLat: latitude, shipperLng: longitude }).where(eq(orders.id, id));
+    return await getOrderById(id);
+  } catch (error) {
+    console.error("[Database] Failed to update order shipper location:", error);
+    return null;
+  }
+}
+
 export async function updateOrderStatus(id: number, status: string): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
