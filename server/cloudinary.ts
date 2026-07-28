@@ -47,6 +47,9 @@ export async function uploadImageToCloudinary(
         const result: CloudinaryUploadResult = await cloudinary.uploader.upload(imageData, {
             folder,
             resource_type: 'image',
+            // Cap the stored asset and let Cloudinary pick the lightest quality/format.
+            // POD photos are already ~1280px from the client; anything larger is waste.
+            transformation: [{ width: 1600, crop: 'limit', quality: 'auto', fetch_format: 'auto' }],
         });
 
         return result.secure_url;

@@ -55,6 +55,32 @@ export function extractDeliveryPhotoBase64s(body: unknown): string[] {
   return photos.slice(0, 2);
 }
 
+/**
+ * Photos the client already uploaded to Cloudinary itself, passed as URLs.
+ * When present these are used directly (no server-side upload), which keeps the
+ * status request tiny and fast. Same slot rule as the base64 path: a delivery
+ * photo keeps slot 1, the signature takes slot 2.
+ */
+export function extractDeliveryPhotoUrls(body: unknown): string[] {
+  if (!body || typeof body !== "object") return [];
+
+  const payload = body as PhotoRecord;
+  const urls: string[] = [];
+
+  const push = (value: unknown) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (/^https?:\/\//i.test(trimmed) && !urls.includes(trimmed)) urls.push(trimmed);
+      return;
+    }
+    if (Array.isArray(value)) value.forEach(push);
+  };
+
+  [payload.photoUrl, payload.photoUrls, payload.signatureUrl].forEach(push);
+
+  return urls.slice(0, 2);
+}
+
 export function getPodPhotoUrls(event: {
   podFileUrl?: string | null;
   podFileUrl2?: string | null;

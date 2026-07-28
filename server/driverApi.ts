@@ -9,25 +9,50 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { getDb, calculateCODFeeByMethod } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
-import { extractDeliveryPhotoBase64s, getProofPhotoUrls } from '../shared/podPhotos';
+import { extractDeliveryPhotoBase64s, extractDeliveryPhotoUrls, getProofPhotoUrls } from '../shared/podPhotos';
 
 const router = Router();
+
+// Order statuses that are still BEFORE "out for delivery". Auto-OFD on route start/re-scan
+// only applies to these, so it never reverts a delivered order or duplicates an OFD event.
+const PRE_OUT_FOR_DELIVERY_STATUSES = ['pending_pickup', 'picked_up', 'in_transit'];
 
 async function resolveDeliveryPhotoUrls(
     body: unknown,
     currentPhotoUrl: string | null,
     currentPhotoUrl2: string | null,
 ): Promise<[string | null, string | null]> {
-    const photoPayloads = extractDeliveryPhotoBase64s(body);
     const photoUrls: [string | null, string | null] = [currentPhotoUrl, currentPhotoUrl2];
 
-    for (let index = 0; index < photoPayloads.length; index += 1) {
-        try {
-            photoUrls[index] = await uploadImageToCloudinary(photoPayloads[index], 'pathxpress/deliveries');
-        } catch (error) {
-            console.error(`Error uploading delivery photo ${index + 1} to Cloudinary:`, error);
-        }
+    // Fast path: the client already uploaded the images and sent us URLs. Use them
+    // directly — no Cloudinary round-trip, so the status request stays tiny.
+    const preUploaded = extractDeliveryPhotoUrls(body);
+    if (preUploaded.length > 0) {
+        preUploaded.forEach((url, index) => { photoUrls[index] = url; });
+        return photoUrls;
     }
+
+    // Fallback (offline-queue replay / legacy clients): images arrive as base64 and
+    // we upload them here.
+    const photoPayloads = extractDeliveryPhotoBase64s(body);
+
+    // Upload the photo and signature in parallel — they're independent, so serial
+    // awaits just added the two Cloudinary round-trips together for no reason.
+    const uploaded = await Promise.all(
+        photoPayloads.map(async (payload, index) => {
+            try {
+                return await uploadImageToCloudinary(payload, 'pathxpress/deliveries');
+            } catch (error) {
+                console.error(`Error uploading delivery photo ${index + 1} to Cloudinary:`, error);
+                return null;
+            }
+        }),
+    );
+
+    uploaded.forEach((url, index) => {
+        // Keep the existing URL if this upload failed, rather than wiping it to null.
+        if (url) photoUrls[index] = url;
+    });
 
     return photoUrls;
 }
@@ -309,6 +334,10 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
 
+                // Fit on Delivery (FOD) — customer gets ~20 min to try the item on at
+                // the door and can return it on the spot if it doesn't fit.
+                fitOnDelivery: item.order.fitOnDelivery === 1,
+
                 // Return/exchange linkage — an exchange is two orders pointing at each
                 // other via exchangeOrderId, both pointing at the original via originalOrderId
                 orderType: item.order.orderType,
@@ -422,23 +451,32 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             if (item.routeOrder.type === 'delivery') entry.hasDelivery = true;
         });
 
-        // For delivery-only orders, update order status to out_for_delivery and log tracking event
+        // For delivery-only orders, update order status to out_for_delivery and log tracking event.
+        // Only transition orders that are still BEFORE out-for-delivery. This prevents a re-scan
+        // of the same route from reviving already-delivered orders back to out_for_delivery, and
+        // avoids inserting a duplicate out_for_delivery event when it's already out for delivery.
         for (const [orderId, stopInfo] of Array.from(orderStopTypeMap.entries())) {
             if (!stopInfo.hasPickup && stopInfo.hasDelivery) {
-                await db
+                const updated = await db
                     .update(orders)
                     .set({ status: 'out_for_delivery', lastStatusUpdate: new Date() })
-                    .where(eq(orders.id, orderId));
+                    .where(and(
+                        eq(orders.id, orderId),
+                        inArray(orders.status, PRE_OUT_FOR_DELIVERY_STATUSES)
+                    ));
 
-                await db.insert(trackingEvents).values({
-                    shipmentId: orderId,
-                    eventDatetime: new Date(),
-                    location: 'Driver Route',
-                    statusCode: 'out_for_delivery',
-                    statusLabel: 'Out for Delivery',
-                    description: 'Package is out for delivery with driver',
-                    createdBy: 'driver',
-                });
+                // Only log the tracking event if the status actually changed to out_for_delivery.
+                if ((updated as any)?.[0]?.affectedRows > 0) {
+                    await db.insert(trackingEvents).values({
+                        shipmentId: orderId,
+                        eventDatetime: new Date(),
+                        location: 'Driver Route',
+                        statusCode: 'out_for_delivery',
+                        statusLabel: 'Out for Delivery',
+                        description: 'Package is out for delivery with driver',
+                        createdBy: 'driver',
+                    });
+                }
             }
         }
 
@@ -510,6 +548,7 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 codRequired: item.order.codRequired === 1,
                 codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
                 codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
+                fitOnDelivery: item.order.fitOnDelivery === 1,
                 orderType: item.order.orderType,
                 isReturn: item.order.isReturn,
                 originalOrderId: item.order.originalOrderId,
@@ -596,29 +635,36 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
                 if (stop.routeOrders.type === 'delivery') entry.hasDelivery = true;
             });
 
-            // Mark delivery-only orders as out_for_delivery
+            // Mark delivery-only orders as out_for_delivery.
+            // Only transition orders that are still BEFORE out-for-delivery, so re-scanning a route
+            // never reverts an already-delivered order and never logs a duplicate out_for_delivery event.
             const entries = Array.from(orderStops.entries());
             for (const [orderId, stops] of entries) {
                 if (!stops.hasPickup && stops.hasDelivery) {
                     // This order only has delivery stop - mark as out_for_delivery
-                    await db
+                    const updated = await db
                         .update(orders)
                         .set({
                             status: 'out_for_delivery',
                             lastStatusUpdate: new Date()
                         })
-                        .where(eq(orders.id, orderId));
+                        .where(and(
+                            eq(orders.id, orderId),
+                            inArray(orders.status, PRE_OUT_FOR_DELIVERY_STATUSES)
+                        ));
 
-                    // Create tracking event
-                    await db.insert(trackingEvents).values({
-                        shipmentId: orderId,
-                        eventDatetime: new Date(),
-                        location: 'Driver Route',
-                        statusCode: 'out_for_delivery',
-                        statusLabel: 'Out for Delivery',
-                        description: 'Package is out for delivery',
-                        createdBy: 'driver',
-                    });
+                    // Create tracking event only if the status actually changed
+                    if ((updated as any)?.[0]?.affectedRows > 0) {
+                        await db.insert(trackingEvents).values({
+                            shipmentId: orderId,
+                            eventDatetime: new Date(),
+                            location: 'Driver Route',
+                            statusCode: 'out_for_delivery',
+                            statusLabel: 'Out for Delivery',
+                            description: 'Package is out for delivery',
+                            createdBy: 'driver',
+                        });
+                    }
                 }
             }
         }
@@ -718,6 +764,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
             address: order.address,
             codAmount: order.codRequired === 1 && order.codAmount ? parseFloat(order.codAmount) : 0,
             codPaymentMethod: order.codRequired === 1 ? (order.codPaymentMethod || 'cash') : null,
+            fitOnDelivery: order.fitOnDelivery === 1,
             type: order.codRequired === 1 ? 'COD' : 'PREPAID',
             weight: order.weight,
             routeId: routeId
@@ -725,6 +772,24 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
     } catch (error) {
         console.error('Lookup stop error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Dedicated POD image upload. The app uploads each photo/signature here (ideally
+// in the background right after capture) and gets back a Cloudinary URL, so the
+// status update below carries only URLs and never a multi-MB base64 body.
+router.post('/pod/upload', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const { imageBase64 } = req.body || {};
+        if (typeof imageBase64 !== 'string' || !imageBase64.trim()) {
+            return res.status(400).json({ error: 'imageBase64 is required' });
+        }
+        const url = await uploadImageToCloudinary(imageBase64, 'pathxpress/deliveries');
+        if (!url) return res.status(502).json({ error: 'Upload failed' });
+        return res.json({ url });
+    } catch (error) {
+        console.error('POD upload error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 });
 
