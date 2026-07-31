@@ -42,6 +42,10 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         codCurrency: 'AED',
     });
 
+    // Service for the return leg — always chosen here, never inherited from the
+    // original order (that used to drag along its stale Preferred Time window).
+    const [returnService, setReturnService] = useState({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
+
     // Form for new exchange shipment
     const [exchangeForm, setExchangeForm] = useState({
         customerName: '',
@@ -54,6 +58,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         weight: '',
         serviceType: 'DOM',
         specialInstructions: '',
+        preferredDate: '',
+        preferredTime: '',
         codRequired: 0,
         codAmount: '',
         codCurrency: 'AED',
@@ -137,6 +143,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             setCreateDialogOpen(false);
             setFoundOrder(null);
             setSearchWaybill('');
+            setReturnService({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
             refetch();
         },
         onError: (error) => {
@@ -152,6 +159,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             setFoundOrder(null);
             setSearchWaybill('');
             setPickedLocationExchange(null);
+            setReturnService({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
             setExchangeForm({
                 customerName: '',
                 customerPhonePrefix: '+971',
@@ -163,6 +171,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                 weight: '',
                 serviceType: 'DOM',
                 specialInstructions: '',
+                preferredDate: '',
+                preferredTime: '',
                 codRequired: 0,
                 codAmount: '',
                 codCurrency: 'AED',
@@ -264,10 +274,28 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         searchOrderMutation.mutate({ waybillNumber: searchWaybill.trim() });
     };
 
+    // Service picked for the return leg, validated + stripped of the Preferred
+    // Time window when the chosen service doesn't use one.
+    const buildReturnServicePayload = () => {
+        const isPreferred = isPreferredTimeService(returnService.serviceType);
+        if (isPreferred && (!returnService.preferredDate || !returnService.preferredTime)) {
+            toast.error('Please select a preferred pickup date and time window for the return');
+            return null;
+        }
+        return {
+            serviceType: returnService.serviceType,
+            preferredDeliveryDate: isPreferred ? returnService.preferredDate : undefined,
+            preferredDeliveryTime: isPreferred ? returnService.preferredTime : undefined,
+        };
+    };
+
     const handleCreateReturn = () => {
         if (!foundOrder) return;
+        const returnServicePayload = buildReturnServicePayload();
+        if (!returnServicePayload) return;
         createReturnMutation.mutate({
             orderId: foundOrder.id,
+            ...returnServicePayload,
         });
     };
 
@@ -275,6 +303,13 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         if (!foundOrder) return;
         if (!exchangeForm.customerName || !exchangeForm.customerPhone || !exchangeForm.address || !exchangeForm.city) {
             toast.error('Please fill in all required fields for the new shipment');
+            return;
+        }
+        const returnServicePayload = buildReturnServicePayload();
+        if (!returnServicePayload) return;
+        const exchangeIsPreferred = isPreferredTimeService(exchangeForm.serviceType);
+        if (exchangeIsPreferred && (!exchangeForm.preferredDate || !exchangeForm.preferredTime)) {
+            toast.error('Please select a preferred delivery date and time window for the new shipment');
             return;
         }
         if (!pickedLocationExchange) {
@@ -285,10 +320,13 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
         setExchangeLocationError(false);
         createExchangeMutation.mutate({
             orderId: foundOrder.id,
+            ...returnServicePayload,
             newShipment: {
                 ...exchangeForm,
                 customerPhone: `${exchangeForm.customerPhonePrefix} ${exchangeForm.customerPhone}`,
                 weight: parseFloat(exchangeForm.weight) || 0.5,
+                preferredDeliveryDate: exchangeIsPreferred ? exchangeForm.preferredDate : undefined,
+                preferredDeliveryTime: exchangeIsPreferred ? exchangeForm.preferredTime : undefined,
                 codRequired: exchangeForm.codRequired,
                 codAmount: exchangeForm.codRequired ? exchangeForm.codAmount : undefined,
                 codCurrency: exchangeForm.codCurrency,
@@ -461,6 +499,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                 <Button
                                     onClick={() => {
                                         setCreateType('return');
+                                        setReturnService({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
                                         setCreateDialogOpen(true);
                                     }}
                                     className="rounded-xl h-12 px-6 flex-1 shadow-sm"
@@ -471,6 +510,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                 <Button
                                     onClick={() => {
                                         setCreateType('exchange');
+                                        setReturnService({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
                                         setCreateDialogOpen(true);
                                     }}
                                     variant="outline"
@@ -717,6 +757,59 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         </div>
                                     </section>
 
+                                    {/* Service for the return leg */}
+                                    <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                        <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                            <span className="material-symbols-outlined text-primary">local_shipping</span>
+                                            <h2 className="font-bold">Return Service</h2>
+                                        </div>
+                                        <div className="p-6 space-y-4">
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service Type</Label>
+                                                <select
+                                                    value={returnService.serviceType}
+                                                    onChange={(e) => setReturnService({ ...returnService, serviceType: e.target.value, preferredDate: '', preferredTime: '' })}
+                                                    className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                >
+                                                    {DOMESTIC_SERVICE_TYPES.map((svc) => (
+                                                        <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-[11px] text-muted-foreground">
+                                                    The return is booked as a new shipment — it does not reuse the service of {foundOrder.waybillNumber}.
+                                                </p>
+                                            </div>
+                                            {isPreferredTimeService(returnService.serviceType) && (
+                                                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Pickup Date</Label>
+                                                        <Input
+                                                            type="date"
+                                                            min={isSameDayPreferredService(returnService.serviceType) ? todayStr() : tomorrowStr()}
+                                                            max={isSameDayPreferredService(returnService.serviceType) ? todayStr() : undefined}
+                                                            value={returnService.preferredDate}
+                                                            onChange={(e) => setReturnService({ ...returnService, preferredDate: e.target.value })}
+                                                            className="bg-background border-border"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Time Window</Label>
+                                                        <select
+                                                            value={returnService.preferredTime}
+                                                            onChange={(e) => setReturnService({ ...returnService, preferredTime: e.target.value })}
+                                                            className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                        >
+                                                            <option value="">Select time window</option>
+                                                            {DEFAULT_PREFERRED_SLOTS.map((slot) => (
+                                                                <option key={slot} value={slot}>{slot}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </section>
+
                                     {/* Exchange New Shipment Form */}
                                     {createType === 'exchange' && (
                                         <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
@@ -789,6 +882,46 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                         />
                                                     </div>
                                                 </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Service Type</Label>
+                                                    <select
+                                                        value={exchangeForm.serviceType}
+                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, serviceType: e.target.value, preferredDate: '', preferredTime: '' })}
+                                                        className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                    >
+                                                        {DOMESTIC_SERVICE_TYPES.map((svc) => (
+                                                            <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                {isPreferredTimeService(exchangeForm.serviceType) && (
+                                                    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-xs font-bold text-muted-foreground uppercase">Delivery Date</Label>
+                                                            <Input
+                                                                type="date"
+                                                                min={isSameDayPreferredService(exchangeForm.serviceType) ? todayStr() : tomorrowStr()}
+                                                                max={isSameDayPreferredService(exchangeForm.serviceType) ? todayStr() : undefined}
+                                                                value={exchangeForm.preferredDate}
+                                                                onChange={(e) => setExchangeForm({ ...exchangeForm, preferredDate: e.target.value })}
+                                                                className="bg-background border-border"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <Label className="text-xs font-bold text-muted-foreground uppercase">Time Window</Label>
+                                                            <select
+                                                                value={exchangeForm.preferredTime}
+                                                                onChange={(e) => setExchangeForm({ ...exchangeForm, preferredTime: e.target.value })}
+                                                                className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                            >
+                                                                <option value="">Select time window</option>
+                                                                {DEFAULT_PREFERRED_SLOTS.map((slot) => (
+                                                                    <option key={slot} value={slot}>{slot}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {/* Location Picker for Exchange */}
                                                 <div className={`pt-2 border-t mt-4 ${exchangeLocationError ? 'border-destructive' : 'border-border'}`}>

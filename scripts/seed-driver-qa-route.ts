@@ -21,7 +21,7 @@ const db = drizzle(process.env.DATABASE_URL!);
 const CLIENT_ID = 28;
 const DRIVER_ID = 4; // Juan andres
 const ROUTE_ID = 'DXB-2026-QATEST';
-const ROUTE_DATE = new Date('2026-07-27T00:00:00+04:00');
+const ROUTE_DATE = new Date('2026-07-28T00:00:00+04:00');
 
 const WAREHOUSE = {
   name: 'PathXpress QA Warehouse',
@@ -183,7 +183,7 @@ async function main() {
     label: 'TEST12-PREFERRED-TIME', customerName: 'QA12 Discovery Gardens (Preferred Time 18:00)', customerPhone: '+971555000012',
     address: 'Discovery Gardens, Street 12, Villa 3', city: 'Dubai', emirate: 'Dubai',
     lat: '25.0430', lng: '55.1420',
-    serviceType: 'PREFERRED_TIME', preferredDeliveryDate: '2026-07-27', preferredDeliveryTime: '18:00',
+    serviceType: 'PREFERRED_TIME', preferredDeliveryDate: '2026-07-28', preferredDeliveryTime: '18:00',
   }));
   created.push({ key: '12', label: 'Preferred Time Delivery — window 18:00', ...o12, mode: 'both' });
 

@@ -79,6 +79,49 @@ const orderListInput = z.object({
   sort: z.enum(['newest', 'oldest']).optional(),
 }).optional();
 
+// Preferred Time services are booked against a delivery window (date + slot).
+// Mirrors isPreferredTimeService in client/src/const.ts.
+function isPreferredTimeService(code?: string | null): boolean {
+  return code === 'PREFERRED_TIME' || code === 'PREFERRED_TIME_SDD';
+}
+
+// Service selection for a return/exchange leg. Returns/exchanges are booked as
+// a NEW shipment, so the service is always chosen at creation time instead of
+// being inherited from the original order (which used to drag along stale
+// Preferred Time windows).
+const serviceSelectionSchema = {
+  serviceType: z.string().min(1).default('DOM'),
+  preferredDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  preferredDeliveryTime: z.string().optional(),
+};
+
+interface ServiceSelection {
+  serviceType?: string;
+  preferredDeliveryDate?: string | null;
+  preferredDeliveryTime?: string | null;
+}
+
+/**
+ * Normalizes the service picked for a return/exchange leg: defaults to DOM and
+ * only keeps the Preferred Time window when the chosen service actually needs
+ * one, so a non-scheduled service can never carry a leftover date/slot.
+ */
+function resolveServiceSelection(selection: ServiceSelection | undefined, label: string) {
+  const serviceType = selection?.serviceType || 'DOM';
+  if (!isPreferredTimeService(serviceType)) {
+    return { serviceType, preferredDeliveryDate: null, preferredDeliveryTime: null };
+  }
+  const preferredDeliveryDate = selection?.preferredDeliveryDate || null;
+  const preferredDeliveryTime = selection?.preferredDeliveryTime || null;
+  if (!preferredDeliveryDate || !preferredDeliveryTime) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Select a preferred delivery date and time window for the ${label}.`,
+    });
+  }
+  return { serviceType, preferredDeliveryDate, preferredDeliveryTime };
+}
+
 // Invalidate every keyed orders/stats cache entry after an order mutation.
 function invalidateOrderCaches() {
   cacheInvalidatePrefix('admin:orders');
@@ -1566,9 +1609,10 @@ export const adminPortalRouter = router({
     .input(z.object({
       clientId: z.number(),
       orderId: z.number(),
+      ...serviceSelectionSchema,
     }))
     .mutation(async ({ input, ctx }) => {
-      return await doCreateReturn(input.clientId, input.orderId, ctx.portalUser.email || 'admin');
+      return await doCreateReturn(input.clientId, input.orderId, ctx.portalUser.email || 'admin', input);
     }),
 
   // Create an exchange (return + new shipment) on behalf of a client
@@ -1576,6 +1620,8 @@ export const adminPortalRouter = router({
     .input(z.object({
       clientId: z.number(),
       orderId: z.number(),
+      // Service for the return leg (pickup from the customer).
+      ...serviceSelectionSchema,
       newShipment: z.object({
         customerName: z.string(),
         customerPhone: z.string(),
@@ -1584,7 +1630,7 @@ export const adminPortalRouter = router({
         destinationCountry: z.string().default('UAE'),
         pieces: z.number().default(1),
         weight: z.number().default(0.5),
-        serviceType: z.string().default('DOM'),
+        ...serviceSelectionSchema,
         specialInstructions: z.string().optional(),
         codRequired: z.number().default(0),
         codAmount: z.string().optional(),
@@ -1594,7 +1640,7 @@ export const adminPortalRouter = router({
       }),
     }))
     .mutation(async ({ input, ctx }) => {
-      return await doCreateExchange(input.clientId, input.orderId, input.newShipment, ctx.portalUser.email || 'admin');
+      return await doCreateExchange(input.clientId, input.orderId, input.newShipment, ctx.portalUser.email || 'admin', input);
     }),
 
   // Create a manual return/exchange (no existing waybill) on behalf of a client
@@ -1679,11 +1725,13 @@ async function doSearchOrderForReturn(clientId: number, waybillNumber: string) {
   return { ...order, shipperAddress: hideShipperAddress ? '' : order.shipperAddress };
 }
 
-async function doCreateReturn(clientId: number, orderId: number, actorLabel: string) {
+async function doCreateReturn(clientId: number, orderId: number, actorLabel: string, service?: ServiceSelection) {
   const originalOrder = await getOrderById(orderId);
   if (!originalOrder || originalOrder.clientId !== clientId) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
   }
+
+  const returnService = resolveServiceSelection(service, 'return shipment');
 
   const client = await getClientAccountById(clientId);
   const hideConsigneeOnReturn = client?.hideShipperAddress === 1 ? 1 : 0;
@@ -1710,9 +1758,9 @@ async function doCreateReturn(clientId: number, orderId: number, actorLabel: str
 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
-    serviceType: originalOrder.serviceType,
-    preferredDeliveryDate: originalOrder.preferredDeliveryDate,
-    preferredDeliveryTime: originalOrder.preferredDeliveryTime,
+    serviceType: returnService.serviceType,
+    preferredDeliveryDate: returnService.preferredDeliveryDate,
+    preferredDeliveryTime: returnService.preferredDeliveryTime,
     specialInstructions: `RETURN - Original order: ${originalOrder.waybillNumber}`,
 
     codRequired: 0,
@@ -1752,6 +1800,8 @@ interface ExchangeNewShipmentInput {
   pieces: number;
   weight: number;
   serviceType: string;
+  preferredDeliveryDate?: string;
+  preferredDeliveryTime?: string;
   specialInstructions?: string;
   codRequired: number;
   codAmount?: string;
@@ -1760,11 +1810,14 @@ interface ExchangeNewShipmentInput {
   longitude?: string;
 }
 
-async function doCreateExchange(clientId: number, orderId: number, newShipment: ExchangeNewShipmentInput, actorLabel: string) {
+async function doCreateExchange(clientId: number, orderId: number, newShipment: ExchangeNewShipmentInput, actorLabel: string, service?: ServiceSelection) {
   const originalOrder = await getOrderById(orderId);
   if (!originalOrder || originalOrder.clientId !== clientId) {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Order not found or access denied' });
   }
+
+  const returnService = resolveServiceSelection(service, 'return shipment');
+  const newShipmentService = resolveServiceSelection(newShipment, 'new shipment');
 
   const clientAccount = await getClientAccountById(clientId);
   if (!clientAccount) {
@@ -1794,9 +1847,9 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
-    serviceType: originalOrder.serviceType,
-    preferredDeliveryDate: originalOrder.preferredDeliveryDate,
-    preferredDeliveryTime: originalOrder.preferredDeliveryTime,
+    serviceType: returnService.serviceType,
+    preferredDeliveryDate: returnService.preferredDeliveryDate,
+    preferredDeliveryTime: returnService.preferredDeliveryTime,
     specialInstructions: `EXCHANGE RETURN - Original: ${originalOrder.waybillNumber}`,
 
     codRequired: 0,
@@ -1837,7 +1890,9 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
 
     pieces: newShipment.pieces,
     weight: newShipment.weight.toString(),
-    serviceType: newShipment.serviceType,
+    serviceType: newShipmentService.serviceType,
+    preferredDeliveryDate: newShipmentService.preferredDeliveryDate,
+    preferredDeliveryTime: newShipmentService.preferredDeliveryTime,
     specialInstructions: newShipment.specialInstructions || `EXCHANGE NEW - Original: ${originalOrder.waybillNumber}`,
 
     codRequired: clientAccount.codAllowed ? newShipment.codRequired : 0,
@@ -2409,15 +2464,18 @@ export const customerPortalRouter = router({
   createReturnRequest: portalCustomerProcedure
     .input(z.object({
       orderId: z.number(),
+      ...serviceSelectionSchema,
     }))
     .mutation(async ({ input, ctx }) => {
-      return await doCreateReturn(ctx.portalUser.clientId, input.orderId, ctx.portalUser.email || 'customer');
+      return await doCreateReturn(ctx.portalUser.clientId, input.orderId, ctx.portalUser.email || 'customer', input);
     }),
 
   // Create exchange request (return + new shipment)
   createExchangeRequest: portalCustomerProcedure
     .input(z.object({
       orderId: z.number(),
+      // Service for the return leg (pickup from the customer).
+      ...serviceSelectionSchema,
       newShipment: z.object({
         customerName: z.string(),
         customerPhone: z.string(),
@@ -2426,7 +2484,7 @@ export const customerPortalRouter = router({
         destinationCountry: z.string().default('UAE'),
         pieces: z.number().default(1),
         weight: z.number().default(0.5),
-        serviceType: z.string().default('DOM'),
+        ...serviceSelectionSchema,
         specialInstructions: z.string().optional(),
         codRequired: z.number().default(0),
         codAmount: z.string().optional(),
@@ -2436,7 +2494,7 @@ export const customerPortalRouter = router({
       }),
     }))
     .mutation(async ({ input, ctx }) => {
-      return await doCreateExchange(ctx.portalUser.clientId, input.orderId, input.newShipment, ctx.portalUser.email || 'customer');
+      return await doCreateExchange(ctx.portalUser.clientId, input.orderId, input.newShipment, ctx.portalUser.email || 'customer', input);
     }),
 
   // Create manual return/exchange (without existing waybill)

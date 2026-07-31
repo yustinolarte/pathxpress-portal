@@ -401,7 +401,15 @@ export default function BillingPanel() {
   const formatDate = (date: Date | string) => new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   const formatCurrency = (amount: string, currency: string = 'AED') => `${currency} ${parseFloat(amount).toFixed(2)}`;
 
-  const toDateStr = (d: Date) => d.toISOString().split('T')[0];
+  // Format/parse in local calendar terms — toISOString() would shift the day for any
+  // staff member on a non-UTC clock and knock the period end off its Friday, which is
+  // what anchors the server-side 18:00 Dubai cutoff.
+  const toDateStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const fromDateStr = (s: string) => {
+    const [y, m, d] = s.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
 
   const applySettlementPreset = (
     type: 'weekly' | 'biweekly' | 'monthly' | 'custom',
@@ -426,12 +434,11 @@ export default function BillingPanel() {
     const lastFridayOfMonth = (year: number, month: number): Date =>
       prevFriday(new Date(year, month + 1, 0));
 
-    // Billing uses Friday-to-Friday periods.
+    // Billing uses Friday-to-Friday periods, each closing at 18:00 Dubai on the end Friday.
     // suggestedStart = day after the last invoice's end Friday, so go back 1 day to land on that Friday.
     let startFriday: Date;
     if (suggestedStart) {
-      const s = new Date(suggestedStart);
-      s.setHours(0, 0, 0, 0);
+      const s = fromDateStr(suggestedStart);
       startFriday = new Date(s.getTime() - 86400000);
     } else if (type === 'monthly') {
       const y = today.getFullYear();
@@ -1061,6 +1068,24 @@ export default function BillingPanel() {
                 <Input type="date" value={pEnd} onChange={(e) => { setSettlement('custom'); setPEnd(e.target.value); }} className="bg-white/5 border-border" />
               </div>
             </div>
+
+            {/* Weekly cutoff notice — mirrors getBillingWindow() on the server */}
+            {pEnd && (
+              <p className="text-xs text-muted-foreground flex items-start gap-2">
+                <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                {fromDateStr(pEnd).getDay() === 5 ? (
+                  <span>
+                    The period closes at <span className="font-semibold">Friday 18:00 (Dubai)</span>. Everything up to that
+                    time is always included; shipments after it roll into the next invoice.
+                  </span>
+                ) : (
+                  <span>
+                    This period ends on a non-Friday, so it closes at the end of that day. Billing weeks normally close at
+                    Friday 18:00 (Dubai).
+                  </span>
+                )}
+              </p>
+            )}
 
             {/* Overlap warning */}
             {client && pStart && billingInfo?.lastInvoicePeriodTo && new Date(pStart) <= new Date(billingInfo.lastInvoicePeriodTo) && (

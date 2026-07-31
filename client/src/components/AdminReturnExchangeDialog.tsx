@@ -55,10 +55,14 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
     const mode: 'fromOrder' | 'manual' = order ? 'fromOrder' : 'manual';
 
     const [createType, setCreateType] = useState<'return' | 'exchange'>('return');
+    // Service for the return leg — always chosen here, never inherited from the
+    // original order (that used to drag along its stale Preferred Time window).
+    const [returnService, setReturnService] = useState({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
     const [exchangeForm, setExchangeForm] = useState({
         customerName: '', customerPhonePrefix: '+971', customerPhone: '',
         address: '', city: '', destinationCountry: 'UAE',
         pieces: 1, weight: '', serviceType: 'DOM', specialInstructions: '',
+        preferredDate: '', preferredTime: '',
         codRequired: 0, codAmount: '', codCurrency: 'AED',
     });
     const [pickedLocationExchange, setPickedLocationExchange] = useState<PickedLocation | null>(null);
@@ -79,10 +83,12 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
     useEffect(() => {
         if (!open) return;
         setCreateType('return');
+        setReturnService({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
         setExchangeForm({
             customerName: '', customerPhonePrefix: '+971', customerPhone: '',
             address: '', city: '', destinationCountry: 'UAE',
             pieces: 1, weight: '', serviceType: 'DOM', specialInstructions: '',
+            preferredDate: '', preferredTime: '',
             codRequired: 0, codAmount: '', codCurrency: 'AED',
         });
         setPickedLocationExchange(null);
@@ -134,7 +140,9 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
             deliveryCountry: o.shipperCountry || 'UAE',
             pieces: o.pieces || 1,
             weight: o.weight != null ? String(o.weight) : prev.weight,
-            serviceType: DOMESTIC_SERVICE_TYPES.some(s => s.code === o.serviceType) ? o.serviceType : prev.serviceType,
+            // Service is NOT inherited from the source waybill: the return is a
+            // new booking and reusing the old service (especially Preferred Time,
+            // with its own date/slot) produced wrong windows on the return.
         }));
         setLoadedSourceOrder(o);
         setWaybillQuery(o.waybillNumber);
@@ -167,12 +175,27 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
 
     function handleCreateFromOrder() {
         if (!order) return;
+        const returnIsPreferred = isPreferredTimeService(returnService.serviceType);
+        if (returnIsPreferred && (!returnService.preferredDate || !returnService.preferredTime)) {
+            toast.error('Please select a preferred pickup date and time window for the return');
+            return;
+        }
+        const returnServicePayload = {
+            serviceType: returnService.serviceType,
+            preferredDeliveryDate: returnIsPreferred ? returnService.preferredDate : undefined,
+            preferredDeliveryTime: returnIsPreferred ? returnService.preferredTime : undefined,
+        };
         if (createType === 'return') {
-            createReturnMutation.mutate({ clientId: order.clientId, orderId: order.id });
+            createReturnMutation.mutate({ clientId: order.clientId, orderId: order.id, ...returnServicePayload });
             return;
         }
         if (!exchangeForm.customerName || !exchangeForm.customerPhone || !exchangeForm.address || !exchangeForm.city) {
             toast.error('Please fill in all required fields for the new shipment');
+            return;
+        }
+        const exchangeIsPreferred = isPreferredTimeService(exchangeForm.serviceType);
+        if (exchangeIsPreferred && (!exchangeForm.preferredDate || !exchangeForm.preferredTime)) {
+            toast.error('Please select a preferred delivery date and time window for the new shipment');
             return;
         }
         if (!pickedLocationExchange) {
@@ -184,10 +207,13 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
         createExchangeMutation.mutate({
             clientId: order.clientId,
             orderId: order.id,
+            ...returnServicePayload,
             newShipment: {
                 ...exchangeForm,
                 customerPhone: `${exchangeForm.customerPhonePrefix} ${exchangeForm.customerPhone}`,
                 weight: parseFloat(exchangeForm.weight) || 0.5,
+                preferredDeliveryDate: exchangeIsPreferred ? exchangeForm.preferredDate : undefined,
+                preferredDeliveryTime: exchangeIsPreferred ? exchangeForm.preferredTime : undefined,
                 codRequired: exchangeForm.codRequired,
                 codAmount: exchangeForm.codRequired ? exchangeForm.codAmount : undefined,
                 codCurrency: exchangeForm.codCurrency,
@@ -330,6 +356,58 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
                                     </div>
                                 </section>
 
+                                <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+                                    <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-primary">local_shipping</span>
+                                        <h2 className="font-bold">Return Service</h2>
+                                    </div>
+                                    <div className="p-6 space-y-4">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Service Type</Label>
+                                            <select
+                                                value={returnService.serviceType}
+                                                onChange={(e) => setReturnService({ ...returnService, serviceType: e.target.value, preferredDate: '', preferredTime: '' })}
+                                                className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                            >
+                                                {DOMESTIC_SERVICE_TYPES.map((svc) => (
+                                                    <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                ))}
+                                            </select>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                The return is booked as a new shipment — it does not reuse the service of {order.waybillNumber}.
+                                            </p>
+                                        </div>
+                                        {isPreferredTimeService(returnService.serviceType) && (
+                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Pickup Date</Label>
+                                                    <Input
+                                                        type="date"
+                                                        min={isSameDayPreferredService(returnService.serviceType) ? todayStr() : tomorrowStr()}
+                                                        max={isSameDayPreferredService(returnService.serviceType) ? todayStr() : undefined}
+                                                        value={returnService.preferredDate}
+                                                        onChange={(e) => setReturnService({ ...returnService, preferredDate: e.target.value })}
+                                                        className="bg-background border-border"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Time Window</Label>
+                                                    <select
+                                                        value={returnService.preferredTime}
+                                                        onChange={(e) => setReturnService({ ...returnService, preferredTime: e.target.value })}
+                                                        className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                    >
+                                                        <option value="">Select time window</option>
+                                                        {DEFAULT_PREFERRED_SLOTS.map((slot) => (
+                                                            <option key={slot} value={slot}>{slot}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+
                                 {createType === 'exchange' && (
                                     <section className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
                                         <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
@@ -369,6 +447,46 @@ export default function AdminReturnExchangeDialog({ open, onOpenChange, order, c
                                                     <Input type="number" step="0.1" min="0.1" value={exchangeForm.weight} onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })} className="bg-background border-border" />
                                                 </div>
                                             </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase">Service Type</Label>
+                                                <select
+                                                    value={exchangeForm.serviceType}
+                                                    onChange={(e) => setExchangeForm({ ...exchangeForm, serviceType: e.target.value, preferredDate: '', preferredTime: '' })}
+                                                    className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                >
+                                                    {DOMESTIC_SERVICE_TYPES.map((svc) => (
+                                                        <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            {isPreferredTimeService(exchangeForm.serviceType) && (
+                                                <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Delivery Date</Label>
+                                                        <Input
+                                                            type="date"
+                                                            min={isSameDayPreferredService(exchangeForm.serviceType) ? todayStr() : tomorrowStr()}
+                                                            max={isSameDayPreferredService(exchangeForm.serviceType) ? todayStr() : undefined}
+                                                            value={exchangeForm.preferredDate}
+                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, preferredDate: e.target.value })}
+                                                            className="bg-background border-border"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Time Window</Label>
+                                                        <select
+                                                            value={exchangeForm.preferredTime}
+                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, preferredTime: e.target.value })}
+                                                            className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
+                                                        >
+                                                            <option value="">Select time window</option>
+                                                            {DEFAULT_PREFERRED_SLOTS.map((slot) => (
+                                                                <option key={slot} value={slot}>{slot}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             <div className={`pt-2 border-t mt-4 ${exchangeLocationError ? 'border-destructive' : 'border-border'}`}>
                                                 <Label className="text-xs font-bold text-muted-foreground uppercase block mb-3">Delivery Map Location <span className="text-destructive ml-0.5">*</span></Label>

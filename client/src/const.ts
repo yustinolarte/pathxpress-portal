@@ -1,4 +1,7 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+// Service abbreviations live in shared/ so the server can label invoice items
+// with the same short codes the portal shows.
+export { SERVICE_TYPE_ABBREVIATIONS, abbreviateServiceType } from "@shared/const";
 
 export const APP_TITLE = import.meta.env.VITE_APP_TITLE || "PATHXPRESS";
 
@@ -21,29 +24,6 @@ export const DOMESTIC_SERVICE_TYPES: DomesticServiceType[] = [
   { code: "PREFERRED_TIME", label: "Next Day Preferred Time", sublabel: "Next day · scheduled" },
   { code: "PREFERRED_TIME_SDD", label: "Same Day Preferred Time", sublabel: "Same day · scheduled" },
 ];
-
-// Short codes shown wherever an order's service type appears in a list, table,
-// pill, or detail view — full codes like PREFERRED_TIME_SDD blow out narrow
-// columns. Covers both the domestic codes above and the international ones
-// from AdminCreateIntlOrderDialog / internationalRateEngine's SERVICE map.
-// Exports (CSV/Excel) and the waybill/report PDFs intentionally keep the
-// untouched code, since those are records rather than UI views.
-export const SERVICE_TYPE_ABBREVIATIONS: Record<string, string> = {
-  DOM: "DOM",
-  SDD: "SDD",
-  BULLET: "BLT",
-  EXPRESS_ZONE2: "EZ2",
-  PREFERRED_TIME: "PT",
-  PREFERRED_TIME_SDD: "PTSD",
-  PRIME_EXPRESS: "PEX",
-  PRIME_TRACKED: "PTR",
-  PRIME_REGISTERED_POD: "PRP",
-  GCC: "GCC",
-  PREMIUM_EXPORT: "PEXP",
-};
-
-export const abbreviateServiceType = (code?: string | null): string =>
-  (code && SERVICE_TYPE_ABBREVIATIONS[code]) || code || "";
 
 // Preferred Time services are booked against a delivery window (date + slot).
 export const isPreferredTimeService = (code: string): boolean =>

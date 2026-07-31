@@ -3,6 +3,7 @@ import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
 import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting } from "../drizzle/schema";
+import { abbreviateServiceType } from '../shared/const';
 import { ENV } from './_core/env';
 import { notifyBotNewOrder } from './_core/botWebhook';
 
@@ -1213,6 +1214,45 @@ export const calculateRate = (client: any, shipment: any, domTier: any, sddTier:
   return Math.round(total * 100) / 100; // Round to 2 decimals
 };
 
+// ─── Weekly billing cutoff ────────────────────────────────────────────────────
+
+const DUBAI_OFFSET_MS = 4 * 60 * 60 * 1000; // UTC+4, no DST
+
+/**
+ * The instant of a Dubai wall-clock time on the calendar day of `date`.
+ * Period dates travel as date-only values (UTC midnight from "YYYY-MM-DD"), so the
+ * calendar day is read in UTC terms — reading it in the server's local timezone
+ * would shift the day and silently move the cutoff off Friday.
+ */
+function dubaiInstant(date: Date, hours: number, minutes = 0, seconds = 0, ms = 0): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), hours, minutes, seconds, ms)
+    - DUBAI_OFFSET_MS
+  );
+}
+
+/**
+ * The instants a billing period actually covers. Billing runs Friday-to-Friday and
+ * the week closes at 18:00 Dubai on the end Friday — the same weekly cutoff the COD
+ * remittances use (see getLastWeeklyCutoff). A shipment that lands before that instant
+ * is always billed in the closing invoice; anything after rolls into the next one.
+ *
+ * The lower bound is 00:00 Dubai of the start day. Consecutive periods share their
+ * boundary Friday, so the previous week's post-cutoff tail is swept into this invoice
+ * — the `invoiceItems` NULL check is what prevents double billing, not the window.
+ *
+ * Period ends that aren't a Friday (custom periods) keep whole-day semantics.
+ */
+export function getBillingWindow(periodStart: Date, periodEnd: Date): { from: Date; to: Date } {
+  const endsOnFriday = periodEnd.getUTCDay() === 5;
+  return {
+    from: dubaiInstant(periodStart, 0, 0, 0, 0),
+    to: endsOnFriday
+      ? dubaiInstant(periodEnd, 18, 0, 0, 0)
+      : dubaiInstant(periodEnd, 23, 59, 59, 999),
+  };
+}
+
 // Helper to get billable shipments with calculated rates
 export async function getBillableShipments(clientId: number, periodStart: Date, periodEnd: Date) {
   const db = await getDb();
@@ -1227,8 +1267,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
 
   // Use lastStatusUpdate (delivery/return date) instead of createdAt
   // so shipments delivered after their creation period are still captured
-  const periodEndFullDay = new Date(periodEnd);
-  periodEndFullDay.setHours(23, 59, 59, 999);
+  const { from: periodFrom, to: periodCutoff } = getBillingWindow(periodStart, periodEnd);
 
   const UAE_VALUES = ['UAE', 'United Arab Emirates', 'UNITED ARAB EMIRATES', 'AE'];
 
@@ -1241,8 +1280,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
     .where(
       and(
         eq(orders.clientId, clientId),
-        gte(orders.lastStatusUpdate, periodStart),
-        lte(orders.lastStatusUpdate, periodEndFullDay),
+        gte(orders.lastStatusUpdate, periodFrom),
+        lte(orders.lastStatusUpdate, periodCutoff),
         inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
         isNull(invoiceItems.id),
         inArray(orders.destinationCountry, UAE_VALUES)
@@ -1486,13 +1525,13 @@ export async function generateInvoiceForClient(
   // Create invoice items with correct rates
   for (const { shipment, shippingRate, fodFee } of shipmentRates) {
     const weight = parseFloat(shipment.weight || '0');
+    // Label the line with the same short code the portal shows. The old
+    // hardcoded if/else only knew DOM/SDD/BULLET, so every newer service
+    // (PREFERRED_TIME, PREFERRED_TIME_SDD, EXPRESS_ZONE2) silently billed as "DOM".
     const svcUpper = shipment.serviceType?.toUpperCase() || 'DOM';
-    let serviceLabel = 'DOM';
-    if (svcUpper === 'SDD' || svcUpper === 'SAME DAY') {
-      serviceLabel = 'SDD';
-    } else if (svcUpper === 'BULLET') {
-      serviceLabel = 'BULLET';
-    }
+    const serviceLabel = abbreviateServiceType(
+      svcUpper === 'SAME DAY' ? 'SDD' : svcUpper,
+    );
 
     // Shipping Item
     await db.insert(invoiceItems).values({
@@ -1536,8 +1575,7 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
   if (!client) return [];
 
-  const periodEndFullDay = new Date(periodEnd);
-  periodEndFullDay.setHours(23, 59, 59, 999);
+  const { from: periodFrom, to: periodCutoff } = getBillingWindow(periodStart, periodEnd);
 
   const shipmentsData = await db
     .select({ order: orders })
@@ -1549,8 +1587,8 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
         // createdAt, not lastStatusUpdate: shipments are now billable in any
         // status, so the period should reflect when the order was placed,
         // not when it happened to last change status (e.g. delivery date).
-        gte(orders.createdAt, periodStart),
-        lte(orders.createdAt, periodEndFullDay),
+        gte(orders.createdAt, periodFrom),
+        lte(orders.createdAt, periodCutoff),
         ne(orders.status, 'canceled'),
         isNull(invoiceItems.id),
         notInArray(orders.destinationCountry, UAE_COUNTRIES)
@@ -2101,16 +2139,19 @@ export async function getClientBillingInfo(clientId: number) {
 // Mirrors BillingPanel.tsx's applySettlementPreset() so the suggested period here
 // matches what a staff member would land on picking it manually (Friday-to-Friday).
 
+// Dates here are date-only values pinned to UTC midnight, matching what the router
+// gets from the "YYYY-MM-DD" inputs — local-midnight dates would land on the wrong
+// calendar day once serialized, which would knock the period end off its Friday and
+// with it the 18:00 cutoff in getBillingWindow.
 function prevFriday(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const diff = (d.getDay() - 5 + 7) % 7; // 0 if already Friday
-  d.setDate(d.getDate() - diff);
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const diff = (d.getUTCDay() - 5 + 7) % 7; // 0 if already Friday
+  d.setUTCDate(d.getUTCDate() - diff);
   return d;
 }
 
 function lastFridayOfMonth(year: number, month: number): Date {
-  return prevFriday(new Date(year, month + 1, 0));
+  return prevFriday(new Date(Date.UTC(year, month + 1, 0)));
 }
 
 function computeSuggestedPeriod(
@@ -2118,16 +2159,14 @@ function computeSuggestedPeriod(
   suggestedStart: string | null
 ): { periodStart: Date; periodEnd: Date } {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
 
   let startFriday: Date;
   if (suggestedStart) {
-    const s = new Date(suggestedStart);
-    s.setHours(0, 0, 0, 0);
+    const s = new Date(suggestedStart); // "YYYY-MM-DD" → UTC midnight
     startFriday = new Date(s.getTime() - 86400000);
   } else if (type === 'monthly') {
-    const y = today.getFullYear();
-    const m = today.getMonth();
+    const y = today.getUTCFullYear();
+    const m = today.getUTCMonth();
     startFriday = lastFridayOfMonth(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
   } else {
     const days = type === 'weekly' ? 7 : 14;
@@ -2137,8 +2176,8 @@ function computeSuggestedPeriod(
   let endFriday: Date;
   if (type === 'monthly') {
     const nm = new Date(startFriday);
-    nm.setMonth(nm.getMonth() + 1);
-    endFriday = lastFridayOfMonth(nm.getFullYear(), nm.getMonth());
+    nm.setUTCMonth(nm.getUTCMonth() + 1);
+    endFriday = lastFridayOfMonth(nm.getUTCFullYear(), nm.getUTCMonth());
   } else {
     const days = type === 'weekly' ? 7 : 14;
     endFriday = new Date(startFriday.getTime() + days * 86400000);
@@ -2157,8 +2196,7 @@ export async function getClientsDueForBilling(isIntl: boolean) {
   const db = await getDb();
   if (!db) return [];
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
 
   const activeClients = await db
     .select()
@@ -2183,7 +2221,10 @@ export async function getClientsDueForBilling(isIntl: boolean) {
 
     const settlementPeriod = client.defaultSettlementPeriod as 'weekly' | 'biweekly' | 'monthly';
     const { periodStart, periodEnd } = computeSuggestedPeriod(settlementPeriod, billingInfo.suggestedPeriodStart);
-    if (periodEnd > today) continue; // period hasn't fully elapsed yet
+    // The week isn't closed until its Friday 18:00 Dubai cutoff has passed. Suggesting
+    // it earlier would invoice a period that is still taking shipments, and everything
+    // delivered between now and the cutoff would fall outside the next period too.
+    if (getBillingWindow(periodStart, periodEnd).to > now) continue;
 
     const billable = isIntl
       ? await getBillableIntlShipments(client.id, periodStart, periodEnd)
