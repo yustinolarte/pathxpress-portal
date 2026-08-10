@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { publicProcedure, portalAdminProcedure, portalCustomerProcedure, portalProtectedProcedure, router } from './_core/trpc';
+import { normalizeEmirate, normalizeCity, normalizeStoredPhone } from '@shared/uae';
 import { cachedQuery, cacheInvalidate, cacheInvalidatePrefix } from './_core/queryCache';
 import {
   hashPassword,
@@ -51,8 +52,8 @@ import {
   getRemittanceById,
   getRemittanceItems,
   updateRemittanceStatus,
+  getCODSummary,
   getCODSummaryByClient,
-  getCODSummaryGlobal,
   calculateShipmentRate,
   calculateCODFee,
   calculateCardCODFee,
@@ -83,6 +84,33 @@ const orderListInput = z.object({
 // Mirrors isPreferredTimeService in client/src/const.ts.
 function isPreferredTimeService(code?: string | null): boolean {
   return code === 'PREFERRED_TIME' || code === 'PREFERRED_TIME_SDD';
+}
+
+/**
+ * Collapse per-city order counts onto canonical city names for the analytics
+ * charts, then return the top N.
+ *
+ * SQL can only group on the raw string, so every spelling an importer or a
+ * hand-typed address produced ("Abudhabi", "Al ain") became its own bar and
+ * competed with the real one for a top-10 slot. normalizeCity is the same
+ * canonical mapping the dispatch board uses; anything it doesn't recognise
+ * (individual neighbourhoods, non-UAE destinations) is kept verbatim.
+ */
+function mergeCityCounts(
+  groups: { city: string | null; count: number | string }[],
+  limit = 10,
+): { city: string; count: number }[] {
+  const merged = new Map<string, number>();
+  for (const row of groups) {
+    const raw = (row.city ?? '').trim();
+    if (!raw) continue;
+    const key = normalizeCity(raw) ?? raw;
+    merged.set(key, (merged.get(key) ?? 0) + Number(row.count));
+  }
+  return Array.from(merged.entries())
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
 }
 
 // Service selection for a return/exchange leg. Returns/exchanges are booked as
@@ -719,15 +747,21 @@ export const adminPortalRouter = router({
       const last30Days = new Date(now);
       last30Days.setDate(now.getDate() - 30);
 
+      // DATE_FORMAT, not DATE(): a DATE column comes back from mysql2 as a JS Date,
+      // which superjson then hands the client as a Date object even though the field
+      // is typed string — the drill-down modal concatenates it ("...T00:00:00") and
+      // rendered "Invalid Date". A formatted string is what every consumer expects.
+      const dayKey = sql<string>`DATE_FORMAT(${orders.createdAt}, '%Y-%m-%d')`;
+
       const shipmentsPerDay = await db
         .select({
-          date: sql<string>`DATE(${orders.createdAt})`,
+          date: dayKey,
           count: sql<number>`cast(count(*) as unsigned)`,
         })
         .from(orders)
         .where(gte(orders.createdAt, last30Days))
-        .groupBy(sql`DATE(${orders.createdAt})`)
-        .orderBy(sql`DATE(${orders.createdAt})`);
+        .groupBy(dayKey)
+        .orderBy(dayKey);
 
       // 2. Shipments this week
       const shipmentsThisWeek = await db
@@ -742,12 +776,17 @@ export const adminPortalRouter = router({
         .where(gte(orders.createdAt, startOfMonth));
 
       // 4. Shipments last month (for comparison)
+      //
+      // lte(), not a raw sql`` fragment: a Date interpolated into raw SQL is bound
+      // straight to mysql2, which serialises it in local time, while the typed gte()
+      // above serialises in UTC. The two bounds then disagree by the UTC offset and
+      // the count silently picks up orders from the neighbouring month.
       const shipmentsLastMonth = await db
         .select({ count: sql<number>`cast(count(*) as unsigned)` })
         .from(orders)
         .where(and(
           gte(orders.createdAt, startOfLastMonth),
-          sql`${orders.createdAt} <= ${endOfLastMonth}`
+          lte(orders.createdAt, endOfLastMonth)
         ));
 
       // 5. Monthly comparison (last 6 months)
@@ -762,16 +801,18 @@ export const adminPortalRouter = router({
         .groupBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`)
         .orderBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`);
 
-      // 6. Distribution by city (pie chart data)
-      const distributionByCity = await db
+      // 6. Distribution by city — merged onto canonical names before ranking.
+      // Grouping on the raw column split the same destination across bars
+      // ("Abu Dhabi" and "Abudhabi", "Al Ain" and "Al ain"), so the top 10 was
+      // both wrong and short. Cities are few enough to fold in memory.
+      const cityGroups = await db
         .select({
           city: orders.city,
           count: sql<number>`cast(count(*) as unsigned)`,
         })
         .from(orders)
-        .groupBy(orders.city)
-        .orderBy(sql`count(*) desc`)
-        .limit(10);
+        .groupBy(orders.city);
+      const distributionByCity = mergeCityCounts(cityGroups);
 
       // 7. Average delivery time by route (top 10 routes)
       const deliveryTimeByRoute = await db
@@ -788,6 +829,18 @@ export const adminPortalRouter = router({
         .groupBy(sql`concat(${orders.shipperCity}, ' → ', ${orders.city})`)
         .orderBy(sql`count(*) desc`)
         .limit(10);
+
+      // 7b. How much of the delivered history the route timings are actually based
+      // on. Only orders carrying a real delivery timestamp can be measured, and a
+      // status set by hand in the portal never writes one — the chart was quietly
+      // averaging a minority of deliveries while reading as if it covered them all.
+      const deliveryTimeCoverage = await db
+        .select({
+          measured: sql<number>`cast(SUM(CASE WHEN ${orders.deliveryDateReal} IS NOT NULL THEN 1 ELSE 0 END) as unsigned)`,
+          delivered: sql<number>`cast(count(*) as unsigned)`,
+        })
+        .from(orders)
+        .where(eq(orders.status, 'delivered'));
 
       // 8. Status distribution
       const statusDistribution = await db
@@ -813,7 +866,16 @@ export const adminPortalRouter = router({
 
       const totalDelivered = deliveredOrders.length;
 
-      // Delivered orders that had at least one 'attempted_delivery' or 'failed_delivery' tracking event
+      // Delivered orders that needed more than one visit — i.e. that carry a failed
+      // or retried delivery event.
+      //
+      // The codes have to match what actually gets written: the driver app and
+      // AddTrackingEventDialog both emit 'delivery_attempted' (driverApi's
+      // orderStatus is reused verbatim as the event's statusCode). The old list
+      // said 'attempted_delivery', a code nothing has ever written, so every
+      // retried delivery was silently counted as a clean first attempt and the
+      // rate read ~5 points higher than reality. 'attempted_delivery'/'attempted'
+      // stay in the list only to cover legacy rows.
       let failedFirstAttempt = 0;
       if (totalDelivered > 0) {
         const deliveredIds = deliveredOrders.map(o => o.id);
@@ -822,7 +884,9 @@ export const adminPortalRouter = router({
           .from(trackingEvents)
           .where(and(
             inArray(trackingEvents.shipmentId, deliveredIds),
-            inArray(trackingEvents.statusCode, ['attempted_delivery', 'failed_delivery', 'attempted'])
+            inArray(trackingEvents.statusCode, [
+              'delivery_attempted', 'failed_delivery', 'attempted', 'attempted_delivery',
+            ])
           ))
           .groupBy(trackingEvents.shipmentId);
         failedFirstAttempt = withAttempts.length;
@@ -874,12 +938,12 @@ export const adminPortalRouter = router({
       // 14. Shipments per day with orders for drill-down (date → waybill list)
       const shipmentsPerDayDetailed = await db
         .select({
-          date: sql<string>`DATE(${orders.createdAt})`,
+          date: dayKey,
           waybillNumber: orders.waybillNumber,
         })
         .from(orders)
         .where(gte(orders.createdAt, last30Days))
-        .orderBy(sql`DATE(${orders.createdAt})`);
+        .orderBy(dayKey);
 
       // Build a map of date -> waybillNumbers for drill-down
       const drillDownMap: Record<string, string[]> = {};
@@ -917,15 +981,16 @@ export const adminPortalRouter = router({
           month: m.month,
           count: Number(m.count),
         })),
-        distributionByCity: distributionByCity.map(c => ({
-          city: c.city,
-          count: Number(c.count),
-        })),
+        distributionByCity,
         deliveryTimeByRoute: deliveryTimeByRoute.map(r => ({
           route: r.route,
           avgHours: Math.round(Number(r.avgHours) || 0),
           count: Number(r.count),
         })),
+        deliveryTimeCoverage: {
+          measured: Number(deliveryTimeCoverage[0]?.measured || 0),
+          delivered: Number(deliveryTimeCoverage[0]?.delivered || 0),
+        },
         statusDistribution: statusDistribution.map(s => ({
           status: s.status,
           count: Number(s.count),
@@ -960,15 +1025,23 @@ export const adminPortalRouter = router({
         .orderBy(sql`DATE_FORMAT(${invoices.issueDate}, '%Y-%m')`);
 
       // 2. Revenue by service type (from invoice items → orders)
+      //
+      // LEFT JOIN, and surcharges/discounts/manual lines get their own bucket:
+      // an inner join dropped every line item with no shipment behind it, so the
+      // breakdown silently added up to less than the Total Revenue card next to
+      // it and every percentage was computed against that short total.
       const revenueByService = await db
         .select({
-          service: orders.serviceType,
+          service: sql<string>`COALESCE(${orders.serviceType}, 'OTHER_CHARGES')`,
           amount: sql<string>`COALESCE(SUM(CAST(${invoiceItems.total} AS DECIMAL(12,2))), 0)`,
-          count: sql<number>`cast(count(*) as unsigned)`,
+          // Distinct shipments, not line items — a shipment billed across two
+          // lines is still one shipment. Fee lines have no shipment, so they fall
+          // back to their own row id and each counts once.
+          count: sql<number>`cast(COUNT(DISTINCT COALESCE(${invoiceItems.shipmentId}, -${invoiceItems.id})) as unsigned)`,
         })
         .from(invoiceItems)
-        .innerJoin(orders, eq(invoiceItems.shipmentId, orders.id))
-        .groupBy(orders.serviceType)
+        .leftJoin(orders, eq(invoiceItems.shipmentId, orders.id))
+        .groupBy(sql`COALESCE(${orders.serviceType}, 'OTHER_CHARGES')`)
         .orderBy(sql`SUM(CAST(${invoiceItems.total} AS DECIMAL(12,2))) DESC`);
 
       // 3. Top 10 clients by invoice total
@@ -1003,7 +1076,7 @@ export const adminPortalRouter = router({
           invoiceCount: Number(r.invoiceCount),
         })),
         revenueByService: revenueByService.map(r => ({
-          service: r.service || 'standard',
+          service: r.service,
           amount: parseFloat(r.amount),
           count: Number(r.count),
         })),
@@ -1479,6 +1552,16 @@ export const adminPortalRouter = router({
       }
       const adminCodMethod = input.shipment.codRequired === 1 ? input.shipment.codPaymentMethod : null;
 
+      // Canonicalise geography and phones before they reach the DB. The admin
+      // dialog used to store emirate short codes ("RAK") and raw phone strings
+      // ("+971 0551234567"), which split reporting and broke click-to-call.
+      const canonicalEmirate = normalizeEmirate(input.shipment.emirate)
+        ?? normalizeEmirate(input.shipment.city)
+        ?? input.shipment.emirate
+        ?? null;
+      const canonicalCity = normalizeCity(input.shipment.city) ?? input.shipment.city;
+      const canonicalShipperCity = normalizeCity(input.shipment.shipperCity) ?? input.shipment.shipperCity;
+
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber();
 
@@ -1489,14 +1572,14 @@ export const adminPortalRouter = router({
       const shipperAddress = input.shipment.shipperOverride && input.shipment.shipperAddress
         ? input.shipment.shipperAddress
         : clientAccount.billingAddress;
-      const shipperCity = input.shipment.shipperOverride && input.shipment.shipperCity
-        ? input.shipment.shipperCity
+      const shipperCity = input.shipment.shipperOverride && canonicalShipperCity
+        ? canonicalShipperCity
         : clientAccount.city;
       const shipperCountry = input.shipment.shipperOverride && input.shipment.shipperCountry
         ? input.shipment.shipperCountry
         : clientAccount.country;
       const shipperPhone = input.shipment.shipperOverride && input.shipment.shipperPhone
-        ? input.shipment.shipperPhone
+        ? normalizeStoredPhone(input.shipment.shipperPhone)
         : clientAccount.phone;
 
       // Create order with shipper info (override or client)
@@ -1516,10 +1599,10 @@ export const adminPortalRouter = router({
 
         // Consignee info from input
         customerName: input.shipment.customerName,
-        customerPhone: input.shipment.customerPhone,
+        customerPhone: normalizeStoredPhone(input.shipment.customerPhone),
         address: input.shipment.address,
-        city: input.shipment.city,
-        emirate: input.shipment.emirate || null,
+        city: canonicalCity,
+        emirate: canonicalEmirate,
         postalCode: input.shipment.postalCode || null,
         destinationCountry: input.shipment.destinationCountry,
 
@@ -1592,6 +1675,47 @@ export const adminPortalRouter = router({
       }
 
       return order;
+    }),
+
+  // Service availability for an arbitrary client. Mirrors services.getAvailable
+  // (which is customer-scoped) so the admin create dialog can respect the same
+  // per-client enablement, region limits, cut-offs and prices instead of
+  // offering the full catalogue unconditionally.
+  adminGetAvailableServices: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      emirate: z.string(),
+      weight: z.number().positive(),
+    }))
+    .query(async ({ input }) => {
+      const { getAvailableServicesForClient } = await import('./db');
+      return getAvailableServicesForClient(input.clientId, {
+        // Region matching compares against the full emirate names stored by
+        // RatesPanel, so a short code like "RAK" has to be expanded first.
+        emirate: normalizeEmirate(input.emirate) ?? input.emirate,
+        weight: input.weight,
+      });
+    }),
+
+  // A client's saved pickup addresses, so an admin creating on their behalf can
+  // reuse the same warehouses the client sees in their own portal.
+  adminGetClientSavedShippers: portalAdminProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ input }) => {
+      const { getSavedShippersByClient } = await import('./db');
+      return getSavedShippersByClient(input.clientId);
+    }),
+
+  // Warn (not block) when the same client reference already has a live order.
+  adminCheckOrderReference: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      orderNumber: z.string(),
+    }))
+    .query(async ({ input }) => {
+      if (!input.orderNumber.trim()) return [];
+      const { findOrdersByClientReference } = await import('./db');
+      return findOrdersByClientReference(input.clientId, input.orderNumber);
     }),
 
   // Search a client's order by waybill to start a return/exchange on their behalf
@@ -2255,11 +2379,22 @@ export const customerPortalRouter = router({
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber(isInternational);
 
-      // Create order
+      // Create order. Geography and phones are canonicalised here too so that
+      // customer- and admin-created orders are indistinguishable downstream.
       const order = await createOrder({
         clientId: ctx.portalUser.clientId,
         waybillNumber,
         ...input.shipment,
+        customerPhone: normalizeStoredPhone(input.shipment.customerPhone),
+        shipperPhone: normalizeStoredPhone(input.shipment.shipperPhone),
+        ...(isInternational ? {} : {
+          city: normalizeCity(input.shipment.city) ?? input.shipment.city,
+          emirate: normalizeEmirate(input.shipment.emirate)
+            ?? normalizeEmirate(input.shipment.city)
+            ?? input.shipment.emirate
+            ?? null,
+          shipperCity: normalizeCity(input.shipment.shipperCity) ?? input.shipment.shipperCity,
+        }),
         codPaymentMethod: codMethod,
         weight: input.shipment.weight.toString(),
         length: input.shipment.length?.toString() || null,
@@ -2596,7 +2731,7 @@ export const customerPortalRouter = router({
       }
 
       const { orders, codRecords } = await import('../drizzle/schema');
-      const { sql, gte, and, eq } = await import('drizzle-orm');
+      const { sql, gte, lte, and, eq } = await import('drizzle-orm');
 
       const clientId = ctx.portalUser.clientId;
       const now = new Date();
@@ -2611,9 +2746,13 @@ export const customerPortalRouter = router({
       const last30Days = new Date(now);
       last30Days.setDate(now.getDate() - 30);
 
+      // Formatted string, not DATE() — see the admin analytics query for why a raw
+      // DATE column reaches the client as a Date object.
+      const dayKey = sql<string>`DATE_FORMAT(${orders.createdAt}, '%Y-%m-%d')`;
+
       const shipmentsPerDay = await db
         .select({
-          date: sql<string>`DATE(${orders.createdAt})`,
+          date: dayKey,
           count: sql<number>`cast(count(*) as unsigned)`,
         })
         .from(orders)
@@ -2621,8 +2760,8 @@ export const customerPortalRouter = router({
           eq(orders.clientId, clientId),
           gte(orders.createdAt, last30Days)
         ))
-        .groupBy(sql`DATE(${orders.createdAt})`)
-        .orderBy(sql`DATE(${orders.createdAt})`);
+        .groupBy(dayKey)
+        .orderBy(dayKey);
 
       // 2. Shipments today
       const shipmentsToday = await db
@@ -2651,14 +2790,15 @@ export const customerPortalRouter = router({
           gte(orders.createdAt, startOfMonth)
         ));
 
-      // 5. Shipments last month
+      // 5. Shipments last month — typed lte() for the same timezone reason as the
+      // admin analytics query above.
       const shipmentsLastMonth = await db
         .select({ count: sql<number>`cast(count(*) as unsigned)` })
         .from(orders)
         .where(and(
           eq(orders.clientId, clientId),
           gte(orders.createdAt, startOfLastMonth),
-          sql`${orders.createdAt} <= ${endOfLastMonth}`
+          lte(orders.createdAt, endOfLastMonth)
         ));
 
       // 6. Monthly comparison (last 6 months)
@@ -2676,17 +2816,16 @@ export const customerPortalRouter = router({
         .groupBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`)
         .orderBy(sql`DATE_FORMAT(${orders.createdAt}, '%Y-%m')`);
 
-      // 7. Distribution by city
-      const distributionByCity = await db
+      // 7. Distribution by city — merged onto canonical names, same as the admin view
+      const cityGroups = await db
         .select({
           city: orders.city,
           count: sql<number>`cast(count(*) as unsigned)`,
         })
         .from(orders)
         .where(eq(orders.clientId, clientId))
-        .groupBy(orders.city)
-        .orderBy(sql`count(*) desc`)
-        .limit(10);
+        .groupBy(orders.city);
+      const distributionByCity = mergeCityCounts(cityGroups);
 
       // 8. Status distribution
       const statusDistribution = await db
@@ -2733,10 +2872,21 @@ export const customerPortalRouter = router({
         ? Math.round(((currentMonthCount - lastMonthCount) / lastMonthCount) * 100)
         : 0;
 
-      // Delivery success rate
-      const deliveredCount = statusDistribution.find(s => s.status === 'delivered')?.count || 0;
-      const totalCount = statusDistribution.reduce((sum, s) => sum + Number(s.count), 0);
-      const deliverySuccessRate = totalCount > 0 ? Math.round((Number(deliveredCount) / totalCount) * 100) : 0;
+      // Delivery success rate — share of *finished* shipments that were delivered.
+      // Dividing by every order ever created counted orders still in transit as
+      // failures, so the number sagged for any client who had just booked a batch
+      // and only recovered days later as those orders landed.
+      const FINISHED_STATUSES = [
+        'delivered', 'returned', 'returned_to_sender',
+        'failed_delivery', 'failed_pickup', 'canceled', 'cancelled',
+      ];
+      const deliveredCount = Number(statusDistribution.find(s => s.status === 'delivered')?.count || 0);
+      const finishedCount = statusDistribution
+        .filter(s => FINISHED_STATUSES.includes(s.status))
+        .reduce((sum, s) => sum + Number(s.count), 0);
+      const deliverySuccessRate = finishedCount > 0
+        ? Math.round((deliveredCount / finishedCount) * 100)
+        : null;
 
       return {
         shipmentsToday: Number(shipmentsToday[0]?.count || 0),
@@ -2753,10 +2903,7 @@ export const customerPortalRouter = router({
           month: m.month,
           count: Number(m.count),
         })),
-        distributionByCity: distributionByCity.map(c => ({
-          city: c.city,
-          count: Number(c.count),
-        })),
+        distributionByCity,
         statusDistribution: statusDistribution.map(s => ({
           status: s.status,
           count: Number(s.count),
@@ -2783,50 +2930,58 @@ export const customerPortalRouter = router({
       }
 
       const { orders, codRecords } = await import('../drizzle/schema');
-      const { eq, and, gte, sql } = await import('drizzle-orm');
+      const { eq, and, gte, lte, sql } = await import('drizzle-orm');
 
       // Current month boundaries
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+      const clientId = ctx.portalUser.clientId;
 
-      // Total shipments this month
-      const monthlyShipments = await db
-        .select({ count: sql<number>`cast(count(*) as unsigned)` })
+      // Shipment counts this month and last. Both aggregated in SQL: the dashboard
+      // used to derive the comparison from its own order list, which is a capped
+      // page, so a busy client's previous month arrived half-truncated and the
+      // month-over-month figure ran high.
+      const [shipmentCounts] = await db
+        .select({
+          thisMonth: sql<number>`cast(SUM(CASE WHEN ${orders.createdAt} >= ${sql.param(startOfMonth, orders.createdAt)} THEN 1 ELSE 0 END) as unsigned)`,
+          lastMonth: sql<number>`cast(SUM(CASE WHEN ${orders.createdAt} >= ${sql.param(startOfLastMonth, orders.createdAt)} AND ${orders.createdAt} < ${sql.param(startOfMonth, orders.createdAt)} THEN 1 ELSE 0 END) as unsigned)`,
+        })
         .from(orders)
-        .where(
-          and(
-            eq(orders.clientId, ctx.portalUser.clientId),
-            gte(orders.createdAt, startOfMonth)
-          )
-        );
+        .where(and(
+          eq(orders.clientId, clientId),
+          gte(orders.createdAt, startOfLastMonth),
+          lte(orders.createdAt, endOfMonth),
+        ));
 
-      const totalShipmentsThisMonth = Number(monthlyShipments[0]?.count || 0);
+      const totalShipmentsThisMonth = Number(shipmentCounts?.thisMonth || 0);
+      const totalShipmentsLastMonth = Number(shipmentCounts?.lastMonth || 0);
 
-      // Delivered on time percentage (comparing deliveryDateReal with deliveryDateEstimated)
-      const deliveredOrders = await db
-        .select()
+      // On-time delivery. Only shipments that carry both a promised and an actual
+      // date can be judged, so they are the whole denominator — counting every
+      // delivery, including the ones with no promised date on record, pinned this
+      // to 0% permanently. When nothing is measurable the metric is null and the
+      // card says so rather than reporting a fabricated zero.
+      const [onTimeRow] = await db
+        .select({
+          measured: sql<number>`cast(count(*) as unsigned)`,
+          onTime: sql<number>`cast(SUM(CASE WHEN ${orders.deliveryDateReal} <= ${orders.deliveryDateEstimated} THEN 1 ELSE 0 END) as unsigned)`,
+        })
         .from(orders)
-        .where(
-          and(
-            eq(orders.clientId, ctx.portalUser.clientId),
-            eq(orders.status, 'delivered'),
-            gte(orders.createdAt, startOfMonth)
-          )
-        );
+        .where(and(
+          eq(orders.clientId, clientId),
+          eq(orders.status, 'delivered'),
+          gte(orders.createdAt, startOfMonth),
+          sql`${orders.deliveryDateReal} IS NOT NULL`,
+          sql`${orders.deliveryDateEstimated} IS NOT NULL`,
+        ));
 
-      let onTimeDeliveries = 0;
-      deliveredOrders.forEach(order => {
-        if (order.deliveryDateReal && order.deliveryDateEstimated) {
-          if (new Date(order.deliveryDateReal) <= new Date(order.deliveryDateEstimated)) {
-            onTimeDeliveries++;
-          }
-        }
-      });
-
-      const onTimePercentage = deliveredOrders.length > 0
-        ? Math.round((onTimeDeliveries / deliveredOrders.length) * 100)
-        : 0;
+      const onTimeMeasured = Number(onTimeRow?.measured || 0);
+      const onTimePercentage = onTimeMeasured > 0
+        ? Math.round((Number(onTimeRow?.onTime || 0) / onTimeMeasured) * 100)
+        : null;
 
       // Total pending COD
       const pendingCOD = await db
@@ -2843,6 +2998,21 @@ export const customerPortalRouter = router({
         );
 
       const totalPendingCOD = Number(pendingCOD[0]?.total || 0);
+
+      // How many COD shipments are still awaiting collection, out of all of them.
+      // Counted in SQL for the same reason as the shipment totals above — the
+      // caption under this tile was reading off a truncated order page.
+      const [codCounts] = await db
+        .select({
+          total: sql<number>`cast(count(*) as unsigned)`,
+          pending: sql<number>`cast(SUM(CASE WHEN ${codRecords.status} = 'pending_collection' THEN 1 ELSE 0 END) as unsigned)`,
+        })
+        .from(codRecords)
+        .innerJoin(orders, eq(orders.id, codRecords.shipmentId))
+        .where(and(
+          eq(orders.clientId, clientId),
+          sql`${codRecords.status} <> 'cancelled'`,
+        ));
 
       // Most frequent routes (top 5)
       const frequentRoutes = await db
@@ -2890,8 +3060,12 @@ export const customerPortalRouter = router({
 
       return {
         totalShipmentsThisMonth,
+        totalShipmentsLastMonth,
         onTimePercentage,
+        onTimeMeasured,
         totalPendingCOD: totalPendingCOD.toFixed(2),
+        codOrdersTotal: Number(codCounts?.total || 0),
+        codOrdersPending: Number(codCounts?.pending || 0),
         frequentRoutes: frequentRoutes.map(r => ({
           route: r.route,
           count: Number(r.count),
@@ -3453,10 +3627,12 @@ const codRouter = router({
       return await cachedQuery(key, 60, () => getCODRecordsPaged(input));
     }),
 
-  // Admin: Get COD summary
+  // Admin: Get COD summary — scoped to the panel's client filter when one is set,
+  // so the summary cards describe the same shipments as the table under them.
   getCODSummary: portalAdminProcedure
-    .query(async ({ ctx }) => {
-      return await getCODSummaryGlobal();
+    .input(z.object({ clientId: z.number().int().optional() }).optional())
+    .query(async ({ input }) => {
+      return await getCODSummary(input?.clientId);
     }),
 
   // Admin: Per-client totals of everything past the last weekly cutoff (Friday
@@ -3704,71 +3880,95 @@ const codRouter = router({
 /**
  * Rate Engine Router
  */
+const rateQuoteInput = z.object({
+  clientId: z.number(),
+  serviceType: z.enum(["DOM", "SDD", "BULLET", "EXPRESS_ZONE2", "PREFERRED_TIME", "PREFERRED_TIME_SDD"]),
+  weight: z.number(),
+  length: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  emirate: z.string().optional(),
+});
+
+const codQuoteInput = z.object({
+  codAmount: z.number(),
+  clientId: z.number().optional(),
+});
+
+/** Shared by the `calculate` mutation and the `quote` query below. */
+async function resolveRateQuote(
+  input: z.infer<typeof rateQuoteInput>,
+  role: string,
+  callerClientId: number | null | undefined,
+) {
+  // Customers can only price their own account; only admins may pass an arbitrary clientId
+  // (e.g. AdminCreateOrderDialog quoting on behalf of a client).
+  const clientId = role === 'customer' ? (callerClientId || 0) : input.clientId;
+  return calculateShipmentRate({
+    clientId,
+    serviceType: input.serviceType,
+    weight: input.weight,
+    length: input.length,
+    width: input.width,
+    height: input.height,
+    emirate: normalizeEmirate(input.emirate) ?? input.emirate,
+  });
+}
+
+async function resolveCodQuote(
+  input: z.infer<typeof codQuoteInput>,
+  role: string,
+  callerClientId: number | null | undefined,
+) {
+  const targetClientId = role === 'customer' ? (callerClientId || 0) : (input.clientId ?? 0);
+  const [cashFee, cardFee, client] = await Promise.all([
+    calculateCODFee(input.codAmount, targetClientId),
+    calculateCardCODFee(input.codAmount, targetClientId),
+    getClientAccountById(targetClientId),
+  ]);
+  // `fee` kept for backward compatibility (cash fee)
+  return { fee: cashFee, cashFee, cardFee, cardAllowed: client?.cardOnDeliveryAllowed === 1 };
+}
+
 export const rateRouter = router({
   listTiers: portalProtectedProcedure
     .query(async ({ ctx }) => {
       return await getAllRateTiers();
     }),
 
+  /**
+   * Query flavours of `calculate`/`calculateCOD`.
+   *
+   * As mutations these were fired from an effect on every keystroke, so two
+   * responses could land out of order and leave a stale price on screen. React
+   * Query keys the quote by its inputs and discards superseded requests.
+   */
+  quote: portalProtectedProcedure
+    .input(rateQuoteInput)
+    .query(async ({ input, ctx }) => {
+      if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return resolveRateQuote(input, ctx.portalUser.role, ctx.portalUser.clientId);
+    }),
+
+  quoteCOD: portalProtectedProcedure
+    .input(codQuoteInput)
+    .query(async ({ input, ctx }) => {
+      if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      return resolveCodQuote(input, ctx.portalUser.role, ctx.portalUser.clientId);
+    }),
+
   calculate: portalProtectedProcedure
-    .input(z.object({
-      clientId: z.number(),
-      serviceType: z.enum(["DOM", "SDD", "BULLET", "EXPRESS_ZONE2", "PREFERRED_TIME", "PREFERRED_TIME_SDD"]),
-      weight: z.number(),
-      length: z.number().optional(),
-      width: z.number().optional(),
-      height: z.number().optional(),
-      emirate: z.string().optional(),
-    }))
+    .input(rateQuoteInput)
     .mutation(async ({ input, ctx }) => {
       if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-      // Customers can only price their own account; only admins may pass an arbitrary clientId
-      // (e.g. AdminCreateOrderDialog quoting on behalf of a client).
-      const clientId = ctx.portalUser.role === 'customer'
-        ? (ctx.portalUser.clientId || 0)
-        : input.clientId;
-
-      const result = await calculateShipmentRate({
-        clientId,
-        serviceType: input.serviceType,
-        weight: input.weight,
-        length: input.length,
-        width: input.width,
-        height: input.height,
-        emirate: input.emirate,
-      });
-
-      return result;
+      return resolveRateQuote(input, ctx.portalUser.role, ctx.portalUser.clientId);
     }),
 
   calculateCOD: portalProtectedProcedure
-    .input(z.object({
-      codAmount: z.number(),
-      clientId: z.number().optional(),
-    }))
+    .input(codQuoteInput)
     .mutation(async ({ input, ctx }) => {
       if (!ctx.portalUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
-
-      let targetClientId = 0;
-      if (ctx.portalUser.role === 'customer') {
-        targetClientId = ctx.portalUser.clientId || 0;
-      } else if (input.clientId) {
-        targetClientId = input.clientId;
-      }
-
-      const [cashFee, cardFee, client] = await Promise.all([
-        calculateCODFee(input.codAmount, targetClientId),
-        calculateCardCODFee(input.codAmount, targetClientId),
-        getClientAccountById(targetClientId),
-      ]);
-      // `fee` kept for backward compatibility (cash fee)
-      return {
-        fee: cashFee,
-        cashFee,
-        cardFee,
-        cardAllowed: client?.cardOnDeliveryAllowed === 1,
-      };
+      return resolveCodQuote(input, ctx.portalUser.role, ctx.portalUser.clientId);
     }),
 
   getTiers: portalAdminProcedure

@@ -29,6 +29,7 @@ import {
     BarChart3,
 } from 'lucide-react';
 import { statusColor, AXIS_TICK, TOOLTIP_STYLE } from '@/lib/statusStyles';
+import { serviceTypeLabel } from '@shared/const';
 
 // Ink-dominant chart language: data is ink, red is the accent,
 // color elsewhere is functional (status) only.
@@ -38,11 +39,12 @@ const GRID = 'var(--line)';
 
 interface AdminAnalyticsProps {
     totalClients?: number;
+    activeClients?: number;
     totalOrders?: number;
     activeOrders?: number;
 }
 
-export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, activeOrders = 0 }: AdminAnalyticsProps) {
+export default function AdminAnalytics({ totalClients = 0, activeClients = 0, totalOrders = 0, activeOrders = 0 }: AdminAnalyticsProps) {
     const [drillDownDate, setDrillDownDate] = useState<string | null>(null);
     const [drillDownWaybills, setDrillDownWaybills] = useState<string[]>([]);
     const [shipmentView, setShipmentView] = useState<'30d' | '6m'>('30d');
@@ -116,6 +118,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
 
     const monthlyComparison = analytics.monthlyComparison || [];
     const monthlyRevenue = revenue?.monthlyRevenue || [];
+    const coverage = analytics.deliveryTimeCoverage ?? { measured: 0, delivered: 0 };
 
     return (
         <div className="space-y-6">
@@ -127,7 +130,11 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                         <span className="ic"><Users className="w-[18px] h-[18px]" /></span>
                     </div>
                     <div className="val">{totalClients}</div>
-                    <div className="sub">registered accounts</div>
+                    <div className="sub">
+                        {activeClients === totalClients
+                            ? 'registered accounts'
+                            : `${activeClients} active · ${totalClients - activeClients} inactive`}
+                    </div>
                 </div>
                 <div className="kpi">
                     <div className="kt">
@@ -143,8 +150,11 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                         <span className="ic"><Activity className="w-[18px] h-[18px]" /></span>
                     </div>
                     <div className="val">{activeOrders.toLocaleString()}</div>
+                    {/* "open", not "in motion": this bucket is everything not delivered,
+                        cancelled or returned, which includes failed pickups and failed
+                        deliveries — orders that need someone, not orders on a van. */}
                     <div className="sub">
-                        {totalOrders > 0 ? `${Math.round((activeOrders / totalOrders) * 100)}% of total in motion` : 'no orders yet'}
+                        {totalOrders > 0 ? `${Math.round((activeOrders / totalOrders) * 100)}% of all orders still open` : 'no orders yet'}
                     </div>
                 </div>
                 <div className="kpi accent">
@@ -436,7 +446,15 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                 <Card className="bg-card border-border overflow-hidden">
                     <CardHeader>
                         <CardTitle>Average Delivery Time by Route</CardTitle>
-                        <CardDescription>Top 10 routes by volume</CardDescription>
+                        {/* Only deliveries with a recorded delivery timestamp can be timed.
+                            Saying so beats presenting a partial average as the full picture. */}
+                        <CardDescription>
+                            Top 10 routes by volume
+                            {coverage.delivered > 0 && (
+                                <> — measured on {coverage.measured.toLocaleString()} of {coverage.delivered.toLocaleString()} delivered
+                                    {coverage.measured < coverage.delivered && ' (the rest have no delivery timestamp)'}</>
+                            )}
+                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="h-[350px]">
@@ -543,7 +561,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                     <Card className="bg-card border-border overflow-hidden">
                         <CardHeader>
                             <CardTitle className="text-sm font-medium">Revenue by Service Type</CardTitle>
-                            <CardDescription>Breakdown from invoice line items</CardDescription>
+                            <CardDescription>Every invoice line, including charges not tied to a shipment</CardDescription>
                         </CardHeader>
                         <CardContent>
                             {revenueLoading ? (
@@ -559,7 +577,7 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                                                 <span className="font-mono text-xs text-muted-foreground w-5 text-right">{index + 1}</span>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center justify-between mb-1">
-                                                        <span className="font-display text-sm font-semibold truncate">{entry.service}</span>
+                                                        <span className="font-display text-sm font-semibold truncate">{serviceTypeLabel(entry.service)}</span>
                                                         <span className="money text-sm ml-2 shrink-0">
                                                             {formatAED(entry.amount)}
                                                         </span>
@@ -576,7 +594,9 @@ export default function AdminAnalytics({ totalClients = 0, totalOrders = 0, acti
                                                     </div>
                                                 </div>
                                                 <span className="pill shrink-0">{pct}%</span>
-                                                <span className="pill shrink-0">{entry.count} shp</span>
+                                                <span className="pill shrink-0">
+                                                    {entry.count} {entry.service === 'OTHER_CHARGES' ? 'lines' : 'shp'}
+                                                </span>
                                             </div>
                                         );
                                     })}

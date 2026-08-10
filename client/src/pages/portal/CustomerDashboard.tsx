@@ -450,15 +450,14 @@ export default function CustomerDashboard() {
 
   // Derived metrics computed from orders data
   const _now = new Date();
-  const _thisMonthStart = new Date(_now.getFullYear(), _now.getMonth(), 1);
   const _lastMonthStart = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
   const _lastMonthEnd = new Date(_now.getFullYear(), _now.getMonth(), 0, 23, 59, 59);
 
-  const _shipmentsThisMonth = orders?.filter((o: any) => new Date(o.createdAt) >= _thisMonthStart).length || 0;
-  const _shipmentsLastMonth = orders?.filter((o: any) => {
-    const d = new Date(o.createdAt);
-    return d >= _lastMonthStart && d <= _lastMonthEnd;
-  }).length || 0;
+  // Month-over-month comes from the server's SQL counts, not from `orders`: that
+  // list is one capped page of a 90-day window, so for a busy account the previous
+  // month arrived partly truncated and every comparison below read too favourably.
+  const _shipmentsThisMonth = metrics?.totalShipmentsThisMonth ?? 0;
+  const _shipmentsLastMonth = metrics?.totalShipmentsLastMonth ?? 0;
   const monthlyChangePct = _shipmentsLastMonth > 0
     ? Math.round(((_shipmentsThisMonth - _shipmentsLastMonth) / _shipmentsLastMonth) * 100)
     : _shipmentsThisMonth > 0 ? 100 : 0;
@@ -466,38 +465,40 @@ export default function CustomerDashboard() {
     ? Math.min(Math.round((_shipmentsThisMonth / _shipmentsLastMonth) * 100), 100)
     : _shipmentsThisMonth > 0 ? 100 : 0;
 
-  const _deliveredThisMonth = orders?.filter((o: any) =>
-    o.status === 'delivered' && o.deliveryDateReal && o.deliveryDateEstimated &&
-    new Date(o.deliveryDateReal) >= _thisMonthStart
-  ) || [];
+  // On-time: the tile shows the server figure, which is null while no delivery
+  // carries a promised date. The month-on-month delta stays local (the server only
+  // reports the current month) and uses the same denominator — measurable
+  // deliveries only — so the badge and the number can no longer disagree.
   const _deliveredLastMonth = orders?.filter((o: any) =>
     o.status === 'delivered' && o.deliveryDateReal && o.deliveryDateEstimated &&
     new Date(o.deliveryDateReal) >= _lastMonthStart && new Date(o.deliveryDateReal) <= _lastMonthEnd
   ) || [];
-  const _onTimeThisMonth = _deliveredThisMonth.filter((o: any) =>
-    new Date(o.deliveryDateReal) <= new Date(o.deliveryDateEstimated)
-  ).length;
   const _onTimeLastMonth = _deliveredLastMonth.filter((o: any) =>
     new Date(o.deliveryDateReal) <= new Date(o.deliveryDateEstimated)
   ).length;
-  const _onTimeRateThisMonth = _deliveredThisMonth.length > 0
-    ? Math.round((_onTimeThisMonth / _deliveredThisMonth.length) * 100) : null;
   const _onTimeRateLastMonth = _deliveredLastMonth.length > 0
     ? Math.round((_onTimeLastMonth / _deliveredLastMonth.length) * 100) : null;
-  const onTimeChangePct = _onTimeRateThisMonth !== null && _onTimeRateLastMonth !== null
-    ? _onTimeRateThisMonth - _onTimeRateLastMonth : null;
+  const onTimePct = metrics?.onTimePercentage ?? null;
+  const onTimeChangePct = onTimePct !== null && _onTimeRateLastMonth !== null
+    ? onTimePct - _onTimeRateLastMonth : null;
 
-  const _codOrders = orders?.filter((o: any) => o.codRequired === 1) || [];
-  const _pendingCODOrders = _codOrders.filter((o: any) => o.status !== 'delivered' && o.status !== 'canceled');
-  const codBarWidth = _codOrders.length > 0
-    ? Math.round((_pendingCODOrders.length / _codOrders.length) * 100) : 0;
+  // COD shipment counts also come from SQL, for the same truncation reason.
+  const _codOrdersTotal = metrics?.codOrdersTotal ?? 0;
+  const _codOrdersPending = metrics?.codOrdersPending ?? 0;
+  const codBarWidth = _codOrdersTotal > 0
+    ? Math.round((_codOrdersPending / _codOrdersTotal) * 100) : 0;
+
+  // Local calendar days, not UTC ones: toISOString() put anything created after
+  // 20:00 Dubai time on the previous day's bar.
+  const _dayKey = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   const chartDays = chartPeriod === 7 ? 7 : 30;
   const chartData = Array.from({ length: chartDays }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() - (chartDays - 1 - i));
-    const dayStr = date.toISOString().split('T')[0];
-    const count = orders?.filter((o: any) => new Date(o.createdAt).toISOString().split('T')[0] === dayStr).length || 0;
+    const dayStr = _dayKey(date);
+    const count = orders?.filter((o: any) => _dayKey(new Date(o.createdAt)) === dayStr).length || 0;
     const label = chartPeriod === 7
       ? date.toLocaleDateString('en', { weekday: 'short' })
       : date.getDate().toString();
@@ -609,18 +610,27 @@ export default function CustomerDashboard() {
                       <p className="mono-label">02 / On-time delivery</p>
                       <span className="material-symbols-outlined text-muted-foreground text-[18px]">verified</span>
                     </div>
-                    <p className="font-display text-[42px] font-bold leading-none tracking-tight">{metrics?.onTimePercentage || 0}<span className="text-[24px] text-muted-foreground">%</span></p>
+                    {/* An em dash, not 0%: with no promised delivery date on record
+                        there is nothing to measure, and a zero read as "we are never
+                        on time" rather than "we never promised a date". */}
+                    <p className="font-display text-[42px] font-bold leading-none tracking-tight">
+                      {onTimePct === null ? '—' : <>{onTimePct}<span className="text-[24px] text-muted-foreground">%</span></>}
+                    </p>
                     <div className="mt-5 flex items-center justify-between gap-3">
-                      {onTimeChangePct !== null ? (
+                      {onTimePct === null ? (
+                        <span className="font-mono text-[11px] text-muted-foreground">No delivery dates promised yet</span>
+                      ) : onTimeChangePct !== null ? (
                         <span className={`font-mono text-[11px] ${onTimeChangePct >= 0 ? 'text-[var(--st-green)]' : 'text-primary'}`}>
                           {onTimeChangePct >= 0 ? '▲' : '▼'} {onTimeChangePct >= 0 ? '+' : ''}{onTimeChangePct}% vs last month
                         </span>
                       ) : (
-                        <span className="font-mono text-[11px] text-muted-foreground">No prev. data</span>
+                        <span className="font-mono text-[11px] text-muted-foreground">
+                          {metrics?.onTimeMeasured ?? 0} measured this month
+                        </span>
                       )}
                     </div>
                     <div className="mt-3 h-1 w-full bg-muted overflow-hidden">
-                      <div className="h-full bg-[var(--st-green)]" style={{ width: `${metrics?.onTimePercentage || 0}%` }}></div>
+                      <div className="h-full bg-[var(--st-green)]" style={{ width: `${onTimePct ?? 0}%` }}></div>
                     </div>
                   </div>
 
@@ -633,7 +643,7 @@ export default function CustomerDashboard() {
                     <p className="font-display text-[42px] font-bold leading-none tracking-tight">{metrics?.totalPendingCOD || '0.00'}</p>
                     <div className="mt-5 flex items-center justify-between gap-3">
                       <span className="font-mono text-[11px] text-muted-foreground">
-                        {_codOrders.length > 0 ? `${_pendingCODOrders.length}/${_codOrders.length} orders` : 'No COD orders'}
+                        {_codOrdersTotal > 0 ? `${_codOrdersPending}/${_codOrdersTotal} orders` : 'No COD orders'}
                       </span>
                     </div>
                     <div className="mt-3 h-1 w-full bg-muted overflow-hidden">

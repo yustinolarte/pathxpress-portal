@@ -376,11 +376,103 @@ export const driverRouter = router({
     // time per route (app-reported) and COD collected per route (recomputed
     // server-side from delivered stops only). date defaults to today.
     getShiftReport: publicProcedure
-        .input(z.object({ date: z.string().optional() }))
+        .input(z.object({
+            from: z.string().optional(),
+            to: z.string().optional(),
+            driverId: z.number().optional(),
+        }))
         .query(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.getDriverShiftReport(input.date);
+            return driverAdmin.getDriverShiftReport(input);
+        }),
+
+    // ── Payroll corrections on driver shifts ──
+    updateShift: publicProcedure
+        .input(z.object({
+            id: z.number(),
+            startTime: z.string().optional(),
+            // null re-opens the shift; undefined leaves it as-is.
+            endTime: z.string().nullable().optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            const parse = (value: string, label: string) => {
+                const d = new Date(value);
+                if (Number.isNaN(d.getTime())) throw new TRPCError({ code: 'BAD_REQUEST', message: `Invalid ${label}` });
+                return d;
+            };
+            try {
+                return await driverAdmin.updateDriverShift({
+                    id: input.id,
+                    startTime: input.startTime ? parse(input.startTime, 'clock-in') : undefined,
+                    endTime: input.endTime === undefined ? undefined : (input.endTime === null ? null : parse(input.endTime, 'clock-out')),
+                });
+            } catch (e) {
+                throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message });
+            }
+        }),
+
+    closeShift: publicProcedure
+        .input(z.object({ id: z.number(), endTime: z.string().optional() }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            try {
+                return await driverAdmin.closeDriverShift({
+                    id: input.id,
+                    endTime: input.endTime ? new Date(input.endTime) : undefined,
+                });
+            } catch (e) {
+                throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message });
+            }
+        }),
+
+    deleteShift: publicProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            try {
+                return await driverAdmin.deleteDriverShift(input.id);
+            } catch (e) {
+                throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message });
+            }
+        }),
+
+    // Dispatch board for one day — KPIs, on-duty roster and alert strip in a
+    // single round trip. date defaults to today.
+    getDispatchOverview: publicProcedure
+        .input(z.object({ date: z.string().optional() }).optional())
+        .query(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.getDispatchOverview(input?.date);
+        }),
+
+    // Per-driver COD reconciliation for one day: cash vs card (Tap to Pay) and
+    // how much cash is still in the driver's hands. date defaults to today.
+    getCodReconciliation: publicProcedure
+        .input(z.object({ date: z.string().optional() }).optional())
+        .query(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.getDriverCodReconciliation(input?.date);
+        }),
+
+    markCashRemitted: publicProcedure
+        .input(z.object({ driverId: z.number(), date: z.string().optional() }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.markDriverCashRemitted(input.driverId, input.date);
         }),
 });

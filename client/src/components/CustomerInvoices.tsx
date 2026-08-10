@@ -140,9 +140,13 @@ export default function CustomerInvoices() {
     return `${currency} ${parseFloat(String(amount)).toFixed(2)}`;
   };
 
-  // Summary stats
-  const totalOutstanding = invoices?.filter(i => i.status !== 'paid').reduce((s, i) => s + parseFloat(i.total), 0) ?? 0;
-  const totalOverdue = invoices?.filter(i => i.status === 'overdue').reduce((s, i) => s + parseFloat(i.total), 0) ?? 0;
+  // Summary stats — on the outstanding *balance*, not the invoice face value.
+  // Using `total` ignored anything already paid against an invoice, so a partly
+  // settled account read as still owing the full amount here while the admin's
+  // billing panel (which uses balance) showed the real figure.
+  const _owed = (i: any) => parseFloat(i.balance ?? i.total ?? '0');
+  const totalOutstanding = invoices?.filter(i => i.status !== 'paid').reduce((s, i) => s + _owed(i), 0) ?? 0;
+  const totalOverdue = invoices?.filter(i => i.status === 'overdue').reduce((s, i) => s + _owed(i), 0) ?? 0;
 
   if (isLoading) {
     return <div className="text-center py-8">Loading invoices...</div>;

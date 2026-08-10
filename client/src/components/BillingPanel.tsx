@@ -763,9 +763,12 @@ export default function BillingPanel() {
           </div>
 
           {/* Month vs Previous */}
+          {/* Labelled for what the big number is — the previous month's total. The
+              badge underneath is this month's movement against it; the old "vs
+              Previous Month" heading made the value itself look like the delta. */}
           <div className="kpi">
             <div className="kt">
-              <span className="lab">vs Previous Month</span>
+              <span className="lab">Previous Month</span>
               <span className="ic">
                 {momPositive ? <TrendingUp className="w-[18px] h-[18px]" /> : <TrendingDown className="w-[18px] h-[18px]" />}
               </span>
@@ -914,7 +917,14 @@ export default function BillingPanel() {
                           <TableCell className="text-xs">{row.serviceType ? abbreviateServiceType(row.serviceType) : '—'}</TableCell>
                           <TableCell className="text-xs">{row.destinationCountry || '—'}</TableCell>
                           <TableCell className="text-xs">{new Date(row.issueDate).toLocaleDateString()}</TableCell>
-                          <TableCell className="text-right font-mono text-xs">AED {row.charged.toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            AED {row.charged.toFixed(2)}
+                            {!!row.adjustment && (
+                              <div className="text-[10px] text-muted-foreground">
+                                {row.base.toFixed(2)} {row.adjustment > 0 ? '+' : '−'} {Math.abs(row.adjustment).toFixed(2)}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <Input
                               key={`${row.invoiceItemId}-${row.cost ?? 'null'}`}

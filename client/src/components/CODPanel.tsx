@@ -57,12 +57,14 @@ export default function CODPanel() {
     setRemittancePage(0);
   };
 
-  // Get COD summary (SQL-aggregated global totals — not affected by pagination)
-  const { data: codSummary } = trpc.portal.cod.getCODSummary.useQuery();
+  // Get COD summary (SQL-aggregated, scoped to the client filter — these cards
+  // used to stay global while the header claimed to describe one client)
+  const { data: codSummary } = trpc.portal.cod.getCODSummary.useQuery({
+    clientId: filterClientId === 'all' ? undefined : parseInt(filterClientId),
+  });
 
-  // Full (capped) COD record set — used only for "Collected Today" and the
-  // month-filtered PDF exports below, which need to scan across records
-  // rather than a single page of them.
+  // Full (capped) COD record set — used only for the month-filtered PDF exports
+  // below, which need to scan across records rather than a single page of them.
   const { data: allCODRecords } = trpc.portal.cod.getAllCODRecords.useQuery();
 
   // Paginated COD records — this is what actually renders in the "All COD
@@ -126,21 +128,16 @@ export default function CODPanel() {
     }
   }, [preselectAllOnLoad, eligibleCOD]);
 
-  // Calculate today's collected amount
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const totalCollectedToday = allCODRecords
-    ?.filter(record => {
-      if (!record.collectedDate) return false;
-      const collectedDate = new Date(record.collectedDate);
-      collectedDate.setHours(0, 0, 0, 0);
-      return collectedDate.getTime() === today.getTime() && record.status === 'collected';
-    })
-    .reduce((sum, record) => sum + parseFloat(record.codAmount), 0) || 0;
+  // Today's collected amount — aggregated server-side. Deriving it from
+  // allCODRecords meant scanning a list capped at 500 rows and ordered by
+  // creation date, so a payment collected today on an older shipment could fall
+  // off the end and simply not be counted.
+  const totalCollectedToday = parseFloat(codSummary?.collectedToday || '0');
 
   // Pending settlement (collected but not remitted) — SQL-aggregated, accurate
   // regardless of the 500-row cap on allCODRecords.
   const totalPendingSettlement = parseFloat(codSummary?.collected || '0');
+  const totalDisputed = parseFloat(codSummary?.disputed || '0');
 
   // Calculate next payout date (display only — every Friday; the authoritative
   // cutoff instant, 18:00 Dubai time, is computed server-side in getLastWeeklyCutoff)
@@ -609,8 +606,12 @@ export default function CODPanel() {
             </div>
           </div>
 
-          {/* Additional Stats */}
-          <div className="statline mt-6 pt-6 border-t border-border/50" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          {/* Additional Stats — Disputed only appears when there is money in dispute,
+              which previously showed up in none of these figures at all. */}
+          <div
+            className="statline mt-6 pt-6 border-t border-border/50"
+            style={{ gridTemplateColumns: `repeat(${totalDisputed > 0 ? 4 : 3}, 1fr)` }}
+          >
             <div className="s">
               <div className="l">Total Pending</div>
               <div className="v">AED {codSummary?.pending || '0'}</div>
@@ -619,6 +620,12 @@ export default function CODPanel() {
               <div className="l">Total Remitted</div>
               <div className="v green">AED {codSummary?.remitted || '0'}</div>
             </div>
+            {totalDisputed > 0 && (
+              <div className="s">
+                <div className="l">Disputed</div>
+                <div className="v red">AED {codSummary?.disputed}</div>
+              </div>
+            )}
             <div className="s">
               <div className="l">All Time Total</div>
               <div className="v">AED {codSummary?.total || '0'}</div>

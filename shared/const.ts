@@ -28,3 +28,25 @@ export const SERVICE_TYPE_ABBREVIATIONS: Record<string, string> = {
 
 export const abbreviateServiceType = (code?: string | null): string =>
   (code && SERVICE_TYPE_ABBREVIATIONS[code]) || code || "";
+
+// Readable names for the same codes, for places with room to spell them out —
+// analytics legends, revenue breakdowns, report headings. Raw codes like
+// PRIME_REGISTERED_POD are storage identifiers, not something to show a reader.
+export const SERVICE_TYPE_LABELS: Record<string, string> = {
+  DOM: "Domestic Express",
+  SDD: "Same Day",
+  BULLET: "Bullet (4h)",
+  EXPRESS_ZONE2: "Express – Zone 2",
+  PREFERRED_TIME: "Next Day Preferred Time",
+  PREFERRED_TIME_SDD: "Same Day Preferred Time",
+  PRIME_EXPRESS: "Prime Express",
+  PRIME_TRACKED: "Prime Tracked",
+  PRIME_REGISTERED_POD: "Prime Registered (POD)",
+  GCC: "GCC",
+  PREMIUM_EXPORT: "Premium Export",
+  // Invoice lines with no shipment behind them: surcharges, discounts, manual items.
+  OTHER_CHARGES: "Other charges & adjustments",
+};
+
+export const serviceTypeLabel = (code?: string | null): string =>
+  (code && SERVICE_TYPE_LABELS[code]) || code || "";

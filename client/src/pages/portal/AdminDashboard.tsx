@@ -381,7 +381,10 @@ export default function AdminDashboard() {
 
   // Fetch orders (current page) + KPI stats (counts over full history)
   const { data: ordersData, isLoading: ordersLoading, refetch: refetchOrders } = trpc.portal.admin.getAllOrders.useQuery(orderQueryInput);
-  const { data: ordersStats } = trpc.portal.admin.getOrdersStats.useQuery({ scope: 'domestic' });
+  // No scope filter: these two feed the Overview KPI row, where every other tile
+  // (today/week/month, status distribution, FADR) counts the whole network. Asking
+  // for domestic only made "Total Orders" disagree with the status chart below it.
+  const { data: ordersStats } = trpc.portal.admin.getOrdersStats.useQuery({});
   const allOrders = ordersData?.rows ?? [];
   const ordersTotal = ordersData?.total ?? 0;
 
@@ -446,6 +449,9 @@ export default function AdminDashboard() {
 
   const stats = {
     totalClients: clients?.length || 0,
+    // Inactive accounts still count as registered, but the split is what an admin
+    // actually wants to know from a "Total Clients" tile.
+    activeClients: clients?.filter((c: any) => c.status === 'active').length || 0,
     totalOrders: ordersStats?.totalOrders || 0,
     activeOrders: ordersStats?.activeOrders || 0,
   };
@@ -496,7 +502,12 @@ export default function AdminDashboard() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           {/* Overview + Analytics Tab */}
           <TabsContent value="analytics" className="space-y-4 mt-0">
-            <AdminAnalytics totalClients={stats.totalClients} totalOrders={stats.totalOrders} activeOrders={stats.activeOrders} />
+            <AdminAnalytics
+              totalClients={stats.totalClients}
+              activeClients={stats.activeClients}
+              totalOrders={stats.totalOrders}
+              activeOrders={stats.activeOrders}
+            />
           </TabsContent>
 
           {/* Clients Tab */}
@@ -2013,12 +2024,13 @@ export default function AdminDashboard() {
         )}
 
         {/* Admin Create Order Dialog */}
+        {/* The dialog decides whether to stay open (create-another) or close, so
+            this callback only refreshes the list. */}
         <AdminCreateOrderDialog
           open={createOrderDialogOpen}
           onOpenChange={setCreateOrderDialogOpen}
           clients={activeClients}
           onSuccess={() => {
-            setCreateOrderDialogOpen(false);
             refetchOrders();
           }}
         />

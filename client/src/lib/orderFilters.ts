@@ -63,6 +63,35 @@ function matchesType(order: any, type: OrderTypeFilter): boolean {
 // Filtering explicitly by one of these statuses (where supported) brings it back into view.
 export const HIDDEN_BY_DEFAULT_STATUSES = new Set(['failed_pickup', 'failed_delivery']);
 
+/**
+ * The default assignable pool: everything getAvailableOrders() returned minus the
+ * already-failed orders, which are retryable but would otherwise dominate the list.
+ *
+ * Every picker must go through this — Create Route, Add Orders and the dispatch
+ * board's unassigned panel. Each used to inline its own copy of this rule, and the
+ * one that forgot showed more than twice as many orders as the others.
+ *
+ * Orders already selected stay visible whatever their status, so a deliberate pick
+ * (e.g. a retry chosen from an explicit status filter) can still be reviewed and
+ * deselected instead of vanishing from under the cursor.
+ */
+export function pickableOrders<T extends { id: number; status: string }>(
+  orders: T[] | undefined,
+  selectedIds: Iterable<number> = [],
+  { includeFailed = false }: { includeFailed?: boolean } = {},
+): T[] {
+  if (!orders) return [];
+  if (includeFailed) return orders;
+  const keep = new Set(selectedIds);
+  return orders.filter(o => !HIDDEN_BY_DEFAULT_STATUSES.has(o.status) || keep.has(o.id));
+}
+
+/** How many orders the default pool is holding back — for a "show them" affordance. */
+export function countHiddenByDefault<T extends { status: string }>(orders: T[] | undefined): number {
+  if (!orders) return 0;
+  return orders.filter(o => HIDDEN_BY_DEFAULT_STATUSES.has(o.status)).length;
+}
+
 export function filterAvailableOrders(orders: any[], f: DispatchFilterState): any[] {
   const q = f.search.trim().toLowerCase();
   const from = f.dateFrom ? new Date(`${f.dateFrom}T00:00:00`) : null;

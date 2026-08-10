@@ -4,12 +4,13 @@
  */
 import bcrypt from 'bcryptjs';
 import { customAlphabet } from 'nanoid';
-import { eq, and, desc, sql, gte, lt, notInArray, inArray } from 'drizzle-orm';
+import { eq, and, or, desc, sql, gte, lt, notInArray, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { getDb } from './db';
-import { drivers, driverRoutes, driverShifts, routeOrders, orders, driverReports, clientAccounts } from '../drizzle/schema';
+import { drivers, driverRoutes, driverShifts, routeOrders, orders, driverReports, clientAccounts, codRecords } from '../drizzle/schema';
 import { optimizeStops } from './routeOptimizer';
 import type { OptimizableStop, LatLng } from './routeOptimizer';
 import { cachedQuery } from './_core/queryCache';
+import { MAX_SHIFT_HOURS, isStaleOpenShift } from './driverShiftRules';
 
 // ============ DASHBOARD STATS ============
 
@@ -69,7 +70,46 @@ export async function getAllDrivers() {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    return db.select().from(drivers).orderBy(desc(drivers.createdAt));
+    const [rows, stopStats] = await Promise.all([
+        db.select().from(drivers).orderBy(desc(drivers.createdAt)),
+        // One grouped pass over every stop ever worked, so the roster can show a
+        // success rate without a per-driver round trip. The full breakdown still
+        // lives in getDriverPerformance().
+        // Every counter is confined to delivery stops. The numerator used to count
+        // any stop marked 'delivered', pickups included, while the denominator was
+        // delivery stops only — a mismatch that can push the rate over 100%. Stops
+        // still open are excluded from both: a driver mid-route is not failing them.
+        db.select({
+            driverId: driverRoutes.driverId,
+            delivered: sql<number>`cast(SUM(CASE WHEN ${routeOrders.type} = 'delivery' AND ${routeOrders.status} = 'delivered' THEN 1 ELSE 0 END) as signed)`,
+            attempted: sql<number>`cast(SUM(CASE WHEN ${routeOrders.type} = 'delivery' AND ${routeOrders.status} = 'attempted' THEN 1 ELSE 0 END) as signed)`,
+            returned: sql<number>`cast(SUM(CASE WHEN ${routeOrders.type} = 'delivery' AND ${routeOrders.status} IN ('returned', 'failed') THEN 1 ELSE 0 END) as signed)`,
+            deliveryStops: sql<number>`cast(SUM(CASE WHEN ${routeOrders.type} = 'delivery' THEN 1 ELSE 0 END) as signed)`,
+            settledStops: sql<number>`cast(SUM(CASE WHEN ${routeOrders.type} = 'delivery' AND ${routeOrders.status} NOT IN ('pending', 'in_progress') THEN 1 ELSE 0 END) as signed)`,
+        })
+            .from(routeOrders)
+            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+            .groupBy(driverRoutes.driverId),
+    ]);
+
+    const statsByDriver = new Map(stopStats.map(s => [s.driverId, s]));
+
+    return rows.map(driver => {
+        const s = statsByDriver.get(driver.id);
+        const deliveryStops = Number(s?.deliveryStops || 0);
+        const settledStops = Number(s?.settledStops || 0);
+        const delivered = Number(s?.delivered || 0);
+        return {
+            ...driver,
+            stats: {
+                delivered,
+                attempted: Number(s?.attempted || 0),
+                returned: Number(s?.returned || 0),
+                deliveryStops,
+                successRate: settledStops > 0 ? Math.round((delivered / settledStops) * 100) : null,
+            },
+        };
+    });
 }
 
 export async function getDriverById(id: number) {
@@ -713,6 +753,7 @@ export async function getDriverPerformance(driverId: number) {
 
     // Aggregate delivery stats
     let totalDeliveries = 0;
+    let settledDeliveries = 0;
     let delivered = 0;
     let attempted = 0;
     let returned = 0;
@@ -720,11 +761,14 @@ export async function getDriverPerformance(driverId: number) {
     let totalPieces = 0;
 
     if (routeIds.length > 0) {
+        // Delivery stops only, on both sides of the ratio — see getAllDrivers().
         const allStops = await db.select().from(routeOrders).where(inArray(routeOrders.routeId, routeIds));
-        totalDeliveries = allStops.filter(s => s.type === 'delivery').length;
-        delivered = allStops.filter(s => s.status === 'delivered').length;
-        attempted = allStops.filter(s => s.status === 'attempted').length;
-        returned = allStops.filter(s => s.status === 'returned').length;
+        const deliveryStops = allStops.filter(s => s.type === 'delivery');
+        totalDeliveries = deliveryStops.length;
+        settledDeliveries = deliveryStops.filter(s => !['pending', 'in_progress'].includes(s.status)).length;
+        delivered = deliveryStops.filter(s => s.status === 'delivered').length;
+        attempted = deliveryStops.filter(s => s.status === 'attempted').length;
+        returned = deliveryStops.filter(s => s.status === 'returned').length;
 
         const orderIds = Array.from(new Set(allStops.map(s => s.orderId)));
         if (orderIds.length > 0) {
@@ -744,7 +788,7 @@ export async function getDriverPerformance(driverId: number) {
     // Reports for this driver
     const driverReportsData = await db.select().from(driverReports).where(eq(driverReports.driverId, driverId));
 
-    const successRate = totalDeliveries > 0 ? Math.round((delivered / totalDeliveries) * 100) : 0;
+    const successRate = settledDeliveries > 0 ? Math.round((delivered / settledDeliveries) * 100) : 0;
 
     return {
         driver: { id: driver.id, fullName: driver.fullName, username: driver.username, status: driver.status, vehicleNumber: driver.vehicleNumber, phone: driver.phone, email: driver.email, emiratesId: driver.emiratesId, licenseNo: driver.licenseNo, createdAt: driver.createdAt },
@@ -964,51 +1008,162 @@ export interface DriverShiftReportGroup {
     shiftId: number | null; // null = these routes aren't linked to a reported shift yet (still in progress)
     shiftStartTime: Date | null;
     shiftEndTime: Date | null;
+    /** Paid time for this shift, clipped to the requested range. Null when there's no shift. */
+    onDutySeconds: number | null;
     routes: DriverShiftReportRoute[];
     totalActiveSeconds: number;
     totalCodCollected: number;
     totalCompletedStops: number;
 }
 
+/** One payroll line per driver for the requested range. */
+export interface DriverPayrollRow {
+    driverId: number;
+    driverName: string;
+    initials: string;
+    shiftCount: number;
+    openShiftCount: number;
+    /**
+     * Of openShiftCount, how many are stale (open longer than MAX_SHIFT_HOURS).
+     * Lets the UI distinguish "still open, still counting" from "open so long we
+     * capped it" instead of the two looking identical at a glance.
+     */
+    staleShiftCount?: number;
+    /** Clocked-in time inside the range. Open shifts are counted up to now, capped
+     *  at MAX_SHIFT_HOURS once stale — see staleShiftCount. */
+    onDutySeconds: number;
+    /** Time the app reported as actively working a route (excludes pauses). */
+    activeSeconds: number;
+    routeCount: number;
+    completedStops: number;
+    codCollected: number;
+}
+
+export interface DriverShiftReport {
+    from: string;
+    to: string;
+    groups: DriverShiftReportGroup[];
+    payroll: DriverPayrollRow[];
+    totals: {
+        shiftCount: number;
+        openShiftCount: number;
+        /** Sum of payroll[].staleShiftCount — see that field for what it means. */
+        staleShiftCount?: number;
+        onDutySeconds: number;
+        activeSeconds: number;
+        routeCount: number;
+        completedStops: number;
+        codCollected: number;
+    };
+}
+
+export interface ShiftReportFilters {
+    /** Inclusive start day, YYYY-MM-DD. Defaults to today. */
+    from?: string;
+    /** Inclusive end day, YYYY-MM-DD. Defaults to `from`. */
+    to?: string;
+    driverId?: number;
+}
+
 /**
- * Per-driver, per-shift breakdown of routes worked on a given calendar day:
- * active time per route (as reported by the app via /driver/shifts/route-report)
- * and COD actually collected per route, recomputed server-side from
- * routeOrders.collectedAmount for delivered stops only — never trusts the
- * app-reported codCollectedReported snapshot as the authoritative figure,
- * same reasoning as the wallet/summary and stops/:id/status guards.
+ * Per-driver, per-shift breakdown of routes worked over a date range, plus a
+ * payroll roll-up per driver.
  *
- * Routes still in progress won't have a shiftId yet (that link is only set
- * when the app reports the route finished) — those are grouped under a
- * shiftId: null bucket per driver so they still show up instead of vanishing
- * from the view until the driver finishes the route.
+ * Active time per route is what the app reported via /driver/shifts/route-report;
+ * COD is recomputed server-side from routeOrders.collectedAmount for delivered
+ * stops only — never the app-reported codCollectedReported snapshot, same
+ * reasoning as the wallet/summary and stops/:id/status guards.
+ *
+ * On-duty time is clipped to the requested range, so a shift spanning midnight is
+ * split across the days that actually contain it instead of being double-counted
+ * or attributed entirely to its start day. Still-open shifts count up to now.
+ *
+ * Routes whose driver hasn't reported a shift land in a shiftId: null bucket per
+ * driver so they stay visible instead of disappearing from the view.
  */
-export async function getDriverShiftReport(dateStr?: string): Promise<DriverShiftReportGroup[]> {
+export async function getDriverShiftReport(filters?: ShiftReportFilters | string): Promise<DriverShiftReport> {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    const dayStart = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    // Tolerate the old single-date string signature.
+    const input: ShiftReportFilters = typeof filters === 'string' ? { from: filters } : (filters ?? {});
 
-    const [dayRoutes, dayShifts] = await Promise.all([
-        db.select().from(driverRoutes).where(and(
-            gte(driverRoutes.date, dayStart),
-            lt(driverRoutes.date, dayEnd),
+    const dayStart = input.from ? new Date(`${input.from}T00:00:00`) : new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const lastDay = input.to ? new Date(`${input.to}T00:00:00`) : new Date(dayStart);
+    lastDay.setHours(0, 0, 0, 0);
+    // `to` is inclusive, so the exclusive upper bound is the day after it.
+    const dayEnd = new Date(lastDay);
+    dayEnd.setDate(dayEnd.getDate() + 1);
+    if (dayEnd <= dayStart) throw new Error('The end date cannot be before the start date');
+
+    const isoDay = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const emptyReport: DriverShiftReport = {
+        from: isoDay(dayStart),
+        to: isoDay(lastDay),
+        groups: [],
+        payroll: [],
+        totals: { shiftCount: 0, openShiftCount: 0, staleShiftCount: 0, onDutySeconds: 0, activeSeconds: 0, routeCount: 0, completedStops: 0, codCollected: 0 },
+    };
+
+    const [allDayRoutes, allDayShifts] = await Promise.all([
+        // Selected by when the route was actually WORKED, not when dispatch planned
+        // it: driverRoutes.date is the nominal/planned day, but drivers routinely
+        // run a route days late, while shifts below are selected by startTime (the
+        // real clock-in moment). Filtering routes on `date` alone can put a route
+        // and the shift it was worked under in different day buckets even though
+        // they share the same real-world timestamp (a route dated 2026-08-03 whose
+        // driver actually drove it, and clocked in for it, on 2026-08-05). Fall
+        // back to `date` only for routes that never started at all.
+        db.select().from(driverRoutes).where(or(
+            and(isNotNull(driverRoutes.startedAt), gte(driverRoutes.startedAt, dayStart), lt(driverRoutes.startedAt, dayEnd)),
+            and(isNull(driverRoutes.startedAt), gte(driverRoutes.date, dayStart), lt(driverRoutes.date, dayEnd)),
         )),
-        // Overlapping the day: started before day's end, and either still open or closed after day's start.
+        // Overlapping the range: started before its end, and either still open or closed after its start.
+        //
+        // Both halves must go through drizzle's typed operators. A raw sql`` fragment
+        // binds the Date straight to mysql2, which serialises it in local time, while
+        // the typed comparison above serialises in UTC — so the two bounds silently
+        // disagreed by the UTC offset and shifts ending early in the local day were
+        // dropped from the report.
         db.select().from(driverShifts).where(and(
             lt(driverShifts.startTime, dayEnd),
-            sql`(${driverShifts.endTime} IS NULL OR ${driverShifts.endTime} >= ${dayStart})`,
+            or(
+                isNull(driverShifts.endTime),
+                gte(driverShifts.endTime, dayStart),
+            ),
         )),
     ]);
 
-    if (dayRoutes.length === 0 && dayShifts.length === 0) return [];
+    const dayRoutes = input.driverId ? allDayRoutes.filter(r => r.driverId === input.driverId) : allDayRoutes;
+    const dayShifts = input.driverId ? allDayShifts.filter(s => s.driverId === input.driverId) : allDayShifts;
+
+    if (dayRoutes.length === 0 && dayShifts.length === 0) return emptyReport;
+
+    // A route's shiftId can point at a shift that doesn't overlap the requested
+    // range at all — the range is narrower than the shift, or (now that routes are
+    // selected by startedAt above) an admin correction moved the shift's startTime
+    // outside the window while the route's startedAt stayed put. `dayShifts` won't
+    // contain that row, so `.find` on it would silently return undefined and the
+    // route would render with a null shiftStartTime/onDutySeconds instead of its
+    // real shift. Resolve those separately with one batched fetch (not per-route).
+    const dayShiftIds = new Set(dayShifts.map(s => s.id));
+    const missingShiftIds = Array.from(new Set(
+        dayRoutes.map(r => r.shiftId).filter((id): id is number => id !== null && !dayShiftIds.has(id))
+    ));
+    const extraShifts = missingShiftIds.length > 0
+        ? await db.select().from(driverShifts).where(inArray(driverShifts.id, missingShiftIds))
+        : [];
+    const shiftsById = new Map<number, (typeof dayShifts)[number]>();
+    for (const s of dayShifts) shiftsById.set(s.id, s);
+    for (const s of extraShifts) shiftsById.set(s.id, s);
 
     const driverIds = Array.from(new Set([
         ...dayRoutes.map(r => r.driverId).filter((id): id is number => id !== null),
         ...dayShifts.map(s => s.driverId),
+        ...extraShifts.map(s => s.driverId),
     ]));
     const driversMap = new Map<number, string>();
     if (driverIds.length > 0) {
@@ -1065,6 +1220,30 @@ export async function getDriverShiftReport(dateStr?: string): Promise<DriverShif
     // Group: key = `${driverId}:${shiftId ?? 'unlinked'}`
     const groups = new Map<string, DriverShiftReportGroup>();
 
+    // Paid time = the part of the shift that falls inside the requested range.
+    // A shift crossing midnight therefore contributes to each day it touches
+    // rather than landing entirely on its start day, and an open shift is
+    // counted up to now (never into the future) — UNLESS it has gone stale
+    // (isStaleOpenShift, same predicate getDispatchOverview() uses to drop it from
+    // "on duty"), in which case it's a missed clock-out rather than hours worked
+    // and gets capped at startTime + MAX_SHIFT_HOURS instead. Before this, an open
+    // shift older than MAX_SHIFT_HOURS (e.g. shift #265, open 31+h) billed every
+    // one of those hours to payroll while getDispatchOverview() had already
+    // stopped treating the driver as on duty — two views of the same module
+    // disagreeing about the same row. A CLOSED shift's endTime is never capped
+    // here: an admin may have deliberately recorded a long one, and
+    // updateDriverShift() already enforces MAX_SHIFT_HOURS on write.
+    const now = new Date();
+    const clippedSeconds = (start: Date, end: Date | null) => {
+        const from = Math.max(start.getTime(), dayStart.getTime());
+        // Only an open shift is "counted up to now" — a closed shift's clock-out is
+        // the authoritative end and must not be pulled back to the current time.
+        const openCap = start.getTime() + MAX_SHIFT_HOURS * 60 * 60 * 1000;
+        const rawEnd = end ? end.getTime() : Math.min(now.getTime(), openCap);
+        const to = Math.min(rawEnd, dayEnd.getTime());
+        return Math.max(0, Math.round((to - from) / 1000));
+    };
+
     const getGroup = (driverId: number, shiftId: number | null, shiftStartTime: Date | null, shiftEndTime: Date | null) => {
         const key = `${driverId}:${shiftId ?? 'unlinked'}`;
         let group = groups.get(key);
@@ -1075,6 +1254,7 @@ export async function getDriverShiftReport(dateStr?: string): Promise<DriverShif
                 shiftId,
                 shiftStartTime,
                 shiftEndTime,
+                onDutySeconds: shiftStartTime ? clippedSeconds(shiftStartTime, shiftEndTime) : null,
                 routes: [],
                 totalActiveSeconds: 0,
                 totalCodCollected: 0,
@@ -1092,7 +1272,12 @@ export async function getDriverShiftReport(dateStr?: string): Promise<DriverShif
 
     for (const route of dayRoutes) {
         if (route.driverId === null) continue; // unassigned route — nothing to attribute it to
-        const shift = route.shiftId !== null ? dayShifts.find(s => s.id === route.shiftId) : undefined;
+        // Resolved from the merged dayShifts + extraShifts set (see above), so a
+        // shift outside the range still attaches its real startTime/endTime here.
+        // clippedSeconds() (in getGroup) still bounds onDutySeconds to the
+        // requested range, so an out-of-range shift correctly clips to 0 rather
+        // than leaking time from outside the window.
+        const shift = route.shiftId !== null ? shiftsById.get(route.shiftId) : undefined;
         const group = getGroup(
             route.driverId,
             route.shiftId ?? null,
@@ -1111,10 +1296,842 @@ export async function getDriverShiftReport(dateStr?: string): Promise<DriverShif
         group.totalCodCollected = Math.round(group.totalCodCollected * 100) / 100;
     }
 
-    return allGroups.sort((a, b) => {
+    allGroups.sort((a, b) => {
         if (a.driverName !== b.driverName) return a.driverName.localeCompare(b.driverName);
         const aTime = a.shiftStartTime?.getTime() ?? 0;
         const bTime = b.shiftStartTime?.getTime() ?? 0;
         return bTime - aTime;
     });
+
+    // ── Payroll roll-up ──
+    const payroll = new Map<number, DriverPayrollRow>();
+    const payrollRow = (driverId: number) => {
+        let row = payroll.get(driverId);
+        if (!row) {
+            const name = driversMap.get(driverId) || 'Unknown';
+            row = {
+                driverId,
+                driverName: name,
+                initials: initialsOf(name),
+                shiftCount: 0,
+                openShiftCount: 0,
+                staleShiftCount: 0,
+                onDutySeconds: 0,
+                activeSeconds: 0,
+                routeCount: 0,
+                completedStops: 0,
+                codCollected: 0,
+            };
+            payroll.set(driverId, row);
+        }
+        return row;
+    };
+
+    // Deliberately iterates dayShifts, NOT dayShifts + extraShifts: a shift's
+    // "home" range is the one it overlaps, and extraShifts are shifts that do
+    // NOT overlap this range (they were only pulled in to label a route's
+    // group correctly, see above). Counting them here would double-count that
+    // shift in both this report and whichever range it actually overlaps.
+    for (const shift of dayShifts) {
+        const row = payrollRow(shift.driverId);
+        row.shiftCount++;
+        if (!shift.endTime) {
+            row.openShiftCount++;
+            if (isStaleOpenShift(shift, now)) row.staleShiftCount = (row.staleShiftCount || 0) + 1;
+        }
+        row.onDutySeconds += clippedSeconds(shift.startTime, shift.endTime);
+    }
+    for (const route of dayRoutes) {
+        if (route.driverId === null) continue;
+        const report = routeReportById.get(route.id)!;
+        const row = payrollRow(route.driverId);
+        row.routeCount++;
+        row.activeSeconds += report.activeSeconds || 0;
+        row.completedStops += report.completedStops;
+        row.codCollected += report.codCollected;
+    }
+
+    const payrollRows = Array.from(payroll.values())
+        .map(r => ({ ...r, codCollected: round2(r.codCollected) }))
+        .sort((a, b) => a.driverName.localeCompare(b.driverName));
+
+    return {
+        from: isoDay(dayStart),
+        to: isoDay(lastDay),
+        groups: allGroups,
+        payroll: payrollRows,
+        totals: {
+            shiftCount: payrollRows.reduce((s, r) => s + r.shiftCount, 0),
+            openShiftCount: payrollRows.reduce((s, r) => s + r.openShiftCount, 0),
+            staleShiftCount: payrollRows.reduce((s, r) => s + (r.staleShiftCount || 0), 0),
+            onDutySeconds: payrollRows.reduce((s, r) => s + r.onDutySeconds, 0),
+            activeSeconds: payrollRows.reduce((s, r) => s + r.activeSeconds, 0),
+            routeCount: payrollRows.reduce((s, r) => s + r.routeCount, 0),
+            completedStops: payrollRows.reduce((s, r) => s + r.completedStops, 0),
+            codCollected: round2(payrollRows.reduce((s, r) => s + r.codCollected, 0)),
+        },
+    };
+}
+
+// ============ SHIFT CORRECTIONS (payroll control) ============
+
+// MAX_SHIFT_HOURS + isStaleOpenShift now live in driverShiftRules.ts, shared with
+// driverApi.ts, so dispatch/payroll/clock-in can't drift on what "stale" means —
+// re-exported here so any existing `import { MAX_SHIFT_HOURS } from './driverAdmin'`
+// keeps working.
+export { MAX_SHIFT_HOURS };
+
+/**
+ * Corrects a driver's clock-in/clock-out. Payroll needs this because a driver who
+ * forgets to clock out (or clocks in twice) would otherwise be paid from a record
+ * nobody can fix. Passing endTime: null deliberately re-opens a shift.
+ */
+export async function updateDriverShift(input: { id: number; startTime?: Date; endTime?: Date | null }) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const [shift] = await db.select().from(driverShifts).where(eq(driverShifts.id, input.id)).limit(1);
+    if (!shift) throw new Error('Shift not found');
+
+    const startTime = input.startTime ?? shift.startTime;
+    const endTime = input.endTime === undefined ? shift.endTime : input.endTime;
+
+    if (startTime.getTime() > Date.now() + 60_000) {
+        throw new Error('A shift cannot start in the future');
+    }
+    if (endTime) {
+        if (endTime <= startTime) throw new Error('The clock-out must be after the clock-in');
+        if (endTime.getTime() > Date.now() + 60_000) throw new Error('A shift cannot end in the future');
+        const hours = (endTime.getTime() - startTime.getTime()) / 3_600_000;
+        if (hours > MAX_SHIFT_HOURS) {
+            throw new Error(`That shift would be ${hours.toFixed(1)}h long — longer than the ${MAX_SHIFT_HOURS}h limit. Split it into two shifts instead.`);
+        }
+    }
+
+    await db.update(driverShifts).set({ startTime, endTime }).where(eq(driverShifts.id, input.id));
+    return { id: input.id, startTime, endTime };
+}
+
+/** Closes a shift the driver left open. Defaults to now. */
+export async function closeDriverShift(input: { id: number; endTime?: Date }) {
+    return updateDriverShift({ id: input.id, endTime: input.endTime ?? new Date() });
+}
+
+/**
+ * Removes a shift record entirely — for duplicates and bogus clock-ins. Refuses
+ * when a route points at it, because that would orphan the route's payroll link.
+ */
+export async function deleteDriverShift(id: number) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const [linked] = await db.select({ id: driverRoutes.id })
+        .from(driverRoutes).where(eq(driverRoutes.shiftId, id)).limit(1);
+    if (linked) {
+        throw new Error(`Route ${linked.id} is linked to this shift — reassign or clear that route first`);
+    }
+
+    await db.delete(driverShifts).where(eq(driverShifts.id, id));
+    return { success: true };
+}
+
+// ============ DRIVER COD RECONCILIATION ============
+
+/** A driver holding more cash than this is flagged on the dispatch board. */
+export const CASH_IN_HAND_ALERT_AED = 4000;
+
+/** Stops that are still waiting on the driver — used for "stops remaining". */
+const OPEN_STOP_STATUSES = ['pending', 'in_progress', 'on_hold'];
+
+function dayBounds(dateStr?: string) {
+    const start = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+}
+
+/**
+ * A route counts toward a given calendar day if it was actually WORKED that
+ * day, not merely planned for it — the same rule getDriverShiftReport() uses
+ * (see its comment for the full reasoning). driverRoutes.date is the
+ * dispatch-planned day; drivers routinely run a route days late in
+ * production (verified drift: DXB-2026-MC7UZD dated 2026-08-03 was actually
+ * started 2026-08-06). Falls back to `date` only for routes that never
+ * started at all, so an unstarted route doesn't vanish from every day's view.
+ *
+ * getDriverCodReconciliation() (what the admin SEES) and
+ * markDriverCashRemitted() (what "mark cash received" FREEZES) must select
+ * the identical route set — they used to each duplicate the same date-only
+ * filter, and agreed only because the duplicate was exact. If that duplicate
+ * ever drifted, the button would freeze a different amount than the screen
+ * displayed: real money silently disagreeing with itself. Both now call this
+ * one predicate so that divergence is impossible rather than just unlikely.
+ *
+ * Both bounds must be passed through drizzle's typed operators (gte/lt), never
+ * a raw sql`` fragment — see the dayShifts comment in getDriverShiftReport()
+ * for why: a raw fragment binds the Date and serialises it in local time,
+ * while the typed comparison serialises in UTC, and the two silently disagree
+ * by the UTC offset.
+ */
+function driverRoutesWorkedOn(start: Date, end: Date) {
+    return or(
+        and(isNotNull(driverRoutes.startedAt), gte(driverRoutes.startedAt, start), lt(driverRoutes.startedAt, end)),
+        and(isNull(driverRoutes.startedAt), gte(driverRoutes.date, start), lt(driverRoutes.date, end)),
+    );
+}
+
+function initialsOf(fullName: string) {
+    return fullName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0]!.toUpperCase())
+        .join('');
+}
+
+export interface DriverCodRow {
+    driverId: number;
+    driverName: string;
+    initials: string;
+    vehicleNumber: string | null;
+    zones: string[];
+    routeIds: string[];
+    /** COD due on the delivered stops (cash legs at their expected amount + card legs). */
+    expected: number;
+    /** Cash actually reported as collected on delivered stops. */
+    cash: number;
+    /** Charged by card (Tap to Pay) — billed on the driver's phone, never in their hands. */
+    card: number;
+    /** Cash − what was due on those same cash stops. Negative = short. */
+    discrepancy: number;
+    /** Cash already handed over to the office (frozen at hand-over time). */
+    remitted: number;
+    /** Cash still in the driver's hands. */
+    toRemit: number;
+    fullyRemitted: boolean;
+    remittedAt: Date | null;
+}
+
+export interface DriverCodReconciliation {
+    date: string;
+    totals: { expected: number; cash: number; card: number; remitted: number; toRemit: number };
+    drivers: DriverCodRow[];
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Per-driver COD reconciliation for one calendar day.
+ *
+ * Recomputed server-side from routeOrders (delivered stops only) + the
+ * collection method on codRecords — never from the app-reported
+ * codCollectedReported snapshot, same rule as getDriverShiftReport().
+ * Card payments are excluded from the remittable balance because Tap to Pay
+ * charges settle directly and never pass through the driver.
+ *
+ * Routes are selected by driverRoutesWorkedOn() (startedAt, falling back to
+ * date) — see that function's comment. markDriverCashRemitted() below shares
+ * the exact same predicate on purpose.
+ */
+export async function getDriverCodReconciliation(dateStr?: string): Promise<DriverCodReconciliation> {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const { start, end } = dayBounds(dateStr);
+    const dateKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    const empty: DriverCodReconciliation = {
+        date: dateKey,
+        totals: { expected: 0, cash: 0, card: 0, remitted: 0, toRemit: 0 },
+        drivers: [],
+    };
+
+    const dayRoutes = (await db.select().from(driverRoutes).where(driverRoutesWorkedOn(start, end)))
+        .filter(r => r.driverId !== null);
+
+    if (dayRoutes.length === 0) return empty;
+
+    const routeIds = dayRoutes.map(r => r.id);
+    const stops = await db
+        .select({
+            routeId: routeOrders.routeId,
+            type: routeOrders.type,
+            status: routeOrders.status,
+            collectedAmount: routeOrders.collectedAmount,
+            orderId: routeOrders.orderId,
+            codRequired: orders.codRequired,
+            codAmount: orders.codAmount,
+        })
+        .from(routeOrders)
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(inArray(routeOrders.routeId, routeIds));
+
+    const codStops = stops.filter(s => s.type === 'delivery' && s.status === 'delivered' && s.codRequired === 1);
+
+    const methodByOrder = new Map<number, string | null>();
+    const codOrderIds = Array.from(new Set(codStops.map(s => s.orderId)));
+    if (codOrderIds.length > 0) {
+        const records = await db.select({ shipmentId: codRecords.shipmentId, collectedMethod: codRecords.collectedMethod })
+            .from(codRecords).where(inArray(codRecords.shipmentId, codOrderIds));
+        for (const r of records) methodByOrder.set(r.shipmentId, r.collectedMethod);
+    }
+
+    const driverIds = Array.from(new Set(dayRoutes.map(r => r.driverId!)));
+    const driverRows = await db.select({ id: drivers.id, fullName: drivers.fullName, vehicleNumber: drivers.vehicleNumber })
+        .from(drivers).where(inArray(drivers.id, driverIds));
+    const driverById = new Map(driverRows.map(d => [d.id, d]));
+
+    // Accumulate per driver.
+    const rows = new Map<number, DriverCodRow & { expectedCash: number }>();
+    for (const route of dayRoutes) {
+        const driverId = route.driverId!;
+        let row = rows.get(driverId);
+        if (!row) {
+            const d = driverById.get(driverId);
+            row = {
+                driverId,
+                driverName: d?.fullName || 'Unknown',
+                initials: initialsOf(d?.fullName || '??'),
+                vehicleNumber: d?.vehicleNumber ?? null,
+                zones: [],
+                routeIds: [],
+                expected: 0,
+                expectedCash: 0,
+                cash: 0,
+                card: 0,
+                discrepancy: 0,
+                remitted: 0,
+                toRemit: 0,
+                fullyRemitted: false,
+                remittedAt: null,
+            };
+            rows.set(driverId, row);
+        }
+
+        row.routeIds.push(route.id);
+        if (route.zone && !row.zones.includes(route.zone)) row.zones.push(route.zone);
+        if (route.cashRemittedAt) {
+            row.remitted += route.cashRemittedAmount ? parseFloat(route.cashRemittedAmount) : 0;
+            if (!row.remittedAt || route.cashRemittedAt > row.remittedAt) row.remittedAt = route.cashRemittedAt;
+        }
+
+        for (const stop of codStops.filter(s => s.routeId === route.id)) {
+            const due = parseFloat(stop.codAmount || '0') || 0;
+            const collected = stop.collectedAmount ? parseFloat(stop.collectedAmount) || 0 : 0;
+            if (methodByOrder.get(stop.orderId) === 'card') {
+                row.card += collected || due;
+            } else {
+                row.expectedCash += due;
+                row.cash += collected;
+            }
+        }
+    }
+
+    const totals = { expected: 0, cash: 0, card: 0, remitted: 0, toRemit: 0 };
+    const result: DriverCodRow[] = [];
+    for (const row of Array.from(rows.values())) {
+        const { expectedCash, ...rest } = row;
+        const cash = round2(row.cash);
+        const card = round2(row.card);
+        const remitted = round2(row.remitted);
+        // A later edit to a delivered stop can shrink `cash` below what was already
+        // handed over, so clamp — a negative "still owed" is never meaningful.
+        const toRemit = round2(Math.max(0, cash - remitted));
+        const finalRow: DriverCodRow = {
+            ...rest,
+            cash,
+            card,
+            expected: round2(expectedCash + card),
+            discrepancy: round2(cash - expectedCash),
+            remitted,
+            toRemit,
+            fullyRemitted: toRemit === 0 && (cash > 0 || remitted > 0),
+        };
+        totals.expected += finalRow.expected;
+        totals.cash += cash;
+        totals.card += card;
+        totals.remitted += remitted;
+        totals.toRemit += toRemit;
+        result.push(finalRow);
+    }
+
+    return {
+        date: dateKey,
+        totals: {
+            expected: round2(totals.expected),
+            cash: round2(totals.cash),
+            card: round2(totals.card),
+            remitted: round2(totals.remitted),
+            toRemit: round2(totals.toRemit),
+        },
+        // Drivers still holding cash first — that's the queue the admin works through.
+        drivers: result.sort((a, b) => b.toRemit - a.toRemit || a.driverName.localeCompare(b.driverName)),
+    };
+}
+
+/**
+ * Records that a driver handed over the cash collected on a given day. Freezes
+ * the per-route cash figure at hand-over time so a later stop edit can't
+ * rewrite what the office actually received. Routes already marked are skipped,
+ * which makes a double-click a no-op rather than a double count.
+ *
+ * Selects routes via driverRoutesWorkedOn() — the same predicate
+ * getDriverCodReconciliation() uses — so this always freezes exactly the
+ * amount the admin saw on screen for that day. Do not special-case this query.
+ */
+export async function markDriverCashRemitted(driverId: number, dateStr?: string) {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const { start, end } = dayBounds(dateStr);
+
+    const pendingRoutes = (await db.select().from(driverRoutes).where(and(
+        eq(driverRoutes.driverId, driverId),
+        driverRoutesWorkedOn(start, end),
+    ))).filter(r => r.cashRemittedAt === null);
+
+    if (pendingRoutes.length === 0) return { routes: 0, amount: 0 };
+
+    const routeIds = pendingRoutes.map(r => r.id);
+    const stops = await db
+        .select({
+            routeId: routeOrders.routeId,
+            type: routeOrders.type,
+            status: routeOrders.status,
+            collectedAmount: routeOrders.collectedAmount,
+            orderId: routeOrders.orderId,
+            codRequired: orders.codRequired,
+        })
+        .from(routeOrders)
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(inArray(routeOrders.routeId, routeIds));
+
+    const codStops = stops.filter(s => s.type === 'delivery' && s.status === 'delivered' && s.codRequired === 1);
+    const cardOrders = new Set<number>();
+    const codOrderIds = Array.from(new Set(codStops.map(s => s.orderId)));
+    if (codOrderIds.length > 0) {
+        const records = await db.select({ shipmentId: codRecords.shipmentId, collectedMethod: codRecords.collectedMethod })
+            .from(codRecords).where(inArray(codRecords.shipmentId, codOrderIds));
+        for (const r of records) if (r.collectedMethod === 'card') cardOrders.add(r.shipmentId);
+    }
+
+    const now = new Date();
+    let total = 0;
+    for (const route of pendingRoutes) {
+        const cash = codStops
+            .filter(s => s.routeId === route.id && !cardOrders.has(s.orderId))
+            .reduce((sum, s) => sum + (s.collectedAmount ? parseFloat(s.collectedAmount) || 0 : 0), 0);
+        const amount = round2(cash);
+        total += amount;
+        await db.update(driverRoutes)
+            .set({ cashRemittedAt: now, cashRemittedAmount: amount.toFixed(2) })
+            .where(eq(driverRoutes.id, route.id));
+    }
+
+    return { routes: pendingRoutes.length, amount: round2(total) };
+}
+
+// ============ DISPATCH OVERVIEW ============
+
+export interface DispatchRosterEntry {
+    driverId: number;
+    driverName: string;
+    initials: string;
+    vehicleNumber: string | null;
+    zones: string[];
+    routeIds: string[];
+    delivered: number;
+    totalStops: number;
+    codCollected: number;
+    /**
+     * 'active' = the driver has an open shift (clocked in and not out). Route status
+     * is deliberately NOT the signal: a route left in_progress because the driver
+     * went home without finishing it would otherwise report them on duty forever.
+     */
+    dutyState: 'active' | 'idle';
+    /** When the open shift started, for "on duty since". */
+    onDutySince: Date | null;
+}
+
+/** A stop on a route that is on the road right now — what the live map plots. */
+export interface DispatchLiveStop {
+    stopId: number;
+    orderId: number;
+    routeId: string;
+    driverName: string;
+    waybillNumber: string;
+    customerName: string;
+    city: string | null;
+    lat: number;
+    lng: number;
+    /** 'approximate' when the pin came from geocoding rather than a real fix. */
+    accuracy: string | null;
+    type: 'pickup' | 'delivery';
+    status: string;
+    sequence: number | null;
+    codRequired: number | null;
+    codAmount: string | null;
+}
+
+export interface DispatchOverview {
+    date: string;
+    activeDrivers: number;
+    totalDrivers: number;
+    activeRoutes: number;
+    stopsRemaining: number;
+    /** COD still to be collected on today's open delivery stops. */
+    codToCollect: number;
+    codDriversPending: number;
+    roster: DispatchRosterEntry[];
+    unassignedRoutes: number;
+    failedStops: { waybillNumber: string; customerName: string; driverName: string; routeId: string; sequence: number | null; status: string }[];
+    cashAlerts: { driverId: number; driverName: string; cashInHand: number }[];
+    cashAlertThreshold: number;
+    /**
+     * Shifts left open far longer than anyone works — a missed clock-out, not a driver
+     * on the road. Deliberately excluded from activeDrivers/roster so the board stops
+     * claiming someone is working two days after they went home, and surfaced here so
+     * the miss gets corrected instead of quietly inflating payroll.
+     */
+    staleShifts: { shiftId: number; driverId: number; driverName: string; startTime: Date; hoursOpen: number }[];
+    /** Hours after which an open shift is treated as a missed clock-out. */
+    staleShiftHours: number;
+    /** Stops of in-progress routes whose driver is actually clocked in. Empty when nobody is out. */
+    liveStops: DispatchLiveStop[];
+    /** How many routes those live stops came from. */
+    liveRouteCount: number;
+    /**
+     * Routes sitting in 'in_progress' with nobody on duty behind them — a driver
+     * finished their shift (or never started one) without closing the route. Shown
+     * as an alert rather than silently counted as live work.
+     *
+     * openStops distinguishes the two real cases: 0 means every stop was handled and
+     * only the route status was left behind (safe to close), while >0 means there is
+     * genuinely unfinished delivery work nobody is carrying.
+     */
+    stalledRoutes: {
+        routeId: string;
+        driverName: string;
+        date: Date;
+        startedAt: Date | null;
+        openStops: number;
+        totalStops: number;
+    }[];
+}
+
+/**
+ * Everything the dispatch board needs in a single round trip — KPIs, the on-duty
+ * roster, the alert strip and the stops currently on the road.
+ *
+ * "On duty" means an open shift — the driver clocked in and hasn't clocked out.
+ * Route status is not a duty signal: a route abandoned in 'in_progress' would
+ * otherwise keep reporting a driver as working days later. Those orphaned routes
+ * are still surfaced, as `stalledRoutes`, so they get closed rather than ignored.
+ *
+ * The "today" figures come from routes dated today; the roster and the live map
+ * follow who is clocked in right now. Either way this stays scoped to a handful of
+ * routes, unlike getAllDeliveries() which walks every stop ever made.
+ */
+export async function getDispatchOverview(dateStr?: string): Promise<DispatchOverview> {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const { start, end } = dayBounds(dateStr);
+    const dateKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+
+    const [dayRoutes, inProgressRoutes, openShifts, [driverCounts]] = await Promise.all([
+        db.select().from(driverRoutes).where(and(
+            gte(driverRoutes.date, start),
+            lt(driverRoutes.date, end),
+        )),
+        db.select().from(driverRoutes).where(eq(driverRoutes.status, 'in_progress')),
+        db.select().from(driverShifts).where(isNull(driverShifts.endTime)),
+        db.select({
+            total: sql<number>`cast(count(*) as unsigned)`,
+            active: sql<number>`cast(SUM(CASE WHEN ${drivers.status} = 'active' THEN 1 ELSE 0 END) as unsigned)`,
+        }).from(drivers),
+    ]);
+
+    // An open shift only means "on duty" while it is plausibly still running. Past
+    // MAX_SHIFT_HOURS it is a clock-out somebody missed, and treating it as live work
+    // is how the board ended up showing drivers who went home two days earlier.
+    // isStaleOpenShift() is the exact same predicate getDriverShiftReport() uses to
+    // cap payroll hours — that's the point, so the two views agree on shift #265
+    // instead of dispatch saying 0 active while payroll bills 31.6h.
+    const now = new Date();
+    const nowMs = now.getTime();
+    const hoursOpen = (start: Date) => (nowMs - start.getTime()) / 3_600_000;
+
+    const onDutySince = new Map<number, Date>();
+    const staleOpenShifts: typeof openShifts = [];
+    for (const s of openShifts) {
+        if (isStaleOpenShift(s, now)) {
+            staleOpenShifts.push(s);
+            continue;
+        }
+        // Newest open shift wins if a driver somehow has more than one.
+        const current = onDutySince.get(s.driverId);
+        if (!current || s.startTime > current) onDutySince.set(s.driverId, s.startTime);
+    }
+    const isOnDuty = (driverId: number | null) => driverId !== null && onDutySince.has(driverId);
+
+    const base: DispatchOverview = {
+        date: dateKey,
+        activeDrivers: 0,
+        totalDrivers: Number(driverCounts?.total || 0),
+        activeRoutes: dayRoutes.filter(r => r.status !== 'cancelled').length,
+        stopsRemaining: 0,
+        codToCollect: 0,
+        codDriversPending: 0,
+        roster: [],
+        unassignedRoutes: dayRoutes.filter(r => r.driverId === null && r.status !== 'cancelled').length,
+        failedStops: [],
+        cashAlerts: [],
+        cashAlertThreshold: CASH_IN_HAND_ALERT_AED,
+        staleShifts: [],
+        staleShiftHours: MAX_SHIFT_HOURS,
+        liveStops: [],
+        liveRouteCount: 0,
+        stalledRoutes: [],
+    };
+
+    // An in-progress route only counts as live work when its driver is clocked in.
+    const trulyLiveRoutes = inProgressRoutes.filter(r => isOnDuty(r.driverId));
+    base.liveRouteCount = trulyLiveRoutes.length;
+    const inProgressIds = new Set(trulyLiveRoutes.map(r => r.id));
+
+    // Board scope = today's routes plus the genuinely live ones from earlier days.
+    const byId = new Map<string, typeof dayRoutes[number]>();
+    for (const r of [...dayRoutes, ...trulyLiveRoutes]) {
+        if (r.status !== 'cancelled') byId.set(r.id, r);
+    }
+    const liveRoutes = Array.from(byId.values());
+    const routeIds = liveRoutes.map(r => r.id);
+
+    // Names for every driver the board mentions: route owners plus anyone clocked in
+    // with nothing assigned (they still belong on the roster).
+    const driverIds = Array.from(new Set([
+        ...liveRoutes.map(r => r.driverId),
+        ...inProgressRoutes.map(r => r.driverId),
+        ...Array.from(onDutySince.keys()),
+        ...staleOpenShifts.map(s => s.driverId),
+    ].filter((id): id is number => id !== null)));
+    const driverById = new Map<number, { id: number; fullName: string; vehicleNumber: string | null }>();
+    if (driverIds.length > 0) {
+        const rows = await db.select({ id: drivers.id, fullName: drivers.fullName, vehicleNumber: drivers.vehicleNumber })
+            .from(drivers).where(inArray(drivers.id, driverIds));
+        for (const d of rows) driverById.set(d.id, d);
+    }
+
+    base.staleShifts = staleOpenShifts
+        .map(s => ({
+            shiftId: s.id,
+            driverId: s.driverId,
+            driverName: driverById.get(s.driverId)?.fullName || 'Unknown',
+            startTime: s.startTime,
+            hoursOpen: Math.round(hoursOpen(s.startTime) * 10) / 10,
+        }))
+        .sort((a, b) => b.hoursOpen - a.hoursOpen);
+
+    const stalled = inProgressRoutes.filter(r => !isOnDuty(r.driverId));
+    const stalledStopCounts = new Map<string, { open: number; total: number }>();
+    if (stalled.length > 0) {
+        const counts = await db
+            .select({
+                routeId: routeOrders.routeId,
+                total: sql<number>`cast(count(*) as signed)`,
+                open: sql<number>`cast(SUM(CASE WHEN ${routeOrders.status} IN ('pending','in_progress','on_hold') THEN 1 ELSE 0 END) as signed)`,
+            })
+            .from(routeOrders)
+            .where(inArray(routeOrders.routeId, stalled.map(r => r.id)))
+            .groupBy(routeOrders.routeId);
+        for (const c of counts) {
+            stalledStopCounts.set(c.routeId, { open: Number(c.open || 0), total: Number(c.total || 0) });
+        }
+    }
+
+    base.stalledRoutes = stalled
+        .map(r => {
+            const counts = stalledStopCounts.get(r.id) ?? { open: 0, total: 0 };
+            return {
+                routeId: r.id,
+                driverName: r.driverId ? driverById.get(r.driverId)?.fullName || 'Unknown' : 'Unassigned',
+                date: r.date,
+                startedAt: r.startedAt,
+                openStops: counts.open,
+                totalStops: counts.total,
+            };
+        })
+        // Routes with work still outstanding first — those need a decision, not just a click.
+        .sort((a, b) => b.openStops - a.openStops || new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Drivers clocked in with no route at all still show on the roster as available.
+    const roster = new Map<number, DispatchRosterEntry & { cashInHand: number; hasUnremittedCash: boolean }>();
+    const rosterEntry = (driverId: number) => {
+        let entry = roster.get(driverId);
+        if (!entry) {
+            const d = driverById.get(driverId);
+            entry = {
+                driverId,
+                driverName: d?.fullName || 'Unknown',
+                initials: initialsOf(d?.fullName || '??'),
+                vehicleNumber: d?.vehicleNumber ?? null,
+                zones: [],
+                routeIds: [],
+                delivered: 0,
+                totalStops: 0,
+                codCollected: 0,
+                dutyState: onDutySince.has(driverId) ? 'active' : 'idle',
+                onDutySince: onDutySince.get(driverId) ?? null,
+                cashInHand: 0,
+                hasUnremittedCash: false,
+            };
+            roster.set(driverId, entry);
+        }
+        return entry;
+    };
+    for (const driverId of Array.from(onDutySince.keys())) {
+        if (driverById.has(driverId)) rosterEntry(driverId);
+    }
+
+    if (routeIds.length === 0) {
+        base.activeDrivers = onDutySince.size;
+        base.roster = Array.from(roster.values())
+            .map(({ cashInHand, hasUnremittedCash, ...rest }) => rest)
+            .sort((a, b) => a.driverName.localeCompare(b.driverName));
+        return base;
+    }
+
+    const stops = await db
+        .select({
+            stopId: routeOrders.id,
+            routeId: routeOrders.routeId,
+            type: routeOrders.type,
+            status: routeOrders.status,
+            sequence: routeOrders.sequence,
+            collectedAmount: routeOrders.collectedAmount,
+            orderId: routeOrders.orderId,
+            waybillNumber: orders.waybillNumber,
+            customerName: orders.customerName,
+            city: orders.city,
+            codRequired: orders.codRequired,
+            codAmount: orders.codAmount,
+            latitude: orders.latitude,
+            longitude: orders.longitude,
+            locationAccuracy: orders.locationAccuracy,
+            shipperLat: orders.shipperLat,
+            shipperLng: orders.shipperLng,
+            isReturn: orders.isReturn,
+        })
+        .from(routeOrders)
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(inArray(routeOrders.routeId, routeIds));
+
+    const cardOrders = new Set<number>();
+    const codOrderIds = Array.from(new Set(stops.filter(s => s.codRequired === 1).map(s => s.orderId)));
+    if (codOrderIds.length > 0) {
+        const records = await db.select({ shipmentId: codRecords.shipmentId, collectedMethod: codRecords.collectedMethod })
+            .from(codRecords).where(inArray(codRecords.shipmentId, codOrderIds));
+        for (const r of records) if (r.collectedMethod === 'card') cardOrders.add(r.shipmentId);
+    }
+
+    const stopsByRoute = new Map<string, typeof stops>();
+    for (const s of stops) {
+        if (!stopsByRoute.has(s.routeId)) stopsByRoute.set(s.routeId, []);
+        stopsByRoute.get(s.routeId)!.push(s);
+    }
+
+    for (const route of liveRoutes) {
+        const routeStops = stopsByRoute.get(route.id) || [];
+        base.stopsRemaining += routeStops.filter(s => OPEN_STOP_STATUSES.includes(s.status)).length;
+        base.codToCollect += routeStops
+            .filter(s => s.type === 'delivery' && s.codRequired === 1 && OPEN_STOP_STATUSES.includes(s.status))
+            .reduce((sum, s) => sum + (parseFloat(s.codAmount || '0') || 0), 0);
+
+        const driverName = route.driverId ? driverById.get(route.driverId)?.fullName || 'Unknown' : null;
+        for (const s of routeStops) {
+            if (s.status === 'attempted' || s.status === 'failed') {
+                base.failedStops.push({
+                    waybillNumber: s.waybillNumber,
+                    customerName: s.customerName,
+                    driverName: driverName || 'Unassigned',
+                    routeId: route.id,
+                    sequence: s.sequence,
+                    status: s.status,
+                });
+            }
+
+            // Live map: only routes actually on the road, and only stops we can pin.
+            // A pickup happens at the shipper (inverted on returns, where the package
+            // sits at the consignee) — same rule the route-detail map uses.
+            if (!inProgressIds.has(route.id)) continue;
+            const consigneeSide = s.isReturn === 1 ? s.type === 'pickup' : s.type !== 'pickup';
+            const lat = consigneeSide ? s.latitude : (s.shipperLat ?? s.latitude);
+            const lng = consigneeSide ? s.longitude : (s.shipperLng ?? s.longitude);
+            if (!lat || !lng) continue;
+            const parsedLat = parseFloat(String(lat));
+            const parsedLng = parseFloat(String(lng));
+            if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) continue;
+
+            base.liveStops.push({
+                stopId: s.stopId,
+                orderId: s.orderId,
+                routeId: route.id,
+                driverName: driverName || 'Unassigned',
+                waybillNumber: s.waybillNumber,
+                customerName: s.customerName,
+                city: s.city,
+                lat: parsedLat,
+                lng: parsedLng,
+                accuracy: consigneeSide ? s.locationAccuracy : null,
+                type: s.type as 'pickup' | 'delivery',
+                status: s.status,
+                sequence: s.sequence,
+                codRequired: s.codRequired,
+                codAmount: s.codAmount,
+            });
+        }
+
+        if (route.driverId === null) continue;
+        const entry = rosterEntry(route.driverId);
+        entry.routeIds.push(route.id);
+        if (route.zone && !entry.zones.includes(route.zone)) entry.zones.push(route.zone);
+        entry.totalStops += routeStops.length;
+        entry.delivered += routeStops.filter(s => s.status === 'delivered' || s.status === 'picked_up').length;
+
+        const routeCash = routeStops
+            .filter(s => s.type === 'delivery' && s.status === 'delivered' && s.codRequired === 1 && !cardOrders.has(s.orderId))
+            .reduce((sum, s) => sum + (s.collectedAmount ? parseFloat(s.collectedAmount) || 0 : 0), 0);
+        entry.codCollected += routeCash;
+        if (!route.cashRemittedAt) {
+            entry.cashInHand += routeCash;
+            if (routeCash > 0) entry.hasUnremittedCash = true;
+        }
+    }
+
+    const entries = Array.from(roster.values());
+    // Clocked-in drivers, not "drivers with a route someone forgot to close".
+    base.activeDrivers = onDutySince.size;
+    base.codDriversPending = entries.filter(e => e.hasUnremittedCash).length;
+    base.cashAlerts = entries
+        .filter(e => e.cashInHand > CASH_IN_HAND_ALERT_AED)
+        .map(e => ({ driverId: e.driverId, driverName: e.driverName, cashInHand: round2(e.cashInHand) }))
+        .sort((a, b) => b.cashInHand - a.cashInHand);
+
+    base.roster = entries
+        .map(({ cashInHand, hasUnremittedCash, ...rest }) => ({ ...rest, codCollected: round2(rest.codCollected) }))
+        // On-duty drivers first, then whoever has the most stops left to work through.
+        .sort((a, b) =>
+            (a.dutyState === b.dutyState ? 0 : a.dutyState === 'active' ? -1 : 1)
+            || (b.totalStops - b.delivered) - (a.totalStops - a.delivered)
+            || a.driverName.localeCompare(b.driverName));
+
+    base.codToCollect = round2(base.codToCollect);
+    base.failedStops.sort((a, b) => a.driverName.localeCompare(b.driverName) || (a.sequence ?? 0) - (b.sequence ?? 0));
+    base.liveStops.sort((a, b) =>
+        a.driverName.localeCompare(b.driverName)
+        || a.routeId.localeCompare(b.routeId)
+        || (a.sequence ?? 0) - (b.sequence ?? 0));
+
+    return base;
 }

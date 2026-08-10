@@ -1284,6 +1284,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         lte(orders.lastStatusUpdate, periodCutoff),
         inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
         isNull(invoiceItems.id),
+        eq(orders.billingExcluded, 0),
         inArray(orders.destinationCountry, UAE_VALUES)
       )
     );
@@ -1591,6 +1592,7 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
         lte(orders.createdAt, periodCutoff),
         ne(orders.status, 'canceled'),
         isNull(invoiceItems.id),
+        eq(orders.billingExcluded, 0),
         notInArray(orders.destinationCountry, UAE_COUNTRIES)
       )
     );
@@ -1837,6 +1839,7 @@ export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd
       clientId: invoices.clientId,
       shipmentId: invoiceItems.shipmentId,
       unitPrice: invoiceItems.unitPrice,
+      lineTotal: invoiceItems.total,
       waybillNumber: orders.waybillNumber,
       destinationCountry: orders.destinationCountry,
       serviceType: orders.serviceType,
@@ -1848,17 +1851,39 @@ export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd
     .where(and(...conditions))
     .orderBy(desc(invoices.issueDate));
 
+  // Surcharges and discounts live as extra line items with no shipmentId, so
+  // the base unitPrice is NOT what the client actually paid for the shipment.
+  // Spread each invoice's adjustments across its shipment lines, weighted by
+  // line value, so profit is measured against the real net charge.
+  const adjustmentByInvoice = new Map<number, number>();
+  const baseByInvoice = new Map<number, number>();
+  for (const r of results) {
+    const value = parseFloat(r.lineTotal || r.unitPrice || '0');
+    if (r.shipmentId === null) {
+      adjustmentByInvoice.set(r.invoiceId, (adjustmentByInvoice.get(r.invoiceId) || 0) + value);
+    } else {
+      baseByInvoice.set(r.invoiceId, (baseByInvoice.get(r.invoiceId) || 0) + value);
+    }
+  }
+
   let totalCharged = 0;
   let totalCost = 0;
   let itemsMissingCost = 0;
 
-  const rows = results.map(r => {
-    const charged = parseFloat(r.unitPrice || '0');
-    const cost = r.costAmount !== null && r.costAmount !== undefined ? parseFloat(r.costAmount) : null;
-    totalCharged += charged;
-    if (cost !== null) totalCost += cost; else itemsMissingCost++;
-    return { ...r, charged, cost };
-  });
+  const rows = results
+    .filter(r => r.shipmentId !== null)
+    .map(r => {
+      const base = parseFloat(r.lineTotal || r.unitPrice || '0');
+      const invoiceBase = baseByInvoice.get(r.invoiceId) || 0;
+      const adjustment = adjustmentByInvoice.get(r.invoiceId) || 0;
+      const share = invoiceBase > 0 ? base / invoiceBase : 0;
+      const charged = Math.round((base + adjustment * share) * 100) / 100;
+
+      const cost = r.costAmount !== null && r.costAmount !== undefined ? parseFloat(r.costAmount) : null;
+      totalCharged += charged;
+      if (cost !== null) totalCost += cost; else itemsMissingCost++;
+      return { ...r, base, adjustment: Math.round(adjustment * share * 100) / 100, charged, cost };
+    });
 
   const totalProfit = totalCharged - totalCost;
   const marginPct = totalCharged > 0 ? (totalProfit / totalCharged) * 100 : 0;
@@ -2045,6 +2070,12 @@ export async function getInvoiceStats(filters: Omit<InvoiceListFilters, 'page' |
     const where = buildInvoiceConditions(filters);
     const thisMonthStart = startOfCurrentMonth();
     const lastMonthStart = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() - 1, 1);
+    // These boundaries live inside CASE WHEN aggregates, so they can't use gte()/lt().
+    // sql.param() binds them through the column's own mapper instead — interpolating the
+    // Date directly would hand it to mysql2, which serialises in local time while the
+    // column is written in UTC, sliding every month boundary by the UTC offset.
+    const thisMonthParam = sql.param(thisMonthStart, invoices.issueDate);
+    const lastMonthParam = sql.param(lastMonthStart, invoices.issueDate);
 
     const [row] = await db
       .select({
@@ -2055,10 +2086,10 @@ export async function getInvoiceStats(filters: Omit<InvoiceListFilters, 'page' |
         overdueCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'overdue' THEN 1 ELSE 0 END), 0)`,
         outstandingBalance: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.status} != 'paid' THEN CAST(COALESCE(${invoices.balance}, ${invoices.total}) AS DECIMAL(12,2)) ELSE 0 END), 0)`,
         overdueBalance: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.status} = 'overdue' THEN CAST(COALESCE(${invoices.balance}, ${invoices.total}) AS DECIMAL(12,2)) ELSE 0 END), 0)`,
-        thisMonthRevenue: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${thisMonthStart} THEN CAST(${invoices.total} AS DECIMAL(12,2)) ELSE 0 END), 0)`,
-        thisMonthCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${thisMonthStart} THEN 1 ELSE 0 END), 0)`,
-        lastMonthRevenue: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${lastMonthStart} AND ${invoices.issueDate} < ${thisMonthStart} THEN CAST(${invoices.total} AS DECIMAL(12,2)) ELSE 0 END), 0)`,
-        lastMonthCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${lastMonthStart} AND ${invoices.issueDate} < ${thisMonthStart} THEN 1 ELSE 0 END), 0)`,
+        thisMonthRevenue: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${thisMonthParam} THEN CAST(${invoices.total} AS DECIMAL(12,2)) ELSE 0 END), 0)`,
+        thisMonthCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${thisMonthParam} THEN 1 ELSE 0 END), 0)`,
+        lastMonthRevenue: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${lastMonthParam} AND ${invoices.issueDate} < ${thisMonthParam} THEN CAST(${invoices.total} AS DECIMAL(12,2)) ELSE 0 END), 0)`,
+        lastMonthCount: sql<number>`COALESCE(SUM(CASE WHEN ${invoices.issueDate} >= ${lastMonthParam} AND ${invoices.issueDate} < ${thisMonthParam} THEN 1 ELSE 0 END), 0)`,
       })
       .from(invoices)
       .where(where);
@@ -2346,14 +2377,38 @@ export async function getInvoiceItems(invoiceId: number) {
   return await db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId));
 }
 
+/**
+ * Money side of a status flip. Marking an invoice 'paid' has to settle
+ * amountPaid/balance too — leaving them at 0/total made every "paid" invoice
+ * still count as outstanding in the receivables KPIs.
+ */
+function settlementForStatus(status: 'pending' | 'paid' | 'overdue', total: string) {
+  const totalNum = parseFloat(total || '0');
+  return status === 'paid'
+    ? { amountPaid: totalNum.toFixed(2), balance: '0.00' }
+    : { amountPaid: '0.00', balance: totalNum.toFixed(2) };
+}
+
 export async function updateInvoiceStatus(id: number, status: 'pending' | 'paid' | 'overdue') {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const [current] = await db.select({ status: invoices.status }).from(invoices).where(eq(invoices.id, id)).limit(1);
-  const updateData: { status: typeof status; paymentDate?: Date | null } = { status };
+  const [current] = await db
+    .select({ status: invoices.status, total: invoices.total })
+    .from(invoices)
+    .where(eq(invoices.id, id))
+    .limit(1);
+
+  const updateData: {
+    status: typeof status;
+    paymentDate?: Date | null;
+    amountPaid?: string;
+    balance?: string;
+  } = { status };
+
   if (current && current.status !== status) {
     updateData.paymentDate = status === 'paid' ? new Date() : null;
+    Object.assign(updateData, settlementForStatus(status, current.total));
   }
 
   await db.update(invoices).set(updateData).where(eq(invoices.id, id));
@@ -2378,9 +2433,18 @@ export async function updateInvoice(id: number, data: Partial<{
 
   const updateData: typeof data & { paymentDate?: Date | null } = { ...data };
   if (data.status) {
-    const [current] = await db.select({ status: invoices.status }).from(invoices).where(eq(invoices.id, id)).limit(1);
+    const [current] = await db
+      .select({ status: invoices.status, total: invoices.total })
+      .from(invoices)
+      .where(eq(invoices.id, id))
+      .limit(1);
     if (current && current.status !== data.status) {
       updateData.paymentDate = data.status === 'paid' ? new Date() : null;
+      // Only derive the settlement when the caller didn't state it explicitly —
+      // a partial payment passes its own amountPaid/balance and must win.
+      const derived = settlementForStatus(data.status, data.total ?? current.total);
+      if (data.amountPaid === undefined) updateData.amountPaid = derived.amountPaid;
+      if (data.balance === undefined) updateData.balance = derived.balance;
     }
   }
 
@@ -2954,65 +3018,78 @@ export async function updateRemittanceStatus(id: number, status: 'pending' | 'pr
   cacheInvalidate('admin:allRemittances');
 }
 
-export async function getCODSummaryByClient(clientId: number) {
-  const db = await getDb();
-  if (!db) return { pending: '0', collected: '0', remitted: '0', total: '0' };
+export interface CODSummary {
+  pending: string;
+  collected: string;
+  remitted: string;
+  /** Money stuck in a dispute — real COD that belongs in neither bucket above. */
+  disputed: string;
+  total: string;
+  /** Collected today, in SQL rather than off a capped record list. */
+  collectedToday: string;
+}
 
-  // Aggregate in SQL — avoids loading the client's entire COD history into memory
-  const rows = await db
-    .select({
-      status: codRecords.status,
-      total: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`,
-    })
+const EMPTY_COD_SUMMARY: CODSummary = {
+  pending: '0.00', collected: '0.00', remitted: '0.00',
+  disputed: '0.00', total: '0.00', collectedToday: '0.00',
+};
+
+/**
+ * COD totals by status, optionally for one client.
+ *
+ * Aggregated in SQL so it never depends on how many records were fetched.
+ * `disputed` is reported separately instead of being dropped: it used to vanish
+ * from every figure on the page, so money in dispute appeared nowhere at all.
+ * Cancelled COD stays excluded — that one really is not money.
+ */
+export async function getCODSummary(clientId?: number): Promise<CODSummary> {
+  const db = await getDb();
+  if (!db) return EMPTY_COD_SUMMARY;
+
+  const amount = sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`;
+
+  const base = db
+    .select({ status: codRecords.status, total: amount })
+    .from(codRecords)
+    .innerJoin(orders, eq(codRecords.shipmentId, orders.id));
+
+  const rows = clientId === undefined
+    ? await base.groupBy(codRecords.status)
+    : await base.where(eq(orders.clientId, clientId)).groupBy(codRecords.status);
+
+  let pending = 0, collected = 0, remitted = 0, disputed = 0;
+  for (const row of rows) {
+    const value = parseFloat(row.total);
+    if (row.status === 'pending_collection') pending = value;
+    else if (row.status === 'collected') collected = value;
+    else if (row.status === 'remitted') remitted = value;
+    else if (row.status === 'disputed') disputed = value;
+  }
+
+  const todayConds = [
+    ne(codRecords.status, 'cancelled'),
+    sql`DATE(${codRecords.collectedDate}) = CURDATE()`,
+  ];
+  if (clientId !== undefined) todayConds.push(eq(orders.clientId, clientId));
+
+  const [todayRow] = await db
+    .select({ total: amount })
     .from(codRecords)
     .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
-    .where(eq(orders.clientId, clientId))
-    .groupBy(codRecords.status);
-
-  let pending = 0, collected = 0, remitted = 0;
-  for (const row of rows) {
-    const amount = parseFloat(row.total);
-    if (row.status === 'pending_collection') pending = amount;
-    else if (row.status === 'collected') collected = amount;
-    else if (row.status === 'remitted') remitted = amount;
-  }
+    .where(and(...todayConds));
 
   return {
     pending: pending.toFixed(2),
     collected: collected.toFixed(2),
     remitted: remitted.toFixed(2),
-    total: (pending + collected + remitted).toFixed(2),
+    disputed: disputed.toFixed(2),
+    total: (pending + collected + remitted + disputed).toFixed(2),
+    collectedToday: parseFloat(todayRow?.total || '0').toFixed(2),
   };
 }
 
-export async function getCODSummaryGlobal() {
-  const db = await getDb();
-  if (!db) return { pending: '0', collected: '0', remitted: '0', total: '0' };
-
-  // Aggregate in SQL — avoids loading the entire table into memory
-  const rows = await db
-    .select({
-      status: codRecords.status,
-      total: sql<string>`COALESCE(SUM(CAST(${codRecords.codAmount} AS DECIMAL(15,2))), 0)`,
-    })
-    .from(codRecords)
-    .groupBy(codRecords.status);
-
-  let pending = 0, collected = 0, remitted = 0;
-  for (const row of rows) {
-    const amount = parseFloat(row.total);
-    if (row.status === 'pending_collection') pending = amount;
-    else if (row.status === 'collected') collected = amount;
-    else if (row.status === 'remitted') remitted = amount;
-  }
-
-  return {
-    pending: pending.toFixed(2),
-    collected: collected.toFixed(2),
-    remitted: remitted.toFixed(2),
-    total: (pending + collected + remitted).toFixed(2),
-  };
-}
+export const getCODSummaryByClient = (clientId: number) => getCODSummary(clientId);
+export const getCODSummaryGlobal = () => getCODSummary();
 
 
 // ============================================
@@ -3721,6 +3798,44 @@ export async function addTrackingEvent(data: {
 
   const [result] = await db.insert(trackingEvents).values(data);
   return result;
+}
+
+/**
+ * Orders a client already has under the same reference / order number.
+ *
+ * Operators key the same shop order twice more often than you'd think; the
+ * create dialog uses this to warn before a duplicate waybill is issued. Only
+ * live orders count — a cancelled attempt should not block a genuine re-entry.
+ */
+export async function findOrdersByClientReference(
+  clientId: number,
+  orderNumber: string,
+): Promise<Array<{ id: number; waybillNumber: string; status: string; createdAt: Date | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const reference = orderNumber.trim();
+  if (!reference) return [];
+
+  try {
+    return await db
+      .select({
+        id: orders.id,
+        waybillNumber: orders.waybillNumber,
+        status: orders.status,
+        createdAt: orders.createdAt,
+      })
+      .from(orders)
+      .where(and(
+        eq(orders.clientId, clientId),
+        eq(orders.orderNumber, reference),
+        ne(orders.status, 'cancelled'),
+      ))
+      .orderBy(desc(orders.createdAt))
+      .limit(5);
+  } catch (error) {
+    console.error('[Database] Failed to look up client reference:', error);
+    return [];
+  }
 }
 
 // ==================== SAVED SHIPPERS FUNCTIONS ====================

@@ -5,24 +5,17 @@ import { toast } from 'sonner';
 import { LocationPicker, type PickedLocation, type ParsedAddress } from '@/components/LocationPicker';
 import ServiceSelectionStep from '@/components/ServiceSelectionStep';
 
-const SHIPMENT_CITY_MAP: Record<string, string> = {
-  'dubai': 'Dubai',
-  'abu dhabi': 'Abu Dhabi',
-  'abū ẓaby': 'Abu Dhabi',
-  'sharjah': 'Sharjah',
-  'ash shāriqah': 'Sharjah',
-  'ajman': 'Ajman',
-  "'ajmān": 'Ajman',
-  'fujairah': 'Fujairah',
-  'ras al-khaimah': 'Ras Al Khaimah',
-  "raʾs al-khaymah": 'Ras Al Khaimah',
-  'ras al khaimah': 'Ras Al Khaimah',
-  'umm al-quwain': 'Umm Al Quwain',
-  'umm al quwain': 'Umm Al Quwain',
-  'al ain': 'Abu Dhabi',
-};
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Save } from 'lucide-react';
+import {
+  UAE_CITIES,
+  PHONE_PREFIXES,
+  normalizeCity,
+  normalizeEmirate,
+  normalizePhone,
+  isPlausiblePhone,
+  splitPhone,
+} from '@shared/uae';
 
 export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => void }) {
   const { user } = usePortalAuth();
@@ -91,18 +84,26 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     }
   }, [selectedService]);
 
+  /**
+   * Merge Google's components into the form. Picking a suggestion is an
+   * explicit choice, so it overwrites; nudging the pin only knows the rough
+   * street/area, so it fills blanks and never clobbers hand-typed text.
+   */
   function handleAddressParsed(parsed: ParsedAddress) {
-    const matched = parsed.emirate
-      ? SHIPMENT_CITY_MAP[parsed.emirate.toLowerCase()] ?? undefined
-      : undefined;
+    const overwrite = parsed.source === 'search';
+    const take = (incoming: string | undefined, current: string) => {
+      if (!incoming) return current;
+      return overwrite || !current.trim() ? incoming : current;
+    };
+    const city = normalizeCity(parsed.city) ?? normalizeEmirate(parsed.emirate);
     setFormData(prev => ({
       ...prev,
       // Building fills only when Google returns a number/premise; villas have neither,
       // so the field stays empty for the customer to fill in manually.
-      consigneeBuilding: parsed.streetNumber ?? prev.consigneeBuilding,
-      consigneeStreet: parsed.street ?? prev.consigneeStreet,
-      consigneeArea: parsed.area ?? prev.consigneeArea,
-      ...(matched ? { city: matched, emirate: matched } : {}),
+      consigneeBuilding: take(parsed.streetNumber, prev.consigneeBuilding),
+      consigneeStreet: take(parsed.street, prev.consigneeStreet),
+      consigneeArea: take(parsed.area, prev.consigneeArea),
+      ...(city ? { city, emirate: normalizeEmirate(city) ?? city } : {}),
     }));
   }
 
@@ -133,7 +134,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
       shipperAddress: shipperAddress,
       shipperCity: formData.shipperCity,
       shipperCountry: formData.shipperCountry,
-      shipperPhone: `${formData.shipperPhonePrefix} ${formData.shipperPhone}`,
+      shipperPhone: normalizePhone(formData.shipperPhonePrefix, formData.shipperPhone),
     });
   };
 
@@ -142,13 +143,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     if (!shipperId) return;
     const shipper = savedShippers.find((s: any) => s.id.toString() === shipperId);
     if (shipper) {
-      let phonePrefix = '+971';
-      let phoneNum = shipper.shipperPhone || '';
-      if (phoneNum.match(/^\+\d+\s/)) {
-        const parts = phoneNum.split(' ');
-        phonePrefix = parts[0];
-        phoneNum = parts.slice(1).join(' ');
-      }
+      const { prefix: phonePrefix, national: phoneNum } = splitPhone(shipper.shipperPhone);
       setFormData(prev => ({
         ...prev,
         shipperName: shipper.shipperName || '',
@@ -156,7 +151,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
         shipperBuilding: shipper.shipperAddress || '', // Simplified for loaded
         shipperStreet: '', 
         shipperArea: '',
-        shipperCity: shipper.shipperCity || '',
+        shipperCity: normalizeCity(shipper.shipperCity) ?? prev.shipperCity,
         shipperCountry: shipper.shipperCountry || 'UAE',
         shipperPhonePrefix: phonePrefix,
         shipperPhone: phoneNum,
@@ -245,6 +240,14 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
       toast.error('Please enter the receiver name');
       return;
     }
+    if (!isPlausiblePhone(formData.shipperPhonePrefix, formData.shipperPhone)) {
+      toast.error('The shipper phone number does not look valid');
+      return;
+    }
+    if (!isPlausiblePhone(formData.customerPhonePrefix, formData.customerPhone)) {
+      toast.error('The receiver phone number does not look valid');
+      return;
+    }
     if (formData.destinationCountry === 'UAE' || formData.destinationCountry === 'United Arab Emirates') {
       if (!pickedLocation) {
         setLocationError(true);
@@ -266,13 +269,13 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     createMutation.mutate({
       shipment: {
         shipperName: formData.shipperName,
-        shipperPhone: `${formData.shipperPhonePrefix} ${formData.shipperPhone}`,
+        shipperPhone: normalizePhone(formData.shipperPhonePrefix, formData.shipperPhone),
         shipperAddress: shipperAddress,
         shipperCity: formData.shipperCity,
         shipperCountry: formData.shipperCountry,
 
         customerName: formData.customerName,
-        customerPhone: `${formData.customerPhonePrefix} ${formData.customerPhone}`,
+        customerPhone: normalizePhone(formData.customerPhonePrefix, formData.customerPhone),
         address: receiverAddress,
         city: formData.city,
         emirate: formData.emirate,
@@ -421,12 +424,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Contact Number</label>
                   <div className="flex">
                     <select className="px-2 rounded-l-lg border border-r-0 border-border bg-muted text-foreground text-sm font-medium focus:outline-none" value={formData.shipperPhonePrefix} onChange={e => setFormData({...formData, shipperPhonePrefix: e.target.value})}>
-                      <option value="+971">🇦🇪 +971</option>
-                      <option value="+966">🇸🇦 +966</option>
-                      <option value="+965">🇰🇼 +965</option>
-                      <option value="+973">🇧🇭 +973</option>
-                      <option value="+968">🇴🇲 +968</option>
-                      <option value="+974">🇶🇦 +974</option>
+                      {PHONE_PREFIXES.map(p => <option key={p.code} value={p.code}>{p.flag} {p.code}</option>)}
                     </select>
                     <input required className={`${inputClass} rounded-l-none`} type="text" value={formData.shipperPhone} onChange={e => setFormData({...formData, shipperPhone: e.target.value})} placeholder="5x xxx xxxx" />
                   </div>
@@ -447,7 +445,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City</label>
                     <select className={inputClass} value={formData.shipperCity} onChange={e => setFormData({...formData, shipperCity: e.target.value})}>
-                      {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                      {UAE_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
@@ -459,13 +457,13 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                     onClick={() => setShowShipperMap(v => !v)}
                     className="text-xs font-medium text-primary hover:underline"
                   >
-                    {showShipperMap ? '− Ocultar mapa de recogida' : '+ Ubicación de recogida en el mapa (opcional)'}
+                    {showShipperMap ? '− Hide pickup map' : '+ Pin the pickup location on the map (optional)'}
                   </button>
                   {showShipperMap && (
-                    <LocationPicker onLocationPicked={setShipperPickedLocation} />
-                  )}
-                  {shipperPickedLocation && (
-                    <p className="text-xs text-[var(--st-green)]">Pin de recogida listo.</p>
+                    <LocationPicker
+                      onLocationPicked={setShipperPickedLocation}
+                      biasEmirate={formData.shipperCity}
+                    />
                   )}
                 </div>
               </div>
@@ -488,12 +486,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</label>
                   <div className="flex">
                     <select className="px-2 rounded-l-lg border border-r-0 border-border bg-muted text-foreground text-sm font-medium focus:outline-none" value={formData.customerPhonePrefix} onChange={e => setFormData({...formData, customerPhonePrefix: e.target.value})}>
-                      <option value="+971">🇦🇪 +971</option>
-                      <option value="+966">🇸🇦 +966</option>
-                      <option value="+965">🇰🇼 +965</option>
-                      <option value="+973">🇧🇭 +973</option>
-                      <option value="+968">🇴🇲 +968</option>
-                      <option value="+974">🇶🇦 +974</option>
+                      {PHONE_PREFIXES.map(p => <option key={p.code} value={p.code}>{p.flag} {p.code}</option>)}
                     </select>
                     <input required className={`${inputClass} rounded-l-none`} placeholder="5x xxx xxxx" type="text" value={formData.customerPhone} onChange={e => setFormData({...formData, customerPhone: e.target.value})} />
                   </div>
@@ -530,8 +523,10 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                   </div>
                   <div className="space-y-1 md:col-span-1">
                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City</label>
-                    <select className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value, emirate: e.target.value})}>
-                      {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
+                    {/* Al Ain is a city of Abu Dhabi, so the billing emirate is
+                        derived rather than copied from the city. */}
+                    <select className={inputClass} value={formData.city} onChange={e => setFormData({...formData, city: e.target.value, emirate: normalizeEmirate(e.target.value) ?? e.target.value})}>
+                      {UAE_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                 </div>
@@ -544,6 +539,7 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
                     onLocationPicked={(loc) => { setPickedLocation(loc); if (loc) setLocationError(false); }}
                     onAddressParsed={handleAddressParsed}
                     searchInputRef={consigneeSearchRef}
+                    biasEmirate={formData.city}
                   />
                 </div>
               )}

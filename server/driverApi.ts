@@ -5,17 +5,197 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, isNull, desc } from 'drizzle-orm';
 import { getDb, calculateCODFeeByMethod } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
 import { extractDeliveryPhotoBase64s, extractDeliveryPhotoUrls, getProofPhotoUrls } from '../shared/podPhotos';
+import { isStaleOpenShift } from './driverShiftRules';
 
 const router = Router();
 
 // Order statuses that are still BEFORE "out for delivery". Auto-OFD on route start/re-scan
 // only applies to these, so it never reverts a delivered order or duplicates an OFD event.
 const PRE_OUT_FOR_DELIVERY_STATUSES = ['pending_pickup', 'picked_up', 'in_transit'];
+
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/**
+ * The driver's currently open shift, or undefined.
+ *
+ * MUST use isNull(): `eq(driverShifts.endTime, null)` compiles to `endTime = NULL`,
+ * which is never true in SQL. That silently broke the whole shift feature —
+ * /shifts/start created a duplicate shift on every call, /shifts/end always 404'd
+ * so nothing ever closed, /shifts/status always reported off-duty, and
+ * /shifts/route-report never found a shift to link, leaving driverRoutes.shiftId
+ * permanently NULL.
+ *
+ * Ordered newest-first so the pre-fix backlog of duplicate open shifts resolves to
+ * the most recent one rather than an arbitrary row.
+ */
+export async function findOpenShift(db: Db, driverId: number) {
+    const [shift] = await db
+        .select()
+        .from(driverShifts)
+        .where(and(
+            eq(driverShifts.driverId, driverId),
+            isNull(driverShifts.endTime),
+        ))
+        .orderBy(desc(driverShifts.startTime))
+        .limit(1);
+    return shift;
+}
+
+/**
+ * Latest real activity timestamp across the stops of routes linked to this shift
+ * (driverRoutes.shiftId), or null if it has none. Mirrors exactly what
+ * scripts/repair-orphan-driver-shifts.ts does offline to close a shift nobody
+ * clocked out of — this is the same repair, just applied live instead of in a
+ * batch script.
+ */
+async function lastAttributableActivity(db: Db, shiftId: number): Promise<Date | null> {
+    const linkedRoutes = await db.select({ id: driverRoutes.id })
+        .from(driverRoutes).where(eq(driverRoutes.shiftId, shiftId));
+    if (linkedRoutes.length === 0) return null;
+
+    const stops = await db.select({
+        attemptedAt: routeOrders.attemptedAt,
+        deliveredAt: routeOrders.deliveredAt,
+        pickedUpAt: routeOrders.pickedUpAt,
+    }).from(routeOrders).where(inArray(routeOrders.routeId, linkedRoutes.map(r => r.id)));
+
+    let latest: Date | null = null;
+    for (const s of stops) {
+        for (const ts of [s.deliveredAt, s.pickedUpAt, s.attemptedAt]) {
+            if (ts && (!latest || ts > latest)) latest = ts;
+        }
+    }
+    return latest;
+}
+
+/**
+ * Finds the driver's open shift, or opens one right now if there isn't one.
+ * Shared by /shifts/start (explicit clock-in) and markRouteStarted (starting
+ * a route is itself proof the driver is on duty, even if the app never called
+ * /shifts/start) so there is exactly one place that has to get the race right.
+ *
+ * Check-and-insert has to be atomic. A bare "look for an open shift, then
+ * insert" loses a double-tap or an offline-queue replay: both requests find
+ * nothing and both insert, producing two shifts with the same start time and
+ * a driver who can never be cleanly clocked out. Locking the driver row
+ * serialises concurrent clock-ins for that driver.
+ *
+ * A STALE open shift (isStaleOpenShift — open past MAX_SHIFT_HOURS) is never
+ * handed back as "the" open shift: that's a missed clock-out, not proof the
+ * driver is still on duty, and attaching a new route/clock-in to it would bill
+ * the whole dead window as worked time (production shift #265: 31h+ open,
+ * driver 4, while dispatch already showed 0 active drivers). Instead it gets
+ * closed at its last attributable activity — never at `now` and never at the
+ * MAX_SHIFT_HOURS cap, both of which would invent paid hours nobody worked —
+ * before a fresh shift is opened. This happens inside the same driver-row lock
+ * as the rest of the function so a concurrent request can't race the close.
+ */
+export async function findOrCreateOpenShift(db: Db, driverId: number) {
+    return db.transaction(async (tx) => {
+        await tx.select({ id: drivers.id })
+            .from(drivers)
+            .where(eq(drivers.id, driverId))
+            .for('update');
+
+        const existing = await findOpenShift(tx as unknown as Db, driverId);
+        const now = new Date();
+        if (existing) {
+            if (!isStaleOpenShift(existing, now)) return existing;
+
+            const closeAt = (await lastAttributableActivity(tx as unknown as Db, existing.id)) ?? existing.startTime;
+            await tx.update(driverShifts).set({ endTime: closeAt }).where(eq(driverShifts.id, existing.id));
+        }
+
+        const startTime = now;
+        const [inserted] = await tx
+            .insert(driverShifts)
+            .values({ driverId, startTime })
+            .$returningId();
+        return { id: inserted.id, driverId, startTime, endTime: null };
+    });
+}
+
+/**
+ * What scanning a route's QR should change on it.
+ *
+ * Claiming (taking an unassigned route) and starting (putting it on the road) are
+ * independent: a route the admin already assigned to this driver has nothing to
+ * claim but still has to start. Bundling them behind one "is it unassigned?" check
+ * meant those routes stayed 'pending' forever while their stops went in_progress,
+ * so the driver worked a route dispatch never saw begin.
+ */
+export function routeClaimPatch(
+    route: { driverId: number | null; status: string },
+    driverId: number,
+): { driverId?: number; status?: 'in_progress' } {
+    const patch: { driverId?: number; status?: 'in_progress' } = {};
+    if (route.driverId === null) patch.driverId = driverId;
+    if (route.status !== 'in_progress') patch.status = 'in_progress';
+    return patch;
+}
+
+/**
+ * Stamps when a route actually went on the road and links it to the driver's open
+ * shift. Called the moment the driver claims/starts the route — waiting until
+ * handleFinishRoute meant an in-flight route had no startedAt and no shiftId, so
+ * the admin Shifts view couldn't see it until (and unless) it was finished.
+ * startedAt is only written once so a re-scan of the same route doesn't restart the clock.
+ *
+ * If the driver has no open shift, one is opened here rather than leaving
+ * shiftId NULL — the app is supposed to call /shifts/start first, but when it
+ * doesn't (or the call is lost), starting a route is itself proof the driver
+ * is on duty. This is the fix for 116/116 production routes having shiftId
+ * NULL: markRouteStarted used to only ever *link* an existing open shift, and
+ * plenty of driving days had none.
+ */
+export async function markRouteStarted(db: Db, routeId: string, driverId: number, route: { startedAt: Date | null; shiftId: number | null }) {
+    const patch: { startedAt?: Date; shiftId?: number } = {};
+    if (!route.startedAt) patch.startedAt = new Date();
+    if (route.shiftId === null) {
+        const shift = await findOrCreateOpenShift(db, driverId);
+        patch.shiftId = shift.id;
+    }
+    if (Object.keys(patch).length > 0) {
+        await db.update(driverRoutes).set(patch).where(eq(driverRoutes.id, routeId));
+    }
+}
+
+/**
+ * Computes the driverRoutes patch for a /shifts/route-report call.
+ *
+ * clockIn is reported at *finish* time (handleFinishRoute), well after
+ * markRouteStarted already stamped the real moment the route went on the
+ * road at claim/start time. Applying it unconditionally overwrote that true
+ * startedAt with a stale finish-time value on every report — it's only
+ * needed to fill a gap for legacy/offline-queued reports on a route
+ * markRouteStarted never touched.
+ */
+export function buildRouteReportPatch(
+    route: { shiftId: number | null; startedAt: Date | null },
+    openShift: { id: number } | undefined,
+    fields: { clockIn?: string; clockOut?: string; activeSeconds?: number; codCollected?: number; completedStops?: number },
+): Record<string, unknown> {
+    const updateData: Record<string, unknown> = {};
+    // Keep whatever link route start already established; only fill a missing one.
+    if (openShift && route.shiftId === null) updateData.shiftId = openShift.id;
+    if (fields.clockIn && !route.startedAt) updateData.startedAt = new Date(fields.clockIn);
+    if (fields.clockOut) updateData.finishedAt = new Date(fields.clockOut);
+    if (typeof fields.activeSeconds === 'number' && Number.isFinite(fields.activeSeconds)) {
+        updateData.activeSeconds = Math.max(0, Math.round(fields.activeSeconds));
+    }
+    if (typeof fields.codCollected === 'number' && Number.isFinite(fields.codCollected)) {
+        updateData.codCollectedReported = fields.codCollected.toFixed(2);
+    }
+    if (typeof fields.completedStops === 'number' && Number.isFinite(fields.completedStops)) {
+        updateData.completedStopsReported = Math.max(0, Math.round(fields.completedStops));
+    }
+    return updateData;
+}
 
 async function resolveDeliveryPhotoUrls(
     body: unknown,
@@ -404,18 +584,23 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             return res.status(400).json({ error: 'This route is already completed' });
         }
 
+        if (route.status === 'cancelled') {
+            return res.status(400).json({ error: 'This route was cancelled' });
+        }
+
         if (route.driverId !== null && route.driverId !== req.driverId) {
             return res.status(403).json({ error: 'This route is already assigned to another driver' });
         }
 
-        // Claim the route if not already claimed by this driver
-        if (route.driverId !== req.driverId) {
-            await db
-                .update(driverRoutes)
-                .set({ driverId: req.driverId, status: 'in_progress' })
-                .where(eq(driverRoutes.id, routeId));
+        const patch = routeClaimPatch(route, req.driverId!);
+        if (Object.keys(patch).length > 0) {
+            await db.update(driverRoutes).set(patch).where(eq(driverRoutes.id, routeId));
         }
-        
+
+        // Scanning the QR is the moment the route goes on the road — record it now
+        // and attach it to the driver's open shift, instead of waiting for finish.
+        await markRouteStarted(db, routeId, req.driverId!, route);
+
         // --- Auto set delivery stops to in_progress ---
         // Only delivery-type stops that are still pending become in_progress.
         // Pickup stops stay 'pending' until the driver physically picks them up.
@@ -613,6 +798,12 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
             .update(driverRoutes)
             .set({ status: statusLower as typeof route.status })
             .where(eq(driverRoutes.id, routeId));
+
+        // Same as the claim path: starting the route is what stamps startedAt and
+        // links the shift, so an in-flight route is visible in the admin Shifts view.
+        if (statusLower === 'in_progress') {
+            await markRouteStarted(db, routeId, req.driverId!, route);
+        }
 
         // When route changes to in_progress, mark delivery-only orders as out_for_delivery
         if (statusLower === 'in_progress') {
@@ -862,8 +1053,18 @@ router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest,
         // Save collected amount only for delivered stops — a stale/incorrect value
         // sent by an old app build (or a direct API call) for an attempted/failed/
         // returned stop must never persist as if it were actually collected.
-        if (collectedAmount && statusLower === 'delivered') {
-            updateData.collectedAmount = collectedAmount.toString();
+        //
+        // When a COD delivery arrives without an amount (older app builds, or the
+        // pre-uploaded POD path) fall back to what was due, exactly as the COD
+        // record below already does. Leaving it null made the driver cash
+        // reconciliation read the stop as "expected X, collected nothing" and
+        // understate the cash that driver owes.
+        if (statusLower === 'delivered') {
+            if (collectedAmount) {
+                updateData.collectedAmount = collectedAmount.toString();
+            } else if (!isPickup && routeOrder.order.codRequired) {
+                updateData.collectedAmount = routeOrder.order.codAmount || '0';
+            }
         }
 
         // GPS position captured by the app at POD time
@@ -1239,29 +1440,9 @@ router.post('/shifts/start', driverAuthMiddleware, async (req: DriverRequest, re
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        // Check for active shift
-        const activeShifts = await db
-            .select()
-            .from(driverShifts)
-            .where(and(
-                eq(driverShifts.driverId, req.driverId!),
-                eq(driverShifts.endTime, null as unknown as Date)
-            ))
-            .limit(1);
+        const shift = await findOrCreateOpenShift(db, req.driverId!);
 
-        if (activeShifts.length > 0) {
-            return res.json(activeShifts[0]);
-        }
-
-        const [newShift] = await db
-            .insert(driverShifts)
-            .values({
-                driverId: req.driverId!,
-                startTime: new Date(),
-            })
-            .$returningId();
-
-        res.json({ id: newShift.id, startTime: new Date() });
+        res.json(shift);
     } catch (error) {
         console.error('Start shift error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1273,23 +1454,15 @@ router.post('/shifts/end', driverAuthMiddleware, async (req: DriverRequest, res:
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const activeShifts = await db
-            .select()
-            .from(driverShifts)
-            .where(and(
-                eq(driverShifts.driverId, req.driverId!),
-                eq(driverShifts.endTime, null as unknown as Date)
-            ))
-            .limit(1);
-
-        if (activeShifts.length === 0) {
+        const openShift = await findOpenShift(db, req.driverId!);
+        if (!openShift) {
             return res.status(404).json({ error: 'No active shift found' });
         }
 
         await db
             .update(driverShifts)
             .set({ endTime: new Date() })
-            .where(eq(driverShifts.id, activeShifts[0].id));
+            .where(eq(driverShifts.id, openShift.id));
 
         res.json({ message: 'Shift ended successfully' });
     } catch (error) {
@@ -1303,18 +1476,11 @@ router.get('/shifts/status', driverAuthMiddleware, async (req: DriverRequest, re
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const activeShifts = await db
-            .select()
-            .from(driverShifts)
-            .where(and(
-                eq(driverShifts.driverId, req.driverId!),
-                eq(driverShifts.endTime, null as unknown as Date)
-            ))
-            .limit(1);
+        const openShift = await findOpenShift(db, req.driverId!);
 
         res.json({
-            isOnDuty: activeShifts.length > 0,
-            shift: activeShifts[0] || null,
+            isOnDuty: !!openShift,
+            shift: openShift || null,
         });
     } catch (error) {
         console.error('Get shift status error:', error);
@@ -1356,28 +1522,8 @@ router.post('/shifts/route-report', driverAuthMiddleware, async (req: DriverRequ
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const [openShift] = await db
-            .select()
-            .from(driverShifts)
-            .where(and(
-                eq(driverShifts.driverId, req.driverId!),
-                eq(driverShifts.endTime, null as unknown as Date)
-            ))
-            .limit(1);
-
-        const updateData: Record<string, unknown> = {};
-        if (openShift) updateData.shiftId = openShift.id;
-        if (clockIn) updateData.startedAt = new Date(clockIn);
-        if (clockOut) updateData.finishedAt = new Date(clockOut);
-        if (typeof activeSeconds === 'number' && Number.isFinite(activeSeconds)) {
-            updateData.activeSeconds = Math.max(0, Math.round(activeSeconds));
-        }
-        if (typeof codCollected === 'number' && Number.isFinite(codCollected)) {
-            updateData.codCollectedReported = codCollected.toFixed(2);
-        }
-        if (typeof completedStops === 'number' && Number.isFinite(completedStops)) {
-            updateData.completedStopsReported = Math.max(0, Math.round(completedStops));
-        }
+        const openShift = await findOpenShift(db, req.driverId!);
+        const updateData = buildRouteReportPatch(route, openShift, { clockIn, clockOut, activeSeconds, codCollected, completedStops });
 
         if (Object.keys(updateData).length > 0) {
             await db.update(driverRoutes).set(updateData).where(eq(driverRoutes.id, routeId));

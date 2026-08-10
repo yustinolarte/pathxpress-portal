@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CITY_CENTERS, EMIRATE_CENTERS, normalizeCity, normalizeEmirate, isPinNearEmirate } from '@shared/uae';
 
 import { loadGoogleMaps } from '@/lib/googleMaps';
 
@@ -20,6 +21,13 @@ export interface ParsedAddress {
     area?: string;
     city?: string;
     emirate?: string;
+    /**
+     * Where the components came from. A picked suggestion carries a full,
+     * trustworthy address; a dropped pin only knows roughly where it is, so
+     * callers must merge it into what the operator already typed instead of
+     * replacing it.
+     */
+    source: 'search' | 'pin';
 }
 
 interface LocationPickerProps {
@@ -28,11 +36,21 @@ interface LocationPickerProps {
     /** When provided, autocomplete attaches to this external input and the internal search bar is hidden */
     searchInputRef?: React.RefObject<HTMLInputElement | null>;
     initialLocation?: { lat: number; lng: number };
+    /**
+     * Biases suggestions and recentres the empty map on this emirate, so
+     * searching "Al Nakheel" in Ras Al Khaimah stops returning the Dubai one.
+     */
+    biasEmirate?: string | null;
+    /** Bump to clear the pin from the outside (e.g. when a form resets). */
+    resetSignal?: number;
     className?: string;
 }
 
 // Dubai default center
 const DUBAI_CENTER = { lat: 25.2048, lng: 55.2708 };
+
+/** Half-width, in degrees, of the box used to bias autocomplete to an emirate. */
+const BIAS_SPAN = 0.45;
 
 /**
  * Parse Google address_components into our form fields. Shared by the
@@ -45,7 +63,7 @@ const DUBAI_CENTER = { lat: 25.2048, lng: 55.2708 };
 function parseAddressComponents(
     components: google.maps.GeocoderAddressComponent[],
     fallbackName?: string,
-): ParsedAddress {
+): Omit<ParsedAddress, 'source'> {
     const get = (type: string) =>
         components.find(c => c.types.includes(type))?.long_name;
     const area =
@@ -65,7 +83,15 @@ function parseAddressComponents(
     };
 }
 
-export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputRef, initialLocation, className }: LocationPickerProps) {
+export function LocationPicker({
+    onLocationPicked,
+    onAddressParsed,
+    searchInputRef,
+    initialLocation,
+    biasEmirate,
+    resetSignal,
+    className,
+}: LocationPickerProps) {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<google.maps.Map | null>(null);
     const markerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
@@ -73,7 +99,15 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
     const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
     const internalInputRef = useRef<HTMLInputElement>(null);
 
+    // The map is built once, so its listeners would otherwise capture the props
+    // from the very first render. Callbacks go through refs to stay current.
+    const onLocationPickedRef = useRef(onLocationPicked);
+    const onAddressParsedRef = useRef(onAddressParsed);
+    onLocationPickedRef.current = onLocationPicked;
+    onAddressParsedRef.current = onAddressParsed;
+
     const [pickedAddress, setPickedAddress] = useState<string>('');
+    const [pickedCoords, setPickedCoords] = useState<google.maps.LatLngLiteral | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
@@ -127,12 +161,15 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
                         if (place.formatted_address) {
                             setPickedAddress(place.formatted_address);
                         }
-                        if (onAddressParsed && place.address_components) {
+                        if (onAddressParsedRef.current && place.address_components) {
                             // Use the place's own name as the building only for a named
                             // building/POI, not when a plain street/route was selected.
                             const namedTypes = ['premise', 'subpremise', 'establishment', 'point_of_interest'];
                             const buildingName = place.types?.some(t => namedTypes.includes(t)) ? place.name : undefined;
-                            onAddressParsed(parseAddressComponents(place.address_components, buildingName));
+                            onAddressParsedRef.current({
+                                ...parseAddressComponents(place.address_components, buildingName),
+                                source: 'search',
+                            });
                         }
                     }
                 });
@@ -140,8 +177,50 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
 
             setIsLoaded(true);
         });
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            // Autocomplete attaches to an input that may outlive this picker
+            // (the caller owns it via searchInputRef) and injects a
+            // .pac-container into <body>. Without this, toggling the map open
+            // and closed stacks up duplicate suggestion dropdowns.
+            if (autocompleteRef.current && window.google?.maps?.event) {
+                window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+                autocompleteRef.current = null;
+            }
+            if (markerRef.current) {
+                markerRef.current.map = null;
+                markerRef.current = null;
+            }
+        };
     }, []);
+
+    // Bias suggestions towards the selected city/emirate and, while no pin
+    // exists, move the map there so the operator starts in the right place.
+    useEffect(() => {
+        const canonical = normalizeEmirate(biasEmirate);
+        if (!canonical || !window.google?.maps) return;
+        // A city center wins over the emirate center where they differ
+        // (searching in Al Ain should not be biased at Abu Dhabi city).
+        const city = normalizeCity(biasEmirate);
+        const centre = (city ? CITY_CENTERS[city] : undefined) ?? EMIRATE_CENTERS[canonical];
+        const bounds = new window.google.maps.LatLngBounds(
+            { lat: centre.lat - BIAS_SPAN, lng: centre.lng - BIAS_SPAN },
+            { lat: centre.lat + BIAS_SPAN, lng: centre.lng + BIAS_SPAN },
+        );
+        autocompleteRef.current?.setBounds(bounds);
+        if (mapRef.current && !markerRef.current) {
+            mapRef.current.setCenter(centre);
+            mapRef.current.setZoom(11);
+        }
+    }, [biasEmirate, isLoaded]);
+
+    // External reset (form cleared / dialog reopened). Skips the initial mount.
+    const lastResetRef = useRef(resetSignal);
+    useEffect(() => {
+        if (resetSignal === lastResetRef.current) return;
+        lastResetRef.current = resetSignal;
+        clearPin();
+    }, [resetSignal]);
 
     function placeMarker(map: google.maps.Map, pos: google.maps.LatLngLiteral, reverseGeocode: boolean) {
         if (markerRef.current) {
@@ -155,37 +234,43 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
             gmpDraggable: true,
         });
         markerRef.current = marker;
+        setPickedCoords(pos);
 
         marker.addListener('dragend', () => {
             const p = marker.position as google.maps.LatLngLiteral;
+            setPickedCoords(p);
             reverseGeocodeAndEmit(p);
         });
 
         if (reverseGeocode) {
             reverseGeocodeAndEmit(pos);
         } else {
-            onLocationPicked({ latitude: String(pos.lat), longitude: String(pos.lng) });
+            onLocationPickedRef.current({ latitude: String(pos.lat), longitude: String(pos.lng) });
         }
     }
 
     function reverseGeocodeAndEmit(pos: google.maps.LatLngLiteral) {
         if (!geocoderRef.current) {
-            onLocationPicked({ latitude: String(pos.lat), longitude: String(pos.lng) });
+            onLocationPickedRef.current({ latitude: String(pos.lat), longitude: String(pos.lng) });
             return;
         }
         geocoderRef.current.geocode({ location: pos }, (results, status) => {
             const ok = status === 'OK' && results?.length ? results : undefined;
             const addr = ok?.[0]?.formatted_address;
             if (addr) setPickedAddress(addr);
-            onLocationPicked({ latitude: String(pos.lat), longitude: String(pos.lng), address: addr });
-            if (onAddressParsed && ok) {
+            onLocationPickedRef.current({ latitude: String(pos.lat), longitude: String(pos.lng), address: addr });
+            if (onAddressParsedRef.current && ok) {
                 // Reverse geocoding returns several results (most specific first). A single
                 // result often misses route/sublocality, so merge components across all of
                 // them and let parseAddressComponents pick the first match per field.
                 const merged = ok.flatMap(r => r.address_components ?? []);
                 // A dropped pin can't reliably name a building (Google returns plot numbers
                 // like "p12"), so leave building/villa empty for the customer to enter.
-                onAddressParsed({ ...parseAddressComponents(merged), streetNumber: undefined });
+                onAddressParsedRef.current({
+                    ...parseAddressComponents(merged),
+                    streetNumber: undefined,
+                    source: 'pin',
+                });
             }
         });
     }
@@ -196,8 +281,13 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
             markerRef.current = null;
         }
         setPickedAddress('');
-        onLocationPicked(null);
+        setPickedCoords(null);
+        onLocationPickedRef.current(null);
     }
+
+    const emirateMismatch = pickedCoords != null
+        && !!normalizeEmirate(biasEmirate)
+        && !isPinNearEmirate(pickedCoords, biasEmirate);
 
     return (
         <div className={cn('space-y-2', className)}>
@@ -230,13 +320,25 @@ export function LocationPicker({ onLocationPicked, onAddressParsed, searchInputR
             </div>
 
             {/* Pin confirmation */}
-            {pickedAddress ? (
-                <div className="flex items-start gap-2 text-xs bg-green-500/10 border border-green-500/30 rounded-md px-3 py-2">
-                    <MapPin className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
-                    <span className="text-green-700 dark:text-green-400 flex-1">{pickedAddress}</span>
-                    <button onClick={clearPin} className="text-muted-foreground hover:text-foreground">
-                        <X className="w-3.5 h-3.5" />
-                    </button>
+            {pickedCoords ? (
+                <div className="space-y-1.5">
+                    <div className="flex items-start gap-2 text-xs bg-green-500/10 border border-green-500/30 rounded-md px-3 py-2">
+                        <MapPin className="w-3.5 h-3.5 text-green-600 mt-0.5 shrink-0" />
+                        <span className="text-green-700 dark:text-green-400 flex-1">
+                            {pickedAddress || 'Pin placed'}
+                            <span className="block font-mono text-[10px] opacity-70 mt-0.5">
+                                {pickedCoords.lat.toFixed(5)}, {pickedCoords.lng.toFixed(5)}
+                            </span>
+                        </span>
+                        <button type="button" onClick={clearPin} className="text-muted-foreground hover:text-foreground">
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                    {emirateMismatch && (
+                        <p className="text-xs px-3 py-2 rounded-md border" style={{ color: 'var(--st-amber)', borderColor: 'color-mix(in srgb, var(--st-amber) 35%, transparent)', background: 'color-mix(in srgb, var(--st-amber) 10%, transparent)' }}>
+                            This pin does not look like it is in {normalizeEmirate(biasEmirate)}. Check the emirate or move the pin.
+                        </p>
+                    )}
                 </div>
             ) : (
                 <p className="text-xs text-muted-foreground px-1">

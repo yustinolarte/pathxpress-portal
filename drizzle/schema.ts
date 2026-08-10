@@ -277,6 +277,11 @@ export const orders = mysqlTable("orders", {
   hsCode: varchar("hsCode", { length: 20 }),                   // Harmonized System tariff code (optional)
   costAmount: decimal("costAmount", { precision: 10, scale: 2 }), // Our actual courier cost (intl only, admin-entered, for profit tracking)
 
+  // Deliberately non-billable: keeps the order out of the billing panel's
+  // pending list without falsifying its operational status via 'canceled'
+  billingExcluded: int("billingExcluded").default(0).notNull(), // 0 = billable, 1 = never bill
+  billingExcludedReason: varchar("billingExcludedReason", { length: 255 }),
+
   // Preferred Time Delivery service fields
   preferredDeliveryDate: varchar("preferredDeliveryDate", { length: 10 }),  // 'YYYY-MM-DD'
   preferredDeliveryTime: varchar("preferredDeliveryTime", { length: 20 }),  // e.g. '18:00'
@@ -615,6 +620,12 @@ export const driverRoutes = mysqlTable("driverRoutes", {
   // routeOrders (delivered stops only), never trust these as source of truth.
   codCollectedReported: decimal("codCollectedReported", { precision: 10, scale: 2 }),
   completedStopsReported: int("completedStopsReported"),
+  // Cash hand-over: when the driver physically returned the cash collected on
+  // this route to the office. Card (Tap to Pay) never passes through the driver,
+  // so only the cash leg is remittable. The amount is frozen at hand-over time
+  // so a later status edit on a stop can't silently rewrite what was received.
+  cashRemittedAt: timestamp("cashRemittedAt"),
+  cashRemittedAmount: decimal("cashRemittedAmount", { precision: 10, scale: 2 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
@@ -684,7 +695,12 @@ export const driverShifts = mysqlTable("driverShifts", {
   startTime: timestamp("startTime").notNull(),
   endTime: timestamp("endTime"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  // findOpenShift/findOrCreateOpenShift filter on (driverId, endTime) on every
+  // clock-in, route start and dispatch refresh — there was no index at all
+  // beyond the PK, so every one of those was a full table scan.
+  driverIdEndTimeIdx: index("driverShifts_driverId_endTime_idx").on(table.driverId, table.endTime),
+}));
 
 export type DriverShift = typeof driverShifts.$inferSelect;
 export type InsertDriverShift = typeof driverShifts.$inferInsert;

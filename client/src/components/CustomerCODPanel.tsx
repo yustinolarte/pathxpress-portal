@@ -153,7 +153,9 @@ export default function CustomerCODPanel() {
             <span className="ic"><span className="material-symbols-outlined text-[18px]">task_alt</span></span>
           </div>
           <div className="val" style={{ fontSize: 26, color: 'var(--st-green)' }}>AED {codSummary?.remitted || '0'}</div>
-          <div className="sub">Paid to you</div>
+          {/* This is COD collected and remitted, i.e. gross. Any COD fee is deducted
+              on the remittance itself, so "paid to you" overstated what landed. */}
+          <div className="sub">Remitted — before COD fees</div>
         </div>
 
         <div className="kpi accent">

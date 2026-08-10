@@ -3,7 +3,7 @@ import { customAlphabet } from 'nanoid';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { HIDDEN_BY_DEFAULT_STATUSES } from '@/lib/orderFilters';
+import { pickableOrders } from '@/lib/orderFilters';
 import {
   Check, MapPin, Truck, Package, CheckCircle2,
   ChevronRight, ChevronLeft, Loader2, Hash, Calendar,
@@ -116,16 +116,10 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       enabled: open && hasReachedStep3,
     });
 
-  // failed_pickup/failed_delivery are still assignable (for a retry) but shouldn't
-  // clutter this picker — same default-hide rule as the dispatch map. Orders already
-  // selected (e.g. preloaded from the dispatch map's explicit status filter) stay
-  // visible so they can still be reviewed/deselected here.
-  const pickableOrders = useMemo(() => {
-    const selectedIds = new Set(selectedOrders.map(o => o.id));
-    return (availableOrders as any[] | undefined)?.filter(
-      o => !HIDDEN_BY_DEFAULT_STATUSES.has(o.status) || selectedIds.has(o.id),
-    );
-  }, [availableOrders, selectedOrders]);
+  const pickable = useMemo(
+    () => pickableOrders(availableOrders as any[] | undefined, selectedOrders.map(o => o.id)),
+    [availableOrders, selectedOrders],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -362,7 +356,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
     return (
       <div className="space-y-4">
         <OrderPickList
-          orders={pickableOrders}
+          orders={pickable}
           loading={ordersLoading}
           value={selectedOrders}
           onChange={setSelectedOrders}

@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -1 /c/Users/steve/Downloads/pathxpress/client/src/components/*.tsx)"
+      "Bash(ls -1 /c/Users/steve/Downloads/pathxpress/client/src/components/*.tsx)",
+      "Bash(npx tsx scripts/clear-test-client-orders.ts:*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx tsx scripts/clear-test-client-orders.ts --yes >/dev/null 2>&1 || true",
+            "async": true,
+            "timeout": 120,
+            "statusMessage": "Clearing QA test orders (client 28)"
+          }
+        ]
+      }
     ]
   }
 }

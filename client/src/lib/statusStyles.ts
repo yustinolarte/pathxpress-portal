@@ -14,10 +14,12 @@ export const STATUS_TONE: Record<string, StatusTone> = {
   in_transit: 'blue',
   out_for_delivery: 'blue',
   processing: 'blue',
+  in_progress: 'blue',
   // waiting
   pending_pickup: 'amber',
   on_hold: 'amber',
   delivery_attempted: 'amber',
+  attempted: 'amber',
   exchange: 'amber',
   pending: 'amber',
   customs_clearance: 'amber',

@@ -246,6 +246,21 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
     const onEditLocationRef = useRef(onEditLocation);
     onEditLocationRef.current = onEditLocation;
 
+    // ── Viewport persistence ──
+    // Re-fitting on every `points` change yanked the camera back out whenever the
+    // user selected a pin: selecting only flips a point's `kind`, but that still
+    // produces a new array. So auto-fit is gated twice — the fit signature ignores
+    // everything except the actual coordinates, and once the user has panned or
+    // zoomed themselves we stop moving the camera at all.
+    const fitSignatureRef = useRef<string | null>(null);
+    const userMovedRef = useRef(false);
+    const programmaticMoveRef = useRef(false);
+
+    const positionSignature = points
+        .map(p => `${p.id}:${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
+        .sort()
+        .join('|');
+
     // Init map once
     useEffect(() => {
         let cancelled = false;
@@ -262,6 +277,12 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
                     fullscreenControl: true,
                     zoomControlOptions: { position: window.google.maps.ControlPosition.RIGHT_BOTTOM },
                 });
+                // Any camera change the user drives themselves takes ownership of the
+                // viewport. fitBounds also fires zoom_changed, so programmatic moves are
+                // flagged and cleared on the following 'idle'.
+                const claimViewport = () => { if (!programmaticMoveRef.current) userMovedRef.current = true; };
+                mapRef.current.addListener('dragstart', claimViewport);
+                mapRef.current.addListener('zoom_changed', claimViewport);
                 setMapReady(true);
             } catch (e) {
                 console.error('[OrdersMap] Map init error:', e);
@@ -275,52 +296,86 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
         if (!mapReady || !mapRef.current || !window.google?.maps) return;
         const map = mapRef.current;
 
-        // Clear old markers
-        markersRef.current.forEach(m => { m.map = null; });
+        // Clear old markers. Detaching a marker runs inside the Maps API, and when
+        // that API is in a degraded state (a rejected key still returns a Map object
+        // whose internals are half-built) the setter throws — which used to take the
+        // whole admin page down through the error boundary. A map that fails to
+        // redraw its pins is worth degrading over; a blank portal is not.
+        markersRef.current.forEach(m => {
+            try { m.map = null; } catch (e) { console.error('[OrdersMap] marker detach failed:', e); }
+        });
         markersRef.current = [];
 
         // Clear old polyline
-        polylineRef.current?.setMap(null);
+        try { polylineRef.current?.setMap(null); } catch { /* same reasoning as above */ }
         polylineRef.current = null;
 
-        if (points.length === 0) return;
+        if (points.length === 0) {
+            // An empty map has no viewport worth keeping — the next batch of pins
+            // should frame itself.
+            fitSignatureRef.current = null;
+            userMovedRef.current = false;
+            return;
+        }
 
         const bounds = new window.google.maps.LatLngBounds();
 
         points.forEach((pt) => {
-            const pinLabel = pt.sequence !== undefined ? String(pt.sequence) : pt.label.slice(0, 2);
-            const el = makePin(pt.kind, pinLabel, pt, onEditLocationRef.current);
+            try {
+                const pinLabel = pt.sequence !== undefined ? String(pt.sequence) : pt.label.slice(0, 2);
+                const el = makePin(pt.kind, pinLabel, pt, onEditLocationRef.current);
 
-            const marker = new window.google.maps.marker.AdvancedMarkerElement({
-                map,
-                position: { lat: pt.lat, lng: pt.lng },
-                title: pt.label,
-                content: el,
-            });
+                const marker = new window.google.maps.marker.AdvancedMarkerElement({
+                    map,
+                    position: { lat: pt.lat, lng: pt.lng },
+                    title: pt.label,
+                    content: el,
+                });
 
-            // Lift the hovered marker above its neighbours so the card isn't covered.
-            el.addEventListener('mouseenter', () => { marker.zIndex = 1000; });
-            el.addEventListener('mouseleave', () => { marker.zIndex = null; });
+                // Lift the hovered marker above its neighbours so the card isn't covered.
+                el.addEventListener('mouseenter', () => { marker.zIndex = 1000; });
+                el.addEventListener('mouseleave', () => { marker.zIndex = null; });
 
-            marker.addListener('click', () => onPointClickRef.current?.(pt.id));
+                marker.addListener('click', () => onPointClickRef.current?.(pt.id));
 
-            markersRef.current.push(marker);
+                markersRef.current.push(marker);
+            } catch (e) {
+                // One unrenderable pin shouldn't cost the operator the rest of the map.
+                console.error('[OrdersMap] marker create failed:', e);
+            }
             bounds.extend({ lat: pt.lat, lng: pt.lng });
         });
 
-        map.fitBounds(bounds, 60);
+        // Only frame the map when the set of coordinates is genuinely new and the
+        // user hasn't taken the camera over. Selecting/deselecting a pin changes
+        // `points` but not the signature, so the view stays exactly where it was.
+        if (fitSignatureRef.current !== positionSignature && !userMovedRef.current) {
+            try {
+                programmaticMoveRef.current = true;
+                map.fitBounds(bounds, 60);
+                window.google.maps.event.addListenerOnce(map, 'idle', () => { programmaticMoveRef.current = false; });
+            } catch (e) {
+                programmaticMoveRef.current = false;
+                console.error('[OrdersMap] fitBounds failed:', e);
+            }
+        }
+        fitSignatureRef.current = positionSignature;
 
         if (showRoute && points.length > 1) {
-            polylineRef.current = new window.google.maps.Polyline({
-                path: points.map(p => ({ lat: p.lat, lng: p.lng })),
-                geodesic: true,
-                strokeColor: '#1e3a5f',
-                strokeOpacity: 0.8,
-                strokeWeight: 2.5,
-                map,
-            });
+            try {
+                polylineRef.current = new window.google.maps.Polyline({
+                    path: points.map(p => ({ lat: p.lat, lng: p.lng })),
+                    geodesic: true,
+                    strokeColor: '#1e3a5f',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2.5,
+                    map,
+                });
+            } catch (e) {
+                console.error('[OrdersMap] polyline failed:', e);
+            }
         }
-    }, [points, showRoute, mapReady]);
+    }, [points, showRoute, mapReady, positionSignature]);
 
     return (
         <div ref={containerRef} className={cn('w-full h-[400px] rounded-xl border border-border overflow-hidden', className)} />

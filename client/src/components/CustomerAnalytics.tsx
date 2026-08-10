@@ -59,6 +59,14 @@ export default function CustomerAnalytics() {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
+    const successRateColor = analytics.deliverySuccessRate === null
+        ? 'var(--muted-foreground)'
+        : analytics.deliverySuccessRate >= 95
+            ? 'var(--st-green)'
+            : analytics.deliverySuccessRate >= 85
+                ? 'var(--st-amber)'
+                : 'var(--primary)';
+
     return (
         <div className="space-y-8">
             {/* Header Section */}
@@ -96,10 +104,17 @@ export default function CustomerAnalytics() {
                         vs last month
                     </div>
                 </div>
+                {/* Share of finished shipments, so orders still in transit no longer
+                    drag the rate down, and the colour follows the number instead of
+                    being green whatever it says. */}
                 <div className="kpi">
                     <div className="kt"><span className="lab">Success Rate</span></div>
-                    <div className="val" style={{ color: 'var(--st-green)' }}>{analytics.deliverySuccessRate}%</div>
-                    <div className="sub">delivered successfully</div>
+                    <div className="val" style={{ color: successRateColor }}>
+                        {analytics.deliverySuccessRate === null ? '—' : `${analytics.deliverySuccessRate}%`}
+                    </div>
+                    <div className="sub">
+                        {analytics.deliverySuccessRate === null ? 'no completed shipments yet' : 'of completed shipments'}
+                    </div>
                 </div>
             </div>
 
