@@ -9,8 +9,38 @@ import { getDb } from './db';
 import { drivers, driverRoutes, driverShifts, routeOrders, orders, driverReports, clientAccounts, codRecords } from '../drizzle/schema';
 import { optimizeStops } from './routeOptimizer';
 import type { OptimizableStop, LatLng } from './routeOptimizer';
+import { findPrecedenceViolation } from '@shared/routeSequence';
 import { cachedQuery } from './_core/queryCache';
 import { MAX_SHIFT_HOURS, isStaleOpenShift } from './driverShiftRules';
+
+// ============ ROUTE STOP ORDER ============
+
+/**
+ * MySQL sorts NULL first on ASC, so a legacy row with no sequence used to jump
+ * ahead of stop #1. Always sort with this first: `sequence IS NULL, sequence, id`.
+ */
+const STOP_ORDER_SQL = sql`${routeOrders.sequence} IS NULL`;
+
+/**
+ * Stops the driver has finished handling, regardless of outcome — used for the
+ * "completed stops" count, and to decide which stops are frozen in place and
+ * which ones may no longer be deleted. 'on_hold' is excluded: the driver
+ * postponed it, it isn't done.
+ */
+const FINISHED_STOP_STATUSES = ['picked_up', 'delivered', 'attempted', 'returned', 'failed'];
+
+/**
+ * A rule the admin broke and can fix by changing what they sent — a stale stop
+ * list, a delivery dragged above its pickup, deleting a route that already has
+ * PODs. The tRPC layer turns these into BAD_REQUEST so the message reaches the
+ * toast, instead of surfacing as a 500 next to genuine server faults.
+ */
+export class RouteGuardError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'RouteGuardError';
+    }
+}
 
 // ============ DASHBOARD STATS ============
 
@@ -300,7 +330,7 @@ export async function getRouteDetails(routeId: string) {
         .from(routeOrders)
         .innerJoin(orders, eq(routeOrders.orderId, orders.id))
         .where(eq(routeOrders.routeId, routeId))
-        .orderBy(routeOrders.sequence);
+        .orderBy(STOP_ORDER_SQL, routeOrders.sequence, routeOrders.id);
 
     // Get company names for all client IDs
     const clientIds = Array.from(new Set(routeOrdersList.map(item => item.order.clientId)));
@@ -366,12 +396,164 @@ async function generateUniqueRouteId(db: NonNullable<Awaited<ReturnType<typeof g
     return `DXB-${year}-${routeIdSuffix()}${routeIdSuffix()}`;
 }
 
+/** One leg to create, in the position it should occupy. */
+export interface RouteStopSpec { orderId: number; type: 'pickup' | 'delivery'; }
+
+/**
+ * Expand a flat order list into stop legs. "both" is atomic: the pair is only
+ * emitted when both legs are actually open, so we never silently drop one (e.g.
+ * dropping delivery because the package isn't picked up yet — that's expected,
+ * since this same call is the one doing the pickup).
+ *
+ * Unknown order ids are a hard error, not a permissive default. The old
+ * `?? { canPickup: true, ... }` fallback let a stale or foreign id create route
+ * stops for an order that doesn't exist: they counted towards deliveryStats
+ * (which doesn't join `orders`) but vanished from getRouteDetails (which does),
+ * so a route showed "3/8 stops" with 5 invisible ones.
+ */
+export function expandStopSpecs(
+    orderIds: number[],
+    stopMode: OrderMode,
+    flags: Map<number, AssignmentFlags>,
+): RouteStopSpec[] {
+    const unknown = orderIds.filter(id => !flags.has(id));
+    if (unknown.length > 0) {
+        throw new RouteGuardError(`Órdenes inexistentes o no asignables: ${unknown.join(', ')}`);
+    }
+
+    const specs: RouteStopSpec[] = [];
+    for (const orderId of orderIds) {
+        const f = flags.get(orderId)!;
+        if (stopMode === 'both') {
+            if (f.canBoth) {
+                specs.push({ orderId, type: 'pickup' });
+                specs.push({ orderId, type: 'delivery' });
+            }
+        } else if (stopMode === 'pickup_only' && f.canPickup) {
+            specs.push({ orderId, type: 'pickup' });
+        } else if (stopMode === 'delivery_only' && f.canDeliver) {
+            specs.push({ orderId, type: 'delivery' });
+        }
+    }
+    return specs;
+}
+
+/**
+ * Guard for an explicitly ordered stop list (the create wizard sends the exact
+ * sequence it drew on the map). Same rule as expandStopSpecs, checked per order:
+ * both legs need canBoth, a lone pickup needs canPickup, a lone delivery canDeliver.
+ */
+export function assertStopSpecsAssignable(
+    specs: RouteStopSpec[],
+    flags: Map<number, AssignmentFlags>,
+): void {
+    const legsByOrder = new Map<number, Set<string>>();
+    for (const s of specs) {
+        if (!legsByOrder.has(s.orderId)) legsByOrder.set(s.orderId, new Set());
+        legsByOrder.get(s.orderId)!.add(s.type);
+    }
+
+    const rejected: number[] = [];
+    for (const [orderId, legs] of Array.from(legsByOrder)) {
+        const f = flags.get(orderId);
+        if (!f) { rejected.push(orderId); continue; }
+        const ok = legs.has('pickup') && legs.has('delivery')
+            ? f.canBoth
+            : legs.has('pickup') ? f.canPickup : f.canDeliver;
+        if (!ok) rejected.push(orderId);
+    }
+    if (rejected.length > 0) {
+        throw new RouteGuardError(
+            `Estas órdenes ya no se pueden asignar (otra ruta las tomó o ya se completaron): ${rejected.join(', ')}. Recarga e intenta de nuevo.`,
+        );
+    }
+}
+
+/** Minimal shape the deletion guards need — satisfied by a routeOrders row. */
+export interface GuardableStop {
+    status: string | null;
+    collectedAmount?: string | null;
+    proofPhotoUrl?: string | null;
+    proofPhotoUrl2?: string | null;
+    deliveredAt?: Date | null;
+    waybillNumber?: string | null;
+}
+
+/** A stop carries field evidence once it has been worked, whatever the outcome. */
+function stopHasEvidence(s: GuardableStop): boolean {
+    return FINISHED_STOP_STATUSES.includes(s.status ?? '')
+        || !!s.collectedAmount
+        || !!s.proofPhotoUrl
+        || !!s.proofPhotoUrl2
+        || !!s.deliveredAt;
+}
+
+/**
+ * routeOrders rows are the ONLY source of the COD reconciliation and the shift
+ * report, and they hold the POD photos. Deleting a worked route silently
+ * destroys the proof of delivery and moves yesterday's cash figures, so we send
+ * the admin to cancellation instead — which keeps the row and the money trail.
+ */
+export function assertRouteDeletable(route: { status: string | null }, stops: GuardableStop[]): void {
+    const worked = stops.filter(stopHasEvidence);
+    if (route.status === 'completed' || worked.length > 0) {
+        throw new RouteGuardError(
+            'Esta ruta ya tiene entregas registradas — no se puede borrar sin destruir el POD y la conciliación de caja. Cámbiala a "cancelada" en su lugar.',
+        );
+    }
+}
+
+export function assertStopsRemovable(stops: GuardableStop[]): void {
+    const worked = stops.filter(stopHasEvidence);
+    if (worked.length > 0) {
+        const labels = worked.map(s => s.waybillNumber).filter(Boolean).join(', ');
+        throw new RouteGuardError(
+            `No se puede quitar de la ruta un paquete ya trabajado${labels ? ` (${labels})` : ''}: se perdería su POD y su registro de COD.`,
+        );
+    }
+}
+
+type DbHandle = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/**
+ * Serialize every write that touches a route's stop set. create/add/remove/
+ * reorder/optimize all read-then-write the sequence, so without a lock two
+ * admins working the same route interleave into duplicate or gapped numbering.
+ * Same row-lock pattern as findOrCreateOpenShift. Keep the body short — no
+ * network calls inside.
+ */
+async function withRouteLock<T>(
+    db: DbHandle,
+    routeId: string,
+    fn: (tx: DbHandle, route: typeof driverRoutes.$inferSelect) => Promise<T>,
+): Promise<T> {
+    return db.transaction(async (tx) => {
+        const [route] = await tx.select().from(driverRoutes)
+            .where(eq(driverRoutes.id, routeId)).limit(1).for('update');
+        if (!route) throw new RouteGuardError('Route not found');
+        return fn(tx as unknown as DbHandle, route);
+    });
+}
+
+/** Read a route's stops in their canonical order, joined to their order row. */
+async function readRouteStops(db: DbHandle, routeId: string) {
+    return db
+        .select({ ro: routeOrders, o: orders })
+        .from(routeOrders)
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(eq(routeOrders.routeId, routeId))
+        .orderBy(STOP_ORDER_SQL, routeOrders.sequence, routeOrders.id);
+}
+
 export async function createDriverRoute(data: {
     id?: string;
     date: Date;
     driverId?: number;
     zone?: string;
     vehicleInfo?: string;
+    /** Explicit, already-ordered stop list (the create wizard). Wins over orderIds. */
+    stops?: RouteStopSpec[];
+    /** Legacy/dispatch path: expanded through expandStopSpecs. */
     orderIds?: number[];
     stopMode?: 'pickup_only' | 'delivery_only' | 'both';
     startAddress?: string;
@@ -381,7 +563,23 @@ export async function createDriverRoute(data: {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    const stopMode = data.stopMode || 'both';
+    // Resolve the stop legs and validate them BEFORE opening the transaction.
+    let specs: RouteStopSpec[] = [];
+    if (data.stops && data.stops.length > 0) {
+        specs = data.stops;
+        const flags = await getAssignmentFlags(Array.from(new Set(specs.map(s => s.orderId))));
+        assertStopSpecsAssignable(specs, flags);
+    } else if (data.orderIds && data.orderIds.length > 0) {
+        const flags = await getAssignmentFlags(data.orderIds);
+        specs = expandStopSpecs(data.orderIds, data.stopMode || 'both', flags);
+    }
+
+    const violation = findPrecedenceViolation(
+        specs.map((s, i) => ({ key: i, orderId: s.orderId, type: s.type })),
+    );
+    if (violation) {
+        throw new RouteGuardError('Una entrega quedó antes de su recogida. Reordena las paradas e intenta de nuevo.');
+    }
 
     // Resolve the route ID: use the (random) client-provided one if free, otherwise generate a fresh unique one.
     let routeId = data.id?.trim() || '';
@@ -392,50 +590,33 @@ export async function createDriverRoute(data: {
         routeId = await generateUniqueRouteId(db);
     }
 
-    await db.insert(driverRoutes).values({
-        id: routeId,
-        date: data.date,
-        driverId: data.driverId || null,
-        zone: data.zone || null,
-        vehicleInfo: data.vehicleInfo || null,
-        status: 'pending',
-        startAddress: data.startAddress || null,
-        startLat: data.startLat || null,
-        startLng: data.startLng || null,
+    // Route + stops go in together: a failed stop insert used to leave an empty
+    // route behind while the wizard reported "Error al crear la ruta".
+    await db.transaction(async (tx) => {
+        await tx.insert(driverRoutes).values({
+            id: routeId,
+            date: data.date,
+            driverId: data.driverId || null,
+            zone: data.zone || null,
+            vehicleInfo: data.vehicleInfo || null,
+            status: 'pending',
+            startAddress: data.startAddress || null,
+            startLat: data.startLat || null,
+            startLng: data.startLng || null,
+        });
+
+        if (specs.length > 0) {
+            await tx.insert(routeOrders).values(
+                specs.map((s, i) => ({
+                    routeId,
+                    orderId: s.orderId,
+                    sequence: i + 1,
+                    type: s.type,
+                    status: 'pending' as const,
+                })),
+            );
+        }
     });
-
-    // Add orders to route if provided — batch insert instead of loop
-    if (data.orderIds && data.orderIds.length > 0) {
-        // Guard: only create legs that are actually assignable for each order.
-        const flags = await getAssignmentFlags(data.orderIds);
-        const stopsToInsert: { routeId: string; orderId: number; sequence: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
-        let sequence = 1;
-
-        for (const orderId of data.orderIds) {
-            const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true, canBoth: true };
-            // "both" is atomic: only insert the pair when both legs are actually open, so we never
-            // silently drop one leg (e.g. dropping delivery because the package isn't picked up yet —
-            // that's expected, since this same call is the one doing the pickup).
-            if (stopMode === 'both') {
-                if (f.canBoth) {
-                    stopsToInsert.push({ routeId, orderId, sequence, type: 'pickup', status: 'pending' });
-                    sequence++;
-                    stopsToInsert.push({ routeId, orderId, sequence, type: 'delivery', status: 'pending' });
-                    sequence++;
-                }
-            } else if (stopMode === 'pickup_only' && f.canPickup) {
-                stopsToInsert.push({ routeId, orderId, sequence, type: 'pickup', status: 'pending' });
-                sequence++;
-            } else if (stopMode === 'delivery_only' && f.canDeliver) {
-                stopsToInsert.push({ routeId, orderId, sequence, type: 'delivery', status: 'pending' });
-                sequence++;
-            }
-        }
-
-        if (stopsToInsert.length > 0) {
-            await db.insert(routeOrders).values(stopsToInsert);
-        }
-    }
 
     return { id: routeId };
 }
@@ -444,34 +625,88 @@ export async function optimizeRoute(routeId: string, origin?: { lat: number; lng
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
-    if (!route) throw new Error('Route not found');
+    return withRouteLock(db, routeId, async (tx, route) => {
+        const stopsRaw = await readRouteStops(tx, routeId);
 
-    const stopsRaw = await db
-        .select({ ro: routeOrders, o: orders })
-        .from(routeOrders)
-        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
-        .where(eq(routeOrders.routeId, routeId));
+        // Stops the driver already worked keep the index they occupy: the van has
+        // been there, so renumbering them would rewrite history under the driver.
+        const isFinished = (s: typeof stopsRaw[number]) =>
+            FINISHED_STOP_STATUSES.includes(s.ro.status ?? '');
+        const open = stopsRaw.filter(s => !isFinished(s));
+        if (open.length === 0) return { optimized: 0 };
 
-    const startOrigin: LatLng | null =
-        origin ??
-        (route.startLat && route.startLng
-            ? { lat: parseFloat(route.startLat), lng: parseFloat(route.startLng) }
-            : null);
+        // Best starting point: where the driver actually is (last finished stop),
+        // then the caller's origin, then the route's configured warehouse.
+        const lastFinished = [...stopsRaw].reverse().find(isFinished);
+        const startOrigin: LatLng | null =
+            (lastFinished ? resolveStopCoords(lastFinished.ro.type, lastFinished.o) : null) ??
+            origin ??
+            (route.startLat && route.startLng
+                ? { lat: parseFloat(route.startLat), lng: parseFloat(route.startLng) }
+                : null);
 
-    const stops: OptimizableStop[] = stopsRaw.map(({ ro, o }) => {
-        const coords = resolveStopCoords(ro.type, o);
-        return {
+        const stops: OptimizableStop[] = open.map(({ ro, o }) => ({
             id: ro.id,
+            orderId: ro.orderId,
             type: ro.type,
-            coords,
+            coords: resolveStopCoords(ro.type, o),
+        }));
+
+        const optimizedIds = optimizeStops(stops, startOrigin);
+
+        // Weave the optimized open stops back into the frozen slots.
+        let cursor = 0;
+        const finalIds = stopsRaw.map(s => (isFinished(s) ? s.ro.id : optimizedIds[cursor++]));
+
+        await writeStopSequence(tx, routeId, finalIds);
+        return { optimized: optimizedIds.length };
+    });
+}
+
+/**
+ * Suggested order for stop legs that aren't a route yet — the create wizard
+ * needs a starting sequence before anything exists in the database, so
+ * optimizeRoute(routeId) has nothing to read. Same engine, same coordinate
+ * rules, no writes.
+ *
+ * Returns the input specs reordered. Legs whose order can't be found are kept
+ * at the end rather than dropped: the caller's stop list is the source of
+ * truth, this is only a suggestion.
+ */
+export async function previewOptimizedOrder(
+    specs: RouteStopSpec[],
+    origin?: { lat: number; lng: number },
+): Promise<RouteStopSpec[]> {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+    if (specs.length === 0) return [];
+
+    const orderIds = Array.from(new Set(specs.map(s => s.orderId)));
+    const rows = await db
+        .select({
+            id: orders.id,
+            latitude: orders.latitude,
+            longitude: orders.longitude,
+            shipperLat: orders.shipperLat,
+            shipperLng: orders.shipperLng,
+            isReturn: orders.isReturn,
+        })
+        .from(orders)
+        .where(inArray(orders.id, orderIds));
+    const byOrderId = new Map(rows.map(r => [r.id, r]));
+
+    // Index into `specs` doubles as the synthetic stop id.
+    const stops: OptimizableStop[] = specs.map((spec, i) => {
+        const o = byOrderId.get(spec.orderId);
+        return {
+            id: i,
+            orderId: spec.orderId,
+            type: spec.type,
+            coords: o ? resolveStopCoords(spec.type, o) : null,
         };
     });
 
-    const optimizedIds = optimizeStops(stops, startOrigin);
-    await writeStopSequence(db, optimizedIds);
-
-    return { optimized: optimizedIds.length };
+    return optimizeStops(stops, origin ?? null).map(i => specs[i]);
 }
 
 /**
@@ -481,54 +716,97 @@ export async function optimizeRoute(routeId: string, origin?: { lat: number; lng
  * devolver (pickup) — shipper/customer quedan intercambiados en returns.
  * shipperLat/shipperLng es el otro extremo (donde se recoge en órdenes
  * normales, donde se entrega en returns).
+ *
+ * A shipper-side leg falls back to the consignee pin, matching what the portal
+ * map already draws (DriversSection route map). Without the fallback the server
+ * treated those pickups as coordinate-less and parked them at the end of the
+ * tour, so the sequence number the admin saw wasn't the one the optimizer used.
  */
 function resolveStopCoords(
     type: string,
     o: { latitude: string | null; longitude: string | null; shipperLat: string | null; shipperLng: string | null; isReturn: number },
 ): LatLng | null {
+    const parse = (latStr: string | null, lngStr: string | null): LatLng | null => {
+        if (!latStr || !lngStr) return null;
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+        if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+        return { lat, lng };
+    };
+
     const isPickup = type === 'pickup';
     const consigneeSide = o.isReturn === 1 ? isPickup : !isPickup;
-    const latStr = consigneeSide ? o.latitude : o.shipperLat;
-    const lngStr = consigneeSide ? o.longitude : o.shipperLng;
-    if (!latStr || !lngStr) return null;
-    const lat = parseFloat(latStr);
-    const lng = parseFloat(lngStr);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-    return { lat, lng };
+    return consigneeSide
+        ? parse(o.latitude, o.longitude)
+        : parse(o.shipperLat, o.shipperLng) ?? parse(o.latitude, o.longitude);
 }
 
-/** Persist a stop ordering as sequence 1..N in a single UPDATE. */
-async function writeStopSequence(
-    db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
-    stopIds: number[],
-) {
+/**
+ * Persist a stop ordering as sequence 1..N in a single UPDATE. Scoped to the
+ * route so a caller can never renumber another route's stops by passing foreign ids.
+ */
+async function writeStopSequence(db: DbHandle, routeId: string, stopIds: number[]) {
     if (stopIds.length === 0) return;
     const cases = sql.join(stopIds.map((id, i) => sql`WHEN ${id} THEN ${i + 1}`), sql` `);
     await db.execute(sql`
         UPDATE ${routeOrders}
         SET ${routeOrders.sequence} = CASE ${routeOrders.id} ${cases} END
-        WHERE ${routeOrders.id} IN (${sql.join(stopIds, sql`, `)})
+        WHERE ${routeOrders.routeId} = ${routeId}
+          AND ${routeOrders.id} IN (${sql.join(stopIds, sql`, `)})
     `);
 }
 
 /**
- * Manual stop reordering: stopIds must be EXACTLY the route's current stop set
- * (rejects stale UIs that don't know about added/removed stops).
+ * Manual stop reordering. Three things must hold, and all three are checked
+ * against the database rather than trusting the client's copy:
+ *   1. stopIds is EXACTLY the route's current stop set (rejects a stale UI that
+ *      doesn't know about stops added or removed meanwhile);
+ *   2. finished stops stay at the index they already have;
+ *   3. no delivery ends up ahead of its own pickup — otherwise the driver app
+ *      shows that stop permanently blocked (isDisabled) mid-route.
  */
 export async function reorderRouteStops(routeId: string, stopIds: number[]) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    const current = await db.select({ id: routeOrders.id })
-        .from(routeOrders).where(eq(routeOrders.routeId, routeId));
-    const currentIds = new Set(current.map(r => r.id));
+    return withRouteLock(db, routeId, async (tx) => {
+        const current = await tx
+            .select({
+                id: routeOrders.id,
+                orderId: routeOrders.orderId,
+                type: routeOrders.type,
+                status: routeOrders.status,
+                waybillNumber: orders.waybillNumber,
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(eq(routeOrders.routeId, routeId))
+            .orderBy(STOP_ORDER_SQL, routeOrders.sequence, routeOrders.id);
 
-    if (stopIds.length !== currentIds.size || stopIds.some(id => !currentIds.has(id))) {
-        throw new Error('La lista de paradas no coincide con la ruta actual. Recarga e intenta de nuevo.');
-    }
+        const byId = new Map(current.map(r => [r.id, r]));
+        if (stopIds.length !== byId.size || stopIds.some(id => !byId.has(id))) {
+            throw new RouteGuardError('La lista de paradas no coincide con la ruta actual. Recarga e intenta de nuevo.');
+        }
 
-    await writeStopSequence(db, stopIds);
-    return { success: true };
+        current.forEach((stop, i) => {
+            if (FINISHED_STOP_STATUSES.includes(stop.status ?? '') && stopIds[i] !== stop.id) {
+                throw new RouteGuardError(`No se puede mover una parada ya completada (posición ${i + 1}).`);
+            }
+        });
+
+        const violation = findPrecedenceViolation(
+            stopIds.map(id => {
+                const s = byId.get(id)!;
+                return { key: s.id, orderId: s.orderId, type: s.type, waybillNumber: s.waybillNumber };
+            }),
+        );
+        if (violation) {
+            throw new RouteGuardError(`La entrega de ${violation.delivery.waybillNumber} no puede ir antes de su recogida.`);
+        }
+
+        await writeStopSequence(tx, routeId, stopIds);
+        return { success: true };
+    });
 }
 
 export async function updateRouteStatus(routeId: string, status: 'pending' | 'in_progress' | 'completed' | 'cancelled') {
@@ -543,13 +821,24 @@ export async function deleteRoute(routeId: string) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    // First delete associated route orders
-    await db.delete(routeOrders).where(eq(routeOrders.routeId, routeId));
+    return withRouteLock(db, routeId, async (tx, route) => {
+        const stops = await tx
+            .select({
+                status: routeOrders.status,
+                collectedAmount: routeOrders.collectedAmount,
+                proofPhotoUrl: routeOrders.proofPhotoUrl,
+                proofPhotoUrl2: routeOrders.proofPhotoUrl2,
+                deliveredAt: routeOrders.deliveredAt,
+            })
+            .from(routeOrders)
+            .where(eq(routeOrders.routeId, routeId));
 
-    // Then delete the route
-    await db.delete(driverRoutes).where(eq(driverRoutes.id, routeId));
+        assertRouteDeletable(route, stops);
 
-    return { success: true };
+        await tx.delete(routeOrders).where(eq(routeOrders.routeId, routeId));
+        await tx.delete(driverRoutes).where(eq(driverRoutes.id, routeId));
+        return { success: true };
+    });
 }
 
 export async function assignDriverToRoute(routeId: string, driverId: number | null) {
@@ -567,60 +856,87 @@ export async function addOrdersToRoute(
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    // Get current max sequence and existing order IDs in one query
-    const existing = await db.select({ orderId: routeOrders.orderId }).from(routeOrders).where(eq(routeOrders.routeId, routeId));
-    let maxSeq = existing.length;
-    const existingOrderIds = new Set(existing.map(r => r.orderId));
-
     // Server-side guard: only create legs that are actually assignable for each order
     // (don't re-pickup an already-picked-up package, don't double-assign an active leg).
     const flags = await getAssignmentFlags(ordersList.map(o => o.id));
 
-    const stopsToInsert: { routeId: string; orderId: number; sequence: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
+    return withRouteLock(db, routeId, async (tx) => {
+        const existing = await tx
+            .select({ id: routeOrders.id, orderId: routeOrders.orderId })
+            .from(routeOrders)
+            .where(eq(routeOrders.routeId, routeId))
+            .orderBy(STOP_ORDER_SQL, routeOrders.sequence, routeOrders.id);
+        const existingOrderIds = new Set(existing.map(r => r.orderId));
 
-    for (const orderData of ordersList) {
-        const orderId = orderData.id;
-        const stopMode = orderData.mode;
-        const f = flags.get(orderId) ?? { canPickup: true, canDeliver: true, canBoth: true };
-
-        if (!existingOrderIds.has(orderId)) {
-            // "both" is atomic: only insert the pair when both legs are actually open, so we never
-            // silently drop one leg (e.g. dropping delivery because the package isn't picked up yet —
-            // that's expected, since this same call is the one doing the pickup).
-            if (stopMode === 'both') {
-                if (f.canBoth) {
-                    maxSeq++;
-                    stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'pickup', status: 'pending' });
-                    maxSeq++;
-                    stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'delivery', status: 'pending' });
-                }
-            } else if (stopMode === 'pickup_only' && f.canPickup) {
-                maxSeq++;
-                stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'pickup', status: 'pending' });
-            } else if (stopMode === 'delivery_only' && f.canDeliver) {
-                maxSeq++;
-                stopsToInsert.push({ routeId, orderId, sequence: maxSeq, type: 'delivery', status: 'pending' });
+        const stopsToInsert: { routeId: string; orderId: number; type: 'pickup' | 'delivery'; status: 'pending' }[] = [];
+        for (const { id: orderId, mode } of ordersList) {
+            if (existingOrderIds.has(orderId)) continue;
+            for (const spec of expandStopSpecs([orderId], mode, flags)) {
+                stopsToInsert.push({ routeId, orderId: spec.orderId, type: spec.type, status: 'pending' });
             }
         }
-    }
 
-    if (stopsToInsert.length > 0) {
-        await db.insert(routeOrders).values(stopsToInsert);
-    }
+        if (stopsToInsert.length === 0) {
+            return { success: true, added: 0, stopsCreated: 0 };
+        }
 
-    const addedCount = new Set(stopsToInsert.map(s => s.orderId)).size;
-    return { success: true, added: addedCount, stopsCreated: stopsToInsert.length };
+        const inserted = await tx.insert(routeOrders).values(stopsToInsert).$returningId();
+
+        // Renumber the WHOLE route 1..N. The old code derived the next sequence
+        // from the row count, so after a removal left gaps (1,2,5,6) the new
+        // stops were handed 5 and 6 again — two stops sharing a number.
+        await writeStopSequence(tx, routeId, [...existing.map(r => r.id), ...inserted.map(r => r.id)]);
+
+        const addedCount = new Set(stopsToInsert.map(s => s.orderId)).size;
+        return { success: true, added: addedCount, stopsCreated: stopsToInsert.length };
+    });
 }
 
-export async function removeOrderFromRoute(routeId: string, orderId: number) {
+export async function removeOrderFromRoute(
+    routeId: string,
+    orderId: number,
+    /** Omit to remove every leg of the order (legacy behaviour). */
+    type?: 'pickup' | 'delivery',
+) {
     const db = await getDb();
     if (!db) throw new Error('Database not available');
 
-    await db.delete(routeOrders).where(
-        and(eq(routeOrders.routeId, routeId), eq(routeOrders.orderId, orderId))
-    );
+    return withRouteLock(db, routeId, async (tx) => {
+        const legFilter = and(
+            eq(routeOrders.routeId, routeId),
+            eq(routeOrders.orderId, orderId),
+            ...(type ? [eq(routeOrders.type, type)] : []),
+        );
 
-    return { success: true };
+        const targets = await tx
+            .select({
+                id: routeOrders.id,
+                status: routeOrders.status,
+                collectedAmount: routeOrders.collectedAmount,
+                proofPhotoUrl: routeOrders.proofPhotoUrl,
+                proofPhotoUrl2: routeOrders.proofPhotoUrl2,
+                deliveredAt: routeOrders.deliveredAt,
+                waybillNumber: orders.waybillNumber,
+            })
+            .from(routeOrders)
+            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+            .where(legFilter);
+
+        assertStopsRemovable(targets);
+        if (targets.length === 0) return { success: true };
+
+        await tx.delete(routeOrders).where(legFilter);
+
+        // Close the gaps so the next insert can't collide with a stale number.
+        const remaining = await tx
+            .select({ id: routeOrders.id })
+            .from(routeOrders)
+            .where(eq(routeOrders.routeId, routeId))
+            .orderBy(STOP_ORDER_SQL, routeOrders.sequence, routeOrders.id);
+        await writeStopSequence(tx, routeId, remaining.map(r => r.id));
+
+        return { success: true };
+    });
 }
 
 // ============ DELIVERIES ============
@@ -985,11 +1301,6 @@ export async function getAvailableOrders() {
 }
 
 // ============ SHIFT / ROUTE TIME & COD REPORT ============
-
-// Stops the driver has finished handling, regardless of outcome — used for
-// the "completed stops" count. 'on_hold' is excluded: the driver postponed
-// it, it isn't done.
-const FINISHED_STOP_STATUSES = ['picked_up', 'delivered', 'attempted', 'returned', 'failed'];
 
 export interface DriverShiftReportRoute {
     routeId: string;

@@ -1,0 +1,11 @@
+-- Every hot read of a route's stops is `WHERE routeId = ? ORDER BY sequence`
+-- (driver app route fetch, route claim, admin route detail, reorder, optimize),
+-- which index-ranged on routeId and then filesorted.
+--
+-- NOT unique on purpose: legacy rows still hold duplicate and NULL sequences,
+-- and writeStopSequence permutes them in a single UPDATE ... CASE, which InnoDB
+-- validates row by row (so a straight 1,2 -> 2,1 swap would hit duplicate-key).
+--
+-- drizzle-kit migrate is broken in this repo — apply with:
+--   npx tsx scripts/add-route-orders-sequence-index.ts
+CREATE INDEX `routeOrders_routeId_sequence_idx` ON `routeOrders` (`routeId`,`sequence`);

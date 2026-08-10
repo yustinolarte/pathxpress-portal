@@ -6,6 +6,29 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { publicProcedure, router } from './_core/trpc';
 import * as driverAdmin from './driverAdmin';
+import { RouteGuardError } from './driverAdmin';
+
+/** A single stop leg, in the position the admin placed it. */
+const stopSpecSchema = z.object({
+    orderId: z.number().int().positive(),
+    type: z.enum(['pickup', 'delivery']),
+});
+
+/**
+ * Surface route-guard failures as BAD_REQUEST so the admin sees *why* the write
+ * was refused ("la entrega de PX… no puede ir antes de su recogida") instead of
+ * a generic 500. Real faults still bubble up untouched.
+ */
+async function guarded<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+        return await fn();
+    } catch (err) {
+        if (err instanceof RouteGuardError) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
+        }
+        throw err;
+    }
+}
 
 export const driverRouter = router({
     // Dashboard stats
@@ -108,6 +131,9 @@ export const driverRouter = router({
             driverId: z.number().optional(),
             zone: z.string().optional(),
             vehicleInfo: z.string().optional(),
+            // Explicit, already-ordered stop list from the wizard's order step.
+            // Takes precedence over orderIds/stopMode, which stay for dispatch.
+            stops: z.array(stopSpecSchema).max(200).optional(),
             orderIds: z.array(z.number()).optional(),
             stopMode: z.enum(['pickup_only', 'delivery_only', 'both']).default('both'),
             startAddress: z.string().optional(),
@@ -119,11 +145,29 @@ export const driverRouter = router({
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
             const { date, stopMode, ...rest } = input;
-            return driverAdmin.createDriverRoute({
+            return guarded(() => driverAdmin.createDriverRoute({
                 ...rest,
                 date: new Date(date),
                 stopMode,
-            });
+            }));
+        }),
+
+    /**
+     * Suggested stop order for a set of legs that isn't a route yet — the
+     * wizard needs a sensible starting sequence before anything is persisted,
+     * so optimizeRoute(routeId) has nothing to work with. Reads coordinates,
+     * writes nothing, takes no lock.
+     */
+    previewOptimizedOrder: publicProcedure
+        .input(z.object({
+            stops: z.array(stopSpecSchema).min(1).max(200),
+            origin: z.object({ lat: z.number(), lng: z.number() }).optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return guarded(() => driverAdmin.previewOptimizedOrder(input.stops, input.origin));
         }),
 
     updateRouteStatus: publicProcedure
@@ -164,7 +208,7 @@ export const driverRouter = router({
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
             // Pass the array of {id, mode} directly to the admin function
-            return driverAdmin.addOrdersToRoute(input.routeId, input.orders);
+            return guarded(() => driverAdmin.addOrdersToRoute(input.routeId, input.orders));
         }),
 
     getAvailableOrders: publicProcedure
@@ -179,12 +223,14 @@ export const driverRouter = router({
         .input(z.object({
             routeId: z.string(),
             orderId: z.number(),
+            // Omit to drop every leg of the order (legacy behaviour).
+            type: z.enum(['pickup', 'delivery']).optional(),
         }))
         .mutation(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.removeOrderFromRoute(input.routeId, input.orderId);
+            return guarded(() => driverAdmin.removeOrderFromRoute(input.routeId, input.orderId, input.type));
         }),
 
     // ============ DELIVERIES ============
@@ -243,7 +289,7 @@ export const driverRouter = router({
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.deleteRoute(input.routeId);
+            return guarded(() => driverAdmin.deleteRoute(input.routeId));
         }),
 
     optimizeRoute: publicProcedure
@@ -255,7 +301,7 @@ export const driverRouter = router({
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.optimizeRoute(input.routeId, input.origin);
+            return guarded(() => driverAdmin.optimizeRoute(input.routeId, input.origin));
         }),
 
     reorderRouteStops: publicProcedure
@@ -267,7 +313,7 @@ export const driverRouter = router({
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.reorderRouteStops(input.routeId, input.stopIds);
+            return guarded(() => driverAdmin.reorderRouteStops(input.routeId, input.stopIds));
         }),
 
     // ============ ORDER LOCATION ============

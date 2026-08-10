@@ -5,7 +5,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, and, inArray, isNull, desc } from 'drizzle-orm';
+import { eq, and, inArray, isNull, desc, sql } from 'drizzle-orm';
 import { getDb, calculateCODFeeByMethod } from './db';
 import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
@@ -426,7 +426,7 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
             .from(routeOrders)
             .innerJoin(orders, eq(routeOrders.orderId, orders.id))
             .where(eq(routeOrders.routeId, routeId))
-            .orderBy(routeOrders.sequence);
+            .orderBy(sql`${routeOrders.sequence} IS NULL`, routeOrders.sequence, routeOrders.id);
 
         // First pass: collect pickup status by orderId
         const pickupStatusByOrderId = new Map<number, string>();
@@ -681,7 +681,7 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             .from(routeOrders)
             .innerJoin(orders, eq(routeOrders.orderId, orders.id))
             .where(eq(routeOrders.routeId, routeId))
-            .orderBy(routeOrders.sequence);
+            .orderBy(sql`${routeOrders.sequence} IS NULL`, routeOrders.sequence, routeOrders.id);
 
         // Format stops for the app - same as GET route
         const stops = routeOrdersList.map((item) => {
@@ -867,49 +867,12 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
     }
 });
 
-// Persist the driver's on-device route optimization so it survives a
-// reinstall/new device and is visible to dispatch in the portal. Purely a
-// sequence write — it does not change stop statuses or trigger any of the
-// side effects that claim/status endpoints do.
-router.put('/routes/:routeId/sequence', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
-    try {
-        const { routeId } = req.params;
-        const { stops } = req.body as { stops?: Array<{ stopId: number; sequence: number }> };
-        const db = await getDb();
-        if (!db) return res.status(500).json({ error: 'Database not available' });
-
-        if (!Array.isArray(stops) || stops.length === 0) {
-            return res.status(400).json({ error: 'stops must be a non-empty array of { stopId, sequence }' });
-        }
-
-        const [route] = await db
-            .select()
-            .from(driverRoutes)
-            .where(eq(driverRoutes.id, routeId))
-            .limit(1);
-
-        if (!route) {
-            return res.status(404).json({ error: 'Route not found' });
-        }
-
-        if (route.driverId !== null && route.driverId !== req.driverId) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
-        for (const { stopId, sequence } of stops) {
-            if (!Number.isFinite(stopId) || !Number.isFinite(sequence)) continue;
-            await db
-                .update(routeOrders)
-                .set({ sequence })
-                .where(and(eq(routeOrders.id, stopId), eq(routeOrders.routeId, routeId)));
-        }
-
-        res.json({ message: 'Route sequence updated' });
-    } catch (error) {
-        console.error('Update route sequence error:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+// NOTE: there is deliberately no endpoint for the driver app to write stop
+// order. The sequence is dispatch's decision, set in the admin portal (route
+// wizard / route detail sequencer) and shipped read-only to the app via
+// GET /routes/:routeId. The old PUT /routes/:routeId/sequence let any
+// authenticated driver renumber any unassigned route, with no validation that
+// the ids formed a complete, gap-free, precedence-valid set.
 
 // ============ STOPS (Pickups & Deliveries) ============
 

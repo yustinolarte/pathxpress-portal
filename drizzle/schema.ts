@@ -643,7 +643,10 @@ export const routeOrders = mysqlTable("routeOrders", {
   id: int("id").autoincrement().primaryKey(),
   routeId: varchar("routeId", { length: 50 }).notNull(),
   orderId: int("orderId").notNull(),
-  sequence: int("sequence"), // Optimized stop order
+  // Stop order within the route, 1..N. Owned by dispatch (admin portal only);
+  // the driver app receives it read-only. Nullable for legacy rows — always
+  // sort with `sequence IS NULL, sequence, id`, since MySQL puts NULL first.
+  sequence: int("sequence"),
   type: mysqlEnum("type", ["pickup", "delivery"]).default("delivery").notNull(), // Type of stop
   status: mysqlEnum("status", ["pending", "in_progress", "picked_up", "delivered", "attempted", "returned", "failed", "on_hold"]).default("pending").notNull(),
   proofPhotoUrl: text("proofPhotoUrl"),
@@ -660,6 +663,12 @@ export const routeOrders = mysqlTable("routeOrders", {
 }, (table) => ({
   routeIdIdx: index("routeOrders_routeId_idx").on(table.routeId),
   orderIdIdx: index("routeOrders_orderId_idx").on(table.orderId),
+  // Every hot read is `WHERE routeId = ? ORDER BY sequence` (driver app route
+  // fetch, route claim, admin route detail) — without this they index-range on
+  // routeId and then filesort. Deliberately NOT unique: legacy rows still hold
+  // duplicate and NULL sequences, and writeStopSequence permutes them in one
+  // UPDATE ... CASE, which InnoDB validates row by row.
+  routeIdSequenceIdx: index("routeOrders_routeId_sequence_idx").on(table.routeId, table.sequence),
 }));
 
 export type RouteOrder = typeof routeOrders.$inferSelect;
