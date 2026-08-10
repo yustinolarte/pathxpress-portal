@@ -35,9 +35,11 @@ import { OrdersMap } from '@/components/OrdersMap';
 import type { MapPoint, PinKind } from '@/components/OrdersMap';
 import DispatchFilters from '@/components/DispatchFilters';
 import SetLocationDialog from '@/components/SetLocationDialog';
+import RouteStopSequencer, { type SequencerStop } from '@/components/RouteStopSequencer';
 import {
     type DispatchFilterState, EMPTY_DISPATCH_FILTERS, filterAvailableOrders,
     distinctEmirates, distinctStatuses, pickableOrders, countHiddenByDefault,
+    stopLocationTarget, stopLegCoords,
 } from '@/lib/orderFilters';
 import { getProofPhotoUrls } from '@shared/podPhotos';
 import { normalizeCity } from '@shared/uae';
@@ -74,14 +76,44 @@ const ZONE_OPTIONS = [
 const ZONE_LABELS = new Map(ZONE_OPTIONS.map(z => [z.value, z.label]));
 const zoneLabel = (zone?: string | null) => (zone ? ZONE_LABELS.get(zone) || zone : null);
 
-// A pickup stop happens at the shipper (except on returns, where the pickup
-// is at the consignee and the "delivery" leg goes back to the shipper) — so
-// the non-consignee side always corresponds to the shipperLat/shipperLng
-// columns on the order. Shared by the route-detail map and list views so
-// "Ubicar" corrects the same pin the map is actually showing.
-function stopLocationTarget(d: { type?: string; isReturn?: number }): 'delivery' | 'shipper' {
-    const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
-    return consigneeSide ? 'delivery' : 'shipper';
+// A stop the driver already worked can't be moved — it's frozen at its index by
+// the server too (reorderRouteStops). Mirrors FINISHED_STOP_STATUSES in
+// server/driverAdmin.ts; 'on_hold' is postponed, not done.
+const FINISHED_STOP_STATUSES = ['picked_up', 'delivered', 'attempted', 'returned', 'failed'];
+
+/** Route-detail stop rows → the sequencer's shape, in their stored order. */
+function toSequencerStops(deliveries: any[] | undefined): SequencerStop[] {
+    return [...(deliveries || [])]
+        .sort((a, b) => {
+            // Null sequences sort last (MySQL would put them first), then by id.
+            const as = a.sequence ?? Number.MAX_SAFE_INTEGER;
+            const bs = b.sequence ?? Number.MAX_SAFE_INTEGER;
+            return as !== bs ? as - bs : a.id - b.id;
+        })
+        .map((d: any) => {
+            const c = stopLegCoords(d);
+            return {
+                key: String(d.id),
+                orderId: d.orderId,
+                type: d.type === 'pickup' ? 'pickup' : 'delivery',
+                stopId: d.id,
+                waybillNumber: d.waybillNumber,
+                customerName: d.customerName,
+                city: d.city,
+                address: d.address,
+                companyName: d.companyName,
+                serviceType: d.serviceType,
+                codRequired: d.codRequired,
+                codAmount: d.codAmount,
+                pieces: d.pieces,
+                weight: d.weight,
+                lat: c.lat,
+                lng: c.lng,
+                accuracy: c.accuracy,
+                locked: FINISHED_STOP_STATUSES.includes(d.status ?? ''),
+                status: d.status,
+            } satisfies SequencerStop;
+        });
 }
 
 const initialsOf = (name?: string | null) =>
@@ -193,7 +225,7 @@ export default function DriversSection() {
 
     // Manual stop reordering in route details
     const [reorderMode, setReorderMode] = useState(false);
-    const [reorderStops, setReorderStops] = useState<any[]>([]);
+    const [reorderStops, setReorderStops] = useState<SequencerStop[]>([]);
 
     // Live clock in the page subtitle — the board claims to be live, so the
     // timestamp has to actually move.
@@ -597,27 +629,70 @@ export default function DriversSection() {
             },
         }));
 
-    const toMapPoints = (list: any[]): MapPoint[] =>
-        list.map((o: any) => ({
-            id: o.id,
-            lat: parseFloat(o.latitude),
-            lng: parseFloat(o.longitude),
-            label: o.waybillNumber || String(o.id),
-            kind: (dispatchSelected.some(s => s.id === o.id) ? 'selected' : 'available') as PinKind,
-            status: o.status,
-            accuracy: o.locationAccuracy,
-            details: {
-                customerName: o.customerName,
-                address: o.address,
-                city: o.city,
-                emirate: o.emirate,
-                pieces: o.pieces,
-                weight: o.weight,
-                serviceType: o.serviceType,
-                codRequired: o.codRequired,
-                codAmount: o.codAmount,
-            },
+    /**
+     * Which legs an order shows on the dispatch map — the mode the admin picked
+     * if it's selected, otherwise the server's default.
+     *
+     * A package that hasn't been collected yet deliberately shows ONLY its
+     * pickup pin. Its delivery address is real but there is nothing there to
+     * deliver until the driver has been to the shipper, and drawing it invites
+     * assigning a drop-off for a parcel that isn't in the van. The delivery leg
+     * still gets created (mode 'both') and appears in the route sequencer, which
+     * is where the full trip is meant to be reviewed.
+     *
+     * Note 'both' is only ever offered while the pickup is still open, so this
+     * is exactly the "not collected yet" case.
+     */
+    const plannedLegs = (o: any): Array<'pickup' | 'delivery'> => {
+        const mode = dispatchSelected.find(s => s.id === o.id)?.mode ?? o.defaultMode ?? 'delivery_only';
+        if (mode === 'both' || mode === 'pickup_only') return ['pickup'];
+        return ['delivery'];
+    };
+
+    /** An order expanded into the stop(s) it would produce, positioned per leg. */
+    interface PlannedStop { order: any; type: 'pickup' | 'delivery'; lat: number | null; lng: number | null; accuracy: string | null; }
+
+    const toPlannedStops = (list: any[]): PlannedStop[] =>
+        list.flatMap((o: any) => plannedLegs(o).map(type => {
+            const c = stopLegCoords({ ...o, type });
+            return { order: o, type, lat: c.lat, lng: c.lng, accuracy: c.accuracy };
         }));
+
+    /**
+     * One pin per leg, each at its OWN address: a pickup pins the shipper, a
+     * delivery pins the consignee. Previously every pin used the consignee's
+     * coordinates, so a pickup showed up at the customer's door — the map said
+     * nothing about where the driver would actually be sent to collect.
+     */
+    const toMapPoints = (stops: PlannedStop[]): MapPoint[] =>
+        stops
+            .filter(s => s.lat !== null && s.lng !== null)
+            .map(({ order: o, type, lat, lng, accuracy }) => ({
+                id: `${o.id}:${type}`,
+                lat: lat!,
+                lng: lng!,
+                label: o.waybillNumber || String(o.id),
+                kind: (dispatchSelected.some(s => s.id === o.id)
+                    ? 'selected'
+                    : type === 'pickup' ? 'pickup' : 'delivery') as PinKind,
+                status: o.status,
+                accuracy,
+                details: {
+                    customerName: type === 'pickup' ? (o.shipperName || o.customerName) : o.customerName,
+                    address: o.address,
+                    city: type === 'pickup' ? (o.shipperCity || o.city) : o.city,
+                    emirate: o.emirate,
+                    pieces: o.pieces,
+                    weight: o.weight,
+                    serviceType: o.serviceType,
+                    codRequired: o.codRequired,
+                    codAmount: o.codAmount,
+                    type,
+                },
+            }));
+
+    /** Map pin ids carry their leg (`123:pickup`) — recover the order id. */
+    const orderIdOfPin = (id: number | string) => Number(String(id).split(':')[0]);
 
     const toggleOrderSelection = (id: number) => {
         setDispatchSelected(prev => {
@@ -1288,8 +1363,11 @@ export default function DriversSection() {
     // ═══════════════════════════════════════════════════════════════════
     const renderRoutesMap = () => {
         const filtered = filterAvailableOrders(allAvailable, dispatchFilters);
-        const withCoords = filtered.filter((o: any) => o.latitude && o.longitude);
-        const withoutCoords = filtered.filter((o: any) => !o.latitude || !o.longitude);
+        // Missing coordinates are now judged PER LEG: an order can have the
+        // customer's pin and still have no idea where its pickup is.
+        const planned = toPlannedStops(filtered);
+        const withCoords = planned.filter(s => s.lat !== null && s.lng !== null);
+        const withoutCoords = planned.filter(s => s.lat === null || s.lng === null);
 
         return (
             <div className="space-y-3">
@@ -1313,16 +1391,23 @@ export default function DriversSection() {
                         ) : (
                             <OrdersMap
                                 points={toMapPoints(withCoords)}
-                                onPointClick={toggleOrderSelection}
+                                onPointClick={(id) => toggleOrderSelection(orderIdOfPin(id))}
                                 onEditLocation={(id) => {
-                                    const o = ordersById.get(id);
-                                    if (o) { setLocateTarget('delivery'); setLocateOrder(o); }
+                                    const o = ordersById.get(orderIdOfPin(id));
+                                    if (!o) return;
+                                    // Correct the pin the marker actually stands for.
+                                    const type = String(id).endsWith(':pickup') ? 'pickup' : 'delivery';
+                                    setLocateTarget(stopLocationTarget({ type, isReturn: o.isReturn }));
+                                    setLocateOrder(o);
                                 }}
                                 className="h-[520px]"
                             />
                         )}
                         <p className="text-xs text-muted-foreground text-center mt-2">
-                            Clic en un pin para seleccionarlo (✓). Color = estado del pedido · borde punteado = ubicación aproximada (geocodificada).
+                            Cada pin está en su propia dirección: <span className="text-[var(--st-green)] font-medium">verde = recogida (remitente)</span> · <span className="text-[var(--st-blue)] font-medium">azul = entrega (cliente)</span>.
+                            Un paquete sin recoger solo muestra su recogida — la entrega aparece cuando esté en la furgoneta.
+                            <br />
+                            Clic para seleccionar (✓) · pines abiertos en abanico = varias paradas en la misma dirección · borde punteado = ubicación aproximada.
                         </p>
                     </div>
 
@@ -1332,12 +1417,12 @@ export default function DriversSection() {
                             {withoutCoords.length > 0 ? (
                                 <span className="badge2 b-amber">
                                     <MapPinOff className="w-3 h-3 mr-1" />
-                                    {withoutCoords.length} pedido{withoutCoords.length !== 1 ? 's' : ''} sin ubicación
+                                    {withoutCoords.length} parada{withoutCoords.length !== 1 ? 's' : ''} sin ubicación
                                 </span>
                             ) : (
                                 <span className="badge2 b-green">
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
-                                    Todos los pedidos tienen ubicación
+                                    Todas las paradas tienen ubicación
                                 </span>
                             )}
                             {geoCaps?.geocoding && withoutCoords.length > 0 && (
@@ -1362,28 +1447,42 @@ export default function DriversSection() {
                         <div className="flex-1 overflow-y-auto divide-y divide-border">
                             {withoutCoords.length === 0 ? (
                                 <p className="text-xs text-muted-foreground text-center py-8 px-3">
-                                    Todos los pedidos filtrados aparecen en el mapa.
+                                    Todas las paradas filtradas aparecen en el mapa.
                                 </p>
-                            ) : withoutCoords.map((o: any) => (
-                                <div key={o.id} className="p-3 space-y-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="font-mono text-xs font-medium truncate">{o.waybillNumber}</span>
-                                        {getStatusBadge(o.status)}
+                            ) : withoutCoords.map(({ order: o, type }) => {
+                                const isPickup = type === 'pickup';
+                                return (
+                                    <div key={`${o.id}:${type}`} className="p-3 space-y-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-mono text-xs font-medium truncate">{o.waybillNumber}</span>
+                                            {getStatusBadge(o.status)}
+                                        </div>
+                                        <p className={`text-[10px] font-bold uppercase ${isPickup ? 'text-[var(--st-green)]' : 'text-[var(--st-blue)]'}`}>
+                                            {isPickup ? 'Falta ubicación de recogida' : 'Falta ubicación de entrega'}
+                                        </p>
+                                        <p className="text-sm font-medium truncate">
+                                            {isPickup ? (o.shipperName || o.customerName) : o.customerName}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground line-clamp-2">
+                                            {(isPickup
+                                                ? [o.shipperCity, o.emirate]
+                                                : [o.address, o.city, o.emirate]
+                                            ).filter(Boolean).join(', ')}
+                                        </p>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs w-full mt-1"
+                                            onClick={() => {
+                                                setLocateTarget(stopLocationTarget({ type, isReturn: o.isReturn }));
+                                                setLocateOrder(o);
+                                            }}
+                                        >
+                                            <MapPin className="w-3 h-3 mr-1" /> Ubicar
+                                        </Button>
                                     </div>
-                                    <p className="text-sm font-medium truncate">{o.customerName}</p>
-                                    <p className="text-xs text-muted-foreground line-clamp-2">
-                                        {[o.address, o.city, o.emirate].filter(Boolean).join(', ')}
-                                    </p>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 text-xs w-full mt-1"
-                                        onClick={() => { setLocateTarget('delivery'); setLocateOrder(o); }}
-                                    >
-                                        <MapPin className="w-3 h-3 mr-1" /> Ubicar
-                                    </Button>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -2737,7 +2836,17 @@ export default function DriversSection() {
                 open={!!locateOrder}
                 target={locateTarget}
                 onOpenChange={(open) => { if (!open) { setLocateOrder(null); setLocateTarget('delivery'); } }}
-                onSaved={() => { refetchAvailableOrders(); refetchRouteDetails(); }}
+                onSaved={async () => {
+                    refetchAvailableOrders();
+                    const fresh = await refetchRouteDetails();
+                    // While reordering, the sequencer runs off local state — without
+                    // this the pin saves but doesn't show up until you leave and
+                    // re-enter reorder mode. Re-resolve coordinates, keep the order.
+                    if (reorderMode && fresh.data?.deliveries) {
+                        const byId = new Map(toSequencerStops(fresh.data.deliveries).map(s => [s.key, s]));
+                        setReorderStops(prev => prev.map(s => byId.get(s.key) ?? s));
+                    }
+                }}
             />
 
             {/* QR Code Dialog */}
@@ -2966,20 +3075,23 @@ export default function DriversSection() {
                                 >
                                     <QrCode className="h-4 w-4 text-primary" /> Show QR
                                 </Button>
-                                <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
-                                    <button
-                                        onClick={() => setRouteDetailsTab('list')}
-                                        className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
-                                    >
-                                        Lista
-                                    </button>
-                                    <button
-                                        onClick={() => setRouteDetailsTab('map')}
-                                        className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'map' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
-                                    >
-                                        Mapa
-                                    </button>
-                                </div>
+                                {/* The sequencer is map AND list at once, so this toggle has nothing to switch while reordering. */}
+                                {!reorderMode && (
+                                    <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+                                        <button
+                                            onClick={() => setRouteDetailsTab('list')}
+                                            className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                        >
+                                            Lista
+                                        </button>
+                                        <button
+                                            onClick={() => setRouteDetailsTab('map')}
+                                            className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'map' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                        >
+                                            Mapa
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                             <div className="flex items-center gap-2">
                                 {reorderMode ? (
@@ -2998,7 +3110,7 @@ export default function DriversSection() {
                                                 if (selectedRouteId) {
                                                     reorderStopsMutation.mutate({
                                                         routeId: selectedRouteId,
-                                                        stopIds: reorderStops.map((s: any) => s.id),
+                                                        stopIds: reorderStops.map(s => s.stopId!),
                                                     });
                                                 }
                                             }}
@@ -3016,10 +3128,7 @@ export default function DriversSection() {
                                             size="sm"
                                             disabled={!routeDetails?.deliveries?.length}
                                             onClick={() => {
-                                                setReorderStops(
-                                                    [...(routeDetails?.deliveries || [])]
-                                                        .sort((a: any, b: any) => (a.sequence ?? 0) - (b.sequence ?? 0))
-                                                );
+                                                setReorderStops(toSequencerStops(routeDetails?.deliveries));
                                                 setReorderMode(true);
                                             }}
                                             className="gap-2"
@@ -3051,27 +3160,23 @@ export default function DriversSection() {
                             </div>
                         </div>
 
-                        {/* Route map view */}
-                        {routeDetailsTab === 'map' && (() => {
-                            // Position per leg: a pickup happens at the SHIPPER (except returns,
-                            // where the consignee pin is where the package is). Falls back to the
-                            // order pin when shipper coords are missing.
+                        {/* Route map view (read-only; reordering uses the sequencer below) */}
+                        {!reorderMode && routeDetailsTab === 'map' && (() => {
+                            // Position per leg — same rule the server optimizer uses (stopLegCoords).
                             const resolved = (routeDetails?.deliveries || [])
                                 // Failed stops (failed pickup / failed delivery) are done for this route —
                                 // no need to keep pinning them on the route map. They still show in the list.
                                 .filter((d: any) => d.status !== 'failed')
                                 .map((d: any) => {
-                                    const consigneeSide = stopLocationTarget(d) === 'delivery';
-                                    const lat = consigneeSide ? d.latitude : (d.shipperLat || d.latitude);
-                                    const lng = consigneeSide ? d.longitude : (d.shipperLng || d.longitude);
-                                    return { ...d, _lat: lat, _lng: lng, _accuracy: consigneeSide ? d.locationAccuracy : null };
+                                    const c = stopLegCoords(d);
+                                    return { ...d, _lat: c.lat, _lng: c.lng, _accuracy: c.accuracy };
                                 });
-                            const stopsWithCoords = resolved.filter((d: any) => d._lat && d._lng);
-                            const stopsNoCoords = resolved.filter((d: any) => !d._lat || !d._lng);
+                            const stopsWithCoords = resolved.filter((d: any) => d._lat != null && d._lng != null);
+                            const stopsNoCoords = resolved.filter((d: any) => d._lat == null || d._lng == null);
                             const mapPoints: MapPoint[] = stopsWithCoords.map((d: any, idx: number) => ({
                                 id: d.id,
-                                lat: parseFloat(d._lat),
-                                lng: parseFloat(d._lng),
+                                lat: d._lat,
+                                lng: d._lng,
                                 label: d.waybillNumber || (d.sequence != null ? String(d.sequence) : String(idx + 1)),
                                 kind: (d.type === 'pickup' ? 'pickup' : 'delivery') as PinKind,
                                 sequence: d.sequence ?? idx + 1,
@@ -3136,56 +3241,36 @@ export default function DriversSection() {
                             );
                         })()}
 
-                        {/* Reorder mode — compact list with up/down arrows */}
+                        {/* Reorder mode — map + drag&drop list, the single place stop order is decided */}
                         {reorderMode && (
-                            <div className="max-h-[450px] overflow-y-auto space-y-1.5">
-                                {reorderStops.map((stop: any, idx: number) => (
-                                    <div key={stop.id} className="flex items-center gap-2 rounded-lg border bg-white/5 border-border px-3 py-2">
-                                        <span className="w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0">
-                                            {idx + 1}
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-mono text-xs font-medium">{stop.waybillNumber}</span>
-                                                <span className={`text-[10px] font-bold uppercase ${stop.type === 'pickup' ? 'text-[var(--st-green)]' : 'text-[var(--st-blue)]'}`}>
-                                                    {stop.type === 'pickup' ? '📦 Pickup' : '🚚 Entrega'}
-                                                </span>
-                                            </div>
-                                            <p className="text-xs text-muted-foreground truncate">
-                                                {stop.customerName} · {stop.city}
-                                            </p>
-                                        </div>
-                                        <div className="flex flex-col flex-shrink-0">
-                                            <button
-                                                type="button"
-                                                disabled={idx === 0}
-                                                onClick={() => setReorderStops(prev => {
-                                                    const next = [...prev];
-                                                    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                                    return next;
-                                                })}
-                                                className="p-1 rounded hover:bg-muted/50 disabled:opacity-25"
-                                                aria-label="Subir parada"
-                                            >
-                                                <ChevronUp className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                disabled={idx === reorderStops.length - 1}
-                                                onClick={() => setReorderStops(prev => {
-                                                    const next = [...prev];
-                                                    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                                    return next;
-                                                })}
-                                                className="p-1 rounded hover:bg-muted/50 disabled:opacity-25"
-                                                aria-label="Bajar parada"
-                                            >
-                                                <ChevronDown className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <RouteStopSequencer
+                                stops={reorderStops}
+                                onChange={setReorderStops}
+                                disabled={reorderStopsMutation.isPending}
+                                mapClassName="h-[380px]"
+                                origin={routeDetails?.startLat && routeDetails?.startLng ? {
+                                    lat: parseFloat(routeDetails.startLat),
+                                    lng: parseFloat(routeDetails.startLng),
+                                    label: routeDetails.startAddress || 'Origen',
+                                } : null}
+                                onEditLocation={(stop) => {
+                                    const d = (routeDetails?.deliveries || []).find((x: any) => x.id === stop.stopId);
+                                    if (!d) return;
+                                    setLocateTarget(stopLocationTarget(d));
+                                    setLocateOrder({
+                                        id: d.orderId,
+                                        waybillNumber: d.waybillNumber,
+                                        customerName: d.customerName,
+                                        address: d.address,
+                                        city: d.city,
+                                        latitude: d.latitude,
+                                        longitude: d.longitude,
+                                        locationAccuracy: d.locationAccuracy,
+                                        shipperLat: d.shipperLat,
+                                        shipperLng: d.shipperLng,
+                                    });
+                                }}
+                            />
                         )}
 
                         <div className={reorderMode ? 'hidden' : (routeDetailsTab === 'map' ? 'max-h-[250px] overflow-y-auto' : 'max-h-[450px] overflow-y-auto')}>

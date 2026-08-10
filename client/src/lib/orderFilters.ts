@@ -140,3 +140,68 @@ export function distinctStatuses(orders: any[]): string[] {
   for (const o of orders) if (o.status) set.add(o.status);
   return Array.from(set).sort();
 }
+
+// ── Stop leg geography ────────────────────────────────────────────────────
+// A route stop is one LEG of an order, and the two legs sit at different
+// addresses. Everything that draws or corrects a stop pin goes through here so
+// the map, the "Ubicar" dialog and the server's optimizer agree on which end of
+// the order a given stop refers to.
+
+/**
+ * A pickup stop happens at the shipper (except on returns, where the pickup
+ * is at the consignee and the "delivery" leg goes back to the shipper) — so
+ * the non-consignee side always corresponds to the shipperLat/shipperLng
+ * columns on the order.
+ */
+export function stopLocationTarget(d: { type?: string; isReturn?: number }): 'delivery' | 'shipper' {
+  const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
+  return consigneeSide ? 'delivery' : 'shipper';
+}
+
+export interface LegCoordSource {
+  type?: string;
+  isReturn?: number;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  shipperLat?: string | number | null;
+  shipperLng?: string | number | null;
+  locationAccuracy?: string | null;
+}
+
+export interface LegCoords {
+  lat: number | null;
+  lng: number | null;
+  accuracy: string | null;
+  /** True when the shipper leg had to borrow the consignee pin. */
+  approx: boolean;
+}
+
+const num = (v: string | number | null | undefined): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Coordinates for one stop leg. Mirrors resolveStopCoords() in
+ * server/driverAdmin.ts, fallback included: a shipper-side leg with no
+ * shipperLat/Lng borrows the consignee pin rather than dropping off the map,
+ * because most orders have never had a shipper pin captured. Those are flagged
+ * `approx` so the UI can say the position is only indicative.
+ */
+export function stopLegCoords(d: LegCoordSource): LegCoords {
+  const consigneeSide = stopLocationTarget(d) === 'delivery';
+  const lat = num(d.latitude);
+  const lng = num(d.longitude);
+
+  if (consigneeSide) {
+    return { lat, lng, accuracy: d.locationAccuracy ?? null, approx: false };
+  }
+
+  const sLat = num(d.shipperLat);
+  const sLng = num(d.shipperLng);
+  if (sLat !== null && sLng !== null) {
+    return { lat: sLat, lng: sLng, accuracy: null, approx: false };
+  }
+  return { lat, lng, accuracy: d.locationAccuracy ?? null, approx: lat !== null && lng !== null };
+}

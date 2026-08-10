@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { loadGoogleMaps } from '@/lib/googleMaps';
 import { STATUS_TONE } from '@/lib/statusStyles';
 import { abbreviateServiceType } from '@/const';
+import { fanOutCollisions } from '@/lib/mapFanOut';
 
 declare global {
     interface Window { google?: typeof google; }
@@ -24,6 +25,13 @@ declare global {
 const DUBAI_CENTER: google.maps.LatLngLiteral = { lat: 25.2048, lng: 55.2708 };
 
 export type PinKind = 'available' | 'selected' | 'pickup' | 'delivery' | 'origin';
+
+/**
+ * Stops being sequenced in the create wizard don't exist in the database yet,
+ * so they're keyed by a synthetic `${orderId}:${type}` string instead of a
+ * routeOrders.id. Numeric ids keep working unchanged.
+ */
+export type MapPointId = number | string;
 
 export interface MapPointDetails {
     customerName?: string | null;
@@ -39,7 +47,7 @@ export interface MapPointDetails {
 }
 
 export interface MapPoint {
-    id: number;
+    id: MapPointId;
     lat: number;
     lng: number;
     label: string;
@@ -57,9 +65,11 @@ interface OrdersMapProps {
     points: MapPoint[];
     /** When true, draws a numbered polyline connecting points in array order */
     showRoute?: boolean;
-    onPointClick?: (id: number) => void;
+    onPointClick?: (id: MapPointId) => void;
     /** When set, hover cards get a "Corregir ubicación" button. */
-    onEditLocation?: (id: number) => void;
+    onEditLocation?: (id: MapPointId) => void;
+    /** Ringed + enlarged pin, kept in sync with an external list selection. */
+    selectedId?: MapPointId | null;
     className?: string;
 }
 
@@ -94,7 +104,7 @@ function serviceLabel(s?: string | null): string {
 }
 
 /** Rich hover card shown above a pin (replaces the bare waybill tooltip). */
-function makeHoverCard(point: MapPoint, onEditLocation?: (id: number) => void): HTMLElement {
+function makeHoverCard(point: MapPoint, onEditLocation?: (id: MapPointId) => void): HTMLElement {
     const d = point.details ?? {};
     // Wrapper bridges the gap between pin and card (padding, not margin) so the
     // mouse can travel into the card without triggering mouseleave. Interactive
@@ -186,7 +196,7 @@ function makeHoverCard(point: MapPoint, onEditLocation?: (id: number) => void): 
     return wrapper;
 }
 
-function makePin(kind: PinKind, pinLabel: string, point: MapPoint, onEditLocation?: (id: number) => void): HTMLElement {
+function makePin(kind: PinKind, pinLabel: string, point: MapPoint, onEditLocation?: (id: MapPointId) => void): HTMLElement {
     const color = pinColor(kind, point.status);
     const isApprox = point.accuracy === 'approximate';
     const el = document.createElement('div');
@@ -205,6 +215,11 @@ function makePin(kind: PinKind, pinLabel: string, point: MapPoint, onEditLocatio
         transition:transform .15s;
         white-space:nowrap;
     `;
+    // Remembered so the selection ring can be removed without recomputing it.
+    el.dataset.baseShadow = kind === 'selected'
+        ? '0 0 0 3px rgba(30,58,95,.4), 0 2px 6px rgba(0,0,0,.35)'
+        : '0 2px 6px rgba(0,0,0,.35)';
+
     const labelText = document.createElement('span');
     labelText.textContent = pinLabel;
     el.appendChild(labelText);
@@ -230,12 +245,20 @@ function makePin(kind: PinKind, pinLabel: string, point: MapPoint, onEditLocatio
     return el;
 }
 
-export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocation, className }: OrdersMapProps) {
+export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocation, selectedId = null, className }: OrdersMapProps) {
     const containerRef  = useRef<HTMLDivElement>(null);
     const mapRef        = useRef<google.maps.Map | null>(null);
     const markersRef    = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
     const polylineRef   = useRef<google.maps.Polyline | null>(null);
+    /** Hair-lines tying fanned-out pins back to their shared true location. */
+    const leaderLinesRef = useRef<google.maps.Polyline[]>([]);
     const [mapReady, setMapReady] = useState(false);
+
+    // Indexed by point id so the selection ring can touch just the two pins that
+    // changed. Putting `selectedId` in the marker effect's deps instead would
+    // tear down and rebuild every pin on each click.
+    const pinElsRef      = useRef(new Map<MapPointId, HTMLElement>());
+    const markersByIdRef = useRef(new Map<MapPointId, google.maps.marker.AdvancedMarkerElement>());
 
     // Callers typically pass these as inline arrow functions, so a new function
     // identity arrives on every parent render. Keeping them in refs (always up to
@@ -310,6 +333,11 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
         try { polylineRef.current?.setMap(null); } catch { /* same reasoning as above */ }
         polylineRef.current = null;
 
+        leaderLinesRef.current.forEach(l => {
+            try { l.setMap(null); } catch { /* same reasoning as above */ }
+        });
+        leaderLinesRef.current = [];
+
         if (points.length === 0) {
             // An empty map has no viewport worth keeping — the next batch of pins
             // should frame itself.
@@ -320,17 +348,35 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
 
         const bounds = new window.google.maps.LatLngBounds();
 
-        points.forEach((pt) => {
+        pinElsRef.current.clear();
+        markersByIdRef.current.clear();
+
+        fanOutCollisions(points).forEach(({ point: pt, lat, lng, anchor }) => {
             try {
                 const pinLabel = pt.sequence !== undefined ? String(pt.sequence) : pt.label.slice(0, 2);
                 const el = makePin(pt.kind, pinLabel, pt, onEditLocationRef.current);
 
                 const marker = new window.google.maps.marker.AdvancedMarkerElement({
                     map,
-                    position: { lat: pt.lat, lng: pt.lng },
+                    position: { lat, lng },
                     title: pt.label,
                     content: el,
                 });
+
+                // Leader line back to the shared point, so a fanned pin reads as
+                // "displaced to be visible" rather than "this is where it is".
+                if (anchor) {
+                    try {
+                        leaderLinesRef.current.push(new window.google.maps.Polyline({
+                            path: [anchor, { lat, lng }],
+                            strokeColor: '#64748b',
+                            strokeOpacity: 0.5,
+                            strokeWeight: 1,
+                            clickable: false,
+                            map,
+                        }));
+                    } catch { /* a missing hair-line is not worth losing the pin over */ }
+                }
 
                 // Lift the hovered marker above its neighbours so the card isn't covered.
                 el.addEventListener('mouseenter', () => { marker.zIndex = 1000; });
@@ -338,11 +384,15 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
 
                 marker.addListener('click', () => onPointClickRef.current?.(pt.id));
 
+                pinElsRef.current.set(pt.id, el);
+                markersByIdRef.current.set(pt.id, marker);
                 markersRef.current.push(marker);
             } catch (e) {
                 // One unrenderable pin shouldn't cost the operator the rest of the map.
                 console.error('[OrdersMap] marker create failed:', e);
             }
+            // Frame on the TRUE point: fanned offsets are cosmetic and shouldn't
+            // widen the viewport.
             bounds.extend({ lat: pt.lat, lng: pt.lng });
         });
 
@@ -376,6 +426,21 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
             }
         }
     }, [points, showRoute, mapReady, positionSignature]);
+
+    // Selection ring. Runs after the marker effect on a points change (same
+    // commit, declaration order) so a freshly rebuilt pin still gets ringed.
+    // Uses box-shadow rather than transform: the pin's own hover handler owns
+    // transform, and fighting it made the ring flicker on mouse-out.
+    useEffect(() => {
+        pinElsRef.current.forEach((el, id) => {
+            const on = selectedId !== null && id === selectedId;
+            el.style.boxShadow = on
+                ? '0 0 0 5px rgba(225,6,0,.35), 0 2px 8px rgba(0,0,0,.4)'
+                : (el.dataset.baseShadow ?? '0 2px 6px rgba(0,0,0,.35)');
+            const marker = markersByIdRef.current.get(id);
+            if (marker) marker.zIndex = on ? 900 : null;
+        });
+    }, [selectedId, points, mapReady]);
 
     return (
         <div ref={containerRef} className={cn('w-full h-[400px] rounded-xl border border-border overflow-hidden', className)} />

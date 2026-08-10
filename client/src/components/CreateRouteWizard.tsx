@@ -1,15 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { customAlphabet } from 'nanoid';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { pickableOrders } from '@/lib/orderFilters';
+import { pickableOrders, stopLocationTarget } from '@/lib/orderFilters';
 import {
   Check, MapPin, Truck, Package, CheckCircle2,
   ChevronRight, ChevronLeft, Loader2, Hash, Calendar,
-  FileText, QrCode, RefreshCw,
+  QrCode, RefreshCw, ListOrdered,
 } from 'lucide-react';
 import OrderPickList from './OrderPickList';
+import RouteStopSequencer from './RouteStopSequencer';
+import SetLocationDialog, { type SetLocationOrder } from './SetLocationDialog';
+import { buildDraftStops, type SequencerStop } from '@/lib/routeDraft';
 
 // Random, non-sequential route IDs (server re-checks uniqueness). Unambiguous alphabet (no I/O/0/1).
 const genRouteSuffix = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -59,7 +62,6 @@ const defaultForm = {
   zoneCustom: '',
   driverId: '',
   vehicleInfo: '',
-  notes: '',
   startAddress: '',
   startLat: '',
   startLng: '',
@@ -69,7 +71,8 @@ const STEPS = [
   { id: 1, label: 'Ruta',      icon: MapPin       },
   { id: 2, label: 'Conductor', icon: Truck        },
   { id: 3, label: 'Paquetes',  icon: Package      },
-  { id: 4, label: 'Resumen',   icon: CheckCircle2 },
+  { id: 4, label: 'Orden',     icon: ListOrdered  },
+  { id: 5, label: 'Resumen',   icon: CheckCircle2 },
 ];
 
 // ─── Componentes auxiliares ────────────────────────────────────────────────
@@ -108,13 +111,23 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
     Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>
   >([]);
 
-  const createRouteMutation = trpc.portal.drivers.createRoute.useMutation();
-  const addOrdersMutation = trpc.portal.drivers.addOrdersToRoute.useMutation();
+  const [draftStops, setDraftStops] = useState<SequencerStop[]>([]);
+  // The auto-suggestion only runs the first time the order step is opened;
+  // after that the admin's arrangement is the thing worth keeping.
+  const autoOrderedRef = useRef(false);
 
-  const { data: availableOrders, isLoading: ordersLoading } =
+  const createRouteMutation = trpc.portal.drivers.createRoute.useMutation();
+  const previewOrderMutation = trpc.portal.drivers.previewOptimizedOrder.useMutation();
+
+  const { data: availableOrders, isLoading: ordersLoading, refetch: refetchOrders } =
     trpc.portal.drivers.getAvailableOrders.useQuery(undefined, {
       enabled: open && hasReachedStep3,
     });
+
+  // Placing a pin writes to the ORDER, not the route, so it works fine before
+  // the route exists — the draft picks the new coordinates up on refetch.
+  const [locateOrder, setLocateOrder] = useState<SetLocationOrder | null>(null);
+  const [locateTarget, setLocateTarget] = useState<'delivery' | 'shipper'>('delivery');
 
   const pickable = useMemo(
     () => pickableOrders(availableOrders as any[] | undefined, selectedOrders.map(o => o.id)),
@@ -129,6 +142,8 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       setIsSubmitting(false);
       setHasReachedStep3(false);
       setSelectedOrders([]);
+      setDraftStops([]);
+      autoOrderedRef.current = false;
     } else {
       // Auto-generate a fresh random route ID each time the wizard opens.
       setForm(f => ({ ...f, id: makeRouteId() }));
@@ -150,6 +165,42 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   const errors: Record<string, string> = {};
   if (touched.date && !form.date) errors.date = 'Requerido';
 
+  const ordersById = useMemo(
+    () => new Map(((availableOrders as any[]) || []).map(o => [o.id, o])),
+    [availableOrders],
+  );
+
+  // Keep the draft in step with the picker: adding or removing an order (or
+  // changing its mode) rebuilds the legs while preserving the arranged order.
+  useEffect(() => {
+    if (step < 4 && !hasReachedStep3) return;
+    // Orders load lazily; rebuilding against an empty map would wipe a sequence
+    // the admin has already arranged.
+    if (selectedOrders.length > 0 && ordersById.size === 0) return;
+    setDraftStops(prev => buildDraftStops(selectedOrders, ordersById, prev));
+  }, [selectedOrders, ordersById, step, hasReachedStep3]);
+
+  async function autoOrderDraft(stops: SequencerStop[]) {
+    if (stops.length < 2) return;
+    try {
+      const origin = form.startLat && form.startLng
+        ? { lat: parseFloat(form.startLat), lng: parseFloat(form.startLng) }
+        : undefined;
+      const ordered = await previewOrderMutation.mutateAsync({
+        stops: stops.map(s => ({ orderId: s.orderId, type: s.type })),
+        origin,
+      });
+      const byKey = new Map(stops.map(s => [s.key, s]));
+      const next = ordered
+        .map(o => byKey.get(`${o.orderId}:${o.type}`))
+        .filter((s): s is SequencerStop => !!s);
+      // Only accept a complete permutation — never silently drop a stop.
+      if (next.length === stops.length) setDraftStops(next);
+    } catch {
+      // A failed suggestion is not worth blocking the step: the natural order stands.
+    }
+  }
+
   function canAdvance(): boolean {
     if (step === 1) return !!form.date; // ID is auto-generated, always present
     return true;
@@ -163,6 +214,12 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
     touchAll();
     if (!canAdvance()) return;
     if (step === 2) setHasReachedStep3(true);
+    if (step === 3 && !autoOrderedRef.current) {
+      autoOrderedRef.current = true;
+      const stops = buildDraftStops(selectedOrders, ordersById, draftStops);
+      setDraftStops(stops);
+      void autoOrderDraft(stops);
+    }
     setStep(s => s + 1);
   }
 
@@ -179,6 +236,9 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
       // The server is the source of truth for the ID (it re-checks uniqueness and may
       // regenerate on the rare collision), so use the returned id downstream.
+      // Route and stops are created in ONE transactional call. Splitting it in
+      // two used to leave an empty route behind whenever the second call failed,
+      // while the toast still said "Error al crear la ruta".
       const created = await createRouteMutation.mutateAsync({
         id: form.id.trim() || undefined,
         date: form.date,
@@ -188,18 +248,11 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         startAddress: form.startAddress || undefined,
         startLat: form.startLat || undefined,
         startLng: form.startLng || undefined,
+        stops: draftStops.map(s => ({ orderId: s.orderId, type: s.type })),
       });
-      const newId = created.id;
-
-      if (selectedOrders.length > 0) {
-        await addOrdersMutation.mutateAsync({
-          routeId: newId,
-          orders: selectedOrders,
-        });
-      }
 
       toast.success('Ruta creada exitosamente');
-      onSuccess(newId);
+      onSuccess(created.id);
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err?.message || 'Error al crear la ruta');
@@ -335,18 +388,6 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               />
             </div>
           </Field>
-          <Field label="Notas (opcional)">
-            <div className="relative">
-              <FileText className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-              <textarea
-                value={form.notes}
-                onChange={e => setField('notes', e.target.value)}
-                placeholder="Instrucciones especiales para esta ruta..."
-                rows={3}
-                className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors resize-none"
-              />
-            </div>
-          </Field>
         </div>
       </div>
     );
@@ -369,10 +410,76 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   }
 
   function renderStep4() {
+    return (
+      <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
+          <ListOrdered className="w-4 h-4 text-primary" />
+          <span className="font-bold text-sm">Orden de las paradas</span>
+        </div>
+        <div className="p-6">
+          {draftStops.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
+              <Package className="w-8 h-8 opacity-30" />
+              <p className="text-sm">Sin paquetes seleccionados</p>
+              <p className="text-xs">Vuelve al paso anterior para agregarlos</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground mb-3">
+                Arrastra las paradas para fijar el recorrido. Este es el orden exacto que verá el
+                conductor en su app — solo se puede cambiar desde aquí o desde el detalle de la ruta.
+              </p>
+              <RouteStopSequencer
+                stops={draftStops}
+                onChange={setDraftStops}
+                onAutoOrder={() => autoOrderDraft(draftStops)}
+                autoOrdering={previewOrderMutation.isPending}
+                mapClassName="h-[400px]"
+                origin={form.startLat && form.startLng ? {
+                  lat: parseFloat(form.startLat),
+                  lng: parseFloat(form.startLng),
+                  label: form.startAddress || 'Origen',
+                } : null}
+                onEditLocation={(stop) => {
+                  const order = ordersById.get(stop.orderId);
+                  if (!order) return;
+                  setLocateTarget(stopLocationTarget({ type: stop.type, isReturn: stop.isReturn }));
+                  setLocateOrder({
+                    id: stop.orderId,
+                    waybillNumber: order.waybillNumber,
+                    customerName: order.customerName,
+                    address: order.address,
+                    city: order.city,
+                    emirate: order.emirate,
+                    latitude: order.latitude,
+                    longitude: order.longitude,
+                    locationAccuracy: order.locationAccuracy,
+                    shipperLat: order.shipperLat,
+                    shipperLng: order.shipperLng,
+                  });
+                }}
+                onRemoveStop={(key) => {
+                  const stop = draftStops.find(s => s.key === key);
+                  if (!stop) return;
+                  // Removing one leg drops the whole order from the picker — the
+                  // two legs are selected together and must stay consistent.
+                  setSelectedOrders(prev => prev.filter(o => o.id !== stop.orderId));
+                }}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderStep5() {
     const finalZone = form.zone === '__custom__'
       ? form.zoneCustom
       : ZONE_OPTIONS.find(z => z.value === form.zone)?.label ?? form.zone;
     const assignedDriver = drivers.find(d => d.id.toString() === form.driverId);
+    const pickupCount = draftStops.filter(s => s.type === 'pickup').length;
+    const deliveryCount = draftStops.length - pickupCount;
     const previewWaybills = selectedOrders
       .slice(0, 3)
       .map(o => (availableOrders as any[])?.find((av: any) => av.id === o.id)?.waybillNumber)
@@ -425,12 +532,6 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 <span>{form.vehicleInfo}</span>
               </div>
             )}
-            {form.notes && (
-              <div className="flex justify-between gap-4">
-                <span className="text-slate-400 flex-shrink-0">Notas</span>
-                <span className="text-right text-slate-300">{form.notes}</span>
-              </div>
-            )}
           </div>
 
           {/* Paquetes */}
@@ -444,6 +545,12 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                   <span className="text-slate-400">Órdenes</span>
                   <span className="font-semibold">{selectedOrders.length}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Paradas</span>
+                  <span className="font-semibold">
+                    {draftStops.length} ({pickupCount} recogida{pickupCount !== 1 ? 's' : ''}, {deliveryCount} entrega{deliveryCount !== 1 ? 's' : ''})
+                  </span>
+                </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {previewWaybills.map((wb: string) => (
                     <span key={wb} className="text-xs font-mono bg-white/10 px-2 py-0.5 rounded">{wb}</span>
@@ -455,6 +562,29 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               </div>
             )}
           </div>
+
+          {/* Recorrido */}
+          {draftStops.length > 0 && (
+            <div className="space-y-1 text-sm border-t border-border pt-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Recorrido</p>
+              <ol className="space-y-1">
+                {draftStops.slice(0, 4).map((s, i) => (
+                  <li key={s.key} className="flex items-center gap-2 text-xs">
+                    <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center font-bold flex-shrink-0">
+                      {i + 1}
+                    </span>
+                    <span className={s.type === 'pickup' ? 'text-green-400' : 'text-blue-400'}>
+                      {s.type === 'pickup' ? 'Recoger' : 'Entregar'}
+                    </span>
+                    <span className="font-mono text-slate-300 truncate">{s.waybillNumber}</span>
+                  </li>
+                ))}
+              </ol>
+              {draftStops.length > 4 && (
+                <p className="text-xs text-slate-400 pl-7">+{draftStops.length - 4} paradas más</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Nota QR */}
@@ -530,10 +660,11 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
           {step === 4 && renderStep4()}
+          {step === 5 && renderStep5()}
 
           {/* Navegación */}
           <div className={`flex gap-3 mt-6 ${step > 1 ? 'flex-row' : 'flex-row-reverse'}`}>
-            {step === 4 ? (
+            {step === 5 ? (
               <button
                 onClick={handleCreate}
                 disabled={isSubmitting}
@@ -565,6 +696,14 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
             )}
           </div>
         </div>
+
+        <SetLocationDialog
+          order={locateOrder}
+          open={!!locateOrder}
+          onOpenChange={(o) => { if (!o) setLocateOrder(null); }}
+          target={locateTarget}
+          onSaved={() => { setLocateOrder(null); refetchOrders(); }}
+        />
       </DialogContent>
     </Dialog>
   );
