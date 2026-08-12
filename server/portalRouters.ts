@@ -2411,61 +2411,52 @@ export const customerPortalRouter = router({
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber(isInternational);
 
-      // Create order. Geography and phones are canonicalised here too so that
-      // customer- and admin-created orders are indistinguishable downstream.
-      const order = await createOrder({
-        clientId: ctx.portalUser.clientId,
-        waybillNumber,
-        ...input.shipment,
-        customerPhone: normalizeStoredPhone(input.shipment.customerPhone),
-        shipperPhone: normalizeStoredPhone(input.shipment.shipperPhone),
-        ...(isInternational ? {} : {
-          city: normalizeCity(input.shipment.city) ?? input.shipment.city,
-          emirate: normalizeEmirate(input.shipment.emirate)
-            ?? normalizeEmirate(input.shipment.city)
-            ?? input.shipment.emirate
-            ?? null,
-          shipperCity: normalizeCity(input.shipment.shipperCity) ?? input.shipment.shipperCity,
-        }),
-        codPaymentMethod: codMethod,
-        weight: input.shipment.weight.toString(),
-        length: input.shipment.length?.toString() || null,
-        width: input.shipment.width?.toString() || null,
-        height: input.shipment.height?.toString() || null,
-        status: 'pending_pickup',
-        lastStatusUpdate: new Date(),
-      });
+      // Create the order, its initial tracking event and (if required) its COD
+      // record as a single all-or-nothing transaction. Geography and phones
+      // are canonicalised here too so that customer- and admin-created orders
+      // are indistinguishable downstream.
+      const { createShipmentAtomic } = await import('./db');
+      const order = await createShipmentAtomic(
+        {
+          clientId: ctx.portalUser.clientId,
+          waybillNumber,
+          ...input.shipment,
+          customerPhone: normalizeStoredPhone(input.shipment.customerPhone),
+          shipperPhone: normalizeStoredPhone(input.shipment.shipperPhone),
+          ...(isInternational ? {} : {
+            city: normalizeCity(input.shipment.city) ?? input.shipment.city,
+            emirate: normalizeEmirate(input.shipment.emirate)
+              ?? normalizeEmirate(input.shipment.city)
+              ?? input.shipment.emirate
+              ?? null,
+            shipperCity: normalizeCity(input.shipment.shipperCity) ?? input.shipment.shipperCity,
+          }),
+          codPaymentMethod: codMethod,
+          weight: input.shipment.weight.toString(),
+          length: input.shipment.length?.toString() || null,
+          width: input.shipment.width?.toString() || null,
+          height: input.shipment.height?.toString() || null,
+          status: 'pending_pickup',
+          lastStatusUpdate: new Date(),
+        },
+        {
+          eventDatetime: new Date(),
+          statusCode: 'pending_pickup',
+          statusLabel: 'PENDING PICKUP',
+          description: 'Shipment created and awaiting pickup',
+          createdBy: 'system',
+        },
+        input.shipment.codRequired === 1 && input.shipment.codAmount
+          ? {
+              codAmount: input.shipment.codAmount,
+              codCurrency: input.shipment.codCurrency || 'AED',
+              allowedMethods: codMethod || 'cash',
+            }
+          : null
+      );
 
       if (!order) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create shipment' });
-      }
-
-      // Create initial tracking event
-      await createTrackingEvent({
-        shipmentId: order.id,
-        eventDatetime: new Date(),
-        statusCode: 'pending_pickup',
-        statusLabel: 'PENDING PICKUP',
-        description: 'Shipment created and awaiting pickup',
-        createdBy: 'system',
-      });
-
-      // Create COD record if COD is required
-      if (input.shipment.codRequired === 1 && input.shipment.codAmount) {
-        const db = await import('./db').then(m => m.getDb());
-        if (db) {
-          const { codRecords } = await import('../drizzle/schema');
-          await db.insert(codRecords).values({
-            shipmentId: order.id,
-            codAmount: input.shipment.codAmount,
-            codCurrency: input.shipment.codCurrency || 'AED',
-            allowedMethods: codMethod || 'cash',
-            status: 'pending_collection',
-            collectedDate: null,
-            remittedToClientDate: null,
-            notes: null,
-          });
-        }
       }
 
       // 🤖 LOGISTICS BOT INTEGRATION

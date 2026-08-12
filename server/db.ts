@@ -476,6 +476,34 @@ export async function deleteClientAccount(id: number): Promise<{ success: boolea
 /**
  * Orders/Shipments
  */
+// Fire-and-forget follow-up work after any order row exists: notify the bot
+// and kick off geocoding for missing coordinates (UAE only). Shared by
+// createOrder and createShipmentAtomic so both trigger identical behavior.
+function triggerNewOrderSideEffects(createdOrder: Order): void {
+  notifyBotNewOrder({
+    waybillNumber: createdOrder.waybillNumber,
+    customerName: createdOrder.customerName,
+    customerPhone: createdOrder.customerPhone,
+  });
+
+  import('./geocoding').then(({ geocodeAndStoreOrderLocation, geocodeAndStoreShipperLocation, isUAEDomestic }) => {
+    if (!createdOrder.latitude && isUAEDomestic(createdOrder.destinationCountry)) {
+      geocodeAndStoreOrderLocation(createdOrder.id, {
+        address: createdOrder.address,
+        city: createdOrder.city,
+        emirate: createdOrder.emirate,
+      });
+    }
+    if (!createdOrder.shipperLat && createdOrder.shipperAddress
+      && isUAEDomestic(createdOrder.shipperCountry)) {
+      geocodeAndStoreShipperLocation(createdOrder.id, {
+        address: createdOrder.shipperAddress,
+        city: createdOrder.shipperCity,
+      });
+    }
+  });
+}
+
 export async function createOrder(order: InsertOrder): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
@@ -495,34 +523,65 @@ export async function createOrder(order: InsertOrder): Promise<Order | null> {
     const createdOrder = inserted.length > 0 ? inserted[0] : null;
 
     if (createdOrder) {
-      notifyBotNewOrder({
-        waybillNumber: createdOrder.waybillNumber,
-        customerName: createdOrder.customerName,
-        customerPhone: createdOrder.customerPhone,
-      });
-
-      // Fire-and-forget geocoding of missing coordinates (UAE only).
-      const { geocodeAndStoreOrderLocation, geocodeAndStoreShipperLocation, isUAEDomestic } =
-        await import('./geocoding');
-      if (!createdOrder.latitude && isUAEDomestic(createdOrder.destinationCountry)) {
-        geocodeAndStoreOrderLocation(createdOrder.id, {
-          address: createdOrder.address,
-          city: createdOrder.city,
-          emirate: createdOrder.emirate,
-        });
-      }
-      if (!createdOrder.shipperLat && createdOrder.shipperAddress
-        && isUAEDomestic(createdOrder.shipperCountry)) {
-        geocodeAndStoreShipperLocation(createdOrder.id, {
-          address: createdOrder.shipperAddress,
-          city: createdOrder.shipperCity,
-        });
-      }
+      triggerNewOrderSideEffects(createdOrder);
     }
 
     return createdOrder;
   } catch (error) {
     console.error("[Database] Failed to create order:", error);
+    return null;
+  }
+}
+
+// Creates an order, its initial tracking event and (optionally) its COD
+// record as a single all-or-nothing transaction — createShipment (portal
+// customer order creation) previously did these as three unguarded awaits,
+// so a failure partway through could leave an order with no tracking event
+// or a COD-required order with no codRecords row to actually collect against.
+export async function createShipmentAtomic(
+  order: InsertOrder,
+  trackingEvent: Omit<InsertTrackingEvent, 'shipmentId'>,
+  cod: { codAmount: string; codCurrency: string; allowedMethods: string } | null
+): Promise<Order | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const createdOrder = await db.transaction(async (tx) => {
+      const values: InsertOrder = {
+        ...order,
+        locationAccuracy: order.locationAccuracy
+          ?? (order.latitude && order.longitude ? 'exact' : 'none'),
+      };
+
+      const result = await tx.insert(orders).values(values);
+      const insertedId = Number(result[0].insertId);
+      const inserted = await tx.select().from(orders).where(eq(orders.id, insertedId)).limit(1);
+      const created = inserted.length > 0 ? inserted[0] : null;
+      if (!created) throw new Error('Failed to read back created order');
+
+      await tx.insert(trackingEvents).values({ ...trackingEvent, shipmentId: created.id });
+
+      if (cod) {
+        await tx.insert(codRecords).values({
+          shipmentId: created.id,
+          codAmount: cod.codAmount,
+          codCurrency: cod.codCurrency,
+          allowedMethods: cod.allowedMethods,
+          status: 'pending_collection',
+          collectedDate: null,
+          remittedToClientDate: null,
+          notes: null,
+        });
+      }
+
+      return created;
+    });
+
+    triggerNewOrderSideEffects(createdOrder);
+    return createdOrder;
+  } catch (error) {
+    console.error("[Database] Failed to create shipment atomically:", error);
     return null;
   }
 }
