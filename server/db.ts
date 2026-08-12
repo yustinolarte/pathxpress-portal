@@ -2886,8 +2886,21 @@ export async function createCODRemittance(data: {
 
       const remittanceId = remittance.insertId;
 
-      // Link COD records to remittance — batch instead of N+1 loop
-      const allCodRecords = await tx.select().from(codRecords).where(inArray(codRecords.id, data.codRecordIds));
+      // Link COD records to remittance — batch instead of N+1 loop.
+      // FOR UPDATE locks these rows for the rest of the transaction: a second,
+      // overlapping createCODRemittance call selecting any of the same IDs
+      // blocks here until this transaction commits (or rolls back), then
+      // re-reads the real, post-commit status instead of a stale snapshot —
+      // without this, two concurrent requests could both remit the same COD
+      // records since a plain SELECT takes no lock and can't see the other's
+      // uncommitted status update.
+      const allCodRecords = await tx.select().from(codRecords)
+        .where(and(inArray(codRecords.id, data.codRecordIds), eq(codRecords.status, 'collected')))
+        .for('update');
+
+      if (allCodRecords.length !== data.codRecordIds.length) {
+        throw new Error('One or more COD records are no longer available for remittance (already remitted, disputed, or not yet collected)');
+      }
 
       if (allCodRecords.length > 0) {
         await tx.insert(codRemittanceItems).values(
@@ -2902,7 +2915,7 @@ export async function createCODRemittance(data: {
 
         await tx.update(codRecords)
           .set({ status: 'remitted', remittedToClientDate: new Date() })
-          .where(inArray(codRecords.id, allCodRecords.map(r => r.id)));
+          .where(and(inArray(codRecords.id, allCodRecords.map(r => r.id)), eq(codRecords.status, 'collected')));
       }
 
       return { remittanceId, remittanceNumber };
