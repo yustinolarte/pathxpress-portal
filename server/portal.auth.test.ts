@@ -103,7 +103,7 @@ describe("portal.customer.createShipment", () => {
         length: 30,
         width: 20,
         height: 15,
-        serviceType: "standard",
+        serviceType: "DOM",
         specialInstructions: "Test shipment",
       },
     });

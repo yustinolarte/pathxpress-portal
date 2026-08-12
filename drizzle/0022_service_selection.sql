@@ -17,9 +17,18 @@ CREATE TABLE `clientServiceSettings` (
   `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `uq_client_service` (`clientId`, `serviceCode`),
   INDEX `idx_css_clientId` (`clientId`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;--> statement-breakpoint
 
 -- Nuevas columnas en orders para PREFERRED_TIME
 ALTER TABLE `orders`
   ADD COLUMN `preferredDeliveryDate` VARCHAR(10) NULL,
-  ADD COLUMN `preferredDeliveryTime` VARCHAR(20) NULL;
+  ADD COLUMN `preferredDeliveryTime` VARCHAR(20) NULL;--> statement-breakpoint
+
+-- Push notification token for the driver app. meta/0022_snapshot.json has
+-- always included this on `drivers` (present in every snapshot from 22
+-- onward, absent in 0021's), but the statement that should have created it
+-- was missing from this file — discovered 2026-08-12 running drizzle-kit
+-- migrate against a brand-new empty database for the first time ever; the
+-- production DB already has these columns (added by hand, undocumented).
+ALTER TABLE `drivers` ADD COLUMN `pushToken` VARCHAR(255) NULL;--> statement-breakpoint
+ALTER TABLE `drivers` ADD COLUMN `pushPlatform` VARCHAR(10) NULL;

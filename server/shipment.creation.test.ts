@@ -43,7 +43,7 @@ describe("Shipment Creation", () => {
         length: 30,
         width: 20,
         height: 10,
-        serviceType: "standard",
+        serviceType: "DOM",
       }
     };
 
@@ -90,7 +90,7 @@ describe("Shipment Creation", () => {
         length: 40,
         width: 30,
         height: 20,
-        serviceType: "express",
+        serviceType: "SDD",
       }
     };
 
@@ -100,7 +100,7 @@ describe("Shipment Creation", () => {
     expect(result.shipperName).toBe("Valid Shipper");
     expect(result.customerName).toBe("Valid Customer");
     expect(result.status).toBe("pending_pickup");
-    expect(result.serviceType).toBe("express");
+    expect(result.serviceType).toBe("SDD");
     console.log("✅ Shipment created with valid data:", result.waybillNumber);
   });
 });
