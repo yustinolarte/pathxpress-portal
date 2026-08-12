@@ -442,11 +442,12 @@ export async function deleteClientAccount(id: number): Promise<{ success: boolea
   const db = await getDb();
   if (!db) return { success: false, error: 'Database not available' };
 
-  const { clientAccounts } = await import("../drizzle/schema");
+  const { clientAccounts, invoices: invoicesTable, codRemittances: codRemittancesTable, portalUsers: portalUsersTable } = await import("../drizzle/schema");
   const { eq, and, inArray } = await import("drizzle-orm");
+  const countExpr = sql<number>`cast(count(*) as unsigned)`;
 
   try {
-    // Verificar si hay órdenes pendientes
+    // Verificar si hay órdenes pendientes (mensaje específico: "termine o cancele")
     const pendingOrders = await db
       .select({ id: orders.id })
       .from(orders)
@@ -462,6 +463,29 @@ export async function deleteClientAccount(id: number): Promise<{ success: boolea
         success: false,
         error: `No se puede eliminar este cliente porque tiene ${pendingOrders.length} orden(es) pendiente(s) por entregar. Por favor, complete o cancele todas las órdenes antes de eliminar el cliente.`,
         pendingOrdersCount: pendingOrders.length
+      };
+    }
+
+    // No hay FKs en el esquema que impidan dejar huérfanos pedidos, facturas,
+    // remesas COD o usuarios del portal al borrar la fila del cliente — así
+    // que se bloquea el borrado si existe CUALQUIER historial (no solo
+    // pendiente) y se sugiere desactivar en su lugar.
+    const [[ordersRow], [invoicesRow], [remittancesRow], [portalUsersRow]] = await Promise.all([
+      db.select({ n: countExpr }).from(orders).where(eq(orders.clientId, id)),
+      db.select({ n: countExpr }).from(invoicesTable).where(eq(invoicesTable.clientId, id)),
+      db.select({ n: countExpr }).from(codRemittancesTable).where(eq(codRemittancesTable.clientId, id)),
+      db.select({ n: countExpr }).from(portalUsersTable).where(eq(portalUsersTable.clientId, id)),
+    ]);
+
+    if (ordersRow.n > 0 || invoicesRow.n > 0 || remittancesRow.n > 0 || portalUsersRow.n > 0) {
+      const parts: string[] = [];
+      if (ordersRow.n > 0) parts.push(`${ordersRow.n} pedido(s)`);
+      if (invoicesRow.n > 0) parts.push(`${invoicesRow.n} factura(s)`);
+      if (remittancesRow.n > 0) parts.push(`${remittancesRow.n} remesa(s) COD`);
+      if (portalUsersRow.n > 0) parts.push(`${portalUsersRow.n} usuario(s) del portal`);
+      return {
+        success: false,
+        error: `No se puede eliminar este cliente porque tiene historial asociado (${parts.join(', ')}). Desactive el cliente en vez de eliminarlo para conservar sus registros.`,
       };
     }
 
