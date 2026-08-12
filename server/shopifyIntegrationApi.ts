@@ -182,7 +182,10 @@ router.get('/services', integrationAuth, async (req: Request, res: Response) => 
 
 // ============ GET /api/shopify/waybill/:waybill(.pdf) ============
 // Returns the official PathXpress shipping label as a PDF.
-// Optional ?clientId=123 enforces that the waybill belongs to that client.
+// ?clientId=123 is required and must match the waybill's owner — the shared
+// integration secret authorizes any clientId, so without this any holder of
+// that secret could download any client's waybill (name/address/COD amount)
+// by guessing/enumerating waybill numbers.
 router.get('/waybill/:waybill', integrationAuth, async (req: Request, res: Response) => {
     try {
         const waybillNumber = String(req.params.waybill || '').replace(/\.pdf$/i, '');
@@ -190,14 +193,17 @@ router.get('/waybill/:waybill', integrationAuth, async (req: Request, res: Respo
             return res.status(400).json({ error: 'Missing waybill number' });
         }
 
+        const clientId = req.query.clientId ? parseInt(String(req.query.clientId), 10) : null;
+        if (!clientId || Number.isNaN(clientId)) {
+            return res.status(400).json({ error: 'Missing required clientId query parameter' });
+        }
+
         const order = await getOrderByWaybill(waybillNumber);
         if (!order) {
             return res.status(404).json({ error: 'Waybill not found' });
         }
 
-        // Optional tenant isolation: if a clientId is supplied it must match.
-        const clientId = req.query.clientId ? parseInt(String(req.query.clientId), 10) : null;
-        if (clientId && order.clientId !== clientId) {
+        if (order.clientId !== clientId) {
             return res.status(403).json({ error: 'Waybill does not belong to this client' });
         }
 
