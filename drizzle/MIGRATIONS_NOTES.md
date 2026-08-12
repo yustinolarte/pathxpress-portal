@@ -14,6 +14,25 @@ The correct workflow going forward: edit `drizzle/schema.ts`, run
 `meta/_journal.json`/`meta/*_snapshot.json`, touches nothing in the live DB),
 review the generated SQL, then apply it to the database by hand.
 
+## Bootstrapping a brand-new database (dev/test)
+
+The "never run `drizzle-kit migrate` against the real database" rule above is
+specifically about the existing production database, whose migrations 12+
+were applied out-of-band. Against a **brand-new, empty** database (a local
+MySQL instance for `TEST_DATABASE_URL`, a fresh dev environment, etc.)
+`drizzle-kit migrate` is the correct and safe way to build the schema — there
+is nothing already applied to conflict with, so it just runs the full
+journal (0000 through 0036) in order:
+
+```
+# PowerShell — point at the empty target DB only for this one command
+$env:DATABASE_URL = "mysql://user:pass@host:port/your_new_empty_db"
+npx drizzle-kit migrate
+```
+
+Close and reopen the terminal afterward (or run `Remove-Item Env:\DATABASE_URL`)
+so the override doesn't leak into later commands in that same window.
+
 ## What was reconciled on 2026-08-12
 
 - `meta/_journal.json` idx 22 pointed at a tag (`0022_lovely_kitty_pryde`) that
