@@ -1545,87 +1545,113 @@ export async function generateInvoiceForClient(
     shipmentRates.push({ shipment, shippingRate, fodFee });
   }
 
-  const tax = 0; // No tax for shipping in UAE 
+  const tax = 0; // No tax for shipping in UAE
   const total = subtotal + tax;
 
   // Create invoice
   const now = new Date();
   const dueDate = new Date(now);
   dueDate.setDate(dueDate.getDate() + 30); // 30 days payment term
+  const { sql: sqlFn, inArray: inArrayFn, isNull: isNullFn } = await import('drizzle-orm');
 
-  // Generate consecutive invoice number: INV-YYYY-MM-001
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const prefix = `INV-${year}-${month}-`;
-  const { sql: sqlFn } = await import('drizzle-orm');
-  const [lastInvoice] = await db
-    .select({ invoiceNumber: invoices.invoiceNumber })
-    .from(invoices)
-    .where(sqlFn`invoiceNumber LIKE ${prefix + '%'}`)
-    .orderBy(sqlFn`invoiceNumber DESC`)
-    .limit(1);
-  let nextSeq = 1;
-  if (lastInvoice?.invoiceNumber) {
-    const parts = lastInvoice.invoiceNumber.split('-');
-    const lastSeq = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
-  }
-  const invoiceNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+  // Header + all line items as one all-or-nothing transaction, so a failure
+  // partway through can't leave an invoice with some/no line items. The
+  // SELECT ... FOR UPDATE re-check right before inserting closes (most of)
+  // the gap between the eligibility check above and this commit: it locks
+  // the shipment rows and re-verifies none of them picked up an invoiceItem
+  // from a concurrent generate call in between, instead of trusting the
+  // earlier snapshot.
+  const invoiceId = await db.transaction(async (tx) => {
+    await tx.execute(sqlFn`SELECT GET_LOCK('invoice_number_domestic', 10)`);
+    try {
+      const shipmentIdsToInvoice = shipmentRates.map(r => r.shipment.id);
+      const stillEligible = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .leftJoin(invoiceItems, eq(orders.id, invoiceItems.shipmentId))
+        .where(and(inArrayFn(orders.id, shipmentIdsToInvoice), isNullFn(invoiceItems.id)))
+        .for('update');
+      if (stillEligible.length !== shipmentIdsToInvoice.length) {
+        throw new Error('One or more shipments were invoiced by another request in the meantime — please retry.');
+      }
 
-  const [invoice] = await db.insert(invoices).values({
-    clientId,
-    invoiceNumber,
-    periodFrom: periodStart,
-    periodTo: periodEnd,
-    issueDate: now,
-    dueDate,
-    subtotal: subtotal.toFixed(2),
-    taxes: tax.toFixed(2),
-    total: total.toFixed(2),
-    amountPaid: '0',
-    balance: total.toFixed(2),
-    status: 'pending',
-    currency: 'AED',
-    settlementPeriod,
+      // Generate consecutive invoice number: INV-YYYY-MM-001
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const prefix = `INV-${year}-${month}-`;
+      const [lastInvoice] = await tx
+        .select({ invoiceNumber: invoices.invoiceNumber })
+        .from(invoices)
+        .where(sqlFn`invoiceNumber LIKE ${prefix + '%'}`)
+        .orderBy(sqlFn`invoiceNumber DESC`)
+        .limit(1);
+      let nextSeq = 1;
+      if (lastInvoice?.invoiceNumber) {
+        const parts = lastInvoice.invoiceNumber.split('-');
+        const lastSeq = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+      }
+      const invoiceNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
+      const [invoice] = await tx.insert(invoices).values({
+        clientId,
+        invoiceNumber,
+        periodFrom: periodStart,
+        periodTo: periodEnd,
+        issueDate: now,
+        dueDate,
+        subtotal: subtotal.toFixed(2),
+        taxes: tax.toFixed(2),
+        total: total.toFixed(2),
+        amountPaid: '0',
+        balance: total.toFixed(2),
+        status: 'pending',
+        currency: 'AED',
+        settlementPeriod,
+      });
+
+      // Create invoice items with correct rates
+      for (const { shipment, shippingRate, fodFee } of shipmentRates) {
+        const weight = parseFloat(shipment.weight || '0');
+        // Label the line with the same short code the portal shows. The old
+        // hardcoded if/else only knew DOM/SDD/BULLET, so every newer service
+        // (PREFERRED_TIME, PREFERRED_TIME_SDD, EXPRESS_ZONE2) silently billed as "DOM".
+        const svcUpper = shipment.serviceType?.toUpperCase() || 'DOM';
+        const serviceLabel = abbreviateServiceType(
+          svcUpper === 'SAME DAY' ? 'SDD' : svcUpper,
+        );
+
+        // Shipping Item
+        await tx.insert(invoiceItems).values({
+          invoiceId: invoice.insertId,
+          shipmentId: shipment.id,
+          description: `${shipment.waybillNumber} - ${serviceLabel} - ${weight}kg - ${shipment.city}`,
+          quantity: 1,
+          unitPrice: shippingRate.toFixed(2),
+          total: shippingRate.toFixed(2),
+        });
+
+        // FOD Fee Item
+        if (fodFee > 0) {
+          await tx.insert(invoiceItems).values({
+            invoiceId: invoice.insertId,
+            shipmentId: shipment.id,
+            description: `${shipment.waybillNumber} - FOD Service Fee`,
+            quantity: 1,
+            unitPrice: fodFee.toFixed(2),
+            total: fodFee.toFixed(2),
+          });
+        }
+      }
+
+      return invoice.insertId;
+    } finally {
+      await tx.execute(sqlFn`SELECT RELEASE_LOCK('invoice_number_domestic')`);
+    }
   });
 
-
-  // Create invoice items with correct rates
-  for (const { shipment, shippingRate, fodFee } of shipmentRates) {
-    const weight = parseFloat(shipment.weight || '0');
-    // Label the line with the same short code the portal shows. The old
-    // hardcoded if/else only knew DOM/SDD/BULLET, so every newer service
-    // (PREFERRED_TIME, PREFERRED_TIME_SDD, EXPRESS_ZONE2) silently billed as "DOM".
-    const svcUpper = shipment.serviceType?.toUpperCase() || 'DOM';
-    const serviceLabel = abbreviateServiceType(
-      svcUpper === 'SAME DAY' ? 'SDD' : svcUpper,
-    );
-
-    // Shipping Item
-    await db.insert(invoiceItems).values({
-      invoiceId: invoice.insertId,
-      shipmentId: shipment.id,
-      description: `${shipment.waybillNumber} - ${serviceLabel} - ${weight}kg - ${shipment.city}`,
-      quantity: 1,
-      unitPrice: shippingRate.toFixed(2),
-      total: shippingRate.toFixed(2),
-    });
-
-    // FOD Fee Item
-    if (fodFee > 0) {
-      await db.insert(invoiceItems).values({
-        invoiceId: invoice.insertId,
-        shipmentId: shipment.id,
-        description: `${shipment.waybillNumber} - FOD Service Fee`,
-        quantity: 1,
-        unitPrice: fodFee.toFixed(2),
-        total: fodFee.toFixed(2),
-      });
-    }
-  }
-
   cacheInvalidate('admin:allInvoices');
-  return invoice.insertId;
+  return invoiceId;
 }
 
 // ─── International Billing ────────────────────────────────────────────────────
@@ -1815,59 +1841,81 @@ export async function generateIntlInvoiceForClient(
   const now = new Date();
   const dueDate = new Date(now);
   dueDate.setDate(dueDate.getDate() + 30);
-
-  // Invoice number: INTLINV-YYYY-MM-NNN
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const prefix = `INTLINV-${year}-${month}-`;
-  const { sql: sqlFn } = await import('drizzle-orm');
-  const [lastInvoice] = await db
-    .select({ invoiceNumber: invoices.invoiceNumber })
-    .from(invoices)
-    .where(sqlFn`invoiceNumber LIKE ${prefix + '%'}`)
-    .orderBy(sqlFn`invoiceNumber DESC`)
-    .limit(1);
-  let nextSeq = 1;
-  if (lastInvoice?.invoiceNumber) {
-    const parts = lastInvoice.invoiceNumber.split('-');
-    const lastSeq = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
-  }
-  const invoiceNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
-
+  const { sql: sqlFn, inArray: inArrayFn, isNull: isNullFn } = await import('drizzle-orm');
   const total = subtotal;
-  const [invoice] = await db.insert(invoices).values({
-    clientId,
-    invoiceNumber,
-    periodFrom: periodStart,
-    periodTo: periodEnd,
-    issueDate: now,
-    dueDate,
-    subtotal: subtotal.toFixed(2),
-    taxes: '0.00',
-    total: total.toFixed(2),
-    amountPaid: '0',
-    balance: total.toFixed(2),
-    status: 'pending',
-    currency: 'AED',
-    settlementPeriod,
+
+  // Header + all line items as one all-or-nothing transaction — see
+  // generateInvoiceForClient's identical comment for why.
+  const invoiceId = await db.transaction(async (tx) => {
+    await tx.execute(sqlFn`SELECT GET_LOCK('invoice_number_intl', 10)`);
+    try {
+      const shipmentIdsToInvoice = shipmentRates.map(r => r.shipment.id);
+      const stillEligible = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .leftJoin(invoiceItems, eq(orders.id, invoiceItems.shipmentId))
+        .where(and(inArrayFn(orders.id, shipmentIdsToInvoice), isNullFn(invoiceItems.id)))
+        .for('update');
+      if (stillEligible.length !== shipmentIdsToInvoice.length) {
+        throw new Error('One or more shipments were invoiced by another request in the meantime — please retry.');
+      }
+
+      // Invoice number: INTLINV-YYYY-MM-NNN
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const prefix = `INTLINV-${year}-${month}-`;
+      const [lastInvoice] = await tx
+        .select({ invoiceNumber: invoices.invoiceNumber })
+        .from(invoices)
+        .where(sqlFn`invoiceNumber LIKE ${prefix + '%'}`)
+        .orderBy(sqlFn`invoiceNumber DESC`)
+        .limit(1);
+      let nextSeq = 1;
+      if (lastInvoice?.invoiceNumber) {
+        const parts = lastInvoice.invoiceNumber.split('-');
+        const lastSeq = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+      }
+      const invoiceNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
+      const [invoice] = await tx.insert(invoices).values({
+        clientId,
+        invoiceNumber,
+        periodFrom: periodStart,
+        periodTo: periodEnd,
+        issueDate: now,
+        dueDate,
+        subtotal: subtotal.toFixed(2),
+        taxes: '0.00',
+        total: total.toFixed(2),
+        amountPaid: '0',
+        balance: total.toFixed(2),
+        status: 'pending',
+        currency: 'AED',
+        settlementPeriod,
+      });
+
+      for (const { shipment, shippingRate } of shipmentRates) {
+        const weight = parseFloat(shipment.weight || '0');
+        const svcLabel = shipment.serviceType || 'INTL';
+        await tx.insert(invoiceItems).values({
+          invoiceId: invoice.insertId,
+          shipmentId: shipment.id,
+          description: `${shipment.waybillNumber} - ${svcLabel} - ${weight}kg - ${shipment.destinationCountry}`,
+          quantity: 1,
+          unitPrice: shippingRate.toFixed(2),
+          total: shippingRate.toFixed(2),
+        });
+      }
+
+      return invoice.insertId;
+    } finally {
+      await tx.execute(sqlFn`SELECT RELEASE_LOCK('invoice_number_intl')`);
+    }
   });
 
-  for (const { shipment, shippingRate } of shipmentRates) {
-    const weight = parseFloat(shipment.weight || '0');
-    const svcLabel = shipment.serviceType || 'INTL';
-    await db.insert(invoiceItems).values({
-      invoiceId: invoice.insertId,
-      shipmentId: shipment.id,
-      description: `${shipment.waybillNumber} - ${svcLabel} - ${weight}kg - ${shipment.destinationCountry}`,
-      quantity: 1,
-      unitPrice: shippingRate.toFixed(2),
-      total: shippingRate.toFixed(2),
-    });
-  }
-
   cacheInvalidate('admin:allInvoices');
-  return { invoiceId: invoice.insertId, mismatchedShipments };
+  return { invoiceId, mismatchedShipments };
 }
 
 // Updates the internal courier cost for an order. Deliberately bypasses the
