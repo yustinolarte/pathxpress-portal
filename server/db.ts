@@ -12,6 +12,14 @@ let _db: ReturnType<typeof drizzle> | null = null;
 // Lazily create the drizzle instance so local tooling can run without a DB.
 // Uses a connection pool so Railway doesn't kill stale idle connections (ETIMEDOUT).
 export async function getDb() {
+  if (process.env.VITEST && process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL) {
+    throw new Error(
+      "Refusing to connect to the database during tests: TEST_DATABASE_URL is " +
+        "not set, and DATABASE_URL points at the production database. Set " +
+        "TEST_DATABASE_URL in your .env to a disposable MySQL database before " +
+        "running tests that touch the DB. See drizzle/MIGRATIONS_NOTES.md."
+    );
+  }
   if (!_db && process.env.DATABASE_URL) {
     try {
       const pool = mysql.createPool({
