@@ -265,10 +265,11 @@ export const portalAuthRouter = router({
       }
 
       // Validate new password
-      if (!validatePassword(input.newPassword)) {
+      const passwordValidation = validatePassword(input.newPassword);
+      if (!passwordValidation.valid) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'New password does not meet requirements',
+          message: passwordValidation.error || 'New password does not meet requirements',
         });
       }
 

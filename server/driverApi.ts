@@ -247,7 +247,10 @@ interface DriverRequest extends Request {
     driverUsername?: string;
 }
 
-// Auth middleware for driver routes
+// Auth middleware for driver routes. The token is valid for 7 days, so without
+// re-checking status here a suspended/deactivated driver would keep full API
+// access until their token expires — this makes the very next request after a
+// suspension get rejected instead.
 const driverAuthMiddleware = async (req: DriverRequest, res: Response, next: NextFunction) => {
     try {
         const authHeader = req.headers.authorization;
@@ -257,6 +260,13 @@ const driverAuthMiddleware = async (req: DriverRequest, res: Response, next: Nex
 
         const token = authHeader.substring(7);
         const decoded = jwt.verify(token, JWT_SECRET) as { id: number; username: string };
+
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+        const [driver] = await db.select().from(drivers).where(eq(drivers.id, decoded.id)).limit(1);
+        if (!driver || driver.status !== 'active') {
+            return res.status(401).json({ error: 'Invalid token' });
+        }
 
         req.driverId = decoded.id;
         req.driverUsername = decoded.username;
