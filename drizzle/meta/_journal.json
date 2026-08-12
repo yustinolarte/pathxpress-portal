@@ -160,7 +160,7 @@
       "idx": 22,
       "version": "5",
       "when": 1775516960149,
-      "tag": "0022_lovely_kitty_pryde",
+      "tag": "0022_service_selection",
       "breakpoints": true
     },
     {
@@ -217,6 +217,13 @@
       "version": "5",
       "when": 1785177586478,
       "tag": "0031_driver_route_shift_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1786551823249,
+      "tag": "0036_consolidate_manual_migrations",
       "breakpoints": true
     }
   ]
