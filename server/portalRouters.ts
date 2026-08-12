@@ -2361,21 +2361,52 @@ export const customerPortalRouter = router({
       }),
     }))
     .mutation(async ({ input, ctx }) => {
-      // COD gating against the client's account settings
+      // codAmount is client-supplied free text; the UI never lets an invalid
+      // value through, but the server must not trust that.
       if (input.shipment.codRequired === 1) {
-        const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
-        if (!clientAccount || clientAccount.codAllowed !== 1) {
+        const parsedCodAmount = Number(input.shipment.codAmount);
+        if (!input.shipment.codAmount || !Number.isFinite(parsedCodAmount) || parsedCodAmount <= 0) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid COD amount' });
+        }
+      }
+
+      // COD/FOD gating against the client's account settings
+      const clientAccount = await getClientAccountById(ctx.portalUser.clientId);
+      if (!clientAccount) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Client account not found' });
+      }
+      if (input.shipment.codRequired === 1) {
+        if (clientAccount.codAllowed !== 1) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'COD not allowed for this client' });
         }
         if (input.shipment.codPaymentMethod !== 'cash' && clientAccount.cardOnDeliveryAllowed !== 1) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Card on Delivery not allowed for this client' });
         }
       }
+      if (input.shipment.fitOnDelivery === 1 && clientAccount.fodAllowed !== 1) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Fit on Delivery not allowed for this client' });
+      }
       const codMethod = input.shipment.codRequired === 1 ? input.shipment.codPaymentMethod : null;
 
       // Determine if international order
       const isInternational = input.shipment.destinationCountry.toUpperCase() !== 'UAE'
         && input.shipment.destinationCountry.toUpperCase() !== 'UNITED ARAB EMIRATES';
+
+      // serviceType is only re-validated for domestic orders here: international
+      // service keys come from a separate quote-driven catalog
+      // (internationalRateEngine / portal.internationalRates.quote) that isn't
+      // covered by getAvailableServicesForClient.
+      if (!isInternational) {
+        const { getAvailableServicesForClient } = await import('./db');
+        const services = await getAvailableServicesForClient(ctx.portalUser.clientId, {
+          emirate: input.shipment.emirate || input.shipment.city,
+          weight: input.shipment.weight,
+        });
+        const chosen = services.find(s => s.code === input.shipment.serviceType);
+        if (!chosen || !chosen.available) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: chosen?.reason || 'Service type not available for this client' });
+        }
+      }
 
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber(isInternational);
