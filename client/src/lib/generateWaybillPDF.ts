@@ -40,6 +40,10 @@ interface ShipmentData {
   itemsDescription?: string | null; // Product/item descriptions from Shopify
   preferredDeliveryDate?: string | null; // 'YYYY-MM-DD' for PREFERRED_TIME service
   preferredDeliveryTime?: string | null; // e.g. '18:00' for PREFERRED_TIME service
+  payAtOrigin?: number; // 1 = client settles per-shipment (e.g. Walk-in) — shows the payment status banner below
+  originPaymentCollected?: number; // 0 = not yet paid, 1 = paid at drop-off
+  originPaymentAmount?: string | null; // Calculated total — set whether paid or still owed
+  originPaymentMethod?: string | null; // 'cash' | 'card', only meaningful when collected
 }
 
 // Short label shown on the waybill box for each service code
@@ -396,6 +400,28 @@ export async function generateWaybillPDF(shipment: ShipmentData, returnBlob: boo
   }
 
   y += 16;
+
+  // ===== PAY-AT-ORIGIN PAYMENT STATUS (unpaid only) =====
+  // Only for pay-per-shipment clients (e.g. Walk-in), and only when the shipping
+  // fee wasn't paid at drop-off — paid orders are invoiced immediately at
+  // creation (see adminCreateOrder) so there's nothing left to flag here.
+  // This IS a driver instruction (collect the shipping fee at the door) and is
+  // deliberately worded apart from COD, since COD is a separate cash-on-delivery
+  // charge for the goods, not PathXpress's shipping fee.
+  if (shipment.payAtOrigin === 1 && shipment.originPaymentCollected !== 1) {
+    const amount = shipment.originPaymentAmount ? parseFloat(shipment.originPaymentAmount).toFixed(2) : null;
+    const boxHeight = 6;
+    pdf.setDrawColor(black);
+    pdf.setLineWidth(0.5);
+    pdf.setFillColor(black);
+    pdf.rect(margin, y, contentWidth, boxHeight, 'F');
+    pdf.setTextColor(white);
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`COLLECT SHIPPING FEE AT DELIVERY - AED ${amount ?? '0.00'}`, pageWidth / 2, y + 4.2, { align: 'center' });
+    pdf.setTextColor(black);
+    y += boxHeight + 2;
+  }
 
   // ===== SPECIAL INSTRUCTIONS =====
   if (shipment.specialInstructions && shipment.specialInstructions.trim()) {

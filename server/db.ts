@@ -1591,7 +1591,8 @@ export async function generateInvoiceForClient(
   periodStart: Date,
   periodEnd: Date,
   shipmentIds?: number[],
-  settlementPeriod: 'weekly' | 'biweekly' | 'monthly' | 'custom' = 'custom'
+  settlementPeriod: 'weekly' | 'biweekly' | 'monthly' | 'custom' = 'custom',
+  opts?: { allowAnyStatus?: boolean }
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1601,6 +1602,12 @@ export async function generateInvoiceForClient(
 
   if (shipmentIds && shipmentIds.length > 0) {
     const { inArray, isNull } = await import("drizzle-orm");
+    // allowAnyStatus is for the "paid at drop-off" instant-invoice path only —
+    // a pay-per-shipment order already collected in cash/card is revenue at the
+    // moment of sale, not at delivery, so it shouldn't wait on delivery status.
+    const statusFilter = opts?.allowAnyStatus
+      ? undefined
+      : inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']);
     // Also verify shipments are not already invoiced (double-invoice protection)
     const results = await db
       .select({ order: orders })
@@ -1610,7 +1617,7 @@ export async function generateInvoiceForClient(
         and(
           eq(orders.clientId, clientId),
           inArray(orders.id, shipmentIds),
-          inArray(orders.status, ['delivered', 'returned', 'returned_to_sender', 'exchange', 'failed_pickup']),
+          statusFilter,
           isNull(invoiceItems.id)
         )
       );
@@ -1629,6 +1636,13 @@ export async function generateInvoiceForClient(
   // Get client info for FOD/return fee
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
   if (!client) throw new Error("Client not found");
+
+  // Pay-per-shipment clients (e.g. Walk-in) bill to the actual sender of the
+  // shipment (see getInvoiceDetails), which only works unambiguously when the
+  // invoice covers exactly one shipment.
+  if (client.payAtOrigin === 1 && shipments.length > 1) {
+    throw new Error("Pay-per-shipment clients must be invoiced one shipment at a time (select a single shipment).");
+  }
 
   // Calculate totals using the zone-based rate engine
   let subtotal = 0;
@@ -1929,6 +1943,13 @@ export async function generateIntlInvoiceForClient(
 
   const [client] = await db.select().from(clientAccounts).where(eq(clientAccounts.id, clientId)).limit(1);
   if (!client) throw new Error("Client not found");
+
+  // Pay-per-shipment clients (e.g. Walk-in) bill to the actual sender of the
+  // shipment (see getInvoiceDetails), which only works unambiguously when the
+  // invoice covers exactly one shipment.
+  if (client.payAtOrigin === 1 && shipments.length > 1) {
+    throw new Error("Pay-per-shipment clients must be invoiced one shipment at a time (select a single shipment).");
+  }
 
   const rateData = await loadRatesFromDB(db);
   const discountPct = client.intlDiscountPercent ? parseFloat(client.intlDiscountPercent) : undefined;

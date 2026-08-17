@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Check, Building2, MapPin, Zap, KeyRound, ChevronRight, ChevronLeft, Loader2, Rocket, Shirt, Globe, DollarSign, CreditCard } from 'lucide-react';
+import { Check, Building2, MapPin, Zap, KeyRound, ChevronRight, ChevronLeft, Loader2, Rocket, Shirt, Globe, DollarSign, CreditCard, Wallet } from 'lucide-react';
 
 interface CreateClientWizardProps {
   open: boolean;
@@ -34,19 +34,20 @@ const defaultForm = {
   fodFee: '',
   intlAllowed: false,
   intlDiscountPercent: '',
+  payAtOrigin: false,
   portalEmail: '',
   portalPassword: '',
 };
 
 const STEPS = [
-  { id: 1, label: 'Empresa', icon: Building2 },
-  { id: 2, label: 'Dirección', icon: MapPin },
-  { id: 3, label: 'Servicios', icon: Zap },
+  { id: 1, label: 'Company', icon: Building2 },
+  { id: 2, label: 'Address', icon: MapPin },
+  { id: 3, label: 'Services', icon: Zap },
   { id: 4, label: 'Portal', icon: KeyRound },
 ];
 
-// ─── Componentes auxiliares fuera del componente principal ─────────────────
-// (evita que React los desmonte/remonte en cada re-render y pierda el foco)
+// ─── Helper components declared outside the main component ────────────────
+// (keeps React from unmounting/remounting them on every re-render and losing focus)
 
 function Field({
   label,
@@ -110,7 +111,7 @@ function ServiceToggle({
   );
 }
 
-// ─── Componente principal ──────────────────────────────────────────────────
+// ─── Main component ─────────────────────────────────────────────────────────
 
 export default function CreateClientWizard({ open, onOpenChange, onSuccess }: CreateClientWizardProps) {
   const [step, setStep] = useState(1);
@@ -144,15 +145,15 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
   }
 
   const errors: Record<string, string> = {};
-  if (touched.companyName && !form.companyName) errors.companyName = 'Requerido';
-  if (touched.contactName && !form.contactName) errors.contactName = 'Requerido';
-  if (touched.billingEmail && !form.billingEmail) errors.billingEmail = 'Requerido';
-  else if (touched.billingEmail && !isEmailValid(form.billingEmail)) errors.billingEmail = 'Email inválido';
-  if (touched.phone && !form.phone) errors.phone = 'Requerido';
-  if (touched.billingAddress && !form.billingAddress) errors.billingAddress = 'Requerido';
-  if (touched.city && !form.city) errors.city = 'Requerido';
-  if (touched.codFeePercent && form.codAllowed && !form.codFeePercent) errors.codFeePercent = 'Requerido si COD activo';
-  if (touched.portalPassword && form.portalEmail && form.portalPassword.length < 8) errors.portalPassword = 'Mínimo 8 caracteres';
+  if (touched.companyName && !form.companyName) errors.companyName = 'Required';
+  if (touched.contactName && !form.contactName) errors.contactName = 'Required';
+  if (touched.billingEmail && !form.billingEmail) errors.billingEmail = 'Required';
+  else if (touched.billingEmail && !isEmailValid(form.billingEmail)) errors.billingEmail = 'Invalid email';
+  if (touched.phone && !form.phone) errors.phone = 'Required';
+  if (touched.billingAddress && !form.billingAddress) errors.billingAddress = 'Required';
+  if (touched.city && !form.city) errors.city = 'Required';
+  if (touched.codFeePercent && form.codAllowed && !form.codFeePercent) errors.codFeePercent = 'Required when COD is enabled';
+  if (touched.portalPassword && form.portalEmail && form.portalPassword.length < 8) errors.portalPassword = 'Minimum 8 characters';
 
   function canAdvance(): boolean {
     if (step === 1) return !!(form.companyName && form.contactName && isEmailValid(form.billingEmail) && form.phone);
@@ -211,7 +212,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
         },
       });
 
-      const needsSettings = form.bulletAllowed || form.fodAllowed || form.intlAllowed || !!form.codMinFee || form.cardOnDeliveryAllowed;
+      const needsSettings = form.bulletAllowed || form.fodAllowed || form.intlAllowed || !!form.codMinFee || form.cardOnDeliveryAllowed || form.payAtOrigin;
       if (needsSettings) {
         await updateSettingsMutation.mutateAsync({
           clientId: client.id,
@@ -230,6 +231,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           customBulletPerKg: form.customBulletPerKg || undefined,
           intlAllowed: form.intlAllowed,
           intlDiscountPercent: form.intlDiscountPercent || undefined,
+          payAtOrigin: form.payAtOrigin,
         });
       }
 
@@ -241,65 +243,65 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
         });
       }
 
-      toast.success('Cliente creado exitosamente');
+      toast.success('Client created successfully');
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.message || 'Error al crear el cliente');
+      toast.error(err?.message || 'Failed to create client');
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // Helper para inputs de texto — función normal, no componente
+  // Plain function (not a component) for the text-input class helper
   function textInputClass(field: string) {
     return `w-full rounded-lg border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors ${errors[field] ? 'border-red-500' : 'border-input'}`;
   }
 
-  // ─── Renders de cada paso (funciones normales, no componentes) ─────────────
+  // ─── Per-step renders (plain functions, not components) ────────────────────
 
   function renderStep1() {
     return (
       <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center gap-2">
           <Building2 className="w-4 h-4 text-muted-foreground" />
-          <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Datos de la Empresa</span>
+          <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Company Details</span>
         </div>
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="Nombre de la empresa" required error={errors.companyName}>
+            <Field label="Company name" required error={errors.companyName}>
               <input
                 type="text"
                 value={form.companyName}
                 onChange={e => setField('companyName', e.target.value)}
                 onBlur={() => touch('companyName')}
-                placeholder="Ej: Acme Logistics LLC"
+                placeholder="e.g. Acme Logistics LLC"
                 className={textInputClass('companyName')}
               />
             </Field>
-            <Field label="Nombre del contacto" required error={errors.contactName}>
+            <Field label="Contact name" required error={errors.contactName}>
               <input
                 type="text"
                 value={form.contactName}
                 onChange={e => setField('contactName', e.target.value)}
                 onBlur={() => touch('contactName')}
-                placeholder="Ej: Ahmed Al Mansoori"
+                placeholder="e.g. Ahmed Al Mansoori"
                 className={textInputClass('contactName')}
               />
             </Field>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="Email de facturación" required error={errors.billingEmail}>
+            <Field label="Billing email" required error={errors.billingEmail}>
               <input
                 type="email"
                 value={form.billingEmail}
                 onChange={e => setField('billingEmail', e.target.value)}
                 onBlur={() => touch('billingEmail')}
-                placeholder="billing@empresa.com"
+                placeholder="billing@company.com"
                 className={textInputClass('billingEmail')}
               />
             </Field>
-            <Field label="Teléfono" required error={errors.phone}>
+            <Field label="Phone" required error={errors.phone}>
               <input
                 type="text"
                 value={form.phone}
@@ -320,31 +322,31 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
       <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center gap-2">
           <MapPin className="w-4 h-4 text-muted-foreground" />
-          <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Dirección y Facturación</span>
+          <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Address & Billing</span>
         </div>
         <div className="p-6 space-y-5">
-          <Field label="Dirección de facturación" required error={errors.billingAddress}>
+          <Field label="Billing address" required error={errors.billingAddress}>
             <input
               type="text"
               value={form.billingAddress}
               onChange={e => setField('billingAddress', e.target.value)}
               onBlur={() => touch('billingAddress')}
-              placeholder="Ej: Office 402, Business Bay Tower"
+              placeholder="e.g. Office 402, Business Bay Tower"
               className={textInputClass('billingAddress')}
             />
           </Field>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="Ciudad" required error={errors.city}>
+            <Field label="City" required error={errors.city}>
               <input
                 type="text"
                 value={form.city}
                 onChange={e => setField('city', e.target.value)}
                 onBlur={() => touch('city')}
-                placeholder="Ej: Dubai"
+                placeholder="e.g. Dubai"
                 className={textInputClass('city')}
               />
             </Field>
-            <Field label="País">
+            <Field label="Country">
               <select
                 value={form.country}
                 onChange={e => setField('country', e.target.value)}
@@ -359,12 +361,12 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
               </select>
             </Field>
           </div>
-          <Field label="Términos de crédito (opcional)">
+          <Field label="Credit terms (optional)">
             <input
               type="text"
               value={form.creditTerms}
               onChange={e => setField('creditTerms', e.target.value)}
-              placeholder="Ej: Net 30"
+              placeholder="e.g. Net 30"
               className={textInputClass('creditTerms')}
             />
           </Field>
@@ -455,6 +457,19 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           </div>
         </ServiceToggle>
 
+        {/* Pay-per-shipment (e.g. Walk-in) */}
+        <ServiceToggle
+          enabled={form.payAtOrigin}
+          onToggle={() => setField('payAtOrigin', !form.payAtOrigin)}
+          icon={Wallet}
+          label="Pay-per-shipment (walk-in style)"
+          colorClass="border-primary bg-primary/5"
+        >
+          <p className="text-xs text-muted-foreground mt-2">
+            Customer pays cash/card per order — either at drop-off (invoiced and marked paid immediately) or at delivery (the waybill tells the driver to collect the shipping fee). The create-order form defaults to a custom sender since each order is a different person.
+          </p>
+        </ServiceToggle>
+
         {/* Bullet */}
         <ServiceToggle
           enabled={form.bulletAllowed}
@@ -506,16 +521,16 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           </div>
         </ServiceToggle>
 
-        {/* Internacional */}
+        {/* International */}
         <ServiceToggle
           enabled={form.intlAllowed}
           onToggle={() => setField('intlAllowed', !form.intlAllowed)}
           icon={Globe}
-          label="Envíos Internacionales"
+          label="International Shipping"
           colorClass="border-indigo-500 bg-indigo-500/5 text-indigo-500"
         >
           <div className="mt-2 max-w-[200px]">
-            <Field label="Descuento (%)">
+            <Field label="Discount (%)">
               <input
                 type="text"
                 value={form.intlDiscountPercent}
@@ -534,18 +549,18 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
     const hasValidLogin = form.portalEmail && form.portalPassword.length >= 8;
     return (
       <div className="space-y-6">
-        {/* Resumen */}
+        {/* Summary */}
         <div className="band rounded-lg p-5 space-y-3">
           <p className="font-mono text-[10px] uppercase tracking-widest flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.45)' }}>
-            <Check className="w-3.5 h-3.5" style={{ color: 'var(--st-green)' }} /> Resumen del cliente
+            <Check className="w-3.5 h-3.5" style={{ color: 'var(--st-green)' }} /> Client summary
           </p>
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-400">Empresa</span>
+              <span className="text-slate-400">Company</span>
               <span className="font-semibold">{form.companyName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Contacto</span>
+              <span className="text-slate-400">Contact</span>
               <span>{form.contactName}</span>
             </div>
             <div className="flex justify-between">
@@ -553,7 +568,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
               <span>{form.billingEmail}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Ciudad</span>
+              <span className="text-slate-400">City</span>
               <span>{form.city}, {form.country}</span>
             </div>
             {(form.codAllowed || form.cardOnDeliveryAllowed || form.bulletAllowed || form.fodAllowed || form.intlAllowed) && (
@@ -562,43 +577,43 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
                 {form.cardOnDeliveryAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">CCOD</span>}
                 {form.bulletAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">Bullet 4H</span>}
                 {form.fodAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">FOD</span>}
-                {form.intlAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">Internacional</span>}
+                {form.intlAllowed && <span className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/80">International</span>}
               </div>
             )}
           </div>
         </div>
 
-        {/* Credenciales del portal */}
+        {/* Portal credentials */}
         <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
           <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               <KeyRound className="w-4 h-4 text-muted-foreground" />
-              <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Acceso al Portal</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-widest text-muted-foreground">Portal Access</span>
             </div>
-            <span className="font-mono text-[9.5px] uppercase tracking-widest text-muted-foreground">Opcional</span>
+            <span className="font-mono text-[9.5px] uppercase tracking-widest text-muted-foreground">Optional</span>
           </div>
           <div className="p-6 space-y-5">
             <p className="text-xs text-muted-foreground">
-              Crea credenciales para que el cliente acceda al portal. Puedes omitir este paso y crearlo después.
+              Create login credentials for the client to access the portal. You can skip this step and create it later.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Field label="Email de acceso" error={errors.portalEmail}>
+              <Field label="Login email" error={errors.portalEmail}>
                 <input
                   type="email"
                   value={form.portalEmail}
                   onChange={e => setField('portalEmail', e.target.value)}
                   onBlur={() => touch('portalEmail')}
-                  placeholder="cliente@empresa.com"
+                  placeholder="client@company.com"
                   className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                 />
               </Field>
-              <Field label="Contraseña" error={errors.portalPassword}>
+              <Field label="Password" error={errors.portalPassword}>
                 <input
                   type="password"
                   value={form.portalPassword}
                   onChange={e => setField('portalPassword', e.target.value)}
                   onBlur={() => touch('portalPassword')}
-                  placeholder="Mínimo 8 caracteres"
+                  placeholder="Minimum 8 characters"
                   className={`w-full rounded-lg border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors ${errors.portalPassword ? 'border-red-500' : 'border-input'}`}
                 />
               </Field>
@@ -606,7 +621,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
             {hasValidLogin && (
               <div className="flex items-center gap-2 text-xs text-green-500 animate-in fade-in">
                 <Check className="w-3.5 h-3.5" />
-                <span>Se creará un acceso al portal para este cliente</span>
+                <span>A portal login will be created for this client</span>
               </div>
             )}
           </div>
@@ -662,7 +677,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
           {step === 3 && renderStep3()}
           {step === 4 && renderStep4()}
 
-          {/* Navegación */}
+          {/* Navigation */}
           <div className={`flex gap-3 mt-6 ${step > 1 ? 'flex-row' : 'flex-row-reverse'}`}>
             {step === 4 ? (
               <button
@@ -671,9 +686,9 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
                 className="flex-1 py-3 bg-primary text-primary-foreground rounded-full font-semibold text-[14px] hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Creando…</>
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
                 ) : (
-                  <><Building2 className="w-4 h-4" /> Crear Cliente</>
+                  <><Building2 className="w-4 h-4" /> Create Client</>
                 )}
               </button>
             ) : (
@@ -682,7 +697,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
                 disabled={!canAdvance()}
                 className="flex-1 py-3 bg-primary text-primary-foreground rounded-full font-semibold text-[14px] hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Siguiente <ChevronRight className="w-4 h-4" />
+                Next <ChevronRight className="w-4 h-4" />
               </button>
             )}
             {step > 1 && (
@@ -691,7 +706,7 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
                 disabled={isSubmitting}
                 className="py-3 px-5 border border-border text-foreground rounded-full font-medium text-[13px] hover:bg-muted transition-all flex items-center gap-2 disabled:opacity-50"
               >
-                <ChevronLeft className="w-4 h-4" /> Atrás
+                <ChevronLeft className="w-4 h-4" /> Back
               </button>
             )}
           </div>
@@ -700,4 +715,3 @@ export default function CreateClientWizard({ open, onOpenChange, onSuccess }: Cr
     </Dialog>
   );
 }
-

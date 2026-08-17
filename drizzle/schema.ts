@@ -150,6 +150,11 @@ export const clientAccounts = mysqlTable("clientAccounts", {
   cardFeePercent: varchar("cardFeePercent", { length: 50 }), // Custom CCOD percentage (null = use default)
   cardMinFee: varchar("cardMinFee", { length: 50 }), // Custom min CCOD fee (null = use default)
   cardMaxFee: varchar("cardMaxFee", { length: 50 }), // Custom max CCOD fee (null = use default)
+
+  // Pay-per-shipment clients (e.g. Walk-in): settled cash/card at drop-off or
+  // delivery instead of periodic invoicing — excluded from the invoice due-list
+  payAtOrigin: int("payAtOrigin").default(0).notNull(), // 0 = no, 1 = yes
+
   manualRateTierId: int("manualRateTierId"), // Admin-assigned rate tier (overrides automatic volume calculation)
 
   // Custom rates - when set, these override tier rates completely
@@ -247,6 +252,15 @@ export const orders = mysqlTable("orders", {
   codCurrency: varchar("codCurrency", { length: 10 }),
   // 'cash' | 'card' | 'any' — methods the shipper accepts at the door (null when no COD; legacy COD rows = cash)
   codPaymentMethod: varchar("codPaymentMethod", { length: 10 }),
+
+  // Origin payment — pay-per-shipment clients (payAtOrigin) who pay cash/card
+  // at drop-off instead of being invoiced. Not a remittance: this is PathXpress's
+  // own shipping-fee revenue, collected once and never owed back to anyone.
+  originPaymentCollected: int("originPaymentCollected").default(0).notNull(), // 0 = no, 1 = yes
+  originPaymentMethod: varchar("originPaymentMethod", { length: 10 }), // 'cash' | 'card'
+  originPaymentAmount: varchar("originPaymentAmount", { length: 50 }),
+  originPaymentReference: varchar("originPaymentReference", { length: 100 }), // required when method = 'card'
+  originPaymentCollectedAt: timestamp("originPaymentCollectedAt"),
 
   // Fit on Delivery service
   fitOnDelivery: int("fitOnDelivery").default(0).notNull(), // 0 = no, 1 = yes

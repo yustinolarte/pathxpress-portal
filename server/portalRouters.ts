@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { publicProcedure, portalAdminProcedure, portalCustomerProcedure, portalProtectedProcedure, router } from './_core/trpc';
-import { normalizeEmirate, normalizeCity, normalizeStoredPhone } from '@shared/uae';
+import { normalizeEmirate, normalizeCity, normalizeDisplayName, normalizeStoredPhone } from '@shared/uae';
 import { cachedQuery, cacheInvalidate, cacheInvalidatePrefix } from './_core/queryCache';
 import {
   hashPassword,
@@ -1628,6 +1628,11 @@ export const adminPortalRouter = router({
         codCurrency: z.string().default('AED'),
         codPaymentMethod: z.enum(['cash', 'card', 'any']).default('cash'),
         fitOnDelivery: z.number().default(0),
+        // Origin payment — pay-per-shipment clients (payAtOrigin) who pay cash/card at drop-off
+        originPaymentCollected: z.boolean().optional(),
+        originPaymentMethod: z.enum(['cash', 'card']).optional(),
+        originPaymentAmount: z.string().optional(),
+        originPaymentReference: z.string().optional(),
         // Shipper override fields (for walk-in customers)
         shipperOverride: z.boolean().optional(),
         shipperName: z.string().optional(),
@@ -1677,18 +1682,40 @@ export const adminPortalRouter = router({
       }
       const adminCodMethod = input.shipment.codRequired === 1 ? input.shipment.codPaymentMethod : null;
 
+      // Origin payment gating: only pay-per-shipment clients can be marked as paid at drop-off
+      if (input.shipment.originPaymentCollected) {
+        if (clientAccount.payAtOrigin !== 1) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment at drop-off not allowed for this client' });
+        }
+        if (!input.shipment.originPaymentMethod || !input.shipment.originPaymentAmount) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment method and amount are required' });
+        }
+        if (input.shipment.originPaymentMethod === 'card' && !input.shipment.originPaymentReference) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment reference is required for card payments' });
+        }
+      }
+
       // Canonicalise geography and phones before they reach the DB. The admin
       // dialog used to store emirate short codes ("RAK") and raw phone strings
       // ("+971 0551234567"), which split reporting and broke click-to-call.
+      const destinationCountryInput = input.shipment.destinationCountry.trim();
+      const destinationCountryKey = destinationCountryInput.toUpperCase();
+      const isInternational = destinationCountryKey !== 'UAE'
+        && destinationCountryKey !== 'UNITED ARAB EMIRATES';
+      const canonicalDestinationCountry = isInternational ? destinationCountryInput : 'UAE';
       const canonicalEmirate = normalizeEmirate(input.shipment.emirate)
         ?? normalizeEmirate(input.shipment.city)
         ?? input.shipment.emirate
         ?? null;
-      const canonicalCity = normalizeCity(input.shipment.city) ?? input.shipment.city;
-      const canonicalShipperCity = normalizeCity(input.shipment.shipperCity) ?? input.shipment.shipperCity;
+      const canonicalCity = normalizeCity(input.shipment.city)
+        ?? normalizeDisplayName(input.shipment.city)
+        ?? input.shipment.city;
+      const canonicalShipperCity = normalizeCity(input.shipment.shipperCity)
+        ?? normalizeDisplayName(input.shipment.shipperCity)
+        ?? input.shipment.shipperCity;
 
       // Generate waybill number
-      const waybillNumber = await generateWaybillNumber();
+      const waybillNumber = await generateWaybillNumber(isInternational);
 
       // Determine shipper info - use override if provided, else use client account
       const shipperName = input.shipment.shipperOverride && input.shipment.shipperName
@@ -1729,7 +1756,7 @@ export const adminPortalRouter = router({
         city: canonicalCity,
         emirate: canonicalEmirate,
         postalCode: input.shipment.postalCode || null,
-        destinationCountry: input.shipment.destinationCountry,
+        destinationCountry: canonicalDestinationCountry,
 
         // Shipment details
         pieces: input.shipment.pieces,
@@ -1754,6 +1781,18 @@ export const adminPortalRouter = router({
 
         // FOD
         fitOnDelivery: input.shipment.fitOnDelivery,
+
+        // Origin payment (pay-per-shipment clients) — amount is always recorded for
+        // payAtOrigin clients whether or not it was collected at creation, so staff
+        // can see what's owed. Still flows through normal invoicing (not excluded):
+        // a walk-in customer can ask for a formal invoice regardless of when they pay.
+        originPaymentCollected: input.shipment.originPaymentCollected ? 1 : 0,
+        // Stored either way: 'cash' when already paid, or the expected method
+        // ("to collect with") when payment is still due at delivery.
+        originPaymentMethod: clientAccount.payAtOrigin === 1 ? (input.shipment.originPaymentMethod ?? null) : null,
+        originPaymentAmount: clientAccount.payAtOrigin === 1 ? (input.shipment.originPaymentAmount ?? null) : null,
+        originPaymentReference: input.shipment.originPaymentCollected ? (input.shipment.originPaymentReference || null) : null,
+        originPaymentCollectedAt: input.shipment.originPaymentCollected ? new Date() : null,
 
         // Coordinates for driver navigation
         latitude: input.shipment.latitude || null,
@@ -1796,6 +1835,44 @@ export const adminPortalRouter = router({
             remittedToClientDate: null,
             notes: null,
           });
+        }
+      }
+
+      // Paid at drop-off: don't leave it sitting as an unbilled shipment — invoice
+      // it right now, mark it paid, and hand the customer a real invoice number
+      // on the spot. Bill To resolves to the sender automatically since this is
+      // always a single-shipment invoice for a payAtOrigin client (see getInvoiceDetails).
+      if (input.shipment.originPaymentCollected && clientAccount.payAtOrigin === 1) {
+        try {
+          const { generateInvoiceForClient, getDb } = await import('./db');
+          const now = new Date();
+          const invoiceId = await generateInvoiceForClient(
+            input.clientId, now, now, [order.id], 'custom', { allowAnyStatus: true }
+          );
+          if (invoiceId) {
+            const db = await getDb();
+            if (db) {
+              const { invoices } = await import('../drizzle/schema');
+              const { eq: eqOp } = await import('drizzle-orm');
+              const [inv] = await db.select({ total: invoices.total }).from(invoices).where(eqOp(invoices.id, invoiceId)).limit(1);
+              if (inv) {
+                await db.update(invoices).set({
+                  status: 'paid',
+                  amountPaid: inv.total,
+                  balance: '0.00',
+                  paymentDate: now,
+                  paymentReference: input.shipment.originPaymentMethod === 'card'
+                    ? (input.shipment.originPaymentReference || null)
+                    : 'CASH',
+                }).where(eqOp(invoices.id, invoiceId));
+                cacheInvalidate('admin:allInvoices');
+              }
+            }
+          }
+        } catch (err) {
+          // Order is already created — don't fail it over an invoicing hiccup.
+          // It stays billable normally, so staff can invoice it manually later.
+          console.error('Failed to auto-invoice paid-at-origin order', order.id, err);
         }
       }
 
@@ -4207,6 +4284,7 @@ export const clientsRouter = router({
       intlAllowed: z.boolean().optional(),
       intlDiscountPercent: z.string().optional(),
       defaultSettlementPeriod: z.enum(['weekly', 'biweekly', 'monthly', 'custom']).optional(),
+      payAtOrigin: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
@@ -4234,6 +4312,7 @@ export const clientsRouter = router({
           intlAllowed: input.intlAllowed ? 1 : 0,
           intlDiscountPercent: input.intlDiscountPercent || null,
           defaultSettlementPeriod: input.defaultSettlementPeriod ?? 'custom',
+          payAtOrigin: input.payAtOrigin ? 1 : 0,
         })
         .where(eq(clientAccounts.id, input.clientId));
 

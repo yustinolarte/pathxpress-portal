@@ -33,6 +33,7 @@ interface Client {
     fodAllowed: number;
     bulletAllowed: number;
     fodFee?: string | null;
+    payAtOrigin?: number;
 }
 
 interface AdminCreateOrderDialogProps {
@@ -74,6 +75,10 @@ const INITIAL_FORM = {
     fitOnDelivery: false,
     preferredDate: '',
     preferredTime: '',
+    originPaymentCollected: false,
+    originPaymentMethod: 'cash' as 'cash' | 'card',
+    originPaymentAmount: '',
+    originPaymentReference: '',
 };
 
 const INITIAL_SHIPPER = {
@@ -191,6 +196,22 @@ export default function AdminCreateOrderDialog({
             clearShipmentFields();
         }
     }, [open]);
+
+    // Pay-per-shipment clients (e.g. Walk-in) almost never ship as themselves —
+    // default to the custom shipper block so staff type the real sender instead
+    // of leaving the client's own placeholder contact info on the waybill. Each
+    // order is also a one-off transaction for a different person, not a batch
+    // for the same company, so don't leave the dialog open by default either.
+    // Default assumption: the customer already paid at the counter — staff only
+    // have to act (toggle "Payment to Collect") for the exception, not the norm.
+    useEffect(() => {
+        if (selectedClient?.payAtOrigin === 1) {
+            setOverrideShipper(true);
+            setShowShipperMap(true);
+            setKeepClientAfterCreate(false);
+            setFormData(fd => ({ ...fd, originPaymentCollected: true }));
+        }
+    }, [selectedClientId]);
 
     /* ---------------------------------------------------------------- quotes */
 
@@ -424,6 +445,14 @@ export default function AdminCreateOrderDialog({
         if (formData.codRequired && (!formData.codAmount || parseFloat(formData.codAmount) <= 0)) {
             return toast.error('Please enter a valid COD amount');
         }
+        if (selectedClient?.payAtOrigin === 1 && !formData.originPaymentCollected) {
+            if (!formData.originPaymentAmount || parseFloat(formData.originPaymentAmount) <= 0) {
+                return toast.error('Please enter the amount to collect');
+            }
+            if (formData.originPaymentMethod === 'card' && !formData.originPaymentReference.trim()) {
+                return toast.error('Please enter the card payment reference');
+            }
+        }
         if (isPreferredTimeService(formData.serviceType) && (!formData.preferredDate || !formData.preferredTime)) {
             return toast.error('Please select a preferred delivery date and time window');
         }
@@ -467,6 +496,17 @@ export default function AdminCreateOrderDialog({
                 codCurrency: 'AED',
                 codPaymentMethod: formData.codRequired ? formData.codPaymentMethod : undefined,
                 fitOnDelivery: formData.fitOnDelivery ? 1 : 0,
+                // Pay-per-shipment clients: default assumption is "already paid" (silently
+                // invoiced + marked paid, see adminCreateOrder). "Payment to Collect" flips
+                // that — nothing's paid yet, so the amount/method entered here is what's
+                // still owed, and it's what puts the collect-at-delivery banner on the waybill.
+                originPaymentCollected: selectedClient?.payAtOrigin === 1 ? formData.originPaymentCollected : false,
+                originPaymentMethod: selectedClient?.payAtOrigin === 1
+                    ? (formData.originPaymentCollected ? 'cash' : formData.originPaymentMethod)
+                    : undefined,
+                originPaymentAmount: selectedClient?.payAtOrigin === 1
+                    ? (formData.originPaymentCollected ? total.toFixed(2) : formData.originPaymentAmount)
+                    : undefined,
                 latitude: pickedLocation.latitude,
                 longitude: pickedLocation.longitude,
                 // Only send a pickup pin that belongs to *this* order.
@@ -1033,6 +1073,59 @@ export default function AdminCreateOrderDialog({
                                                     </div>
                                                 </div>
                                             </label>
+
+                                            {selectedClient.payAtOrigin === 1 && (
+                                                <>
+                                                    <label className={`flex items-center p-3 border rounded-lg transition-colors cursor-pointer ${!formData.originPaymentCollected ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
+                                                        <Checkbox
+                                                            checked={!formData.originPaymentCollected}
+                                                            onCheckedChange={checked => setFormData({
+                                                                ...formData,
+                                                                originPaymentCollected: !checked,
+                                                                originPaymentAmount: checked && !formData.originPaymentAmount ? total.toFixed(2) : formData.originPaymentAmount,
+                                                            })}
+                                                            className="mr-3"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="font-bold text-sm">Payment to Collect</div>
+                                                            <div className="text-[11px] text-muted-foreground">
+                                                                {formData.originPaymentCollected
+                                                                    ? 'Customer already paid — an invoice is issued and marked paid automatically'
+                                                                    : 'Not paid yet — shows on the waybill so the driver collects it at delivery'}
+                                                            </div>
+                                                        </div>
+                                                    </label>
+
+                                                    {!formData.originPaymentCollected && (
+                                                        <div className="pl-8 -mt-2 space-y-3">
+                                                            <div className="relative">
+                                                                <input
+                                                                    className={`${inputClass} pl-12 h-10 font-bold`}
+                                                                    placeholder="0.00"
+                                                                    inputMode="decimal"
+                                                                    value={formData.originPaymentAmount}
+                                                                    onChange={e => setFormData({ ...formData, originPaymentAmount: decimalOnly(e.target.value) })}
+                                                                />
+                                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">AED</span>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">To collect with</label>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    {([
+                                                                        { value: 'cash', label: 'Cash' },
+                                                                        { value: 'card', label: 'Card' },
+                                                                    ] as const).map(opt => (
+                                                                        <label key={opt.value} className={`flex items-center gap-1.5 p-2 border rounded-lg cursor-pointer transition-colors ${formData.originPaymentMethod === opt.value ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}>
+                                                                            <input type="radio" name="admin_origin_payment_method" className="w-3.5 h-3.5 accent-[var(--primary)]" checked={formData.originPaymentMethod === opt.value} onChange={() => setFormData({ ...formData, originPaymentMethod: opt.value })} />
+                                                                            <span className="font-bold text-xs">{opt.label}</span>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </section>
