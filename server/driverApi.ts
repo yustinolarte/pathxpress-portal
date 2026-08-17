@@ -405,6 +405,105 @@ router.get('/profile', driverAuthMiddleware, async (req: DriverRequest, res: Res
 
 // ============ ROUTES ============
 
+/**
+ * Shapes one routeOrders+orders row into what the app displays for a stop.
+ *
+ * A stop's real-world location/contact is the shipper's on a normal order's
+ * pickup leg and the consignee's on its delivery leg — but a return inverts
+ * that (the pickup leg collects the item back from the consignee, the
+ * delivery leg drops it back at the shipper). Getting this backwards for
+ * returns is exactly the bug that shipped before: the delivery leg showed
+ * the address where the item was collected instead of where it's going.
+ * Same rule as server/driverAdmin.ts `resolveStopCoords`.
+ */
+function formatDriverStop(
+    item: { routeOrder: typeof routeOrders.$inferSelect; order: typeof orders.$inferSelect },
+    isDisabled: boolean,
+) {
+    const stopType = item.routeOrder.type || 'delivery';
+    const isPickup = stopType === 'pickup';
+    const isShipperSide = item.order.isReturn === 1 ? !isPickup : isPickup;
+
+    const shipperLat = item.order.shipperLat ? parseFloat(item.order.shipperLat) : null;
+    const shipperLng = item.order.shipperLng ? parseFloat(item.order.shipperLng) : null;
+    const consigneeLat = item.order.latitude ? parseFloat(item.order.latitude) : null;
+    const consigneeLng = item.order.longitude ? parseFloat(item.order.longitude) : null;
+    const lat = isShipperSide ? shipperLat : consigneeLat;
+    const lng = isShipperSide ? shipperLng : consigneeLng;
+    const addr = isShipperSide ? item.order.shipperAddress : item.order.address;
+    const city = isShipperSide ? item.order.shipperCity : item.order.city;
+
+    return {
+        id: item.routeOrder.id,
+        orderId: item.order.id,
+        sequence: item.routeOrder.sequence,
+        stopType, // 'pickup' or 'delivery'
+        isDisabled, // delivery disabled until its pickup is done
+
+        // Waybill info
+        waybillNumber: item.order.waybillNumber,
+        packageRef: item.order.waybillNumber,
+        pieces: item.order.pieces,
+        weight: item.order.weight,
+        serviceType: item.order.serviceType,
+
+        // This stop's actual location/contact — shipper or consignee depending on
+        // stop type AND return status (see isShipperSide above).
+        contactName: isShipperSide ? item.order.shipperName : item.order.customerName,
+        contactPhone: isShipperSide ? item.order.shipperPhone : item.order.customerPhone,
+        address: addr,
+        city,
+
+        // Keep full info (both sides, raw) for the detail view.
+        shipperName: item.order.shipperName,
+        shipperPhone: item.order.shipperPhone,
+        shipperAddress: item.order.shipperAddress,
+        shipperCity: item.order.shipperCity,
+        shipperLat,
+        shipperLng,
+        customerName: item.order.customerName,
+        customerPhone: item.order.customerPhone,
+        deliveryAddress: item.order.address,
+        deliveryCity: item.order.city,
+
+        latitude: lat,
+        longitude: lng,
+
+        // Navigation links for driver app
+        mapsUrl: (lat && lng)
+            ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`,
+        wazeUrl: (lat && lng)
+            ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+            : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`,
+
+        // COD info (only relevant for delivery)
+        codRequired: item.order.codRequired === 1,
+        codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
+        codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
+
+        // Fit on Delivery (FOD) — customer gets ~20 min to try the item on at
+        // the door and can return it on the spot if it doesn't fit.
+        fitOnDelivery: item.order.fitOnDelivery === 1,
+
+        // Return/exchange linkage — an exchange is two orders pointing at each
+        // other via exchangeOrderId, both pointing at the original via originalOrderId
+        orderType: item.order.orderType,
+        isReturn: item.order.isReturn,
+        originalOrderId: item.order.originalOrderId,
+        exchangeOrderId: item.order.exchangeOrderId,
+
+        // Status
+        status: item.routeOrder.status?.toUpperCase() || 'PENDING',
+        proofPhotoUrl: item.routeOrder.proofPhotoUrl,
+        proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
+        proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
+        notes: item.routeOrder.notes,
+        // The note the client wrote when creating/editing the waybill.
+        specialInstructions: item.order.specialInstructions,
+    };
+}
+
 router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { routeId } = req.params;
@@ -448,8 +547,7 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
 
         // Format stops for the app - include both pickup and delivery info
         const stops = routeOrdersList.map((item) => {
-            const stopType = item.routeOrder.type || 'delivery';
-            const isPickup = stopType === 'pickup';
+            const isPickup = (item.routeOrder.type || 'delivery') === 'pickup';
 
             // Delivery stops are disabled until their corresponding pickup is completed
             let isDisabled = false;
@@ -461,92 +559,7 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
                 }
             }
 
-            return {
-                id: item.routeOrder.id,
-                orderId: item.order.id,
-                sequence: item.routeOrder.sequence,
-                stopType: stopType, // 'pickup' or 'delivery'
-                isDisabled: isDisabled, // NEW: delivery disabled until pickup done
-
-                // Waybill info
-                waybillNumber: item.order.waybillNumber,
-                packageRef: item.order.waybillNumber,
-                pieces: item.order.pieces,
-                weight: item.order.weight,
-                serviceType: item.order.serviceType,
-
-                // For PICKUP: show shipper info (where to collect)
-                // For DELIVERY: show customer info (where to deliver)
-                contactName: isPickup ? item.order.shipperName : item.order.customerName,
-                contactPhone: isPickup ? item.order.shipperPhone : item.order.customerPhone,
-                address: isPickup ? item.order.shipperAddress : item.order.address,
-                city: isPickup ? item.order.shipperCity : item.order.city,
-
-                // Keep full info for detail view
-                shipperName: item.order.shipperName,
-                shipperPhone: item.order.shipperPhone,
-                shipperAddress: item.order.shipperAddress,
-                shipperCity: item.order.shipperCity,
-                customerName: item.order.customerName,
-                customerPhone: item.order.customerPhone,
-                deliveryAddress: item.order.address,
-                deliveryCity: item.order.city,
-
-                // Coordinates: only the delivery leg has real lat/lng (captured at the
-                // customer address). Pickups have no shipper coordinates in the schema,
-                // so emitting the customer's coords for a pickup stop would put the map
-                // pin at the wrong location — the app falls back to geocoding/address nav.
-                latitude: (!isPickup && item.order.latitude) ? parseFloat(item.order.latitude) : null,
-                longitude: (!isPickup && item.order.longitude) ? parseFloat(item.order.longitude) : null,
-
-                // Navigation links for driver app
-                mapsUrl: (() => {
-                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
-                    const city = isPickup ? item.order.shipperCity : item.order.city;
-                    const lat = isPickup ? null : item.order.latitude;
-                    const lng = isPickup ? null : item.order.longitude;
-                    return (lat && lng)
-                        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`;
-                })(),
-                wazeUrl: (() => {
-                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
-                    const city = isPickup ? item.order.shipperCity : item.order.city;
-                    const lat = isPickup ? null : item.order.latitude;
-                    const lng = isPickup ? null : item.order.longitude;
-                    return (lat && lng)
-                        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-                        : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
-                })(),
-
-                // COD info (only relevant for delivery)
-                codRequired: item.order.codRequired === 1,
-                codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
-                codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
-
-                // Fit on Delivery (FOD) — customer gets ~20 min to try the item on at
-                // the door and can return it on the spot if it doesn't fit.
-                fitOnDelivery: item.order.fitOnDelivery === 1,
-
-                // Return/exchange linkage — an exchange is two orders pointing at each
-                // other via exchangeOrderId, both pointing at the original via originalOrderId
-                orderType: item.order.orderType,
-                isReturn: item.order.isReturn,
-                originalOrderId: item.order.originalOrderId,
-                exchangeOrderId: item.order.exchangeOrderId,
-
-                // Status
-                status: item.routeOrder.status?.toUpperCase() || 'PENDING',
-                proofPhotoUrl: item.routeOrder.proofPhotoUrl,
-                proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
-                proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
-                notes: item.routeOrder.notes,
-                // The note the client wrote when creating/editing the waybill
-                // ("Any special handling instructions or notes for delivery...").
-                // Was missing from this payload entirely — the driver app already
-                // reads `specialInstructions` on the stop, it just never arrived.
-                specialInstructions: item.order.specialInstructions,
-            };
+            return formatDriverStop(item, isDisabled);
         });
 
         // Calculate stats
@@ -693,68 +706,27 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             .where(eq(routeOrders.routeId, routeId))
             .orderBy(sql`${routeOrders.sequence} IS NULL`, routeOrders.sequence, routeOrders.id);
 
+        // First pass: collect pickup status by orderId (same rule as GET route)
+        const pickupStatusByOrderId = new Map<number, string>();
+        routeOrdersList.forEach((item) => {
+            if (item.routeOrder.type === 'pickup') {
+                pickupStatusByOrderId.set(item.order.id, item.routeOrder.status || 'pending');
+            }
+        });
+
         // Format stops for the app - same as GET route
         const stops = routeOrdersList.map((item) => {
-            const stopType = item.routeOrder.type || 'delivery';
-            const isPickup = stopType === 'pickup';
+            const isPickup = (item.routeOrder.type || 'delivery') === 'pickup';
 
-            return {
-                id: item.routeOrder.id,
-                orderId: item.order.id,
-                sequence: item.routeOrder.sequence,
-                stopType: stopType,
-                waybillNumber: item.order.waybillNumber,
-                packageRef: item.order.waybillNumber,
-                pieces: item.order.pieces,
-                weight: item.order.weight,
-                serviceType: item.order.serviceType,
-                contactName: isPickup ? item.order.shipperName : item.order.customerName,
-                contactPhone: isPickup ? item.order.shipperPhone : item.order.customerPhone,
-                address: isPickup ? item.order.shipperAddress : item.order.address,
-                city: isPickup ? item.order.shipperCity : item.order.city,
-                shipperName: item.order.shipperName,
-                shipperPhone: item.order.shipperPhone,
-                shipperAddress: item.order.shipperAddress,
-                shipperCity: item.order.shipperCity,
-                customerName: item.order.customerName,
-                customerPhone: item.order.customerPhone,
-                deliveryAddress: item.order.address,
-                deliveryCity: item.order.city,
-                latitude: (!isPickup && item.order.latitude) ? parseFloat(item.order.latitude) : null,
-                longitude: (!isPickup && item.order.longitude) ? parseFloat(item.order.longitude) : null,
-                mapsUrl: (() => {
-                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
-                    const city = isPickup ? item.order.shipperCity : item.order.city;
-                    const lat = isPickup ? null : item.order.latitude;
-                    const lng = isPickup ? null : item.order.longitude;
-                    return (lat && lng)
-                        ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${addr}, ${city}, UAE`)}`;
-                })(),
-                wazeUrl: (() => {
-                    const addr = isPickup ? item.order.shipperAddress : item.order.address;
-                    const city = isPickup ? item.order.shipperCity : item.order.city;
-                    const lat = isPickup ? null : item.order.latitude;
-                    const lng = isPickup ? null : item.order.longitude;
-                    return (lat && lng)
-                        ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-                        : `https://waze.com/ul?q=${encodeURIComponent(`${addr}, ${city}`)}&navigate=yes`;
-                })(),
-                codRequired: item.order.codRequired === 1,
-                codAmount: item.order.codRequired === 1 && item.order.codAmount ? parseFloat(item.order.codAmount) : 0,
-                codPaymentMethod: item.order.codRequired === 1 ? (item.order.codPaymentMethod || 'cash') : null,
-                fitOnDelivery: item.order.fitOnDelivery === 1,
-                orderType: item.order.orderType,
-                isReturn: item.order.isReturn,
-                originalOrderId: item.order.originalOrderId,
-                exchangeOrderId: item.order.exchangeOrderId,
-                status: item.routeOrder.status?.toUpperCase() || 'PENDING',
-                proofPhotoUrl: item.routeOrder.proofPhotoUrl,
-                proofPhotoUrl2: item.routeOrder.proofPhotoUrl2,
-                proofPhotoUrls: getProofPhotoUrls(item.routeOrder),
-                notes: item.routeOrder.notes,
-                specialInstructions: item.order.specialInstructions,
-            };
+            let isDisabled = false;
+            if (!isPickup) {
+                const pickupStatus = pickupStatusByOrderId.get(item.order.id);
+                if (pickupStatus && pickupStatus !== 'picked_up') {
+                    isDisabled = true;
+                }
+            }
+
+            return formatDriverStop(item, isDisabled);
         });
 
         const pickupCount = stops.filter(s => s.stopType === 'pickup').length;

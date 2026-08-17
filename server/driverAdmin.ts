@@ -157,6 +157,7 @@ export async function createDriver(data: {
     email?: string;
     phone?: string;
     vehicleNumber?: string;
+    photoUrl: string;
     emiratesId?: string;
     licenseNo?: string;
 }) {
@@ -180,6 +181,7 @@ export async function createDriver(data: {
             email: data.email || null,
             phone: data.phone || null,
             vehicleNumber: data.vehicleNumber || null,
+            photoUrl: data.photoUrl,
             emiratesId: data.emiratesId || null,
             licenseNo: data.licenseNo || null,
             status: 'active',
@@ -194,6 +196,7 @@ export async function updateDriver(id: number, data: {
     email?: string;
     phone?: string;
     vehicleNumber?: string;
+    photoUrl?: string;
     emiratesId?: string;
     licenseNo?: string;
     status?: 'active' | 'inactive' | 'suspended';
@@ -356,6 +359,9 @@ export async function getRouteDetails(routeId: string) {
         latitude: item.order.latitude,
         longitude: item.order.longitude,
         locationAccuracy: item.order.locationAccuracy,
+        shipperName: item.order.shipperName,
+        shipperPhone: item.order.shipperPhone,
+        shipperAddress: item.order.shipperAddress,
         shipperCity: item.order.shipperCity,
         shipperLat: item.order.shipperLat,
         shipperLng: item.order.shipperLng,

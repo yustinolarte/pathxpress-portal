@@ -7,6 +7,17 @@ import { TRPCError } from '@trpc/server';
 import { publicProcedure, router } from './_core/trpc';
 import * as driverAdmin from './driverAdmin';
 import { RouteGuardError } from './driverAdmin';
+import { uploadImageToCloudinary } from './cloudinary';
+
+const driverNameSchema = z.string().trim().min(2).max(100).refine(
+    value => !/^[A-Z]{1,4}[\s-]*\d{1,7}$/i.test(value),
+    'Driver name looks like a vehicle plate',
+);
+
+const optionalVehicleNumberSchema = z.string().trim().max(50).refine(
+    value => value.length === 0 || /\d/.test(value),
+    'Vehicle number must include at least one digit',
+).optional();
 
 /** A single stop leg, in the position the admin placed it. */
 const stopSpecSchema = z.object({
@@ -63,10 +74,11 @@ export const driverRouter = router({
         .input(z.object({
             username: z.string().min(1),
             password: z.string().min(6),
-            fullName: z.string().min(1),
-            email: z.string().email().optional(),
+            fullName: driverNameSchema,
+            email: z.union([z.string().email(), z.literal('')]).optional(),
             phone: z.string().optional(),
-            vehicleNumber: z.string().optional(),
+            vehicleNumber: optionalVehicleNumberSchema,
+            photoUrl: z.string().url(),
             emiratesId: z.string().optional(),
             licenseNo: z.string().optional(),
         }))
@@ -80,10 +92,11 @@ export const driverRouter = router({
     updateDriver: publicProcedure
         .input(z.object({
             id: z.number(),
-            fullName: z.string().optional(),
-            email: z.string().email().optional(),
+            fullName: driverNameSchema.optional(),
+            email: z.union([z.string().email(), z.literal('')]).optional(),
             phone: z.string().optional(),
-            vehicleNumber: z.string().optional(),
+            vehicleNumber: optionalVehicleNumberSchema,
+            photoUrl: z.string().url().optional(),
             emiratesId: z.string().optional(),
             licenseNo: z.string().optional(),
             status: z.enum(['active', 'inactive', 'suspended']).optional(),
@@ -94,6 +107,24 @@ export const driverRouter = router({
             }
             const { id, ...data } = input;
             return driverAdmin.updateDriver(id, data);
+        }),
+
+    uploadDriverPhoto: publicProcedure
+        .input(z.object({
+            imageBase64: z.string().min(100).max(8_000_000).refine(
+                value => /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(value),
+                'Only JPEG, PNG or WebP images are supported',
+            ),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            const photoUrl = await uploadImageToCloudinary(input.imageBase64, 'pathxpress/drivers');
+            if (!photoUrl) {
+                throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Driver photo upload failed' });
+            }
+            return { photoUrl };
         }),
 
     deleteDriver: publicProcedure

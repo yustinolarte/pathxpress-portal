@@ -155,7 +155,7 @@ const DRIVERS_GRID = '1fr 1.3fr 0.9fr 0.9fr 0.7fr';
 // mono with 0.06em tracking that label needs ~100px, which the old 0.8fr/1fr shares
 // didn't give it — the header wrapped onto a second line and buckled the row.
 const SHIFT_GRID = '1.4fr 1fr 1fr 0.9fr 0.7fr 1.25fr';
-const PAYROLL_GRID = '1.6fr 0.9fr 0.9fr 0.7fr 0.9fr 0.6fr 0.6fr 1.1fr';
+const PAYROLL_GRID = '1.6fr 0.9fr 1.1fr 0.9fr 0.6fr 0.6fr 1.1fr';
 const REPORTS_GRID = '1.1fr 0.85fr 2fr 1.15fr 1.05fr 0.7fr 0.7fr';
 
 const thStyle: React.CSSProperties = {
@@ -243,6 +243,7 @@ export default function DriversSection() {
         email: '',
         phone: '',
         vehicleNumber: '',
+        photoUrl: '',
         emiratesId: '',
         licenseNo: '',
     });
@@ -324,11 +325,16 @@ export default function DriversSection() {
         onSuccess: () => {
             toast.success('Driver created successfully');
             setCreateDriverDialogOpen(false);
-            setNewDriver({ username: '', password: '', fullName: '', email: '', phone: '', vehicleNumber: '', emiratesId: '', licenseNo: '' });
+            setNewDriver({ username: '', password: '', fullName: '', email: '', phone: '', vehicleNumber: '', photoUrl: '', emiratesId: '', licenseNo: '' });
             refetchDrivers();
             refetchDispatch();
         },
         onError: (error) => toast.error(error.message),
+    });
+
+    const uploadDriverPhotoMutation = trpc.portal.drivers.uploadDriverPhoto.useMutation({
+        onSuccess: ({ photoUrl }) => setNewDriver(current => ({ ...current, photoUrl })),
+        onError: (error) => toast.error(error.message || 'Failed to upload driver photo'),
     });
 
     const updateDriverMutation = trpc.portal.drivers.updateDriver.useMutation({
@@ -480,11 +486,38 @@ export default function DriversSection() {
 
     // Handlers
     const handleCreateDriver = () => {
-        if (!newDriver.username || !newDriver.password || !newDriver.fullName) {
-            toast.error('Username, password, and full name are required');
+        if (!newDriver.username || !newDriver.password || !newDriver.fullName || !newDriver.photoUrl) {
+            toast.error('Username, password, full name, and driver photo are required');
             return;
         }
-        createDriverMutation.mutate({ ...newDriver });
+        if (newDriver.vehicleNumber && !/\d/.test(newDriver.vehicleNumber)) {
+            toast.error('Vehicle number must include at least one digit');
+            return;
+        }
+        createDriverMutation.mutate({
+            ...newDriver,
+            email: newDriver.email || undefined,
+            phone: newDriver.phone || undefined,
+            vehicleNumber: newDriver.vehicleNumber || undefined,
+            emiratesId: newDriver.emiratesId || undefined,
+            licenseNo: newDriver.licenseNo || undefined,
+        });
+    };
+
+    const handleDriverPhotoChange = (file?: File) => {
+        if (!file) return;
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            toast.error('Please choose a JPEG, PNG or WebP image');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Driver photo must be 5 MB or smaller');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => uploadDriverPhotoMutation.mutate({ imageBase64: String(reader.result) });
+        reader.onerror = () => toast.error('Could not read the selected image');
+        reader.readAsDataURL(file);
     };
 
     const handleUpdateDriver = () => {
@@ -1196,6 +1229,18 @@ export default function DriversSection() {
 
             {/* alerts strip */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                {unassignedOrders.length > 0 && (dispatch?.activeDrivers ?? 0) === 0 && (
+                    <div className="md:col-span-3 flex items-center gap-3 px-4 py-3.5 rounded-xl bg-primary/10 border border-[color-mix(in_srgb,var(--primary)_28%,transparent)]">
+                        <AlertTriangle className="w-5 h-5 text-primary flex-none" />
+                        <div className="text-[13px] min-w-0">
+                            <b className="font-display">No driver is on shift</b>
+                            {' · '}
+                            <span className="text-muted-foreground">
+                                {unassignedOrders.length} assignable order{unassignedOrders.length !== 1 ? 's are' : ' is'} waiting across {new Set(unassignedOrders.map((order: any) => normalizeCity(order.city) || order.city)).size} zone(s).
+                            </span>
+                        </div>
+                    </div>
+                )}
                 {failedStops.length > 0 && (
                     <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[var(--st-amber-bg)] border border-[color-mix(in_srgb,var(--st-amber)_30%,transparent)]">
                         <AlertTriangle className="w-5 h-5 text-[var(--st-amber)] flex-none" />
@@ -1344,7 +1389,9 @@ export default function DriversSection() {
                     </div>
                 )}
                 {failedStops.length === 0 && cashAlerts.length === 0 && stalledRoutes.length === 0
-                    && staleShifts.length === 0 && (dispatch?.unassignedRoutes ?? 0) === 0 && !dispatchLoading && (
+                    && staleShifts.length === 0 && (dispatch?.unassignedRoutes ?? 0) === 0
+                    && !(unassignedOrders.length > 0 && (dispatch?.activeDrivers ?? 0) === 0)
+                    && !dispatchLoading && (
                     <div className="md:col-span-3 flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[var(--st-green-bg)] border border-[color-mix(in_srgb,var(--st-green)_28%,transparent)]">
                         <ShieldCheck className="w-5 h-5 text-[var(--st-green)] flex-none" />
                         <div className="text-[13px]">
@@ -2182,7 +2229,6 @@ export default function DriversSection() {
                             <div style={thStyle}>Driver</div>
                             <div style={thStyle}>Shifts</div>
                             <div style={thStyle}>On duty</div>
-                            <div style={thStyle}>Hours</div>
                             <div style={thStyle}>Active</div>
                             <div style={thStyle}>Routes</div>
                             <div style={thStyle}>Stops</div>
@@ -2211,7 +2257,6 @@ export default function DriversSection() {
                                     )}
                                 </div>
                                 <div className="font-mono text-[12.5px] text-[var(--ink-2)]">{formatDuration(r.onDutySeconds)}</div>
-                                <div className="font-mono text-[13px] font-bold">{decimalHours(r.onDutySeconds)}</div>
                                 <div className="font-mono text-[12.5px] text-[var(--ink-2)]">{formatDuration(r.activeSeconds)}</div>
                                 <div className="font-mono text-[12.5px]">{r.routeCount}</div>
                                 <div className="font-mono text-[12.5px]">{r.completedStops}</div>
@@ -2554,6 +2599,20 @@ export default function DriversSection() {
                                     placeholder="John Doe"
                                     className="bg-white/5 border-border"
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="driver-photo">Driver Photo *</Label>
+                                <div className="flex items-center gap-4 rounded-xl border border-border bg-background p-3">
+                                    {newDriver.photoUrl ? (
+                                        <img src={newDriver.photoUrl} alt="Driver preview" className="h-16 w-16 rounded-full object-cover border border-border" />
+                                    ) : (
+                                        <div className="h-16 w-16 rounded-full bg-muted grid place-items-center text-muted-foreground"><UserPlus className="h-6 w-6" /></div>
+                                    )}
+                                    <div className="flex-1">
+                                        <Input id="driver-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => handleDriverPhotoChange(event.target.files?.[0])} disabled={uploadDriverPhotoMutation.isPending} className="bg-white/5 border-border" />
+                                        <p className="text-xs text-muted-foreground mt-1">Clear face photo, JPEG/PNG/WebP, maximum 5 MB.</p>
+                                    </div>
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
