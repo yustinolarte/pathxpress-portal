@@ -37,6 +37,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from '@/components/ui/pagination';
 
 const ORDERS_PAGE_SIZE = 50;
+const INBOX_PAGE_SIZE = 25;
+
+function toDateInputValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
 
 const ALL_STATUSES = [
   'pending_pickup', 'picked_up', 'failed_pickup', 'in_transit', 'out_for_delivery',
@@ -109,6 +115,22 @@ export default function AdminDashboard() {
   });
   const [orderSortDirection, setOrderSortDirection] = useState<'newest' | 'oldest'>('newest');
   const [orderPage, setOrderPage] = useState(0);
+  const [requestPage, setRequestPage] = useState(0);
+  const [requestStatus, setRequestStatus] = useState<'all' | 'new' | 'contacted' | 'scheduled' | 'completed'>('all');
+  const [requestSearch, setRequestSearch] = useState('');
+  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [requestDetailOpen, setRequestDetailOpen] = useState(false);
+  const [selectedRequestIds, setSelectedRequestIds] = useState<Set<number>>(() => new Set());
+  const [selectingAllRequests, setSelectingAllRequests] = useState(false);
+  const [messagePage, setMessagePage] = useState(0);
+  const [messageStatus, setMessageStatus] = useState<'all' | 'new' | 'read' | 'archived'>('all');
+  const [messageSearch, setMessageSearch] = useState('');
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const [messageDetailOpen, setMessageDetailOpen] = useState(false);
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [emailOrderDraft, setEmailOrderDraft] = useState<any>(null);
 
   useEffect(() => {
     localStorage.setItem('orderFilterStatuses', JSON.stringify(orderFilterStatuses));
@@ -118,6 +140,13 @@ export default function AdminDashboard() {
   useEffect(() => {
     setOrderPage(0);
   }, [orderFilterClientId, orderFilterDateFrom, orderFilterDateTo, orderFilterDeliveryFrom, orderFilterDeliveryTo, orderFilterStatuses, orderSortDirection]);
+
+  useEffect(() => {
+    setRequestPage(0);
+    setSelectedRequestIds(new Set());
+  }, [requestStatus, requestSearch]);
+  useEffect(() => setSelectedRequestIds(new Set()), [requestPage]);
+  useEffect(() => setMessagePage(0), [messageStatus, messageSearch]);
 
   // Create client dialog state
   const [createClientWizardOpen, setCreateClientWizardOpen] = useState(false);
@@ -241,8 +270,8 @@ export default function AdminDashboard() {
 
   // O(1) client lookup map — avoids O(n²) array.find() per table row
   const clientsMap = useMemo(() => {
-    const map = new Map<number, { companyName: string }>();
-    clients?.forEach(c => map.set(c.id, { companyName: c.companyName }));
+    const map = new Map<number, { companyName: string; billingEmail: string }>();
+    clients?.forEach(c => map.set(c.id, { companyName: c.companyName, billingEmail: c.billingEmail }));
     return map;
   }, [clients]);
 
@@ -365,6 +394,67 @@ export default function AdminDashboard() {
 
   const utils = trpc.useUtils();
 
+  const handleExportRequests = async () => {
+    const rows = await utils.portal.admin.exportQuoteRequests.fetch({
+      status: requestStatus === 'all' ? undefined : requestStatus,
+      search: requestSearch || undefined,
+    });
+    const safeCell = (value: unknown) => {
+      let text = String(value ?? '');
+      if (/^[=+\-@]/.test(text)) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const headers = ['Date', 'Status', 'Name', 'Phone', 'Email', 'Service', 'Pickup Address', 'Delivery Address', 'Weight', 'Comments'];
+    const csvRows = rows.map((request) => [
+      new Date(request.createdAt).toISOString(), request.status, request.name, request.phone,
+      request.email, request.serviceType, request.pickupAddress, request.deliveryAddress,
+      request.weight, request.comments,
+    ].map(safeCell).join(','));
+    const blob = new Blob([`\uFEFF${headers.map(safeCell).join(',')}\n${csvRows.join('\n')}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `pickup-requests-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const openRequestDetails = (request: any) => {
+    setSelectedRequest(request);
+    setRequestDetailOpen(true);
+  };
+
+  const openMessageDetails = (message: any) => {
+    setSelectedMessage(message);
+    setMessageDetailOpen(true);
+    if (message.status === 'new') {
+      updateMessageStatusMutation.mutate({ messageId: message.id, status: 'read' });
+    }
+  };
+
+  const applyQuickOrderFilter = (filter: 'today' | 'week' | 'pending' | 'out') => {
+    if (filter === 'pending' || filter === 'out') {
+      setOrderFilterDateFrom('');
+      setOrderFilterDateTo('');
+      setOrderFilterDeliveryFrom('');
+      setOrderFilterDeliveryTo('');
+      setOrderFilterStatuses([filter === 'pending' ? 'pending_pickup' : 'out_for_delivery']);
+      return;
+    }
+
+    const today = new Date();
+    const from = new Date(today);
+    if (filter === 'week') {
+      const day = (today.getDay() + 6) % 7;
+      from.setDate(today.getDate() - day);
+    }
+    setOrderFilterStatuses(ALL_STATUSES);
+    setOrderFilterDeliveryFrom('');
+    setOrderFilterDeliveryTo('');
+    setOrderFilterDateFrom(toDateInputValue(from));
+    setOrderFilterDateTo(toDateInputValue(today));
+  };
+
   // Server-side filtered/sorted/paginated orders. Filters drive the query input;
   // with no date filter the server defaults to the current month.
   const orderQueryInput = useMemo(() => ({
@@ -388,30 +478,133 @@ export default function AdminDashboard() {
   const allOrders = ordersData?.rows ?? [];
   const ordersTotal = ordersData?.total ?? 0;
 
-  // Fetch quote requests
-  const { data: quoteRequests, isLoading: requestsLoading, refetch: refetchRequests } = trpc.portal.admin.getQuoteRequests.useQuery();
+  // Paginated inbound requests and sidebar unread badges.
+  const { data: quoteRequestsData, isLoading: requestsLoading, refetch: refetchRequests } = trpc.portal.admin.getQuoteRequestsPaged.useQuery({
+    page: requestPage,
+    pageSize: INBOX_PAGE_SIZE,
+    status: requestStatus === 'all' ? undefined : requestStatus,
+    search: requestSearch || undefined,
+  });
+  const quoteRequests = quoteRequestsData?.rows ?? [];
+  const quoteRequestsTotal = quoteRequestsData?.total ?? 0;
+  const requestPageCount = Math.max(1, Math.ceil(quoteRequestsTotal / INBOX_PAGE_SIZE));
+  const selectedRequestCount = selectedRequestIds.size;
+  const selectedRequestsOnPage = quoteRequests.filter((request: any) => selectedRequestIds.has(request.id)).length;
+  const allRequestsOnPageSelected = quoteRequests.length > 0 && selectedRequestsOnPage === quoteRequests.length;
+  const { data: inboxCounts, refetch: refetchInboxCounts } = trpc.portal.admin.getInboxCounts.useQuery(undefined, {
+    refetchInterval: 60_000,
+  });
 
   const deleteRequestMutation = trpc.portal.admin.deleteQuoteRequest.useMutation({
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       toast.success('Request deleted successfully');
+      setSelectedRequestIds((current) => {
+        const next = new Set(current);
+        next.delete(variables.requestId);
+        return next;
+      });
       refetchRequests();
+      refetchInboxCounts();
     },
     onError: (error) => {
       toast.error(`Failed to delete request: ${error.message}`);
     },
   });
 
-  // Fetch contact messages
-  const { data: contactMessages, isLoading: messagesLoading, refetch: refetchMessages } = trpc.portal.admin.getContactMessages.useQuery();
+  const bulkDeleteRequestsMutation = trpc.portal.admin.bulkDeleteQuoteRequests.useMutation({
+    onSuccess: ({ deletedCount }) => {
+      toast.success(`${deletedCount} request${deletedCount === 1 ? '' : 's'} deleted successfully`);
+      setSelectedRequestIds(new Set());
+      setRequestPage(0);
+      refetchRequests();
+      refetchInboxCounts();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete selected requests: ${error.message}`);
+    },
+  });
+
+  const toggleRequestSelection = (requestId: number, checked: boolean) => {
+    setSelectedRequestIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(requestId);
+      else next.delete(requestId);
+      return next;
+    });
+  };
+
+  const toggleCurrentRequestPage = (checked: boolean) => {
+    setSelectedRequestIds((current) => {
+      const next = new Set(current);
+      quoteRequests.forEach((request: any) => {
+        if (checked) next.add(request.id);
+        else next.delete(request.id);
+      });
+      return next;
+    });
+  };
+
+  const selectAllMatchingRequests = async () => {
+    setSelectingAllRequests(true);
+    try {
+      const rows = await utils.portal.admin.exportQuoteRequests.fetch({
+        status: requestStatus === 'all' ? undefined : requestStatus,
+        search: requestSearch || undefined,
+      });
+      setSelectedRequestIds(new Set(rows.map((request) => request.id)));
+      toast.success(`${rows.length} matching request${rows.length === 1 ? '' : 's'} selected`);
+    } catch (error) {
+      toast.error(`Failed to select matching requests: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSelectingAllRequests(false);
+    }
+  };
+
+  const deleteSelectedRequests = () => {
+    const requestIds = Array.from(selectedRequestIds);
+    if (requestIds.length === 0) return;
+    const confirmed = window.confirm(
+      `Delete ${requestIds.length} selected pickup request${requestIds.length === 1 ? '' : 's'}? This permanently deletes only the selected records and cannot be undone.`,
+    );
+    if (confirmed) bulkDeleteRequestsMutation.mutate({ requestIds });
+  };
+
+  const updateRequestStatusMutation = trpc.portal.admin.updateQuoteRequestStatus.useMutation({
+    onSuccess: () => {
+      toast.success('Request status updated');
+      refetchRequests();
+      refetchInboxCounts();
+    },
+    onError: (error) => toast.error(`Failed to update request: ${error.message}`),
+  });
+
+  const { data: contactMessagesData, isLoading: messagesLoading, refetch: refetchMessages } = trpc.portal.admin.getContactMessagesPaged.useQuery({
+    page: messagePage,
+    pageSize: INBOX_PAGE_SIZE,
+    status: messageStatus === 'all' ? undefined : messageStatus,
+    search: messageSearch || undefined,
+  });
+  const contactMessages = contactMessagesData?.rows ?? [];
+  const contactMessagesTotal = contactMessagesData?.total ?? 0;
+  const messagePageCount = Math.max(1, Math.ceil(contactMessagesTotal / INBOX_PAGE_SIZE));
 
   const deleteMessageMutation = trpc.portal.admin.deleteContactMessage.useMutation({
     onSuccess: () => {
       toast.success('Message deleted successfully');
       refetchMessages();
+      refetchInboxCounts();
     },
     onError: (error) => {
       toast.error(`Failed to delete message: ${error.message}`);
     },
+  });
+
+  const updateMessageStatusMutation = trpc.portal.admin.updateContactMessageStatus.useMutation({
+    onSuccess: () => {
+      refetchMessages();
+      refetchInboxCounts();
+    },
+    onError: (error) => toast.error(`Failed to update message: ${error.message}`),
   });
 
   // Delete order mutation
@@ -466,8 +659,8 @@ export default function AdminDashboard() {
     { icon: 'trending_up', label: 'Rates & Pricing', value: 'rates', section: 'Finance' },
     { icon: 'public', label: 'International', value: 'international', section: 'Finance' },
     { icon: 'summarize', label: 'Reports', value: 'reports', section: 'Inbox' },
-    { icon: 'chat', label: 'Requests', value: 'requests', section: 'Inbox' },
-    { icon: 'mail', label: 'Messages', value: 'messages', section: 'Inbox' },
+    { icon: 'chat', label: 'Requests', value: 'requests', section: 'Inbox', badge: inboxCounts?.requests },
+    { icon: 'mail', label: 'Messages', value: 'messages', section: 'Inbox', badge: inboxCounts?.messages },
     { icon: 'forward_to_inbox', label: 'Email Studio', value: 'email', section: 'Inbox' },
     { icon: 'menu_book', label: 'Guide', value: 'guide', section: 'Inbox' },
   ];
@@ -478,15 +671,17 @@ export default function AdminDashboard() {
       activeItem={activeTab}
       onItemClick={async (value: string, searchData?: string) => {
         if (value === 'tracking' && searchData) {
-          // Search server-side so orders outside the current page/window are found too
-          const results = await utils.portal.admin.searchOrders.fetch({ term: searchData });
-          const matchingOrder =
-            results.find((o) => o.waybillNumber.toLowerCase() === searchData.toLowerCase()) ?? results[0];
-          if (matchingOrder) {
-            setSelectedOrder(matchingOrder);
+          const results = await utils.portal.admin.globalSearch.fetch({ term: searchData });
+          const exactOrder = results.find(result => result.type === 'order' && result.label.toLowerCase() === searchData.toLowerCase());
+          if (exactOrder) {
+            setSelectedOrder(exactOrder.entity);
             setViewOrderDialogOpen(true);
+          } else if (results.length > 0) {
+            setGlobalSearchQuery(searchData);
+            setGlobalSearchResults(results);
+            setGlobalSearchOpen(true);
           } else {
-            toast.error(`Order ${searchData} not found`);
+            toast.error(`No results found for “${searchData}”`);
           }
         } else {
           setActiveTab(value);
@@ -496,6 +691,7 @@ export default function AdminDashboard() {
       logout={handleLogout}
       title="Admin Portal"
       onCreateShipment={() => setCreateOrderDialogOpen(true)}
+      searchPlaceholder="Search orders, clients or drivers..."
     >
       <div className="min-h-full p-2 space-y-6">
         {/* Tabs */}
@@ -1037,6 +1233,13 @@ export default function AdminDashboard() {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="flex flex-wrap items-center gap-2 mb-3" aria-label="Quick order filters">
+                  <span className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em] mr-1">Quick filters</span>
+                  <Button variant="outline" size="sm" onClick={() => applyQuickOrderFilter('today')}>Today</Button>
+                  <Button variant="outline" size="sm" onClick={() => applyQuickOrderFilter('week')}>This Week</Button>
+                  <Button variant="outline" size="sm" onClick={() => applyQuickOrderFilter('pending')}>Pending Pickup</Button>
+                  <Button variant="outline" size="sm" onClick={() => applyQuickOrderFilter('out')}>Out for Delivery</Button>
+                </div>
                 {/* Filters */}
                 <div className="bg-secondary p-4 rounded-xl border border-border flex flex-wrap items-center gap-4 mb-6">
                   <div className="flex items-center gap-2">
@@ -1180,7 +1383,7 @@ export default function AdminDashboard() {
                   <>
                     {/* Desktop Table */}
                     <div className="hidden md:block overflow-x-auto">
-                      <Table>
+                      <Table className="min-w-[1320px]">
                         <TableHeader>
                           <TableRow className="[&>th]:px-1">
                             <TableHead>Waybill</TableHead>
@@ -1192,8 +1395,8 @@ export default function AdminDashboard() {
                             <TableHead>COD</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Created</TableHead>
-                            <TableHead>Status Date</TableHead>
-                            <TableHead>Actions</TableHead>
+                            <TableHead title="Most recent status update">Updated</TableHead>
+                            <TableHead className="min-w-[176px]">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1267,18 +1470,26 @@ export default function AdminDashboard() {
                                     return date ? new Date(date).toLocaleDateString() : <span className="text-muted-foreground text-sm">-</span>;
                                   })()}
                                 </TableCell>
-                                <TableCell>
-                                  <div className="flex gap-2">
-                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedOrder(order); setViewOrderDialogOpen(true); }} title="View Order Details">
+                                <TableCell className="whitespace-nowrap">
+                                  <div className="flex items-center gap-1">
+                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedOrder(order); setViewOrderDialogOpen(true); }} title="View order details" aria-label={`View ${order.waybillNumber}`}>
                                       <Eye className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="sm" onClick={() => { setOrderToEdit(order); setEditOrderDialogOpen(true); }} title="Edit Order">
+                                    <Button variant="ghost" size="sm" onClick={() => { setOrderToEdit(order); setEditOrderDialogOpen(true); }} title="Edit order" aria-label={`Edit ${order.waybillNumber}`}>
                                       <Pencil className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }} title="Add Tracking Event">
+                                    <Button variant="ghost" size="sm" onClick={() => { setSelectedShipmentId(order.id); setTrackingDialogOpen(true); }} title="Add tracking event" aria-label={`Add tracking event to ${order.waybillNumber}`}>
                                       <Package className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10" onClick={() => handleDeleteOrder(order.id, order.waybillNumber)} title="Delete Order" disabled={deleteOrderMutation.isPending}>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      disabled={deleteOrderMutation.isPending}
+                                      onClick={() => handleDeleteOrder(order.id, order.waybillNumber)}
+                                      title="Delete order"
+                                      aria-label={`Delete ${order.waybillNumber}`}
+                                    >
                                       <Trash2 className="h-4 w-4" />
                                     </Button>
                                   </div>
@@ -1418,7 +1629,11 @@ export default function AdminDashboard() {
 
           {/* Email Studio Tab */}
           <TabsContent value="email" className="space-y-4">
-            <EmailStudioPanel />
+            <EmailStudioPanel initialOrder={emailOrderDraft ? {
+              order: emailOrderDraft,
+              clientName: clientsMap.get(emailOrderDraft.clientId)?.companyName,
+              recipientEmail: clientsMap.get(emailOrderDraft.clientId)?.billingEmail,
+            } : undefined} />
           </TabsContent>
 
           {/* Reports Tab */}
@@ -1430,59 +1645,157 @@ export default function AdminDashboard() {
           <TabsContent value="requests" className="space-y-4">
             <Card className="bg-card rounded-2xl border border-border shadow-sm">
               <CardHeader>
-                <p className="eyebrow mb-2">Inbound</p>
-                <CardTitle className="text-xl">Pickup Requests</CardTitle>
-                <CardDescription>View all pickup requests from the website</CardDescription>
+                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+                  <div>
+                    <p className="eyebrow mb-2">Inbound</p>
+                    <CardTitle className="text-xl">Pickup Requests</CardTitle>
+                    <CardDescription>Track each request from first contact through completion</CardDescription>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      value={requestSearch}
+                      onChange={(event) => setRequestSearch(event.target.value)}
+                      placeholder="Search name, phone, email or address"
+                      className="sm:w-72 bg-background"
+                    />
+                    <Select value={requestStatus} onValueChange={(value: typeof requestStatus) => setRequestStatus(value)}>
+                      <SelectTrigger className="sm:w-40 bg-background"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        <SelectItem value="new">New</SelectItem>
+                        <SelectItem value="contacted">Contacted</SelectItem>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button variant="outline" onClick={handleExportRequests} className="gap-2">
+                      <Download className="h-4 w-4" /> Export CSV
+                    </Button>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
+                {selectedRequestCount > 0 && (
+                  <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{selectedRequestCount} request{selectedRequestCount === 1 ? '' : 's'} selected</p>
+                      <p className="text-xs text-muted-foreground">Only these exact records will be deleted.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedRequestCount < quoteRequestsTotal && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={selectAllMatchingRequests}
+                          disabled={selectingAllRequests || bulkDeleteRequestsMutation.isPending}
+                        >
+                          {selectingAllRequests ? 'Selecting...' : `Select all ${quoteRequestsTotal} matching`}
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedRequestIds(new Set())} disabled={bulkDeleteRequestsMutation.isPending}>
+                        Clear selection
+                      </Button>
+                      <Button variant="destructive" size="sm" className="gap-2" onClick={deleteSelectedRequests} disabled={bulkDeleteRequestsMutation.isPending}>
+                        <Trash2 className="h-4 w-4" />
+                        {bulkDeleteRequestsMutation.isPending ? 'Deleting...' : `Delete selected (${selectedRequestCount})`}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {requestsLoading ? (
                   <p className="text-center py-8 text-muted-foreground">Loading requests...</p>
-                ) : quoteRequests && quoteRequests.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Phone</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Service</TableHead>
-                          <TableHead>Pickup Address</TableHead>
-                          <TableHead>Weight</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {quoteRequests.map((req: any) => (
-                          <TableRow key={req.id}>
-                            <TableCell>{new Date(req.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>{req.name}</TableCell>
-                            <TableCell>{req.phone}</TableCell>
-                            <TableCell>{req.email}</TableCell>
-                            <TableCell>{req.serviceType}</TableCell>
-                            <TableCell className="max-w-[200px] truncate" title={req.pickupAddress}>{req.pickupAddress}</TableCell>
-                            <TableCell>{req.weight}</TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this request?')) {
-                                    deleteRequestMutation.mutate({
-                                      requestId: req.id,
-                                    });
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
+                ) : quoteRequests.length > 0 ? (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-10">
+                              <Checkbox
+                                checked={allRequestsOnPageSelected ? true : selectedRequestsOnPage > 0 ? 'indeterminate' : false}
+                                onCheckedChange={(checked) => toggleCurrentRequestPage(checked === true)}
+                                aria-label="Select all requests on this page"
+                              />
+                            </TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Customer</TableHead>
+                            <TableHead>Service</TableHead>
+                            <TableHead>Pickup</TableHead>
+                            <TableHead>Weight</TableHead>
+                            <TableHead className="min-w-[150px]">Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {quoteRequests.map((req: any) => (
+                            <TableRow key={req.id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedRequestIds.has(req.id)}
+                                  onCheckedChange={(checked) => toggleRequestSelection(req.id, checked === true)}
+                                  aria-label={`Select request from ${req.name}`}
+                                />
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap">{new Date(req.createdAt).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <p className="font-medium">{req.name}</p>
+                                <p className="text-xs text-muted-foreground">{req.phone} · {req.email}</p>
+                              </TableCell>
+                              <TableCell>{req.serviceType}</TableCell>
+                              <TableCell className="max-w-[260px] truncate" title={req.pickupAddress}>{req.pickupAddress}</TableCell>
+                              <TableCell>{req.weight}</TableCell>
+                              <TableCell>
+                                <Select
+                                  value={req.status}
+                                  onValueChange={(status: 'new' | 'contacted' | 'scheduled' | 'completed') =>
+                                    updateRequestStatusMutation.mutate({ requestId: req.id, status })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 bg-background"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="new">New</SelectItem>
+                                    <SelectItem value="contacted">Contacted</SelectItem>
+                                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                <Button variant="ghost" size="sm" onClick={() => openRequestDetails(req)} title="View full request">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                  onClick={() => {
+                                    if (confirm('Are you sure you want to delete this request?')) {
+                                      deleteRequestMutation.mutate({ requestId: req.id });
+                                    }
+                                  }}
+                                  title="Delete request"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                      <p className="text-xs text-muted-foreground">
+                        Showing {requestPage * INBOX_PAGE_SIZE + 1}–{requestPage * INBOX_PAGE_SIZE + quoteRequests.length} of {quoteRequestsTotal}
+                      </p>
+                      <Pagination className="mx-0 w-auto justify-end">
+                        <PaginationContent>
+                          <PaginationItem><PaginationPrevious href="#" onClick={(event) => { event.preventDefault(); setRequestPage((page) => Math.max(0, page - 1)); }} className={requestPage === 0 ? 'pointer-events-none opacity-50' : ''} /></PaginationItem>
+                          <PaginationItem><span className="px-3 text-xs">Page {requestPage + 1} of {requestPageCount}</span></PaginationItem>
+                          <PaginationItem><PaginationNext href="#" onClick={(event) => { event.preventDefault(); setRequestPage((page) => Math.min(requestPageCount - 1, page + 1)); }} className={requestPage >= requestPageCount - 1 ? 'pointer-events-none opacity-50' : ''} /></PaginationItem>
+                        </PaginationContent>
+                      </Pagination>
+                    </div>
+                  </>
                 ) : (
                   <p className="text-center py-8 text-muted-foreground">No requests found</p>
                 )}
@@ -1494,53 +1807,63 @@ export default function AdminDashboard() {
           <TabsContent value="messages" className="space-y-4">
             <Card className="bg-card rounded-2xl border border-border shadow-sm">
               <CardHeader>
-                <p className="eyebrow mb-2">Inbound</p>
-                <CardTitle className="text-xl">Contact Messages</CardTitle>
-                <CardDescription>View inquiries from the Contact Us form</CardDescription>
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                  <div>
+                    <p className="eyebrow mb-2">Inbound</p>
+                    <CardTitle className="text-xl">Contact Messages</CardTitle>
+                    <CardDescription>Review and archive inquiries from the Contact Us form</CardDescription>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)} placeholder="Search messages" className="sm:w-64 bg-background" />
+                    <Select value={messageStatus} onValueChange={(value: typeof messageStatus) => setMessageStatus(value)}>
+                      <SelectTrigger className="sm:w-36 bg-background"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        <SelectItem value="new">New</SelectItem>
+                        <SelectItem value="read">Read</SelectItem>
+                        <SelectItem value="archived">Archived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {messagesLoading ? (
                   <p className="text-center py-8 text-muted-foreground">Loading messages...</p>
-                ) : contactMessages && contactMessages.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Message</TableHead>
-                          <TableHead>Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {contactMessages.map((msg: any) => (
-                          <TableRow key={msg.id}>
-                            <TableCell>{new Date(msg.createdAt).toLocaleDateString()}</TableCell>
-                            <TableCell>{msg.name}</TableCell>
-                            <TableCell>{msg.email}</TableCell>
-                            <TableCell className="max-w-[300px] truncate" title={msg.message}>{msg.message}</TableCell>
-                            <TableCell>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                onClick={() => {
-                                  if (confirm('Are you sure you want to delete this message?')) {
-                                    deleteMessageMutation.mutate({
-                                      messageId: msg.id,
-                                    });
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                ) : contactMessages.length > 0 ? (
+                  <>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Message</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                          {contactMessages.map((msg: any) => (
+                            <TableRow key={msg.id} className={msg.status === 'new' ? 'bg-primary/5' : ''}>
+                              <TableCell className="whitespace-nowrap">{new Date(msg.createdAt).toLocaleDateString()}</TableCell>
+                              <TableCell className="font-medium">{msg.name}</TableCell>
+                              <TableCell>{msg.email}</TableCell>
+                              <TableCell className="max-w-[360px] truncate" title={msg.message}>{msg.message}</TableCell>
+                              <TableCell><span className={`badge2 ${msg.status === 'new' ? 'b-amber' : msg.status === 'read' ? 'b-blue' : 'b-gray'}`}>{msg.status}</span></TableCell>
+                              <TableCell className="text-right whitespace-nowrap">
+                                <Button variant="ghost" size="sm" onClick={() => openMessageDetails(msg)} title="Read message"><Eye className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="sm" onClick={() => updateMessageStatusMutation.mutate({ messageId: msg.id, status: msg.status === 'archived' ? 'read' : 'archived' })} title={msg.status === 'archived' ? 'Restore' : 'Archive'}>
+                                  <FileText className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive/90 hover:bg-destructive/10" onClick={() => { if (confirm('Are you sure you want to delete this message?')) deleteMessageMutation.mutate({ messageId: msg.id }); }} title="Delete message"><Trash2 className="h-4 w-4" /></Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+                      <p className="text-xs text-muted-foreground">Showing {messagePage * INBOX_PAGE_SIZE + 1}–{messagePage * INBOX_PAGE_SIZE + contactMessages.length} of {contactMessagesTotal}</p>
+                      <Pagination className="mx-0 w-auto justify-end"><PaginationContent>
+                        <PaginationItem><PaginationPrevious href="#" onClick={(event) => { event.preventDefault(); setMessagePage((page) => Math.max(0, page - 1)); }} className={messagePage === 0 ? 'pointer-events-none opacity-50' : ''} /></PaginationItem>
+                        <PaginationItem><span className="px-3 text-xs">Page {messagePage + 1} of {messagePageCount}</span></PaginationItem>
+                        <PaginationItem><PaginationNext href="#" onClick={(event) => { event.preventDefault(); setMessagePage((page) => Math.min(messagePageCount - 1, page + 1)); }} className={messagePage >= messagePageCount - 1 ? 'pointer-events-none opacity-50' : ''} /></PaginationItem>
+                      </PaginationContent></Pagination>
+                    </div>
+                  </>
                 ) : (
                   <p className="text-center py-8 text-muted-foreground">No messages found</p>
                 )}
@@ -1569,10 +1892,30 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <h3 className="text-lg font-medium mb-3">Shipment Label Layout</h3>
-                    <div className="border border-border rounded-lg overflow-hidden relative aspect-[100/150] bg-white shadow-sm flex items-center justify-center">
-                      <div className="text-center text-gray-400">
-                        <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                        <p className="text-xs">Preview of generated PDF</p>
+                    <div className="border border-border rounded-lg overflow-hidden relative aspect-[100/150] bg-white shadow-sm p-5 text-slate-950 flex flex-col">
+                      <div className="flex items-center justify-between border-b-2 border-slate-950 pb-3">
+                        <div className="font-display text-xl font-black tracking-tight">PATH<span className="text-red-600">X</span>PRESS</div>
+                        <div className="text-right"><p className="text-[9px] uppercase tracking-widest text-slate-500">Service</p><p className="text-xs font-bold">DOM · NEXT DAY</p></div>
+                      </div>
+                      <div className="py-4 text-center border-b border-slate-300">
+                        <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Waybill number</p>
+                        <p className="font-mono text-lg font-black tracking-wide">PX202600143-K7X</p>
+                        <div className="h-12 mt-2 mx-auto w-[88%]" style={{ background: 'repeating-linear-gradient(90deg,#0f172a 0 2px,transparent 2px 4px,#0f172a 4px 5px,transparent 5px 8px)' }} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 py-4 border-b border-slate-300 text-[10px] leading-snug">
+                        <div><p className="uppercase tracking-wider text-slate-500 mb-1">From</p><p className="font-bold text-xs">PATHXPRESS QA</p><p>Dubai, UAE</p><p>+971 50 000 0000</p></div>
+                        <div><p className="uppercase tracking-wider text-slate-500 mb-1">Deliver to</p><p className="font-bold text-xs">Sample Customer</p><p>Business Bay, Dubai</p><p>+971 50 123 4567</p></div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 py-4 text-center text-[10px]">
+                        <div className="border border-slate-300 rounded p-2"><p className="text-slate-500 uppercase">Pieces</p><p className="font-bold text-sm">1</p></div>
+                        <div className="border border-slate-300 rounded p-2"><p className="text-slate-500 uppercase">Weight</p><p className="font-bold text-sm">2.5 kg</p></div>
+                        <div className="border-2 border-red-600 rounded p-2"><p className="text-red-600 uppercase font-bold">COD</p><p className="font-bold text-sm">AED 125</p></div>
+                      </div>
+                      <div className="mt-auto pt-3 border-t-2 border-slate-950 flex items-end justify-between gap-3">
+                        <div><p className="text-[9px] uppercase tracking-wider text-slate-500">Special instructions</p><p className="text-[10px] font-medium">Call before delivery</p></div>
+                        <div className="grid grid-cols-4 gap-[2px] w-12 h-12 bg-slate-950 p-1" aria-label="Sample QR code">
+                          {Array.from({ length: 16 }, (_, index) => <span key={index} className={(index * 7) % 5 < 3 ? 'bg-white' : 'bg-slate-950'} />)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2009,17 +2352,133 @@ export default function AdminDashboard() {
           </DialogContent>
         </Dialog>
 
+        <Dialog open={requestDetailOpen} onOpenChange={setRequestDetailOpen}>
+          <DialogContent className="sm:max-w-2xl bg-card border-border">
+            <DialogHeader>
+              <DialogTitle>Pickup Request Details</DialogTitle>
+              <DialogDescription>Complete information submitted from the public website.</DialogDescription>
+            </DialogHeader>
+            {selectedRequest && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div><p className="text-xs text-muted-foreground mb-1">Customer</p><p className="font-medium">{selectedRequest.name}</p></div>
+                  <div><p className="text-xs text-muted-foreground mb-1">Submitted</p><p>{new Date(selectedRequest.createdAt).toLocaleString()}</p></div>
+                  <div><p className="text-xs text-muted-foreground mb-1">Phone</p><a className="text-primary hover:underline" href={`tel:${selectedRequest.phone}`}>{selectedRequest.phone}</a></div>
+                  <div><p className="text-xs text-muted-foreground mb-1">Email</p><a className="text-primary hover:underline" href={`mailto:${selectedRequest.email}`}>{selectedRequest.email}</a></div>
+                  <div><p className="text-xs text-muted-foreground mb-1">Service</p><p>{selectedRequest.serviceType}</p></div>
+                  <div><p className="text-xs text-muted-foreground mb-1">Weight / Volume</p><p>{selectedRequest.weight}</p></div>
+                </div>
+                <div><p className="text-xs text-muted-foreground mb-1">Pickup Address</p><p className="rounded-lg bg-background border border-border p-3 text-sm whitespace-pre-wrap">{selectedRequest.pickupAddress}</p></div>
+                <div><p className="text-xs text-muted-foreground mb-1">Delivery Address</p><p className="rounded-lg bg-background border border-border p-3 text-sm whitespace-pre-wrap">{selectedRequest.deliveryAddress || 'Not provided'}</p></div>
+                <div><p className="text-xs text-muted-foreground mb-1">Additional Comments</p><p className="rounded-lg bg-background border border-border p-3 text-sm whitespace-pre-wrap">{selectedRequest.comments || 'No additional comments'}</p></div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border">
+                  <Label htmlFor="request-detail-status">Workflow status</Label>
+                  <Select
+                    value={selectedRequest.status}
+                    onValueChange={(status: 'new' | 'contacted' | 'scheduled' | 'completed') => {
+                      setSelectedRequest({ ...selectedRequest, status });
+                      updateRequestStatusMutation.mutate({ requestId: selectedRequest.id, status });
+                    }}
+                  >
+                    <SelectTrigger id="request-detail-status" className="sm:w-48 bg-background"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="new">New</SelectItem><SelectItem value="contacted">Contacted</SelectItem><SelectItem value="scheduled">Scheduled</SelectItem><SelectItem value="completed">Completed</SelectItem></SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={messageDetailOpen} onOpenChange={setMessageDetailOpen}>
+          <DialogContent className="sm:max-w-xl bg-card border-border">
+            <DialogHeader>
+              <DialogTitle>Contact Message</DialogTitle>
+              <DialogDescription>{selectedMessage ? `Received ${new Date(selectedMessage.createdAt).toLocaleString()}` : ''}</DialogDescription>
+            </DialogHeader>
+            {selectedMessage && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div><p className="text-xs text-muted-foreground mb-1">From</p><p className="font-medium">{selectedMessage.name}</p></div>
+                  <div><p className="text-xs text-muted-foreground mb-1">Email</p><a className="text-primary hover:underline" href={`mailto:${selectedMessage.email}`}>{selectedMessage.email}</a></div>
+                </div>
+                <div className="rounded-lg bg-background border border-border p-4 whitespace-pre-wrap text-sm leading-relaxed">{selectedMessage.message}</div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => updateMessageStatusMutation.mutate({ messageId: selectedMessage.id, status: 'archived' })}>Archive</Button>
+                  <Button asChild><a href={`mailto:${selectedMessage.email}`}>Reply by Email</a></Button>
+                </DialogFooter>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={globalSearchOpen} onOpenChange={setGlobalSearchOpen}>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Search results</DialogTitle>
+              <DialogDescription>{globalSearchResults.length} result(s) for “{globalSearchQuery}”</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[60vh] overflow-y-auto space-y-2">
+              {globalSearchResults.map((result) => {
+                const Icon = result.type === 'order' ? Package : result.type === 'client' ? Building2 : Truck;
+                return (
+                  <button
+                    key={`${result.type}-${result.id}`}
+                    type="button"
+                    className="w-full flex items-center gap-3 rounded-xl border border-border bg-background p-3 text-left hover:bg-muted/60 transition-colors"
+                    onClick={() => {
+                      setGlobalSearchOpen(false);
+                      if (result.type === 'order') {
+                        setSelectedOrder(result.entity);
+                        setViewOrderDialogOpen(true);
+                      } else if (result.type === 'client') {
+                        setActiveTab('clients');
+                        setClient360Id(result.id);
+                      } else {
+                        setActiveTab('drivers');
+                        toast.info(`Drivers opened for ${result.label}`);
+                      }
+                    }}
+                  >
+                    <span className="rounded-lg bg-muted p-2"><Icon className="h-4 w-4" /></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium truncate">{result.label}</span>
+                      <span className="block text-xs text-muted-foreground truncate">{result.subtitle}</span>
+                    </span>
+                    <Badge variant="outline" className="capitalize">{result.type}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {selectedOrder && (
           <OrderDetailsDialog
             open={viewOrderDialogOpen}
             onOpenChange={setViewOrderDialogOpen}
             order={selectedOrder}
             clients={clients}
+            onSendEmail={(order) => {
+              setViewOrderDialogOpen(false);
+              setEmailOrderDraft(order);
+              setActiveTab('email');
+            }}
             onCreateReturnExchange={(order) => {
               setViewOrderDialogOpen(false);
               setReturnExchangeOrder(order);
               setReturnExchangeDialogOpen(true);
             }}
+            onEdit={(order) => {
+              setViewOrderDialogOpen(false);
+              setOrderToEdit(order);
+              setEditOrderDialogOpen(true);
+            }}
+            onAddTrackingEvent={(order) => {
+              setViewOrderDialogOpen(false);
+              setSelectedShipmentId(order.id);
+              setTrackingDialogOpen(true);
+            }}
+            onDeleteOrder={(order) => deleteOrderMutation.mutate({ orderId: order.id })}
           />
         )}
 

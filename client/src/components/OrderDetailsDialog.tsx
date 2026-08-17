@@ -1,8 +1,13 @@
 
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText, RotateCcw } from 'lucide-react';
+import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText, RotateCcw, Mail, Pencil, Trash2 } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
@@ -16,6 +21,14 @@ interface OrderDetailsDialogProps {
     clients?: any[]; // For resolving client name
     /** When provided, shows a "Create Return/Exchange" action for eligible orders. */
     onCreateReturnExchange?: (order: any) => void;
+    /** Opens Email Studio with the shipment data pre-filled. Sending remains manual. */
+    onSendEmail?: (order: any) => void;
+    /** Opens the order edit form for this order. */
+    onEdit?: (order: any) => void;
+    /** Opens the "Add tracking event" form for this order. */
+    onAddTrackingEvent?: (order: any) => void;
+    /** Permanently deletes this order. Confirmation is handled inside this dialog. */
+    onDeleteOrder?: (order: any) => void;
 }
 
 // A return/exchange only makes sense once the delivery cycle is over: the
@@ -24,19 +37,28 @@ interface OrderDetailsDialogProps {
 // describe a return shipment itself, not a candidate for a new one.
 const RETURN_ELIGIBLE_STATUSES = ['delivered', 'failed_delivery'];
 
-export default function OrderDetailsDialog({ open, onOpenChange, order, clients, onCreateReturnExchange }: OrderDetailsDialogProps) {
+export default function OrderDetailsDialog({ open, onOpenChange, order, clients, onCreateReturnExchange, onSendEmail, onEdit, onAddTrackingEvent, onDeleteOrder }: OrderDetailsDialogProps) {
     // Fetch tracking events just like in ShipmentHistoryDialog
     const { data: events, isLoading: eventsLoading } = trpc.portal.tracking.getEvents.useQuery(
         { shipmentId: order?.id },
         { enabled: !!order?.id && open }
     );
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
     if (!order) return null;
 
-    const clientName = clients?.find(c => c.id === order.clientId)?.companyName || 'Unknown Client';
+    const client = clients?.find(c => c.id === order.clientId);
+    const clientName = client?.companyName || 'Unknown Client';
     const canCreateReturn = !!onCreateReturnExchange && RETURN_ELIGIBLE_STATUSES.includes(order.status) && !order.isReturn;
 
+    const handleConfirmDelete = () => {
+        setDeleteConfirmOpen(false);
+        onDeleteOrder!(order);
+        onOpenChange(false);
+    };
+
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="bg-card border-border !w-[90vw] !max-w-[1200px] max-h-[95vh] overflow-y-auto p-0 gap-0 ">
                 <div className="w-full h-1 bg-primary" />
@@ -54,7 +76,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-wrap justify-end">
                             {/* FOD Badge */}
                             {order.fitOnDelivery === 1 && (
                                 <div className="px-4 py-2 rounded-full bg-[var(--st-blue-bg)] border border-transparent text-[var(--st-blue)] flex items-center gap-2">
@@ -71,15 +93,39 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                                 <span className="font-bold uppercase tracking-wide">{order.status.replace(/_/g, ' ')}</span>
                             </div>
 
+                            {onEdit && (
+                                <Button onClick={() => onEdit(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                    <Pencil className="w-4 h-4" /> Edit
+                                </Button>
+                            )}
+
+                            {onAddTrackingEvent && (
+                                <Button onClick={() => onAddTrackingEvent(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                    <Package className="w-4 h-4" /> Add Event
+                                </Button>
+                            )}
+
                             {canCreateReturn && (
                                 <Button onClick={() => onCreateReturnExchange!(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
                                     <RotateCcw className="w-4 h-4" /> Create Return/Exchange
                                 </Button>
                             )}
 
-                            <Button onClick={() => generateWaybillPDF(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                            {onSendEmail && (
+                                <Button onClick={() => onSendEmail(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                    <Mail className="w-4 h-4" /> Send Email
+                                </Button>
+                            )}
+
+                            <Button onClick={() => generateWaybillPDF({ ...order, payAtOrigin: client?.payAtOrigin })} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
                                 <Download className="w-4 h-4" /> Waybill
                             </Button>
+
+                            {onDeleteOrder && (
+                                <Button onClick={() => setDeleteConfirmOpen(true)} variant="outline" className="gap-2 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive">
+                                    <Trash2 className="w-4 h-4" /> Delete
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -269,5 +315,25 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                 </div>
             </DialogContent>
         </Dialog>
+
+        {onDeleteOrder && (
+            <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete order {order.waybillNumber}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will also delete all related tracking events, COD records, and invoice items. This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )}
+        </>
     );
 }
