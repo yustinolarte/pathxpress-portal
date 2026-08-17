@@ -773,6 +773,7 @@ export interface OrderListFilters {
   standardOnly?: boolean;   // only orderType 'standard' (or null) — customer views + intl
   clientId?: number;
   statuses?: string[];
+  search?: string;
   dateFrom?: Date | string; // createdAt >=
   dateTo?: Date | string;   // createdAt <=
   deliveryFrom?: Date | string; // COALESCE(deliveryDateReal, lastStatusUpdate) >=
@@ -807,6 +808,19 @@ function buildOrderConditions(filters: OrderListFilters, applyDefaultWindow = tr
 
   if (filters.statuses && filters.statuses.length > 0) {
     conds.push(inArray(orders.status, filters.statuses));
+  }
+
+  const search = filters.search?.trim();
+  if (search) {
+    const pattern = `%${search}%`;
+    conds.push(or(
+      sql`${orders.waybillNumber} LIKE ${pattern}`,
+      sql`${orders.customerName} LIKE ${pattern}`,
+      sql`${orders.customerPhone} LIKE ${pattern}`,
+      sql`${orders.destinationCountry} LIKE ${pattern}`,
+      sql`${orders.city} LIKE ${pattern}`,
+      sql`${orders.serviceType} LIKE ${pattern}`,
+    ));
   }
 
   const hasExplicitDateFilter = !!(filters.dateFrom || filters.dateTo || filters.deliveryFrom || filters.deliveryTo);

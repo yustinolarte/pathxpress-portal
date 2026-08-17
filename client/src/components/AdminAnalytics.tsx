@@ -252,6 +252,27 @@ export default function AdminAnalytics({ totalClients = 0, activeClients = 0, to
                 </div>
             </div>
 
+            {analytics.returnRate !== null && analytics.returnRate > 5 && (
+                <div className="rounded-2xl border border-[color-mix(in_srgb,var(--st-amber)_35%,transparent)] bg-[var(--st-amber-bg)] p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="h-5 w-5 text-[var(--st-amber)] mt-0.5 shrink-0" />
+                        <div>
+                            <p className="font-display font-semibold text-sm">Return rate is above the 5% target</p>
+                            <p className="text-xs text-muted-foreground mt-1">Review address quality, delivery attempts and the clients contributing the most returns.</p>
+                        </div>
+                    </div>
+                    {analytics.topReturnClients?.length > 0 && (
+                        <div className="flex flex-wrap gap-2 lg:justify-end">
+                            {analytics.topReturnClients.slice(0, 3).map((client) => (
+                                <span key={client.clientId} className="badge2 b-amber" title={`${client.returned} returned of ${client.eligible} completed shipments`}>
+                                    {client.companyName} · {client.returnRate}%
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Shipment Operations Section */}
             <div>
                 <p className="eyebrow mb-2">Operations</p>

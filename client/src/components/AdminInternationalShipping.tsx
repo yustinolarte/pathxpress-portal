@@ -2,7 +2,7 @@
  * AdminInternationalShipping — Admin panel for managing international shipping.
  * Sub-tabs: Orders, Rate Calculator, Rate Management, Quote Requests
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -377,14 +377,24 @@ function QuoteRequestsTable() {
 
 function AdminIntlOrdersTable() {
     const [filterSearch, setFilterSearch] = useState('');
+    const [page, setPage] = useState(0);
     const [newShipmentOpen, setNewShipmentOpen] = useState(false);
     const [deletingId, setDeletingId] = useState<number | null>(null);
     const [trackingOrderId, setTrackingOrderId] = useState<number | null>(null);
     const [editingOrder, setEditingOrder] = useState<any | null>(null);
 
     // Intl is low-volume → load the full set (wide window) so the in-table search covers all.
-    const { data: ordersResp, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery({ dateFrom: '2000-01-01', pageSize: 200 });
-    const orders = ordersResp?.rows;
+    const { data: ordersResp, isLoading, refetch } = trpc.portal.admin.getIntlOrders.useQuery({
+        dateFrom: '2000-01-01',
+        page,
+        pageSize: 50,
+        search: filterSearch || undefined,
+    });
+    const orders = ordersResp?.rows || [];
+    const total = ordersResp?.total || 0;
+    const pageCount = Math.max(1, Math.ceil(total / 50));
+
+    useEffect(() => setPage(0), [filterSearch]);
 
     const { data: clients } = trpc.portal.admin.getClients.useQuery();
 
@@ -405,17 +415,6 @@ function AdminIntlOrdersTable() {
         setDeletingId(orderId);
         deleteMutation.mutate({ orderId });
     };
-
-    const filteredOrders = orders?.filter((order: any) => {
-        const search = filterSearch.toLowerCase();
-        if (!search) return true;
-        return (
-            (order.waybillNumber?.toLowerCase().includes(search)) ||
-            (order.customerName?.toLowerCase().includes(search)) ||
-            (order.destinationCountry?.toLowerCase().includes(search)) ||
-            (order.serviceType?.toLowerCase().includes(search))
-        );
-    }) || [];
 
     // Functional tones: blue = moving, amber = waiting, green = done, red = problem
     const getStatusColor = (status: string) => {
@@ -465,7 +464,8 @@ function AdminIntlOrdersTable() {
             <CardContent>
                 {isLoading ? (
                     <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
-                ) : filteredOrders.length > 0 ? (
+                ) : orders.length > 0 ? (
+                    <>
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
@@ -482,7 +482,7 @@ function AdminIntlOrdersTable() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredOrders.map((order: any) => (
+                                {orders.map((order: any) => (
                                     <TableRow key={order.id}>
                                         <TableCell className="font-mono font-medium">{order.waybillNumber}</TableCell>
                                         <TableCell>
@@ -568,6 +568,15 @@ function AdminIntlOrdersTable() {
                             </TableBody>
                         </Table>
                     </div>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-sm text-muted-foreground">
+                        <span>Showing {page * 50 + 1}–{Math.min((page + 1) * 50, total)} of {total}</span>
+                        <div className="flex items-center gap-2">
+                            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Previous</Button>
+                            <span>Page {page + 1} of {pageCount}</span>
+                            <Button variant="outline" size="sm" disabled={page + 1 >= pageCount} onClick={() => setPage((current) => current + 1)}>Next</Button>
+                        </div>
+                    </div>
+                    </>
                 ) : (
                     <div className="text-center py-12 flex flex-col items-center justify-center">
                         <Globe className="h-12 w-12 text-muted-foreground/30 mb-4" />

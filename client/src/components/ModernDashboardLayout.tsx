@@ -62,6 +62,7 @@ interface ModernDashboardLayoutProps {
     title?: string;
     onCreateShipment?: () => void;
     topBanner?: React.ReactNode;
+    searchPlaceholder?: string;
 }
 
 export default function ModernDashboardLayout({
@@ -75,6 +76,7 @@ export default function ModernDashboardLayout({
     title = APP_TITLE,
     onCreateShipment,
     topBanner,
+    searchPlaceholder = "Press Enter to Track...",
 }: ModernDashboardLayoutProps) {
     const [, setLocation] = useLocation();
     const portalRef = useRef<HTMLDivElement>(null);
@@ -377,7 +379,7 @@ export default function ModernDashboardLayout({
                             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-[18px]">search</span>
                             <input
                                 className="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-full focus:outline-none focus:ring-2 focus:ring-primary/30 text-[13.5px] transition-all text-foreground"
-                                placeholder="Press Enter to Track..."
+                                placeholder={searchPlaceholder}
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyDown={handleSearch}

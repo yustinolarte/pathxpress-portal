@@ -77,6 +77,7 @@ const orderListInput = z.object({
   deliveryTo: z.string().optional(),
   clientId: z.number().int().optional(),
   statuses: z.array(z.string()).optional(),
+  search: z.string().trim().max(100).optional(),
   sort: z.enum(['newest', 'oldest']).optional(),
 }).optional();
 
@@ -558,6 +559,33 @@ export const adminPortalRouter = router({
       return await searchOrders(input.term, { scope: input.scope, standardOnly: input.standardOnly });
     }),
 
+  globalSearch: portalAdminProcedure
+    .input(z.object({ term: z.string().trim().min(2).max(100) }))
+    .query(async ({ input }) => {
+      const db = await import('./db').then(module => module.getDb());
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
+      const { clientAccounts, drivers } = await import('../drizzle/schema');
+      const { or, like } = await import('drizzle-orm');
+      const term = input.term.trim();
+      const pattern = `%${term}%`;
+      const [orderMatches, clientMatches, driverMatches] = await Promise.all([
+        searchOrders(term),
+        db.select({ id: clientAccounts.id, companyName: clientAccounts.companyName, contactName: clientAccounts.contactName, billingEmail: clientAccounts.billingEmail, status: clientAccounts.status })
+          .from(clientAccounts)
+          .where(or(like(clientAccounts.companyName, pattern), like(clientAccounts.contactName, pattern), like(clientAccounts.billingEmail, pattern)))
+          .limit(8),
+        db.select({ id: drivers.id, fullName: drivers.fullName, username: drivers.username, phone: drivers.phone, vehicleNumber: drivers.vehicleNumber, status: drivers.status })
+          .from(drivers)
+          .where(or(like(drivers.fullName, pattern), like(drivers.username, pattern), like(drivers.phone, pattern), like(drivers.vehicleNumber, pattern)))
+          .limit(8),
+      ]);
+      return [
+        ...orderMatches.slice(0, 8).map(order => ({ type: 'order' as const, id: order.id, label: order.waybillNumber, subtitle: `${order.customerName} · ${order.city}`, entity: order })),
+        ...clientMatches.map(client => ({ type: 'client' as const, id: client.id, label: client.companyName, subtitle: `${client.contactName} · ${client.billingEmail}`, entity: client })),
+        ...driverMatches.map(driver => ({ type: 'driver' as const, id: driver.id, label: driver.fullName, subtitle: `${driver.vehicleNumber || driver.username} · ${driver.status}`, entity: driver })),
+      ];
+    }),
+
   // Delete order (admin only)
   deleteOrder: portalAdminProcedure
     .input(z.object({
@@ -802,7 +830,7 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
       }
 
-      const { orders, invoices, codRecords, trackingEvents } = await import('../drizzle/schema');
+      const { orders, invoices, codRecords, trackingEvents, clientAccounts } = await import('../drizzle/schema');
       const { sql, gte, lte, and, eq, inArray } = await import('drizzle-orm');
 
       // Get today and date ranges
@@ -977,6 +1005,31 @@ export const adminPortalRouter = router({
         ? Math.round((Number(returnedCount[0]?.count || 0) / totalReturnOrDeliv) * 100)
         : null;
 
+      const returnedExpr = sql<number>`SUM(CASE WHEN ${orders.status} IN ('returned', 'returned_to_sender') THEN 1 ELSE 0 END)`;
+      const eligibleExpr = sql<number>`COUNT(*)`;
+      const returnClientsRaw = await db
+        .select({
+          clientId: orders.clientId,
+          companyName: clientAccounts.companyName,
+          returned: returnedExpr,
+          eligible: eligibleExpr,
+        })
+        .from(orders)
+        .innerJoin(clientAccounts, eq(clientAccounts.id, orders.clientId))
+        .where(inArray(orders.status, ['delivered', 'returned', 'returned_to_sender']))
+        .groupBy(orders.clientId, clientAccounts.companyName)
+        .orderBy(sql`${returnedExpr} DESC`)
+        .limit(5);
+      const topReturnClients = returnClientsRaw
+        .map(row => ({
+          clientId: row.clientId,
+          companyName: row.companyName,
+          returned: Number(row.returned),
+          eligible: Number(row.eligible),
+          returnRate: Number(row.eligible) > 0 ? Math.round((Number(row.returned) / Number(row.eligible)) * 100) : 0,
+        }))
+        .filter(row => row.returned > 0);
+
       // 12. Total Accounts Receivable (unpaid invoices balance)
       const arResult = await db
         .select({ total: sql<string>`COALESCE(SUM(CAST(balance AS DECIMAL(12,2))), 0)` })
@@ -1039,6 +1092,7 @@ export const adminPortalRouter = router({
         // New KPIs
         firstAttemptDeliveryRate,
         returnRate,
+        topReturnClients,
         totalAccountsReceivable,
         overdueAmount,
         revenueThisMonth,
