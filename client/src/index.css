@@ -892,6 +892,21 @@
     .reveal { opacity: 1; transform: none; transition: none; }
     html    { scroll-behavior: auto; }
     .animate-bounce-subtle { animation: none; }
+    .animate-fade-in,
+    .animate-fade-in-fast,
+    .animate-slide-up,
+    .animate-slide-down,
+    .animate-slide-left,
+    .animate-slide-right,
+    .animate-scale-in,
+    .animate-rotate-in,
+    .animate-blur-in,
+    .animate-bounce-in {
+      animation: none;
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
   }
 
   /* ── Text gradient variants (static only, no animation) ── */

@@ -15,6 +15,14 @@ export function useScrollAnimation(options: UseScrollAnimationOptions = {}) {
         const element = ref.current;
         if (!element) return;
 
+        // Content must remain available when motion is disabled or the observer
+        // API is unavailable. Animations are progressive enhancement, never a
+        // prerequisite for visibility.
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
+            setIsVisible(true);
+            return;
+        }
+
         const observer = new IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {

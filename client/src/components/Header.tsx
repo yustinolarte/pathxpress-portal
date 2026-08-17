@@ -28,7 +28,9 @@ export default function Header() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute('dir', i18n.language === 'ar' ? 'rtl' : 'ltr');
+    const language = i18n.resolvedLanguage?.split('-')[0] || i18n.language.split('-')[0] || 'en';
+    document.documentElement.setAttribute('lang', language);
+    document.documentElement.setAttribute('dir', language === 'ar' ? 'rtl' : 'ltr');
   }, [i18n.language]);
 
   const changeLanguage = (lng: string) => {
