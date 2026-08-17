@@ -1769,6 +1769,7 @@ export async function generateInvoiceForClient(
         status: 'pending',
         currency: 'AED',
         settlementPeriod,
+        sentToClient: 0,
       });
 
       // Create invoice items with correct rates
@@ -2061,6 +2062,7 @@ export async function generateIntlInvoiceForClient(
         status: 'pending',
         currency: 'AED',
         settlementPeriod,
+        sentToClient: 0,
       });
 
       for (const { shipment, shippingRate } of shipmentRates) {
@@ -2174,11 +2176,15 @@ export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd
   return { rows, totalCharged, totalCost, totalProfit, marginPct, itemsMissingCost };
 }
 
+// Customer-facing: only invoices staff have explicitly sent — drafts stay
+// invisible to the client until price corrections are done and finalized.
 export async function getInvoicesByClient(clientId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(invoices).where(eq(invoices.clientId, clientId)).orderBy(desc(invoices.createdAt));
+  return await db.select().from(invoices)
+    .where(and(eq(invoices.clientId, clientId), eq(invoices.sentToClient, 1)))
+    .orderBy(desc(invoices.createdAt));
 }
 
 export async function getAllInvoices() {
@@ -2297,6 +2303,8 @@ export async function getInvoicesPaged(filters: InvoiceListFilters): Promise<{ r
         isAdjusted: invoices.isAdjusted,
         lastAdjustedBy: invoices.lastAdjustedBy,
         lastAdjustedAt: invoices.lastAdjustedAt,
+        sentToClient: invoices.sentToClient,
+        sentAt: invoices.sentAt,
         createdAt: invoices.createdAt,
         updatedAt: invoices.updatedAt,
         shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
@@ -2735,6 +2743,22 @@ export async function updateInvoice(id: number, data: Partial<{
   cacheInvalidate('admin:allInvoices');
 }
 
+// Marks a draft invoice as sent — the moment it becomes visible in the customer
+// portal (getInvoicesByClient) and eligible for the "new invoice" notification.
+// Idempotent: sending an already-sent invoice again is a no-op.
+export async function markInvoiceSentToClient(id: number): Promise<{ success: boolean; alreadySent: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [invoice] = await db.select({ sentToClient: invoices.sentToClient }).from(invoices).where(eq(invoices.id, id)).limit(1);
+  if (!invoice) throw new Error("Invoice not found");
+  if (invoice.sentToClient) return { success: true, alreadySent: true };
+
+  await db.update(invoices).set({ sentToClient: 1, sentAt: new Date() }).where(eq(invoices.id, id));
+  cacheInvalidate('admin:allInvoices');
+  return { success: true, alreadySent: false };
+}
+
 // Delete invoice (only if pending)
 export async function deleteInvoice(id: number): Promise<{ success: boolean; error?: string }> {
   const db = await getDb();
@@ -2782,6 +2806,37 @@ export async function addInvoiceItem(data: {
   });
 
   return result.insertId;
+}
+
+// Correct an existing invoice line's price/qty/description in place — unlike
+// deleteInvoiceItem, this is allowed for shipment-linked lines too, since the
+// whole point is fixing a wrong shipment price without bolting on a separate
+// manual adjustment line for every shipment that needs it.
+export async function updateInvoiceItem(itemId: number, data: {
+  unitPrice?: string;
+  quantity?: number;
+  description?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, error: "Database not available" };
+
+  const [item] = await db.select().from(invoiceItems).where(eq(invoiceItems.id, itemId)).limit(1);
+  if (!item) {
+    return { success: false, error: "Invoice item not found" };
+  }
+
+  const quantity = data.quantity ?? item.quantity;
+  const unitPrice = data.unitPrice ?? item.unitPrice;
+  const total = (quantity * parseFloat(unitPrice)).toFixed(2);
+
+  await db.update(invoiceItems).set({
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    quantity,
+    unitPrice,
+    total,
+  }).where(eq(invoiceItems.id, itemId));
+
+  return { success: true };
 }
 
 // Delete invoice item (only manual items without shipmentId)

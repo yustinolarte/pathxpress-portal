@@ -118,6 +118,24 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, onSucce
     },
   });
 
+  // Inline price correction for any line, including shipment-linked ones — the
+  // whole point is fixing a batch of wrong shipment prices in place instead of
+  // bolting on a separate manual adjustment line per shipment.
+  const updateItemMutation = trpc.portal.billing.updateInvoiceItem.useMutation({
+    onSuccess: () => refreshItems(),
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to update item');
+      refreshItems(); // revert the input to the last saved value
+    },
+  });
+
+  const handleUnitPriceBlur = (item: InvoiceItem, value: string) => {
+    if (value === item.unitPrice) return;
+    const price = parseFloat(value);
+    if (isNaN(price)) { toast.error('Enter a valid price'); refreshItems(); return; }
+    updateItemMutation.mutate({ invoiceId: invoice.id, itemId: item.id, unitPrice: price.toFixed(2) });
+  };
+
   const refreshItems = () => {
     setIsLoadingItems(true);
     fetch('/api/trpc/portal.billing.getInvoiceDetails?input=' + encodeURIComponent(JSON.stringify({ json: { invoiceId: invoice.id } })))
@@ -210,6 +228,11 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, onSucce
       <DialogContent className="!max-w-6xl sm:!max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl">Edit Invoice #{invoice?.invoiceNumber}</DialogTitle>
+          {invoice && !invoice.sentToClient && (
+            <p className="text-xs text-blue-400">
+              Draft — not yet sent to the client. Edits here won't be flagged as a customer-visible adjustment.
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-6">
@@ -328,7 +351,19 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, onSucce
                         </div>
                       </TableCell>
                       <TableCell className="text-center">{item.quantity}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className="text-xs text-muted-foreground">{invoice?.currency}</span>
+                          <Input
+                            key={`${item.id}-${item.unitPrice}`}
+                            type="number"
+                            step="0.01"
+                            defaultValue={item.unitPrice}
+                            className="h-8 w-24 text-right font-mono text-xs"
+                            onBlur={(e) => handleUnitPriceBlur(item, e.target.value)}
+                          />
+                        </div>
+                      </TableCell>
                       <TableCell className={`text-right font-medium ${parseFloat(item.total) < 0 ? 'text-red-400' : ''}`}>
                         {formatCurrency(item.total)}
                       </TableCell>

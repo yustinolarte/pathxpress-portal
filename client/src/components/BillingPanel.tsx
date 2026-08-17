@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package, TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight, Banknote, Zap, Mail } from 'lucide-react';
+import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package, TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight, Banknote, Zap, Mail, Send } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,6 +22,372 @@ import * as XLSX from 'xlsx';
 import type { InvoiceStats } from '../../../server/db';
 
 const INVOICES_PAGE_SIZE = 50;
+
+// ─── Module-scope helpers/components used by GenerateDialog ─────────────────
+// Pulled out of BillingPanel's body (and GenerateDialog hoisted alongside them)
+// because a component defined inside another component's render is a *new*
+// function identity every render — React then unmounts/remounts the whole
+// subtree instead of reconciling it. That was causing every keystroke in the
+// Period Start/End date inputs to destroy and rebuild the dialog (a visible
+// flash) since setting the date re-rendered BillingPanel, which redefined
+// GenerateDialog, which remounted the <input type="date"> underneath it.
+
+const formatDate = (date: Date | string) => new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+// Format/parse in local calendar terms — toISOString() would shift the day for any
+// staff member on a non-UTC clock and knock the period end off its Friday, which is
+// what anchors the server-side 18:00 Dubai cutoff.
+const toDateStr = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fromDateStr = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const applySettlementPreset = (
+  type: 'weekly' | 'biweekly' | 'monthly' | 'custom',
+  suggestedStart: string | null,
+  setPStart: (v: string) => void,
+  setPEnd: (v: string) => void
+) => {
+  if (type === 'custom') return;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Returns the nearest Friday on or before the given date
+  const prevFriday = (date: Date): Date => {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const diff = (d.getDay() - 5 + 7) % 7; // 0 if already Friday
+    d.setDate(d.getDate() - diff);
+    return d;
+  };
+
+  // Returns the last Friday of a given month (0-indexed)
+  const lastFridayOfMonth = (year: number, month: number): Date =>
+    prevFriday(new Date(year, month + 1, 0));
+
+  // Billing uses Friday-to-Friday periods, each closing at 18:00 Dubai on the end Friday.
+  // suggestedStart = day after the last invoice's end Friday, so go back 1 day to land on that Friday.
+  let startFriday: Date;
+  if (suggestedStart) {
+    const s = fromDateStr(suggestedStart);
+    startFriday = new Date(s.getTime() - 86400000);
+  } else if (type === 'monthly') {
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    startFriday = lastFridayOfMonth(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+  } else {
+    const days = type === 'weekly' ? 7 : 14;
+    startFriday = new Date(prevFriday(today).getTime() - days * 86400000);
+  }
+
+  let endFriday: Date;
+  if (type === 'monthly') {
+    const nm = new Date(startFriday);
+    nm.setMonth(nm.getMonth() + 1);
+    endFriday = lastFridayOfMonth(nm.getFullYear(), nm.getMonth());
+  } else {
+    const days = type === 'weekly' ? 7 : 14;
+    endFriday = new Date(startFriday.getTime() + days * 86400000);
+  }
+
+  setPStart(toDateStr(startFriday));
+  setPEnd(toDateStr(endFriday));
+};
+
+// Which pricing cascade rule produced a domestic shipment's price — shown next to the price
+// in the Generate Invoice dialog so staff can audit it without reading the pricing code.
+const rateSourceLabel = (shipment: any): string | null => {
+  switch (shipment.rateSource) {
+    case 'manualTier': return 'manual tier';
+    case 'customOrZone': return 'zone/custom rate';
+    case 'autoTier': return shipment.rateTierLabel ? `tier ${shipment.rateTierLabel}` : 'auto tier';
+    case 'return': return 'return (zone)';
+    case 'returnFeeFallback': return 'return fee';
+    case 'exchangeFree': return 'exchange (free)';
+    default: return null;
+  }
+};
+
+// Generate dialog (reusable for dom/intl) — module scope, see the comment
+// block above for why this can't live inside BillingPanel's render body.
+const GenerateDialog = ({
+  open, onOpenChange, isIntl, clients,
+  client, setClient, pStart, setPStart, pEnd, setPEnd,
+  shipments, isLoadingShipments,
+  selectedIds, onToggle, onSelectAll, selectAllChecked,
+  previewTotal, showPreview, setShowPreview,
+  onGenerate, isPending,
+  settlement, setSettlement, billingInfo,
+}: {
+  open: boolean; onOpenChange: (v: boolean) => void; isIntl: boolean;
+  clients: any[] | undefined;
+  client: number | null; setClient: (v: number) => void;
+  pStart: string; setPStart: (v: string) => void;
+  pEnd: string; setPEnd: (v: string) => void;
+  shipments: any[] | undefined; isLoadingShipments: boolean;
+  selectedIds: number[]; onToggle: (id: number) => void;
+  onSelectAll: (c: boolean) => void; selectAllChecked: boolean;
+  previewTotal: number; showPreview: boolean; setShowPreview: (v: boolean) => void;
+  onGenerate: () => void; isPending: boolean;
+  settlement: 'weekly' | 'biweekly' | 'monthly' | 'custom';
+  setSettlement: (v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => void;
+  billingInfo: any;
+}) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogTrigger asChild>
+      <Button>
+        {isIntl ? <Globe className="w-4 h-4 mr-2" /> : <FileText className="w-4 h-4 mr-2" />}
+        Generate {isIntl ? 'International ' : ''}Invoice
+      </Button>
+    </DialogTrigger>
+    <DialogContent className="bg-card border-border !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
+      <div className="w-full h-1 bg-primary" />
+      <div className="p-6">
+        <DialogHeader className="mb-6">
+          <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              {isIntl ? <Globe className="w-6 h-6 text-primary" /> : <FileText className="w-6 h-6 text-primary" />}
+            </div>
+            Generate {isIntl ? 'International ' : ''}Invoice
+          </DialogTitle>
+          <DialogDescription>
+            {isIntl
+              ? 'Create an invoice for international shipments in a date range'
+              : 'Create an invoice for a client based on shipments in a date range'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Client</Label>
+            <Select value={client?.toString()} onValueChange={(v) => setClient(parseInt(v))}>
+              <SelectTrigger className="bg-white/5 border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
+              <SelectContent className="bg-card border-border">
+                {clients?.map((c: any) => <SelectItem key={c.id} value={c.id.toString()}>{c.companyName}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Last billing info block */}
+          {client && billingInfo && (
+            billingInfo.lastInvoiceNumber ? (
+              <div className="p-3 rounded-xl bg-secondary border border-border text-sm space-y-1.5">
+                <p className="font-display font-semibold flex items-center gap-2" style={{ color: 'var(--st-blue)' }}>
+                  <Calendar className="w-4 h-4" /> Last Invoice History
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <span className="text-muted-foreground">Last invoice:</span>
+                  <span className="font-mono font-medium">{billingInfo.lastInvoiceNumber}</span>
+                  <span className="text-muted-foreground">Issued:</span>
+                  <span>{billingInfo.lastInvoiceDate ? formatDate(billingInfo.lastInvoiceDate) : '—'}</span>
+                  <span className="text-muted-foreground">Period covered:</span>
+                  <span>{billingInfo.lastInvoicePeriodFrom ? formatDate(billingInfo.lastInvoicePeriodFrom) : '—'} → {billingInfo.lastInvoicePeriodTo ? formatDate(billingInfo.lastInvoicePeriodTo) : '—'}</span>
+                  <span className="text-muted-foreground">Pending balance:</span>
+                  <span className={parseFloat(billingInfo.pendingBalance) > 0 ? 'money text-primary' : 'money'} style={parseFloat(billingInfo.pendingBalance) > 0 ? undefined : { color: 'var(--st-green)' }}>
+                    AED {parseFloat(billingInfo.pendingBalance || '0').toFixed(2)}
+                  </span>
+                  <span className="text-muted-foreground">Total invoices:</span>
+                  <span>{billingInfo.totalInvoices}</span>
+                </div>
+                {billingInfo.suggestedPeriodStart && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Suggested next period start: <span className="font-mono font-semibold">{billingInfo.suggestedPeriodStart}</span>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-xs text-muted-foreground">
+                No previous invoices for this client.
+              </div>
+            )
+          )}
+
+          {/* Settlement period selector */}
+          <div className="space-y-2">
+            <Label>Settlement Period</Label>
+            <Select
+              value={settlement}
+              onValueChange={(v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => {
+                setSettlement(v);
+                applySettlementPreset(v, billingInfo?.suggestedPeriodStart ?? null, setPStart, setPEnd);
+              }}
+            >
+              <SelectTrigger className="bg-white/5 border-border"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-card border-border">
+                <SelectItem value="custom">Custom (manual dates)</SelectItem>
+                <SelectItem value="weekly">Weekly (7 days)</SelectItem>
+                <SelectItem value="biweekly">Biweekly (14 days)</SelectItem>
+                <SelectItem value="monthly">Monthly (previous month)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Period Start</Label>
+              <Input type="date" value={pStart} onChange={(e) => { setSettlement('custom'); setPStart(e.target.value); }} className="bg-white/5 border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Period End</Label>
+              <Input type="date" value={pEnd} onChange={(e) => { setSettlement('custom'); setPEnd(e.target.value); }} className="bg-white/5 border-border" />
+            </div>
+          </div>
+
+          {/* Weekly cutoff notice — mirrors getBillingWindow() on the server */}
+          {pEnd && (
+            <p className="text-xs text-muted-foreground flex items-start gap-2">
+              <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              {fromDateStr(pEnd).getDay() === 5 ? (
+                <span>
+                  The period closes at <span className="font-semibold">Friday 18:00 (Dubai)</span>. Everything up to that
+                  time is always included; shipments after it roll into the next invoice.
+                </span>
+              ) : (
+                <span>
+                  This period ends on a non-Friday, so it closes at the end of that day. Billing weeks normally close at
+                  Friday 18:00 (Dubai).
+                </span>
+              )}
+            </p>
+          )}
+
+          {/* Overlap warning */}
+          {client && pStart && billingInfo?.lastInvoicePeriodTo && new Date(pStart) <= new Date(billingInfo.lastInvoicePeriodTo) && (
+            <div className="alert-soft amber !p-3 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Warning: The selected start date overlaps with the previous invoice period (through {formatDate(billingInfo.lastInvoicePeriodTo)}).
+                Shipments already billed will be excluded, but verify there are no gaps.
+              </span>
+            </div>
+          )}
+
+          {/* Billable Shipments List */}
+          {client && pStart && pEnd && (
+            <div className="space-y-2 border border-border rounded-xl p-4 bg-white/5">
+              <div className="flex items-center justify-between mb-2">
+                <Label>Billable Shipments ({selectedIds.length})</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id={`select-all-${isIntl ? 'intl' : 'dom'}`} checked={selectAllChecked} onCheckedChange={(c) => onSelectAll(c as boolean)} />
+                  <label htmlFor={`select-all-${isIntl ? 'intl' : 'dom'}`} className="text-xs text-muted-foreground cursor-pointer">Select All</label>
+                </div>
+              </div>
+
+              {isLoadingShipments ? (
+                <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
+              ) : !shipments || shipments.length === 0 ? (
+                <div className="text-center py-4 text-sm text-primary">
+                  {isIntl
+                    ? 'No international shipments found for this period.'
+                    : 'No delivered shipments found for this period.'}
+                </div>
+              ) : (
+                <div className="max-h-[200px] overflow-y-auto space-y-2">
+                  {shipments.map((shipment: any) => (
+                    <div key={shipment.id} className="flex items-start space-x-2 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                      <Checkbox id={`shipment-${shipment.id}`} checked={selectedIds.includes(shipment.id)} onCheckedChange={() => onToggle(shipment.id)} />
+                      <div className="grid gap-1.5 leading-none">
+                        <label htmlFor={`shipment-${shipment.id}`} className="text-sm font-medium leading-none cursor-pointer">{shipment.waybillNumber}</label>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(isIntl ? shipment.createdAt : shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {abbreviateServiceType(shipment.serviceType)}
+                          {isIntl && shipment.destinationCountry ? ` - ${shipment.destinationCountry}` : ''}
+                        </p>
+                      </div>
+                      <div className="ml-auto flex items-center gap-1.5">
+                        {isIntl && shipment.rateServiceTypeMismatch && (
+                          <span
+                            title={`Stored service type "${shipment.serviceType || '—'}" not found in current rates — priced using ${shipment.rateAppliedServiceKey || 'a fallback service'} instead. Review before confirming.`}
+                            style={{ color: 'var(--st-amber)' }}
+                          >
+                            <AlertCircle className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                        {!isIntl && shipment.emirateMissing && (
+                          <span title="No emirate on file for this shipment — zone was guessed from city, or defaulted to Zone 1. Verify the price." style={{ color: 'var(--st-amber)' }}>
+                            <AlertCircle className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                        {!isIntl && rateSourceLabel(shipment) && (
+                          <span className="text-muted-foreground text-[10px] uppercase tracking-wide font-sans" title="Pricing rule applied">
+                            {rateSourceLabel(shipment)}
+                          </span>
+                        )}
+                        <div className="text-xs font-mono font-medium">
+                          AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Preview Step */}
+          {showPreview ? (
+            <div className="space-y-4 border-t border-border pt-4">
+              <h4 className="font-semibold text-lg flex items-center gap-2">
+                <Eye className="w-5 h-5 text-primary" />
+                Invoice Preview
+              </h4>
+              <div className="p-4 bg-white/5 border border-border rounded-xl space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Client:</span>
+                  <span className="font-medium">{clients?.find((c: any) => c.id === client)?.companyName}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Settlement:</span>
+                  <span className="font-medium capitalize">{settlement}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Period:</span>
+                  <span>{pStart} to {pEnd}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Shipments:</span>
+                  <span>{selectedIds.length} items</span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-border pt-2">
+                  <span className="text-muted-foreground">Subtotal:</span>
+                  <span>AED {previewTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Taxes:</span>
+                  <span>AED 0.00</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg border-t border-border pt-2">
+                  <span>Total:</span>
+                  <span className="text-primary">AED {previewTotal.toFixed(2)}</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setShowPreview(false)}>Back</Button>
+                <Button onClick={onGenerate} className="flex-1" disabled={isPending}>
+                  {isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</> : 'Confirm & Generate Invoice'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              onClick={() => {
+                if (!client || !pStart || !pEnd) { toast.error('Please select client and period'); return; }
+                if (selectedIds.length === 0) { toast.error('Please select at least one shipment'); return; }
+                setShowPreview(true);
+              }}
+              className="w-full"
+              disabled={!client || !pStart || !pEnd || selectedIds.length === 0}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              Preview Invoice
+            </Button>
+          )}
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+);
 
 export default function BillingPanel() {
   const utils = trpc.useUtils();
@@ -146,7 +512,7 @@ export default function BillingPanel() {
 
   const generateInvoice = trpc.portal.billing.generateInvoice.useMutation({
     onSuccess: () => {
-      toast.success('Invoice generated successfully');
+      toast.success('Invoice created as a draft — review pricing, then send it to the client when ready');
       setGenerateDialogOpen(false);
       setSelectedClient(null);
       setPeriodStart('');
@@ -160,7 +526,7 @@ export default function BillingPanel() {
 
   const generateIntlInvoice = trpc.portal.billing.generateIntlInvoice.useMutation({
     onSuccess: (result: any) => {
-      toast.success('International invoice generated successfully');
+      toast.success('International invoice created as a draft — review pricing, then send it to the client when ready');
       if (result?.mismatchedShipments?.length) {
         const list = result.mismatchedShipments.map((m: any) => m.waybillNumber).filter(Boolean).join(', ');
         toast.warning(
@@ -188,6 +554,19 @@ export default function BillingPanel() {
     onSuccess: () => { toast.success('Invoice deleted successfully'); refetch(); },
     onError: (error) => toast.error(error.message || 'Failed to delete invoice'),
   });
+
+  // Finalizes a draft: makes it visible in the customer portal and fires the
+  // "new invoice" notification. Also called as a side effect of emailing an
+  // invoice (see handleSendInvoiceEmail) so the portal and the inbox never disagree.
+  const sendToClientMutation = trpc.portal.billing.sendInvoiceToClient.useMutation({
+    onSuccess: () => { toast.success('Invoice sent to client'); refetch(); },
+    onError: (error) => toast.error(error.message || 'Failed to send invoice'),
+  });
+
+  const handleSendToClient = (invoice: any) => {
+    if (!confirm(`Send invoice ${invoice.invoiceNumber} to the client? It will become visible in their portal and they'll be notified.`)) return;
+    sendToClientMutation.mutate({ invoiceId: invoice.id });
+  };
 
   // ─── Effects ──────────────────────────────────────────────────────────────
 
@@ -270,12 +649,15 @@ export default function BillingPanel() {
       if (!result.result?.data?.json) { toast.error('Failed to load invoice details'); return; }
       const details = result.result.data.json;
       const client = clients?.find((c: any) => c.id === invoice.clientId);
+      const shipper = details.shipperInfo;
       generateInvoicePDF({
         id: details.invoice.id,
         invoiceNumber: details.invoice.invoiceNumber,
-        clientName: client?.companyName || `Client #${invoice.clientId}`,
-        billingAddress: client?.billingAddress || null,
-        billingEmail: client?.billingEmail || null,
+        clientName: shipper?.shipperName || client?.companyName || `Client #${invoice.clientId}`,
+        billingAddress: shipper
+          ? [shipper.shipperAddress, shipper.shipperCity, shipper.shipperCountry].filter(Boolean).join(', ')
+          : (client?.billingAddress || null),
+        billingEmail: shipper ? shipper.shipperPhone : (client?.billingEmail || null),
         issueDate: new Date(details.invoice.issueDate),
         dueDate: new Date(details.invoice.dueDate),
         periodStart: new Date(details.invoice.periodFrom),
@@ -320,12 +702,15 @@ export default function BillingPanel() {
         return isFinite(n) ? `${currency} ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${currency} ${amount}`;
       };
 
+      const shipper = details.shipperInfo;
       const blob = generateInvoicePDF({
         id: details.invoice.id,
         invoiceNumber: details.invoice.invoiceNumber,
-        clientName: client.companyName,
-        billingAddress: client.billingAddress || null,
-        billingEmail: client.billingEmail || null,
+        clientName: shipper?.shipperName || client.companyName,
+        billingAddress: shipper
+          ? [shipper.shipperAddress, shipper.shipperCity, shipper.shipperCountry].filter(Boolean).join(', ')
+          : (client.billingAddress || null),
+        billingEmail: shipper ? shipper.shipperPhone : (client.billingEmail || null),
         issueDate: new Date(details.invoice.issueDate),
         dueDate: new Date(details.invoice.dueDate),
         periodStart: new Date(details.invoice.periodFrom),
@@ -370,6 +755,12 @@ export default function BillingPanel() {
           pay_url: client.paymentLink || 'https://pathxpress.net/portal/customer?tab=invoices',
         },
         attachments: [{ filename: `Invoice-${details.invoice.invoiceNumber}.pdf`, content: base64, contentType: 'application/pdf' }],
+      }, {
+        // Emailing an invoice means the client now has it, so finalize it too
+        // (silently — no confirm, no extra toast) so the portal and inbox agree.
+        onSuccess: () => {
+          if (!invoice.sentToClient) sendToClientMutation.mutate({ invoiceId: invoice.id });
+        },
       });
     } catch (error) {
       console.error('Error sending invoice email:', error);
@@ -386,7 +777,16 @@ export default function BillingPanel() {
       if (!result.result?.data?.json) { toast.error('Failed to load invoice details'); setPreviewDialogOpen(false); return; }
       const details = result.result.data.json;
       const client = clients?.find((c: any) => c.id === invoice.clientId);
-      setPreviewInvoice({ ...details.invoice, clientName: client?.companyName || `Client #${invoice.clientId}`, billingAddress: client?.billingAddress || '', billingEmail: client?.billingEmail || '', items: details.items });
+      const shipper = details.shipperInfo;
+      setPreviewInvoice({
+        ...details.invoice,
+        clientName: shipper?.shipperName || client?.companyName || `Client #${invoice.clientId}`,
+        billingAddress: shipper
+          ? [shipper.shipperAddress, shipper.shipperCity, shipper.shipperCountry].filter(Boolean).join(', ')
+          : (client?.billingAddress || ''),
+        billingEmail: shipper ? shipper.shipperPhone : (client?.billingEmail || ''),
+        items: details.items,
+      });
     } catch (error) {
       console.error('Error loading invoice:', error);
       toast.error('Failed to load invoice details');
@@ -397,87 +797,13 @@ export default function BillingPanel() {
   };
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
+  // (formatDate, toDateStr/fromDateStr, applySettlementPreset, rateSourceLabel now
+  // live at module scope, above — GenerateDialog needs them and had to move out
+  // of this component to stop remounting on every keystroke; see its definition.)
 
-  const formatDate = (date: Date | string) => new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   const formatCurrency = (amount: string, currency: string = 'AED') => `${currency} ${parseFloat(amount).toFixed(2)}`;
 
-  // Format/parse in local calendar terms — toISOString() would shift the day for any
-  // staff member on a non-UTC clock and knock the period end off its Friday, which is
-  // what anchors the server-side 18:00 Dubai cutoff.
-  const toDateStr = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const fromDateStr = (s: string) => {
-    const [y, m, d] = s.split('-').map(Number);
-    return new Date(y, m - 1, d);
-  };
-
-  const applySettlementPreset = (
-    type: 'weekly' | 'biweekly' | 'monthly' | 'custom',
-    suggestedStart: string | null,
-    setPStart: (v: string) => void,
-    setPEnd: (v: string) => void
-  ) => {
-    if (type === 'custom') return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Returns the nearest Friday on or before the given date
-    const prevFriday = (date: Date): Date => {
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      const diff = (d.getDay() - 5 + 7) % 7; // 0 if already Friday
-      d.setDate(d.getDate() - diff);
-      return d;
-    };
-
-    // Returns the last Friday of a given month (0-indexed)
-    const lastFridayOfMonth = (year: number, month: number): Date =>
-      prevFriday(new Date(year, month + 1, 0));
-
-    // Billing uses Friday-to-Friday periods, each closing at 18:00 Dubai on the end Friday.
-    // suggestedStart = day after the last invoice's end Friday, so go back 1 day to land on that Friday.
-    let startFriday: Date;
-    if (suggestedStart) {
-      const s = fromDateStr(suggestedStart);
-      startFriday = new Date(s.getTime() - 86400000);
-    } else if (type === 'monthly') {
-      const y = today.getFullYear();
-      const m = today.getMonth();
-      startFriday = lastFridayOfMonth(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
-    } else {
-      const days = type === 'weekly' ? 7 : 14;
-      startFriday = new Date(prevFriday(today).getTime() - days * 86400000);
-    }
-
-    let endFriday: Date;
-    if (type === 'monthly') {
-      const nm = new Date(startFriday);
-      nm.setMonth(nm.getMonth() + 1);
-      endFriday = lastFridayOfMonth(nm.getFullYear(), nm.getMonth());
-    } else {
-      const days = type === 'weekly' ? 7 : 14;
-      endFriday = new Date(startFriday.getTime() + days * 86400000);
-    }
-
-    setPStart(toDateStr(startFriday));
-    setPEnd(toDateStr(endFriday));
-  };
-
   const settlementLabel = (p: string) => ({ weekly: 'Weekly', biweekly: 'Biweekly', monthly: 'Monthly', custom: 'Custom' }[p] ?? p);
-
-  // Which pricing cascade rule produced a domestic shipment's price — shown next to the price
-  // in the Generate Invoice dialog so staff can audit it without reading the pricing code.
-  const rateSourceLabel = (shipment: any): string | null => {
-    switch (shipment.rateSource) {
-      case 'manualTier': return 'manual tier';
-      case 'customOrZone': return 'zone/custom rate';
-      case 'autoTier': return shipment.rateTierLabel ? `tier ${shipment.rateTierLabel}` : 'auto tier';
-      case 'return': return 'return (zone)';
-      case 'returnFeeFallback': return 'return fee';
-      case 'exchangeFree': return 'exchange (free)';
-      default: return null;
-    }
-  };
 
   const getDueDaysLabel = (dueDate: Date | string, status: string) => {
     if (status === 'paid') return null;
@@ -664,7 +990,14 @@ export default function BillingPanel() {
                     <TableCell className={balance > 0 ? 'money text-primary' : 'text-muted-foreground'}>
                       {balance > 0 ? formatCurrency(invoice.balance || invoice.total, invoice.currency) : '—'}
                     </TableCell>
-                    <TableCell><span className={statusBadgeClass(invoice.status)}>{invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}</span></TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={statusBadgeClass(invoice.status)}>{invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}</span>
+                        {!invoice.sentToClient && (
+                          <span className="pill" title="Not yet visible to the client — safe to correct pricing" style={{ color: 'var(--st-blue)' }}>Draft</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Select value={invoice.status} onValueChange={(value: 'pending' | 'paid' | 'overdue') => handleStatusChange(invoice.id, value)}>
@@ -678,6 +1011,11 @@ export default function BillingPanel() {
                         <Button variant="outline" size="sm" onClick={() => { setSelectedInvoice(invoice); setEditDialogOpen(true); }} title="Edit invoice">
                           <Edit className="w-4 h-4" />
                         </Button>
+                        {!invoice.sentToClient && (
+                          <Button variant="outline" size="sm" onClick={() => handleSendToClient(invoice)} disabled={sendToClientMutation.isPending} title="Send to client — makes it visible in their portal and notifies them" className="text-primary hover:text-primary hover:bg-primary/10">
+                            <Send className="w-4 h-4" />
+                          </Button>
+                        )}
                         <Button variant="outline" size="sm" onClick={() => handleDownloadPDF(invoice)} title="Download PDF">
                           <Download className="w-4 h-4" />
                         </Button>
@@ -957,282 +1295,6 @@ export default function BillingPanel() {
 
   // ─── Generate dialog (reusable for dom/intl) ──────────────────────────────
 
-  const GenerateDialog = ({
-    open, onOpenChange, isIntl,
-    client, setClient, pStart, setPStart, pEnd, setPEnd,
-    shipments, isLoadingShipments,
-    selectedIds, onToggle, onSelectAll, selectAllChecked,
-    previewTotal, showPreview, setShowPreview,
-    onGenerate, isPending,
-    settlement, setSettlement, billingInfo,
-  }: {
-    open: boolean; onOpenChange: (v: boolean) => void; isIntl: boolean;
-    client: number | null; setClient: (v: number) => void;
-    pStart: string; setPStart: (v: string) => void;
-    pEnd: string; setPEnd: (v: string) => void;
-    shipments: any[] | undefined; isLoadingShipments: boolean;
-    selectedIds: number[]; onToggle: (id: number) => void;
-    onSelectAll: (c: boolean) => void; selectAllChecked: boolean;
-    previewTotal: number; showPreview: boolean; setShowPreview: (v: boolean) => void;
-    onGenerate: () => void; isPending: boolean;
-    settlement: 'weekly' | 'biweekly' | 'monthly' | 'custom';
-    setSettlement: (v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => void;
-    billingInfo: any;
-  }) => (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button>
-          {isIntl ? <Globe className="w-4 h-4 mr-2" /> : <FileText className="w-4 h-4 mr-2" />}
-          Generate {isIntl ? 'International ' : ''}Invoice
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="bg-card border-border !w-[90vw] !max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 ">
-        <div className="w-full h-1 bg-primary" />
-        <div className="p-6">
-          <DialogHeader className="mb-6">
-            <DialogTitle className="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                {isIntl ? <Globe className="w-6 h-6 text-primary" /> : <FileText className="w-6 h-6 text-primary" />}
-              </div>
-              Generate {isIntl ? 'International ' : ''}Invoice
-            </DialogTitle>
-            <DialogDescription>
-              {isIntl
-                ? 'Create an invoice for international shipments in a date range'
-                : 'Create an invoice for a client based on shipments in a date range'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Client</Label>
-              <Select value={client?.toString()} onValueChange={(v) => setClient(parseInt(v))}>
-                <SelectTrigger className="bg-white/5 border-border"><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  {clients?.map((c: any) => <SelectItem key={c.id} value={c.id.toString()}>{c.companyName}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Last billing info block */}
-            {client && billingInfo && (
-              billingInfo.lastInvoiceNumber ? (
-                <div className="p-3 rounded-xl bg-secondary border border-border text-sm space-y-1.5">
-                  <p className="font-display font-semibold flex items-center gap-2" style={{ color: 'var(--st-blue)' }}>
-                    <Calendar className="w-4 h-4" /> Last Invoice History
-                  </p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    <span className="text-muted-foreground">Last invoice:</span>
-                    <span className="font-mono font-medium">{billingInfo.lastInvoiceNumber}</span>
-                    <span className="text-muted-foreground">Issued:</span>
-                    <span>{billingInfo.lastInvoiceDate ? formatDate(billingInfo.lastInvoiceDate) : '—'}</span>
-                    <span className="text-muted-foreground">Period covered:</span>
-                    <span>{billingInfo.lastInvoicePeriodFrom ? formatDate(billingInfo.lastInvoicePeriodFrom) : '—'} → {billingInfo.lastInvoicePeriodTo ? formatDate(billingInfo.lastInvoicePeriodTo) : '—'}</span>
-                    <span className="text-muted-foreground">Pending balance:</span>
-                    <span className={parseFloat(billingInfo.pendingBalance) > 0 ? 'money text-primary' : 'money'} style={parseFloat(billingInfo.pendingBalance) > 0 ? undefined : { color: 'var(--st-green)' }}>
-                      AED {parseFloat(billingInfo.pendingBalance || '0').toFixed(2)}
-                    </span>
-                    <span className="text-muted-foreground">Total invoices:</span>
-                    <span>{billingInfo.totalInvoices}</span>
-                  </div>
-                  {billingInfo.suggestedPeriodStart && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Suggested next period start: <span className="font-mono font-semibold">{billingInfo.suggestedPeriodStart}</span>
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-xs text-muted-foreground">
-                  No previous invoices for this client.
-                </div>
-              )
-            )}
-
-            {/* Settlement period selector */}
-            <div className="space-y-2">
-              <Label>Settlement Period</Label>
-              <Select
-                value={settlement}
-                onValueChange={(v: 'weekly' | 'biweekly' | 'monthly' | 'custom') => {
-                  setSettlement(v);
-                  applySettlementPreset(v, billingInfo?.suggestedPeriodStart ?? null, setPStart, setPEnd);
-                }}
-              >
-                <SelectTrigger className="bg-white/5 border-border"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="custom">Custom (manual dates)</SelectItem>
-                  <SelectItem value="weekly">Weekly (7 days)</SelectItem>
-                  <SelectItem value="biweekly">Biweekly (14 days)</SelectItem>
-                  <SelectItem value="monthly">Monthly (previous month)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Period Start</Label>
-                <Input type="date" value={pStart} onChange={(e) => { setSettlement('custom'); setPStart(e.target.value); }} className="bg-white/5 border-border" />
-              </div>
-              <div className="space-y-2">
-                <Label>Period End</Label>
-                <Input type="date" value={pEnd} onChange={(e) => { setSettlement('custom'); setPEnd(e.target.value); }} className="bg-white/5 border-border" />
-              </div>
-            </div>
-
-            {/* Weekly cutoff notice — mirrors getBillingWindow() on the server */}
-            {pEnd && (
-              <p className="text-xs text-muted-foreground flex items-start gap-2">
-                <Clock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                {fromDateStr(pEnd).getDay() === 5 ? (
-                  <span>
-                    The period closes at <span className="font-semibold">Friday 18:00 (Dubai)</span>. Everything up to that
-                    time is always included; shipments after it roll into the next invoice.
-                  </span>
-                ) : (
-                  <span>
-                    This period ends on a non-Friday, so it closes at the end of that day. Billing weeks normally close at
-                    Friday 18:00 (Dubai).
-                  </span>
-                )}
-              </p>
-            )}
-
-            {/* Overlap warning */}
-            {client && pStart && billingInfo?.lastInvoicePeriodTo && new Date(pStart) <= new Date(billingInfo.lastInvoicePeriodTo) && (
-              <div className="alert-soft amber !p-3 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>
-                  Warning: The selected start date overlaps with the previous invoice period (through {formatDate(billingInfo.lastInvoicePeriodTo)}).
-                  Shipments already billed will be excluded, but verify there are no gaps.
-                </span>
-              </div>
-            )}
-
-            {/* Billable Shipments List */}
-            {client && pStart && pEnd && (
-              <div className="space-y-2 border border-border rounded-xl p-4 bg-white/5">
-                <div className="flex items-center justify-between mb-2">
-                  <Label>Billable Shipments ({selectedIds.length})</Label>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id={`select-all-${isIntl ? 'intl' : 'dom'}`} checked={selectAllChecked} onCheckedChange={(c) => onSelectAll(c as boolean)} />
-                    <label htmlFor={`select-all-${isIntl ? 'intl' : 'dom'}`} className="text-xs text-muted-foreground cursor-pointer">Select All</label>
-                  </div>
-                </div>
-
-                {isLoadingShipments ? (
-                  <div className="text-center py-4 text-sm text-muted-foreground">Loading shipments...</div>
-                ) : !shipments || shipments.length === 0 ? (
-                  <div className="text-center py-4 text-sm text-primary">
-                    {isIntl
-                      ? 'No international shipments found for this period.'
-                      : 'No delivered shipments found for this period.'}
-                  </div>
-                ) : (
-                  <div className="max-h-[200px] overflow-y-auto space-y-2">
-                    {shipments.map((shipment: any) => (
-                      <div key={shipment.id} className="flex items-start space-x-2 p-2 rounded-lg hover:bg-white/5 transition-colors">
-                        <Checkbox id={`shipment-${shipment.id}`} checked={selectedIds.includes(shipment.id)} onCheckedChange={() => onToggle(shipment.id)} />
-                        <div className="grid gap-1.5 leading-none">
-                          <label htmlFor={`shipment-${shipment.id}`} className="text-sm font-medium leading-none cursor-pointer">{shipment.waybillNumber}</label>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(isIntl ? shipment.createdAt : shipment.lastStatusUpdate).toLocaleDateString()} - {shipment.weight}kg - {abbreviateServiceType(shipment.serviceType)}
-                            {isIntl && shipment.destinationCountry ? ` - ${shipment.destinationCountry}` : ''}
-                          </p>
-                        </div>
-                        <div className="ml-auto flex items-center gap-1.5">
-                          {isIntl && shipment.rateServiceTypeMismatch && (
-                            <span
-                              title={`Stored service type "${shipment.serviceType || '—'}" not found in current rates — priced using ${shipment.rateAppliedServiceKey || 'a fallback service'} instead. Review before confirming.`}
-                              style={{ color: 'var(--st-amber)' }}
-                            >
-                              <AlertCircle className="w-3.5 h-3.5" />
-                            </span>
-                          )}
-                          {!isIntl && shipment.emirateMissing && (
-                            <span title="No emirate on file for this shipment — zone was guessed from city, or defaulted to Zone 1. Verify the price." style={{ color: 'var(--st-amber)' }}>
-                              <AlertCircle className="w-3.5 h-3.5" />
-                            </span>
-                          )}
-                          {!isIntl && rateSourceLabel(shipment) && (
-                            <span className="text-muted-foreground text-[10px] uppercase tracking-wide font-sans" title="Pricing rule applied">
-                              {rateSourceLabel(shipment)}
-                            </span>
-                          )}
-                          <div className="text-xs font-mono font-medium">
-                            AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Preview Step */}
-            {showPreview ? (
-              <div className="space-y-4 border-t border-border pt-4">
-                <h4 className="font-semibold text-lg flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-primary" />
-                  Invoice Preview
-                </h4>
-                <div className="p-4 bg-white/5 border border-border rounded-xl space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Client:</span>
-                    <span className="font-medium">{clients?.find((c: any) => c.id === client)?.companyName}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Settlement:</span>
-                    <span className="font-medium capitalize">{settlement}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Period:</span>
-                    <span>{pStart} to {pEnd}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Shipments:</span>
-                    <span>{selectedIds.length} items</span>
-                  </div>
-                  <div className="flex justify-between text-sm border-t border-border pt-2">
-                    <span className="text-muted-foreground">Subtotal:</span>
-                    <span>AED {previewTotal.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Taxes:</span>
-                    <span>AED 0.00</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg border-t border-border pt-2">
-                    <span>Total:</span>
-                    <span className="text-primary">AED {previewTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" className="flex-1" onClick={() => setShowPreview(false)}>Back</Button>
-                  <Button onClick={onGenerate} className="flex-1" disabled={isPending}>
-                    {isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Generating...</> : 'Confirm & Generate Invoice'}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button
-                onClick={() => {
-                  if (!client || !pStart || !pEnd) { toast.error('Please select client and period'); return; }
-                  if (selectedIds.length === 0) { toast.error('Please select at least one shipment'); return; }
-                  setShowPreview(true);
-                }}
-                className="w-full"
-                disabled={!client || !pStart || !pEnd || selectedIds.length === 0}
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                Preview Invoice
-              </Button>
-            )}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-
   // Batch generation — one invoice per client whose settlement period has elapsed,
   // instead of generating them one by one via GenerateDialog. Every invoice still
   // lands in 'pending' status for review; nothing is emailed automatically.
@@ -1420,7 +1482,7 @@ export default function BillingPanel() {
             <div className="flex items-center gap-2">
             <BatchGenerateDialog isIntl={false} />
             <GenerateDialog
-              open={generateDialogOpen} onOpenChange={setGenerateDialogOpen} isIntl={false}
+              open={generateDialogOpen} onOpenChange={setGenerateDialogOpen} isIntl={false} clients={clients}
               client={selectedClient} setClient={setSelectedClient}
               pStart={periodStart} setPStart={setPeriodStart}
               pEnd={periodEnd} setPEnd={setPeriodEnd}
@@ -1454,7 +1516,7 @@ export default function BillingPanel() {
             <div className="flex items-center gap-2">
             <BatchGenerateDialog isIntl={true} />
             <GenerateDialog
-              open={intlGenerateDialogOpen} onOpenChange={setIntlGenerateDialogOpen} isIntl={true}
+              open={intlGenerateDialogOpen} onOpenChange={setIntlGenerateDialogOpen} isIntl={true} clients={clients}
               client={intlSelectedClient} setClient={setIntlSelectedClient}
               pStart={intlPeriodStart} setPStart={setIntlPeriodStart}
               pEnd={intlPeriodEnd} setPEnd={setIntlPeriodEnd}

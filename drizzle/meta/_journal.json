@@ -225,6 +225,34 @@
       "when": 1786551823249,
       "tag": "0036_consolidate_manual_migrations",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "5",
+      "when": 1786568400000,
+      "tag": "0037_quote_request_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1786654800000,
+      "tag": "0038_password_reset_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "5",
+      "when": 1786741200000,
+      "tag": "0039_invoice_sent_to_client",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1786569478378,
+      "tag": "0040_sour_darkstar",
+      "breakpoints": true
     }
   ]
 }

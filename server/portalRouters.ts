@@ -569,7 +569,7 @@ export const adminPortalRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
       }
 
-      const { orders, trackingEvents, codRecords, invoiceItems } = await import('../drizzle/schema');
+      const { orders, trackingEvents, codRecords, invoiceItems, invoices } = await import('../drizzle/schema');
       const { eq } = await import('drizzle-orm');
 
       try {
@@ -579,13 +579,30 @@ export const adminPortalRouter = router({
         // Delete related COD records
         await db.delete(codRecords).where(eq(codRecords.shipmentId, input.orderId));
 
-        // Delete related invoice items
+        // Delete related invoice items — but first note which invoice(s) they
+        // belonged to, so an invoice left with zero items (e.g. a paid-at-origin
+        // invoice for the one shipment being deleted) doesn't linger as an
+        // orphaned, still-"paid" invoice billed to the wrong name.
+        const orphanedInvoiceIds = Array.from(new Set(
+          (await db.select({ invoiceId: invoiceItems.invoiceId }).from(invoiceItems).where(eq(invoiceItems.shipmentId, input.orderId)))
+            .map(r => r.invoiceId)
+        ));
         await db.delete(invoiceItems).where(eq(invoiceItems.shipmentId, input.orderId));
+
+        if (orphanedInvoiceIds.length > 0) {
+          for (const invoiceId of orphanedInvoiceIds) {
+            const remaining = await db.select({ id: invoiceItems.id }).from(invoiceItems).where(eq(invoiceItems.invoiceId, invoiceId)).limit(1);
+            if (remaining.length === 0) {
+              await db.delete(invoices).where(eq(invoices.id, invoiceId));
+            }
+          }
+        }
 
         // Finally delete the order
         await db.delete(orders).where(eq(orders.id, input.orderId));
 
         invalidateOrderCaches();
+        if (orphanedInvoiceIds.length > 0) cacheInvalidate('admin:allInvoices');
         return { success: true };
       } catch (error) {
         console.error('[Database] Failed to delete order:', error);
@@ -3475,19 +3492,8 @@ export const billingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'No shipments found for this period' });
       }
 
-      // Notify the client that their invoice is ready
-      try {
-        const from = new Date(input.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-        const to = new Date(input.periodEnd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-        await createNotification(
-          input.clientId,
-          'INVOICE_GENERATED',
-          'New Invoice Available',
-          `Your invoice for the period ${from} – ${to} has been generated and is ready for review.`,
-          'invoices'
-        );
-      } catch (_) { /* notification errors must never break invoicing */ }
-
+      // Created as a draft — hidden from the client and unnotified until staff
+      // review pricing and explicitly send it via sendInvoiceToClient.
       return { invoiceId };
     }),
 
@@ -3579,18 +3585,8 @@ export const billingRouter = router({
 
       const { invoiceId, mismatchedShipments } = result;
 
-      try {
-        const from = new Date(input.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-        const to = new Date(input.periodEnd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-        await createNotification(
-          input.clientId,
-          'INVOICE_GENERATED',
-          'New International Invoice Available',
-          `Your international invoice for the period ${from} – ${to} has been generated and is ready for review.`,
-          'invoices'
-        );
-      } catch (_) { /* notification errors must never break invoicing */ }
-
+      // Created as a draft — hidden from the client and unnotified until staff
+      // review pricing and explicitly send it via sendInvoiceToClient.
       return { invoiceId, mismatchedShipments };
     }),
 
@@ -3610,6 +3606,39 @@ export const billingRouter = router({
     .mutation(async ({ input }) => {
       const { generateBatchInvoices } = await import('./db');
       return await generateBatchInvoices(input.isIntl, input.clientIds);
+    }),
+
+  // Admin: Finalize a draft invoice — makes it visible in the customer portal
+  // and fires the "new invoice" notification. This is the single moment an
+  // invoice becomes visible to the client, whether triggered directly here or
+  // as a side effect of emailing it (see BillingPanel.handleSendInvoiceEmail),
+  // so the portal and the inbox can never disagree about what the client's seen.
+  sendInvoiceToClient: portalAdminProcedure
+    .input(z.object({ invoiceId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { markInvoiceSentToClient } = await import('./db');
+      const invoice = await getInvoiceById(input.invoiceId);
+      if (!invoice) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Invoice not found' });
+      }
+
+      const result = await markInvoiceSentToClient(input.invoiceId);
+
+      if (!result.alreadySent) {
+        try {
+          const from = new Date(invoice.periodFrom).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          const to = new Date(invoice.periodTo).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          await createNotification(
+            invoice.clientId,
+            'INVOICE_GENERATED',
+            'New Invoice Available',
+            `Your invoice for the period ${from} – ${to} has been generated and is ready for review.`,
+            'invoices'
+          );
+        } catch (_) { /* notification errors must never block sending */ }
+      }
+
+      return result;
     }),
 
   // Admin: Get billing info for a specific client (last invoice, pending balance, etc.)
@@ -3675,16 +3704,40 @@ export const billingRouter = router({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Invoice not found' });
       }
 
-      // Check access: admin can see all, customer can only see their own
-      if (ctx.portalUser.role === 'customer' && invoice.clientId !== ctx.portalUser.clientId) {
+      // Check access: admin can see all, customer can only see their own — and
+      // never a draft, even by guessing/reusing an invoiceId, since it's not
+      // meant to exist for them until it's been sent.
+      if (ctx.portalUser.role === 'customer' && (invoice.clientId !== ctx.portalUser.clientId || !invoice.sentToClient)) {
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
       }
 
       const items = await getInvoiceItems(input.invoiceId);
 
+      // Pay-per-shipment clients (e.g. Walk-in) bill to the actual sender of the
+      // shipment, not the shared account — generateInvoiceForClient only allows
+      // a single shipment per invoice for these clients, so this is unambiguous.
+      let shipperInfo: { shipperName: string; shipperAddress: string; shipperCity: string; shipperCountry: string; shipperPhone: string } | null = null;
+      const client = await getClientAccountById(invoice.clientId);
+      if (client?.payAtOrigin === 1) {
+        const shipmentIds = Array.from(new Set(items.map(i => i.shipmentId).filter((id): id is number => id != null)));
+        if (shipmentIds.length === 1) {
+          const order = await getOrderById(shipmentIds[0]);
+          if (order) {
+            shipperInfo = {
+              shipperName: order.shipperName,
+              shipperAddress: order.shipperAddress,
+              shipperCity: order.shipperCity,
+              shipperCountry: order.shipperCountry,
+              shipperPhone: order.shipperPhone,
+            };
+          }
+        }
+      }
+
       return {
         invoice,
         items,
+        shipperInfo,
       };
     }),
 
@@ -3792,13 +3845,19 @@ export const billingRouter = router({
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to add invoice item' });
       }
 
-      // Recalculate totals and mark as adjusted
+      // Recalculate totals. Only flag isAdjusted once the client has actually
+      // seen this invoice — edits to a still-private draft aren't a customer-
+      // facing "adjustment," so the Adjustments Report stays limited to real
+      // post-send corrections.
       await recalculateInvoiceTotals(input.invoiceId);
-      await updateInvoice(input.invoiceId, {
-        isAdjusted: 1,
-        lastAdjustedBy: ctx.portalUser.userId,
-        lastAdjustedAt: new Date(),
-      });
+      const invoiceForAdjustFlag = await getInvoiceById(input.invoiceId);
+      if (invoiceForAdjustFlag?.sentToClient) {
+        await updateInvoice(input.invoiceId, {
+          isAdjusted: 1,
+          lastAdjustedBy: ctx.portalUser.userId,
+          lastAdjustedAt: new Date(),
+        });
+      }
 
       return { success: true, itemId };
     }),
@@ -3818,13 +3877,55 @@ export const billingRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: result.error });
       }
 
-      // Recalculate totals
+      // Recalculate totals (see addInvoiceItem for why isAdjusted is conditional)
       await recalculateInvoiceTotals(input.invoiceId);
-      await updateInvoice(input.invoiceId, {
-        isAdjusted: 1,
-        lastAdjustedBy: ctx.portalUser.userId,
-        lastAdjustedAt: new Date(),
+      const invoiceForAdjustFlag = await getInvoiceById(input.invoiceId);
+      if (invoiceForAdjustFlag?.sentToClient) {
+        await updateInvoice(input.invoiceId, {
+          isAdjusted: 1,
+          lastAdjustedBy: ctx.portalUser.userId,
+          lastAdjustedAt: new Date(),
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // Admin: Correct an existing line's price/qty/description in place — including
+  // shipment-linked lines. This is what lets staff fix a batch of wrong shipment
+  // prices directly in the Edit Invoice dialog instead of bolting on a separate
+  // manual adjustment line per shipment.
+  updateInvoiceItem: portalAdminProcedure
+    .input(z.object({
+      invoiceId: z.number(),
+      itemId: z.number(),
+      unitPrice: z.string().optional(),
+      quantity: z.number().min(1).optional(),
+      description: z.string().min(1).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { updateInvoiceItem, recalculateInvoiceTotals, updateInvoice } = await import('./db');
+
+      const result = await updateInvoiceItem(input.itemId, {
+        unitPrice: input.unitPrice,
+        quantity: input.quantity,
+        description: input.description,
       });
+
+      if (!result.success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: result.error });
+      }
+
+      // Recalculate totals (see addInvoiceItem for why isAdjusted is conditional)
+      await recalculateInvoiceTotals(input.invoiceId);
+      const invoiceForAdjustFlag = await getInvoiceById(input.invoiceId);
+      if (invoiceForAdjustFlag?.sentToClient) {
+        await updateInvoice(input.invoiceId, {
+          isAdjusted: 1,
+          lastAdjustedBy: ctx.portalUser.userId,
+          lastAdjustedAt: new Date(),
+        });
+      }
 
       return { success: true };
     }),

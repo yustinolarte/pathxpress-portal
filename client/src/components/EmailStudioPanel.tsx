@@ -50,6 +50,14 @@ const MAX_ATTACH_BYTES = 7 * 1024 * 1024;
 
 interface AttachmentDraft { filename: string; content: string; contentType: string; size: number; }
 
+interface EmailStudioPanelProps {
+  initialOrder?: {
+    order: any;
+    clientName?: string;
+    recipientEmail?: string;
+  };
+}
+
 function fileToAttachment(file: File): Promise<AttachmentDraft> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -69,7 +77,7 @@ function formatBytes(n: number): string {
   return (n / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-export default function EmailStudioPanel() {
+export default function EmailStudioPanel({ initialOrder }: EmailStudioPanelProps) {
   const [selectedKey, setSelectedKey] = useState<string>(TEMPLATES[0].key);
   const [values, setValues] = useState<Vars>(() => defaultsFor(TEMPLATES[0].key));
   const [fromValue, setFromValue] = useState<string>(TEMPLATES[0].from);
@@ -104,6 +112,28 @@ export default function EmailStudioPanel() {
     setSelectedRemittanceId('');
   }, [selectedKey]);
 
+  useEffect(() => {
+    if (initialOrder?.order?.id) setSelectedKey('shipment_created');
+  }, [initialOrder?.order?.id]);
+
+  useEffect(() => {
+    if (!initialOrder?.order?.id || selectedKey !== 'shipment_created') return;
+    const order = initialOrder.order;
+    setValues({
+      ...defaultsFor('shipment_created'),
+      recipient_name: order.customerName || '',
+      sender: initialOrder.clientName || order.shipperName || '',
+      tracking_number: order.waybillNumber || '',
+      eta: order.deliveryDateEstimated ? fmtDate(order.deliveryDateEstimated) : 'To be confirmed',
+      registered_time: fmtDate(order.createdAt),
+      address: [order.customerName, order.address, [order.city, order.destinationCountry].filter(Boolean).join(', ')].filter(Boolean).join('\n'),
+      details: [order.serviceType, `${order.pieces || 1} package(s) · ${order.weight || 0} kg`, order.codRequired ? `COD ${order.codAmount || 0} ${order.codCurrency || 'AED'}` : 'No COD'].join('\n'),
+      track_url: `https://pathxpress.net/track/${encodeURIComponent(order.waybillNumber || '')}`,
+    });
+    setTo(initialOrder.recipientEmail || '');
+    setSubjectDirty(false);
+  }, [initialOrder?.order?.id, initialOrder?.clientName, initialOrder?.recipientEmail, selectedKey]);
+
   // Pick an existing invoice → auto-fill all fields, set the recipient and attach the PDF.
   async function applyInvoice(idStr: string) {
     setSelectedInvoiceId(idStr);
@@ -133,12 +163,15 @@ export default function EmailStudioPanel() {
     setPickerLoading(true);
     try {
       const details = await utils.portal.billing.getInvoiceDetails.fetch({ invoiceId: id });
+      const shipper = details.shipperInfo;
       const blob = generateInvoicePDF({
         id: details.invoice.id,
         invoiceNumber: details.invoice.invoiceNumber,
-        clientName: client?.companyName || `Client #${inv.clientId}`,
-        billingAddress: client?.billingAddress || null,
-        billingEmail: client?.billingEmail || null,
+        clientName: shipper?.shipperName || client?.companyName || `Client #${inv.clientId}`,
+        billingAddress: shipper
+          ? [shipper.shipperAddress, shipper.shipperCity, shipper.shipperCountry].filter(Boolean).join(', ')
+          : (client?.billingAddress || null),
+        billingEmail: shipper ? shipper.shipperPhone : (client?.billingEmail || null),
         issueDate: new Date(details.invoice.issueDate),
         dueDate: new Date(details.invoice.dueDate),
         periodStart: new Date(details.invoice.periodFrom),
@@ -302,6 +335,11 @@ export default function EmailStudioPanel() {
       {/* FORM */}
       <Card>
         <CardContent className="p-4 space-y-4">
+          {initialOrder?.order?.id && selectedKey === 'shipment_created' && (
+            <div className="rounded-lg border border-[var(--st-blue)]/30 bg-[var(--st-blue-bg)] px-3 py-2 text-xs text-[var(--st-blue)]">
+              Pre-filled from order <b>{initialOrder.order.waybillNumber}</b>. Review the recipient and content before sending.
+            </div>
+          )}
           <div>
             <h3 className="text-lg font-bold tracking-tight">{template.label}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">Template: {template.key}</p>

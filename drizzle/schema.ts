@@ -381,6 +381,8 @@ export const invoices = mysqlTable("invoices", {
   isAdjusted: int("isAdjusted").default(0).notNull(), // 0 = no, 1 = yes
   lastAdjustedBy: int("lastAdjustedBy"), // Foreign key to users (admin who made the adjustment)
   lastAdjustedAt: timestamp("lastAdjustedAt"),
+  sentToClient: int("sentToClient").default(0).notNull(), // 0 = draft (hidden from customer portal, no notification), 1 = sent
+  sentAt: timestamp("sentAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
