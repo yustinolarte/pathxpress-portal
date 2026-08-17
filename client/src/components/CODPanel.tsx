@@ -63,10 +63,6 @@ export default function CODPanel() {
     clientId: filterClientId === 'all' ? undefined : parseInt(filterClientId),
   });
 
-  // Full (capped) COD record set — used only for the month-filtered PDF exports
-  // below, which need to scan across records rather than a single page of them.
-  const { data: allCODRecords } = trpc.portal.cod.getAllCODRecords.useQuery();
-
   // Paginated COD records — this is what actually renders in the "All COD
   // Records" table, so it can reach records past the 500-row cap above.
   const {
@@ -165,31 +161,19 @@ export default function CODPanel() {
     });
   };
 
-  // Generate month options only for months that have data
+  // Keep the panel lightweight: report records are fetched only when an export
+  // is requested. Showing the last 24 months avoids loading hundreds of COD rows
+  // merely to populate this select.
   const monthOptions = useMemo(() => {
-    if (!allCODRecords || allCODRecords.length === 0) return [];
-
-    const monthsWithData = new Set<string>();
-
-    allCODRecords.forEach(record => {
-      const dateToUse = record.collectedDate || record.createdAt;
-      if (dateToUse) {
-        const date = new Date(dateToUse);
-        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthsWithData.add(value);
-      }
+    const now = new Date();
+    return Array.from({ length: 24 }, (_, offset) => {
+      const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      return {
+        value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+        label: date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      };
     });
-
-    // Convert to array and sort in descending order (newest first)
-    return Array.from(monthsWithData)
-      .sort((a, b) => b.localeCompare(a))
-      .map(value => {
-        const [year, month] = value.split('-').map(Number);
-        const date = new Date(year, month - 1);
-        const label = date.toLocaleDateString('en-US', { month: 'long' }); // Only month, no year
-        return { value, label };
-      });
-  }, [allCODRecords]);
+  }, []);
 
   // Totals by currency for the "Create All" confirmation dialog
   const readyTotalsByCurrency = useMemo(() => {
@@ -205,8 +189,9 @@ export default function CODPanel() {
   const handleDownloadSettlementPDF = async () => {
     try {
       const { generateCODReportPDF, downloadPDF } = await import('@/lib/reportUtils');
+      const allCODRecords = await utils.portal.cod.getAllCODRecords.fetch();
 
-      let settlementRecords = allCODRecords?.filter(record => record.status === 'collected') || [];
+      let settlementRecords = allCODRecords.filter(record => record.status === 'collected');
 
       // Apply month filter
       settlementRecords = filterByMonth(settlementRecords, 'collectedDate');
@@ -237,11 +222,12 @@ export default function CODPanel() {
   const handleDownloadAllCODPDF = async () => {
     try {
       const { generateCODReportPDF, downloadPDF } = await import('@/lib/reportUtils');
+      const allCODRecords = await utils.portal.cod.getAllCODRecords.fetch();
 
       // Include both collected and remitted records
-      let allRecords = allCODRecords?.filter(record =>
+      let allRecords = allCODRecords.filter(record =>
         record.status === 'collected' || record.status === 'remitted'
-      ) || [];
+      );
 
       // Apply month filter
       allRecords = filterByMonth(allRecords, 'collectedDate');
