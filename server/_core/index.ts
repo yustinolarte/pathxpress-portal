@@ -128,7 +128,12 @@ async function startServer() {
     }
   }
 
-  const AUTH_PROCEDURES = new Set(["portal.auth.login", "portal.auth.changePassword"]);
+  const AUTH_PROCEDURES = new Set([
+    "portal.auth.login",
+    "portal.auth.changePassword",
+    "portal.auth.requestPasswordReset",
+    "portal.auth.resetPassword",
+  ]);
   const TRACKING_PROCEDURES = new Set(["tracking.getByTrackingId"]);
 
   app.use((req, res, next) => {

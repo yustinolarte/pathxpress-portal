@@ -7,13 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { APP_LOGO } from '@/const';
-import { Lock, Mail } from 'lucide-react';
+import { AlertCircle, Lock, Mail } from 'lucide-react';
 
 export default function PortalLogin() {
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   const loginMutation = trpc.portal.auth.login.useMutation({
     onSuccess: (data) => {
@@ -22,7 +23,9 @@ export default function PortalLogin() {
       window.location.href = redirectPath;
     },
     onError: (error) => {
-      toast.error(error.message || 'Login failed');
+      const message = error.message || 'Login failed';
+      setLoginError(message);
+      toast.error(message);
       setLoading(false);
     },
   });
@@ -31,10 +34,13 @@ export default function PortalLogin() {
     e.preventDefault();
     
     if (!email || !password) {
-      toast.error('Please enter email and password');
+      const message = 'Please enter email and password';
+      setLoginError(message);
+      toast.error(message);
       return;
     }
 
+    setLoginError('');
     setLoading(true);
     loginMutation.mutate({ email, password });
   };
@@ -86,7 +92,7 @@ export default function PortalLogin() {
                   type="email"
                   placeholder="your@email.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setLoginError(''); }}
                   className="pl-10 h-11 bg-secondary border-border"
                   disabled={loading}
                   required
@@ -95,7 +101,10 @@ export default function PortalLogin() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password" className="text-[13px] font-medium">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password" className="text-[13px] font-medium">Password</Label>
+                <button type="button" onClick={() => setLocation('/portal/reset-password')} className="text-xs text-primary hover:underline">Forgot password?</button>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -103,13 +112,20 @@ export default function PortalLogin() {
                   type="password"
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setLoginError(''); }}
                   className="pl-10 h-11 bg-secondary border-border"
                   disabled={loading}
                   required
                 />
               </div>
             </div>
+
+            {loginError && (
+              <div role="alert" aria-live="polite" className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
 
             <Button type="submit" className="w-full h-11 bg-primary hover:bg-primary/90 text-white rounded-full transition-smooth mt-2" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}

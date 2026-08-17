@@ -18,6 +18,7 @@ const Contact = lazy(() => import("./pages/Contact"));
 const Services = lazy(() => import("./pages/Services"));
 const About = lazy(() => import("./pages/About"));
 const PortalLogin = lazy(() => import("./pages/portal/PortalLogin"));
+const PortalResetPassword = lazy(() => import("./pages/portal/PortalResetPassword"));
 const AdminDashboard = lazy(() => import("./pages/portal/AdminDashboard"));
 const CustomerDashboard = lazy(() => import("./pages/portal/CustomerDashboard"));
 
@@ -45,6 +46,7 @@ function Router() {
         <Route path="/pricing" component={Pricing} />
         <Route path="/customer-portal" component={CustomerPortal} />
         <Route path="/portal/login" component={PortalLogin} />
+        <Route path="/portal/reset-password" component={PortalResetPassword} />
         <Route path="/portal/admin" component={AdminDashboard} />
         <Route path="/portal/customer" component={CustomerDashboard} />
         <Route path="/contact" component={Contact} />

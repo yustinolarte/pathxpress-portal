@@ -225,6 +225,59 @@ export const portalAuthRouter = router({
       };
     }),
 
+  requestPasswordReset: publicProcedure
+    .input(z.object({ email: z.string().email().max(320) }))
+    .mutation(async ({ input }) => {
+      const genericResponse = {
+        success: true,
+        message: 'If an active account exists for that email, a reset link has been sent.',
+      };
+      const user = await getPortalUserByEmail(input.email.trim().toLowerCase());
+      if (!user || user.status !== 'active') return genericResponse;
+
+      const { createPasswordResetToken } = await import('./passwordReset');
+      const { token } = await createPasswordResetToken(user.id);
+
+      // Tests never contact Resend. Integration tests exercise token persistence
+      // against TEST_DATABASE_URL while all external delivery remains inert.
+      if (process.env.NODE_ENV !== 'test') {
+        try {
+          const baseUrl = process.env.APP_BASE_URL || 'https://pathxpress.net';
+          const resetUrl = new URL('/portal/reset-password', baseUrl);
+          resetUrl.searchParams.set('token', token);
+          const { sendViaResend } = await import('./_core/resendMailer');
+          await sendViaResend({
+            from: 'PATHXPRESS <support@pathxpress.net>',
+            to: user.email,
+            subject: 'Reset your PATHXPRESS portal password',
+            html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#171717"><h1 style="font-size:24px">Reset your password</h1><p>We received a request to reset your PATHXPRESS portal password.</p><p><a href="${resetUrl.toString()}" style="display:inline-block;background:#e10600;color:#fff;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:700">Choose a new password</a></p><p style="color:#666">This link expires in 30 minutes and can be used once. If you did not request it, you can ignore this email.</p></div>`,
+          });
+        } catch (error) {
+          console.error('[Password reset] Email delivery failed:', error instanceof Error ? error.message : error);
+        }
+      }
+      return genericResponse;
+    }),
+
+  resetPassword: publicProcedure
+    .input(z.object({
+      token: z.string().regex(/^[a-f0-9]{64}$/i),
+      password: z.string().min(8).max(128),
+    }))
+    .mutation(async ({ input }) => {
+      const validation = validatePassword(input.password);
+      if (!validation.valid) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: validation.error });
+      }
+      const passwordHash = await hashPassword(input.password);
+      const { consumePasswordResetToken } = await import('./passwordReset');
+      const success = await consumePasswordResetToken(input.token, passwordHash);
+      if (!success) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This reset link is invalid or has expired.' });
+      }
+      return { success: true };
+    }),
+
   // Verify token and get current user
   me: portalProtectedProcedure
     .query(async ({ ctx }) => {

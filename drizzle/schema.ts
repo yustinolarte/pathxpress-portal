@@ -104,6 +104,24 @@ export type PortalUser = typeof portalUsers.$inferSelect;
 export type InsertPortalUser = typeof portalUsers.$inferInsert;
 
 /**
+ * One-time password reset credentials. Only a SHA-256 digest is stored; the
+ * raw token exists solely in the link delivered to the account owner.
+ */
+export const passwordResetTokens = mysqlTable("passwordResetTokens", {
+  id: int("id").autoincrement().primaryKey(),
+  portalUserId: int("portalUserId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  userIdx: index("passwordResetTokens_user_idx").on(table.portalUserId),
+  expiryIdx: index("passwordResetTokens_expiry_idx").on(table.expiresAt),
+}));
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+/**
  * Client accounts table for PATHXPRESS customers
  */
 export const clientAccounts = mysqlTable("clientAccounts", {
