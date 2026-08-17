@@ -1496,6 +1496,39 @@ export const adminPortalRouter = router({
       return await getAllQuoteRequests();
     }),
 
+  getQuoteRequestsPaged: portalAdminProcedure
+    .input(z.object({
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(100).optional(),
+      status: z.enum(['new', 'contacted', 'scheduled', 'completed']).optional(),
+      search: z.string().max(200).optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getQuoteRequestsPaged } = await import('./db');
+      return getQuoteRequestsPaged(input);
+    }),
+
+  exportQuoteRequests: portalAdminProcedure
+    .input(z.object({
+      status: z.enum(['new', 'contacted', 'scheduled', 'completed']).optional(),
+      search: z.string().max(200).optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getQuoteRequestsForExport } = await import('./db');
+      return getQuoteRequestsForExport(input);
+    }),
+
+  updateQuoteRequestStatus: portalAdminProcedure
+    .input(z.object({
+      requestId: z.number().int().positive(),
+      status: z.enum(['new', 'contacted', 'scheduled', 'completed']),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateQuoteRequestStatus } = await import('./db');
+      await updateQuoteRequestStatus(input.requestId, input.status);
+      return { success: true };
+    }),
+
   // Delete quote request
   deleteQuoteRequest: portalAdminProcedure
     .input(z.object({
@@ -1512,12 +1545,50 @@ export const adminPortalRouter = router({
       return { success: true };
     }),
 
+  bulkDeleteQuoteRequests: portalAdminProcedure
+    .input(z.object({
+      requestIds: z.array(z.number().int().positive()).min(1).max(5000),
+    }))
+    .mutation(async ({ input }) => {
+      const { deleteQuoteRequests } = await import('./db');
+      const deletedCount = await deleteQuoteRequests(input.requestIds);
+      return { success: true, deletedCount };
+    }),
+
   // Get all contact messages
   getContactMessages: portalAdminProcedure
     .query(async ({ ctx }) => {
       const { getAllContactMessages } = await import('./db');
       return await getAllContactMessages();
     }),
+
+  getContactMessagesPaged: portalAdminProcedure
+    .input(z.object({
+      page: z.number().int().min(0).optional(),
+      pageSize: z.number().int().min(1).max(100).optional(),
+      status: z.enum(['new', 'read', 'archived']).optional(),
+      search: z.string().max(200).optional(),
+    }))
+    .query(async ({ input }) => {
+      const { getContactMessagesPaged } = await import('./db');
+      return getContactMessagesPaged(input);
+    }),
+
+  updateContactMessageStatus: portalAdminProcedure
+    .input(z.object({
+      messageId: z.number().int().positive(),
+      status: z.enum(['new', 'read', 'archived']),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateContactMessageStatus } = await import('./db');
+      await updateContactMessageStatus(input.messageId, input.status);
+      return { success: true };
+    }),
+
+  getInboxCounts: portalAdminProcedure.query(async () => {
+    const { getAdminInboxCounts } = await import('./db');
+    return getAdminInboxCounts();
+  }),
 
   // Delete contact message
   deleteContactMessage: portalAdminProcedure

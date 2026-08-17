@@ -1,8 +1,8 @@
-import { eq, and, gte, gt, lte, desc, sql, inArray, ne, or, notInArray, isNull } from "drizzle-orm";
+import { eq, and, gte, gt, lte, desc, sql, inArray, ne, or, notInArray, isNull, like } from "drizzle-orm";
 import { cachedQuery, cacheInvalidate } from './_core/queryCache';
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
-import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting } from "../drizzle/schema";
+import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting, quoteRequests } from "../drizzle/schema";
 import { abbreviateServiceType } from '../shared/const';
 import { ENV } from './_core/env';
 import { notifyBotNewOrder } from './_core/botWebhook';
@@ -178,6 +178,66 @@ export async function getAllQuoteRequests() {
   }
 }
 
+export type QuoteRequestStatus = 'new' | 'contacted' | 'scheduled' | 'completed';
+
+export interface QuoteRequestFilters {
+  page?: number;
+  pageSize?: number;
+  status?: QuoteRequestStatus;
+  search?: string;
+}
+
+function buildQuoteRequestConditions(filters: QuoteRequestFilters) {
+  const conditions = [];
+  if (filters.status) conditions.push(eq(quoteRequests.status, filters.status));
+  if (filters.search?.trim()) {
+    const term = `%${filters.search.trim()}%`;
+    conditions.push(or(
+      like(quoteRequests.name, term),
+      like(quoteRequests.email, term),
+      like(quoteRequests.phone, term),
+      like(quoteRequests.pickupAddress, term),
+    ));
+  }
+  return conditions.length ? and(...conditions) : undefined;
+}
+
+export async function getQuoteRequestsPaged(filters: QuoteRequestFilters) {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+  const { quoteRequests } = await import('../drizzle/schema');
+  const page = Math.max(0, filters.page ?? 0);
+  const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 25));
+  const where = buildQuoteRequestConditions(filters);
+
+  const [rows, [countRow]] = await Promise.all([
+    db.select().from(quoteRequests).where(where).orderBy(desc(quoteRequests.createdAt)).limit(pageSize).offset(page * pageSize),
+    db.select({ count: sql<number>`COUNT(*)` }).from(quoteRequests).where(where),
+  ]);
+  return { rows, total: Number(countRow?.count ?? 0) };
+}
+
+export async function getQuoteRequestsForExport(filters: Omit<QuoteRequestFilters, 'page' | 'pageSize'>) {
+  const db = await getDb();
+  if (!db) return [];
+  const { quoteRequests } = await import('../drizzle/schema');
+  return db
+    .select()
+    .from(quoteRequests)
+    .where(buildQuoteRequestConditions(filters))
+    .orderBy(desc(quoteRequests.createdAt))
+    .limit(5000);
+}
+
+export async function updateQuoteRequestStatus(id: number, status: QuoteRequestStatus) {
+  const db = await getDb();
+  if (!db) return false;
+  const { quoteRequests } = await import('../drizzle/schema');
+  await db.update(quoteRequests).set({ status, updatedAt: new Date() }).where(eq(quoteRequests.id, id));
+  cacheInvalidate('admin:quoteRequests');
+  return true;
+}
+
 
 export async function deleteQuoteRequest(id: number) {
   const db = await getDb();
@@ -194,6 +254,19 @@ export async function deleteQuoteRequest(id: number) {
     console.error("[Database] Failed to delete quote request:", error);
     return false;
   }
+}
+
+export async function deleteQuoteRequests(ids: number[]) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const uniqueIds = Array.from(new Set(ids)).filter((id) => Number.isInteger(id) && id > 0);
+  if (uniqueIds.length === 0) return 0;
+
+  const result = await db.delete(quoteRequests).where(inArray(quoteRequests.id, uniqueIds));
+  const deletedCount = Number((result as any)[0]?.affectedRows ?? 0);
+  if (deletedCount > 0) cacheInvalidate('admin:quoteRequests');
+  return deletedCount;
 }
 
 // Contact Message queries
@@ -232,6 +305,53 @@ export async function getAllContactMessages() {
     console.error("[Database] Failed to get contact messages:", error);
     return [];
   }
+}
+
+export async function getContactMessagesPaged(filters: { page?: number; pageSize?: number; status?: 'new' | 'read' | 'archived'; search?: string }) {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+  const { contactMessages } = await import('../drizzle/schema');
+  const conditions = [];
+  if (filters.status) conditions.push(eq(contactMessages.status, filters.status));
+  if (filters.search?.trim()) {
+    const term = `%${filters.search.trim()}%`;
+    conditions.push(or(
+      like(contactMessages.name, term),
+      like(contactMessages.email, term),
+      like(contactMessages.message, term),
+    ));
+  }
+  const where = conditions.length ? and(...conditions) : undefined;
+  const page = Math.max(0, filters.page ?? 0);
+  const pageSize = Math.min(100, Math.max(1, filters.pageSize ?? 25));
+  const [rows, [countRow]] = await Promise.all([
+    db.select().from(contactMessages).where(where).orderBy(desc(contactMessages.createdAt)).limit(pageSize).offset(page * pageSize),
+    db.select({ count: sql<number>`COUNT(*)` }).from(contactMessages).where(where),
+  ]);
+  return { rows, total: Number(countRow?.count ?? 0) };
+}
+
+export async function updateContactMessageStatus(id: number, status: 'new' | 'read' | 'archived') {
+  const db = await getDb();
+  if (!db) return false;
+  const { contactMessages } = await import('../drizzle/schema');
+  await db.update(contactMessages).set({ status }).where(eq(contactMessages.id, id));
+  cacheInvalidate('admin:contactMessages');
+  return true;
+}
+
+export async function getAdminInboxCounts() {
+  const db = await getDb();
+  if (!db) return { requests: 0, messages: 0 };
+  const { quoteRequests, contactMessages } = await import('../drizzle/schema');
+  const [[requestRow], [messageRow]] = await Promise.all([
+    db.select({ count: sql<number>`COUNT(*)` }).from(quoteRequests).where(eq(quoteRequests.status, 'new')),
+    db.select({ count: sql<number>`COUNT(*)` }).from(contactMessages).where(eq(contactMessages.status, 'new')),
+  ]);
+  return {
+    requests: Number(requestRow?.count ?? 0),
+    messages: Number(messageRow?.count ?? 0),
+  };
 }
 
 export async function deleteContactMessage(id: number) {

@@ -56,8 +56,12 @@ export const quoteRequests = mysqlTable("quoteRequests", {
   serviceType: varchar("serviceType", { length: 100 }).notNull(),
   weight: varchar("weight", { length: 100 }).notNull(),
   comments: text("comments"),
+  status: mysqlEnum("status", ["new", "contacted", "scheduled", "completed"]).default("new").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  statusCreatedIdx: index("quoteRequests_status_createdAt_idx").on(table.status, table.createdAt),
+}));
 
 export type QuoteRequest = typeof quoteRequests.$inferSelect;
 export type InsertQuoteRequest = typeof quoteRequests.$inferInsert;
