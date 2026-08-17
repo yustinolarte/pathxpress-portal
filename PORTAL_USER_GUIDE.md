@@ -148,5 +148,6 @@ Portal authentication uses JWT tokens:
 
 - `POST /api/trpc/portal.auth.login` - Login with email/password
 - `POST /api/trpc/portal.auth.logout` - Logout (clears token)
-- Token is stored in localStorage on the client side
-- Token expires after 7 days of inactivity
+- Authentication is stored in the HttpOnly `pathxpress_portal_token` cookie.
+- The token is never stored in `localStorage`, so client-side JavaScript cannot read it.
+- The cookie is sent automatically with portal requests and expires after 7 days.
