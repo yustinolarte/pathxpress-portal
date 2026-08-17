@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -95,6 +95,10 @@ export default function RatesPanel() {
   // COD config state
   const [editingCod, setEditingCod] = useState(false);
   const [codDraft, setCodDraft] = useState({ COD_FEE_PERCENTAGE: '', COD_MIN_FEE: '', CARD_FEE_PERCENTAGE: '', CARD_MIN_FEE: '' });
+  const [calculatorClientId, setCalculatorClientId] = useState('');
+  const [calculatorService, setCalculatorService] = useState<'DOM' | 'SDD'>('DOM');
+  const [calculatorZone, setCalculatorZone] = useState<'1' | '2' | '3'>('1');
+  const [calculatorWeight, setCalculatorWeight] = useState('1');
 
   // Data
   const { data: clients, isLoading, refetch } = trpc.portal.clients.getWithTiers.useQuery();
@@ -103,6 +107,26 @@ export default function RatesPanel() {
     { enabled: serviceClientId !== null }
   );
   const { data: codConfig, refetch: refetchCodConfig } = trpc.portal.rates.getGlobalCodConfig.useQuery();
+
+  const calculatorResult = useMemo(() => {
+    const client: any = clients?.find((item: any) => String(item.id) === calculatorClientId);
+    const weight = Number(calculatorWeight);
+    if (!client || !Number.isFinite(weight) || weight <= 0) return null;
+
+    const baseKey = calculatorService === 'SDD' ? 'customSddBaseRate' : `zone${calculatorZone}BaseRate`;
+    const perKgKey = calculatorService === 'SDD' ? 'customSddPerKg' : `zone${calculatorZone}PerKg`;
+    const base = Number(client[baseKey]);
+    const perKg = Number(client[perKgKey] || 0);
+    if (!Number.isFinite(base) || base <= 0) return { unavailable: true as const };
+    const extraWeight = Math.max(0, weight - 5);
+    return {
+      unavailable: false as const,
+      base,
+      extraWeight,
+      perKg,
+      total: base + extraWeight * perKg,
+    };
+  }, [calculatorClientId, calculatorService, calculatorWeight, calculatorZone, clients]);
 
   // Mutations
   const updateZoneMutation = trpc.portal.clients.updateZoneRates.useMutation({
@@ -244,6 +268,63 @@ export default function RatesPanel() {
                 {areas.map(a => <p key={a} className="text-xs text-muted-foreground">{a}</p>)}
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-primary" />
+            <CardTitle className="text-lg">Rate Calculator</CardTitle>
+          </div>
+          <CardDescription>Preview a hypothetical shipment using the client’s currently configured zone rates. This does not save or change any data.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className={labelCls}>Client</label>
+              <select className={inputCls} value={calculatorClientId} onChange={(e) => setCalculatorClientId(e.target.value)}>
+                <option value="">Select client</option>
+                {(clients ?? []).map((client: any) => <option key={client.id} value={String(client.id)}>{client.companyName}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Service</label>
+              <select className={inputCls} value={calculatorService} onChange={(e) => setCalculatorService(e.target.value as 'DOM' | 'SDD')}>
+                <option value="DOM">Next Day</option>
+                <option value="SDD">Same Day</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Zone</label>
+              <select className={inputCls} value={calculatorService === 'SDD' ? '1' : calculatorZone} disabled={calculatorService === 'SDD'} onChange={(e) => setCalculatorZone(e.target.value as '1' | '2' | '3')}>
+                <option value="1">Zone 1</option>
+                <option value="2">Zone 2</option>
+                <option value="3">Zone 3</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>Weight (kg)</label>
+              <Input type="number" min="0.1" step="0.1" value={calculatorWeight} onChange={(e) => setCalculatorWeight(e.target.value)} />
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl border border-border bg-secondary p-4">
+            {!calculatorClientId ? (
+              <p className="text-sm text-muted-foreground">Select a client to calculate a rate.</p>
+            ) : calculatorResult?.unavailable ? (
+              <p className="text-sm text-[var(--st-amber)]">No explicit rate is configured for this service and zone.</p>
+            ) : calculatorResult ? (
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="text-sm text-muted-foreground">
+                  Base AED {calculatorResult.base.toFixed(2)}
+                  {calculatorResult.extraWeight > 0 && ` + ${calculatorResult.extraWeight.toFixed(2)} kg × AED ${calculatorResult.perKg.toFixed(2)}`}
+                </div>
+                <div className="font-display text-2xl font-bold">AED {calculatorResult.total.toFixed(2)}</div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Enter a valid positive weight.</p>
+            )}
           </div>
         </CardContent>
       </Card>
