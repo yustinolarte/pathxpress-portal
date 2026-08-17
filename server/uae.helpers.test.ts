@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeEmirate,
   normalizeCity,
+  normalizeDisplayName,
   normalizePhone,
   nationalDigits,
   isPlausiblePhone,
@@ -68,6 +69,23 @@ describe('normalizeCity', () => {
 
   it('returns undefined for areas we do not know', () => {
     expect(normalizeCity('Kalba')).toBeUndefined();
+  });
+});
+
+describe('normalizeDisplayName', () => {
+  it('canonicalises known UAE cities', () => {
+    expect(normalizeDisplayName('abudhabi')).toBe('Abu Dhabi');
+    expect(normalizeDisplayName('ras al-khaimah')).toBe('Ras Al Khaimah');
+  });
+
+  it('title-cases fully lower- or upper-case international cities', () => {
+    expect(normalizeDisplayName('santa clara')).toBe('Santa Clara');
+    expect(normalizeDisplayName('NEW YORK')).toBe('New York');
+  });
+
+  it('preserves intentional mixed casing and punctuation', () => {
+    expect(normalizeDisplayName('eThekwini')).toBe('eThekwini');
+    expect(normalizeDisplayName('rio-de-janeiro')).toBe('Rio-De-Janeiro');
   });
 });
 

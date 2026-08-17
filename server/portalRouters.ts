@@ -2696,7 +2696,9 @@ export const customerPortalRouter = router({
           customerPhone: normalizeStoredPhone(input.shipment.customerPhone),
           shipperPhone: normalizeStoredPhone(input.shipment.shipperPhone),
           ...(isInternational ? {} : {
-            city: normalizeCity(input.shipment.city) ?? input.shipment.city,
+            city: normalizeCity(input.shipment.city)
+              ?? normalizeDisplayName(input.shipment.city)
+              ?? input.shipment.city,
             emirate: normalizeEmirate(input.shipment.emirate)
               ?? normalizeEmirate(input.shipment.city)
               ?? input.shipment.emirate

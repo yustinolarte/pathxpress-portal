@@ -128,6 +128,29 @@ export function normalizeCity(raw?: string | null): string | undefined {
 }
 
 /**
+ * Normalise a free-form city that is outside the UAE without maintaining a
+ * worldwide city dictionary. Existing mixed-case spelling is preserved;
+ * values entered entirely in lower/upper case are converted to title case.
+ */
+export function normalizeDisplayName(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim().replace(/\s+/g, ' ');
+  if (!trimmed) return undefined;
+  const uaeCity = normalizeCity(trimmed);
+  if (uaeCity) return uaeCity;
+
+  const hasLower = /[a-z]/.test(trimmed);
+  const hasUpper = /[A-Z]/.test(trimmed);
+  if (hasLower && hasUpper) return trimmed;
+
+  return trimmed
+    .toLocaleLowerCase('en')
+    .replace(/(^|[\s-])([a-z])/g, (_match, separator: string, letter: string) =>
+      `${separator}${letter.toLocaleUpperCase('en')}`,
+    );
+}
+
+/**
  * Where to point the map for a given city. Al Ain bills as Abu Dhabi but sits
  * 120 km inland, so biasing its searches at Abu Dhabi city would surface the
  * wrong suggestions.

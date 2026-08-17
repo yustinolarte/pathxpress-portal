@@ -23,7 +23,7 @@ export function loadGoogleMaps(): Promise<void> {
 
     _promise = new Promise<void>(resolve => {
         const s = document.createElement('script');
-        s.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding`;
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding&language=en&region=AE`;
         s.async = true;
         s.onload = () => resolve();
         s.onerror = () => { _promise = null; resolve(); };
