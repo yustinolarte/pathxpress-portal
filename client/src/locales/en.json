@@ -87,7 +87,8 @@
       "label": "Dubai / UAE",
       "point1": "Dubai / Sharjah / Abu Dhabi / Ajman (city limits)",
       "point2": "Flexible cut-off",
-      "point3": "Max 10 kg"
+      "point3": "Max 10 kg",
+      "point4": "Real-time tracking and proof of delivery"
     },
     "domestic": {
       "title": "Domestic Next Day / Economy",
@@ -440,6 +441,18 @@
     "successTitle": "Pickup Request Sent!",
     "successMessage": "We have received your request and will contact you shortly to confirm the details.",
     "submitAnother": "Submit Another Request",
+    "submitSuccess": "Pickup request sent successfully! We will contact you shortly."
+  },
+  "pickupForm": {
+    "title": "Request a Pickup",
+    "subtitle": "Tell us where to collect your shipment and we'll confirm the pickup shortly",
+    "cardTitle": "Pickup Information",
+    "cardDescription": "Complete the shipment details so our operations team can schedule the collection",
+    "submit": "Request Pickup",
+    "submitting": "Sending pickup request...",
+    "successTitle": "Pickup Request Sent!",
+    "successMessage": "We have received your pickup request and will contact you shortly to confirm the collection.",
+    "submitAnother": "Request Another Pickup",
     "submitSuccess": "Pickup request sent successfully! We will contact you shortly."
   },
   "pricing": {

@@ -12,8 +12,14 @@ import { Loader2, CheckCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
-export default function RequestQuote() {
+interface RequestQuoteProps {
+  mode?: 'quote' | 'pickup';
+}
+
+export function RequestQuoteForm({ mode = 'quote' }: RequestQuoteProps) {
   const { t } = useTranslation();
+  const isPickup = mode === 'pickup';
+  const pageCopy = (key: string) => t(`${isPickup ? 'pickupForm' : 'quoteForm'}.${key}`);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -29,7 +35,7 @@ export default function RequestQuote() {
   const createQuoteMutation = trpc.quoteRequest.create.useMutation({
     onSuccess: () => {
       setSubmitted(true);
-      toast.success(t('quoteForm.submitSuccess'));
+      toast.success(pageCopy('submitSuccess'));
       setFormData({
         name: '',
         phone: '',
@@ -64,15 +70,15 @@ export default function RequestQuote() {
             <Card className="bg-card border-border border-primary text-center animate-fade-in">
               <CardContent className="py-12">
                 <CheckCircle className="w-16 h-16 mx-auto mb-6 text-primary" />
-                <h2 className="font-display text-3xl font-bold tracking-tight mb-4">{t('quoteForm.successTitle')}</h2>
+                <h2 className="font-display text-3xl font-bold tracking-tight mb-4">{pageCopy('successTitle')}</h2>
                 <p className="text-muted-foreground mb-8">
-                  {t('quoteForm.successMessage')}
+                  {pageCopy('successMessage')}
                 </p>
                 <Button
                   onClick={() => setSubmitted(false)}
                   className="bg-primary hover:bg-primary/90"
                 >
-                  {t('quoteForm.submitAnother')}
+                  {pageCopy('submitAnother')}
                 </Button>
               </CardContent>
             </Card>
@@ -90,15 +96,15 @@ export default function RequestQuote() {
       <main className="pt-32 pb-20 gradient-dark min-h-screen">
         <div className="container max-w-3xl">
           <div className="text-center mb-12 animate-fade-in">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">{t('quoteForm.title')}</h1>
-            <p className="text-xl text-muted-foreground">{t('quoteForm.subtitle')}</p>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">{pageCopy('title')}</h1>
+            <p className="text-xl text-muted-foreground">{pageCopy('subtitle')}</p>
           </div>
 
           <Card className="bg-card border-border border-border animate-slide-up">
             <CardHeader>
-              <CardTitle className="text-2xl">{t('quoteForm.cardTitle')}</CardTitle>
+              <CardTitle className="text-2xl">{pageCopy('cardTitle')}</CardTitle>
               <CardDescription>
-                {t('quoteForm.cardDescription')}
+                {pageCopy('cardDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -219,10 +225,10 @@ export default function RequestQuote() {
                   {createQuoteMutation.isPending ? (
                     <>
                       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      {t('quoteForm.submitting')}
+                      {pageCopy('submitting')}
                     </>
                   ) : (
-                    t('quoteForm.submit')
+                    pageCopy('submit')
                   )}
                 </Button>
               </form>
@@ -234,6 +240,10 @@ export default function RequestQuote() {
       <Footer />
     </div>
   );
+}
+
+export default function RequestQuote() {
+  return <RequestQuoteForm />;
 }
 
 

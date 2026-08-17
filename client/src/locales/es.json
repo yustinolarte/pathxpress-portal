@@ -86,7 +86,8 @@
       "label": "Dubái / EAU",
       "point1": "Dubái / Sharjah / Abu Dhabi / Ajman (límites de la ciudad)",
       "point2": "Hora límite flexible",
-      "point3": "Máximo 10 kg"
+      "point3": "Máximo 10 kg",
+      "point4": "Rastreo en tiempo real y comprobante de entrega"
     },
     "domestic": {
       "title": "Nacional Día Siguiente / Económico",
@@ -387,6 +388,18 @@
       "latam": "Carga Internacional",
       "lastMile": "Última Milla E-commerce"
     },
+    "submitSuccess": "¡Solicitud de recogida enviada con éxito! Nos pondremos en contacto pronto."
+  },
+  "pickupForm": {
+    "title": "Solicitar una Recogida",
+    "subtitle": "Indíquenos dónde recoger su envío y confirmaremos la recogida en breve",
+    "cardTitle": "Información de Recogida",
+    "cardDescription": "Complete los datos del envío para que nuestro equipo pueda programar la recogida",
+    "submit": "Solicitar Recogida",
+    "submitting": "Enviando solicitud...",
+    "successTitle": "¡Solicitud de Recogida Enviada!",
+    "successMessage": "Hemos recibido su solicitud y nos pondremos en contacto para confirmar la recogida.",
+    "submitAnother": "Solicitar Otra Recogida",
     "submitSuccess": "¡Solicitud de recogida enviada con éxito! Nos pondremos en contacto pronto."
   },
   "pricing": {
