@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { and, eq } from "drizzle-orm";
+import { quoteRequests } from "../drizzle/schema";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
+import { getDb } from "./db";
+
+const quoteRequestTestMarker = `api-test-${Date.now()}`;
+const quoteRequestTestEmail = `${quoteRequestTestMarker}@pathxpress.internal`;
 
 function createMockContext(): TrpcContext {
   return {
@@ -16,6 +22,16 @@ function createMockContext(): TrpcContext {
 }
 
 describe("PATHXPRESS API Tests", () => {
+  afterAll(async () => {
+    const db = await getDb();
+    if (db) {
+      await db.delete(quoteRequests).where(and(
+        eq(quoteRequests.name, quoteRequestTestMarker),
+        eq(quoteRequests.email, quoteRequestTestEmail),
+      ));
+    }
+  });
+
   describe("tracking.getByTrackingId", () => {
     it("should reject invalid tracking ID format", async () => {
       const ctx = createMockContext();
@@ -93,9 +109,9 @@ describe("PATHXPRESS API Tests", () => {
       const caller = appRouter.createCaller(ctx);
 
       const result = await caller.quoteRequest.create({
-        name: "Test User",
+        name: quoteRequestTestMarker,
         phone: "+971501234567",
-        email: "test@example.com",
+        email: quoteRequestTestEmail,
         pickupAddress: "Dubai Marina, Dubai",
         deliveryAddress: "Downtown Dubai",
         serviceType: "same-day",
@@ -111,9 +127,9 @@ describe("PATHXPRESS API Tests", () => {
       const caller = appRouter.createCaller(ctx);
 
       const result = await caller.quoteRequest.create({
-        name: "Test User",
+        name: quoteRequestTestMarker,
         phone: "+971501234567",
-        email: "test@example.com",
+        email: quoteRequestTestEmail,
         pickupAddress: "Dubai Marina, Dubai",
         serviceType: "domestic",
         weight: "10 kg",

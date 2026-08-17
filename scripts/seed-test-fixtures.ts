@@ -8,7 +8,7 @@
  * Idempotent — safe to run more than once, skips rows that already exist.
  * Intended for a fresh TEST_DATABASE_URL, never production.
  *
- * Usage: DATABASE_URL=<test db url> npx tsx scripts/seed-test-fixtures.ts
+ * Usage: TEST_DATABASE_URL=<test db url> npx tsx scripts/seed-test-fixtures.ts
  */
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
@@ -17,7 +17,22 @@ import { drizzle } from 'drizzle-orm/mysql2';
 import { eq } from 'drizzle-orm';
 import { clientAccounts, portalUsers } from '../drizzle/schema';
 
-const connection = await mysql.createConnection(process.env.DATABASE_URL!);
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+const productionDatabaseUrl = process.env.DATABASE_URL?.trim();
+
+if (!testDatabaseUrl) {
+  throw new Error('TEST_DATABASE_URL is required. Production DATABASE_URL is never used.');
+}
+if (testDatabaseUrl === productionDatabaseUrl) {
+  throw new Error('Refusing to seed: TEST_DATABASE_URL is identical to DATABASE_URL.');
+}
+
+const testDatabaseName = new URL(testDatabaseUrl).pathname.replace(/^\//, '');
+if (!/(test|testing|qa|sandbox)/i.test(testDatabaseName)) {
+  throw new Error('Refusing to seed: target database name does not look like a test/QA database.');
+}
+
+const connection = await mysql.createConnection(testDatabaseUrl);
 const db = drizzle(connection);
 
 const FIXTURE_ADMIN_EMAIL = 'test-admin@pathxpress.internal';

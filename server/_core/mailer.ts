@@ -5,6 +5,8 @@ export async function notifyAdminNewOrder(
   customerName: string,
   customerPhone: string,
 ) {
+  if (process.env.NODE_ENV === 'test') return;
+
   const emailUser = process.env.EMAIL_USER;
   const emailPass = process.env.EMAIL_APP_PASSWORD;
   const adminEmail = process.env.ADMIN_EMAIL || emailUser;

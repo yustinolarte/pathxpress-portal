@@ -2460,6 +2460,7 @@ export const customerPortalRouter = router({
       }
 
       // 🤖 LOGISTICS BOT INTEGRATION
+      if (process.env.NODE_ENV !== 'test') {
       try {
         const BOT_URL = process.env.BOT_API_URL || 'http://localhost:3000';
 
@@ -2478,6 +2479,8 @@ export const customerPortalRouter = router({
       } catch (error: any) {
         // Do not block order creation if bot fails
         console.warn('⚠️ Failed to notify Bot:', error.message);
+      }
+
       }
 
       // Email notification to admin (fire-and-forget, never blocks order creation)

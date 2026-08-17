@@ -13,7 +13,7 @@ export type NewOrderWebhookPayload = {
  * order creation must never fail because the bot is offline or unreachable.
  */
 export function notifyBotNewOrder(payload: NewOrderWebhookPayload): void {
-  if (!ENV.botWebhookUrl) return;
+  if (process.env.NODE_ENV === "test" || !ENV.botWebhookUrl) return;
 
   fetch(ENV.botWebhookUrl, {
     method: "POST",

@@ -31,7 +31,7 @@ const CITY_LEVEL_TYPES = new Set([
 ]);
 
 export function isGeocodingConfigured(): boolean {
-    return Boolean(ENV.googleMapsApiKey);
+    return process.env.NODE_ENV !== 'test' && Boolean(ENV.googleMapsApiKey);
 }
 
 // Spelling variants of "UAE" seen in real order data. Empty/missing counts as
@@ -55,7 +55,7 @@ export async function geocodeAddress(parts: {
     city?: string | null;
     emirate?: string | null;
 }): Promise<GeocodeResult | null> {
-    if (!ENV.googleMapsApiKey) return null;
+    if (process.env.NODE_ENV === 'test' || !ENV.googleMapsApiKey) return null;
 
     const query = [parts.address, parts.city, parts.emirate, 'UAE']
         .filter((p) => p && String(p).trim())
