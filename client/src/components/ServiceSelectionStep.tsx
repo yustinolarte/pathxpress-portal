@@ -19,6 +19,8 @@ export interface ServiceOption {
 
 interface Props {
   emirate: string;
+  lat?: number;
+  lng?: number;
   weight: number;
   selectedService: string;
   onServiceSelect: (code: string) => void;
@@ -90,6 +92,8 @@ function isSameDayTimeAllowed(date: string, slot: string): boolean {
 
 export default function ServiceSelectionStep({
   emirate,
+  lat,
+  lng,
   weight,
   selectedService,
   onServiceSelect,
@@ -108,7 +112,7 @@ export default function ServiceSelectionStep({
   shipperName,
 }: Props) {
   const { data: services, isLoading, error } = trpc.portal.services.getAvailable.useQuery(
-    { emirate, weight },
+    { emirate, weight, lat, lng },
     { enabled: !!emirate && weight > 0 }
   );
 

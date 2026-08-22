@@ -7,9 +7,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Calculator } from 'lucide-react';
+import { trpc } from '@/lib/trpc';
 
 type ServiceType = 'standard' | 'sameDay';
 type Emirate = 'dubai' | 'abuDhabi' | 'sharjah' | 'ajman' | 'rak' | 'fujairah' | 'uaq';
+
+// This UI's short internal keys, translated to strings shared/uae.ts's
+// normalizeEmirate() recognizes — the actual quote is priced server-side by
+// the real rate engine (Walk-in client), not computed here.
+const EMIRATE_TO_QUOTE_STRING: Record<Emirate, string> = {
+  dubai: 'Dubai',
+  abuDhabi: 'Abu Dhabi',
+  sharjah: 'Sharjah',
+  ajman: 'Ajman',
+  rak: 'RAK',
+  fujairah: 'Fujairah',
+  uaq: 'UAQ',
+};
 
 interface CalculationResult {
   actualWeight: number;
@@ -25,6 +39,7 @@ interface CalculationResult {
 
 export default function RateCalculator() {
   const { t } = useTranslation();
+  const utils = trpc.useUtils();
 
   const [originEmirate, setOriginEmirate] = useState<Emirate | ''>('');
   const [destinationEmirate, setDestinationEmirate] = useState<Emirate | ''>('');
@@ -37,18 +52,8 @@ export default function RateCalculator() {
 
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // Pricing configuration (easily extensible for emirate-specific pricing)
-  const PRICING_CONFIG = {
-    standard: {
-      basePrice: 20, // AED for ≤5kg
-      extraPerKg: 1,  // AED per kg above 5kg
-    },
-    sameDay: {
-      basePrice: 30, // AED for ≤5kg
-      extraPerKg: 2,  // AED per kg above 5kg
-    },
-  };
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [isQuoting, setIsQuoting] = useState(false);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -93,44 +98,45 @@ export default function RateCalculator() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const calculateRate = () => {
+  const calculateRate = async () => {
     if (!validateForm()) return;
 
     const weight = parseFloat(actualWeight);
     const l = parseFloat(length);
     const w = parseFloat(width);
     const h = parseFloat(height);
-
-    // Calculate volumetric weight: (L × W × H) / 5000, rounded up
     const volumetricWeight = Math.ceil((l * w * h) / 5000);
-
-    // Chargeable weight is the maximum of actual and volumetric
     const chargeableWeight = Math.max(weight, volumetricWeight);
 
-    // Get pricing for selected service type
-    const pricing = PRICING_CONFIG[serviceType];
-    const basePrice = pricing.basePrice;
+    setQuoteError(null);
+    setIsQuoting(true);
+    try {
+      const quote = await utils.portal.publicPricing.quote.fetch({
+        serviceType: serviceType === 'standard' ? 'DOM' : 'SDD',
+        weight,
+        length: l,
+        width: w,
+        height: h,
+        emirate: EMIRATE_TO_QUOTE_STRING[destinationEmirate as Emirate],
+      });
 
-    // Calculate extra cost for weight above 5kg
-    let extraCost = 0;
-    if (chargeableWeight > 5) {
-      const extraKgs = Math.ceil(chargeableWeight) - 5;
-      extraCost = extraKgs * pricing.extraPerKg;
+      setResult({
+        actualWeight: weight,
+        volumetricWeight,
+        chargeableWeight,
+        basePrice: quote.baseRate,
+        extraCost: quote.additionalKgCharge,
+        totalPrice: quote.totalRate,
+        service: serviceType,
+        origin: originEmirate as Emirate,
+        destination: destinationEmirate as Emirate,
+      });
+    } catch {
+      setQuoteError(t('pricing.calculator.errors.quoteFailed'));
+      setResult(null);
+    } finally {
+      setIsQuoting(false);
     }
-
-    const totalPrice = basePrice + extraCost;
-
-    setResult({
-      actualWeight: weight,
-      volumetricWeight,
-      chargeableWeight,
-      basePrice,
-      extraCost,
-      totalPrice,
-      service: serviceType,
-      origin: originEmirate as Emirate,
-      destination: destinationEmirate as Emirate,
-    });
   };
 
   const emirates: Emirate[] = ['dubai', 'abuDhabi', 'sharjah', 'ajman', 'rak', 'fujairah', 'uaq'];
@@ -285,10 +291,12 @@ export default function RateCalculator() {
           {/* Calculate Button */}
           <Button
             onClick={calculateRate}
+            disabled={isQuoting}
             className="w-full bg-primary hover:bg-primary/90 transition-smooth"
           >
-            {t('pricing.calculator.calculateBtn')}
+            {isQuoting ? t('pricing.calculator.calculating') : t('pricing.calculator.calculateBtn')}
           </Button>
+          {quoteError && <p className="text-xs text-red-500">{quoteError}</p>}
         </CardContent>
       </Card>
 

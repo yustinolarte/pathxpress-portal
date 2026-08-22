@@ -3,23 +3,13 @@
  * getAvailableOrders already returns the full active set, so filtering locally
  * keeps map, panel and pick list on one source of truth.
  */
+import { resolveZoneByEmirateOrCity } from '@shared/deliveryZones';
 
 export type ZoneName = 'ZONA 1' | 'ZONA 2' | 'ZONA 3';
 
-// Emirate → operational zone (mirrors getZoneFromEmirate on the server).
-const EMIRATE_ZONE: Record<string, ZoneName> = {
-  'dubai': 'ZONA 1',
-  'sharjah': 'ZONA 1',
-  'ajman': 'ZONA 1',
-  'abu dhabi': 'ZONA 1',
-  'umm al quwain': 'ZONA 2',
-  'ras al khaimah': 'ZONA 2',
-  'fujairah': 'ZONA 2',
-};
-
 export function zoneForOrder(order: { emirate?: string | null; city?: string | null }): ZoneName {
-  const key = (order.emirate || order.city || '').trim().toLowerCase();
-  return EMIRATE_ZONE[key] ?? 'ZONA 3';
+  const zone = resolveZoneByEmirateOrCity(order.emirate || order.city || undefined);
+  return zone === 1 ? 'ZONA 1' : zone === 2 ? 'ZONA 2' : 'ZONA 3';
 }
 
 export type OrderTypeFilter = 'all' | 'pickup' | 'delivery' | 'return' | 'exchange';

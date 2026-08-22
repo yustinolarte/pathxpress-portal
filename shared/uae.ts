@@ -42,7 +42,7 @@ export const UAE_CITIES = [
  * "Raʾs al-Khaymah", "Abū Ẓaby", "Ash Shāriqah"), turn separators into spaces,
  * drop anything that is not a letter, and collapse whitespace.
  */
-function fold(raw: string): string {
+export function fold(raw: string): string {
   return raw
     .normalize('NFD')
     .replace(/[-_/,.]+/g, ' ')

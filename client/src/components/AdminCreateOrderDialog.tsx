@@ -157,8 +157,13 @@ export default function AdminCreateOrderDialog({
     );
 
     // The emirate is derived from the city rather than being a second dropdown
-    // the operator can contradict. Al Ain is a city of Abu Dhabi, so it bills
-    // as Abu Dhabi.
+    // the operator can contradict. Al Ain administratively is a city of Abu
+    // Dhabi, so it's still labelled "Abu Dhabi" here for display/persistence —
+    // but that label is no longer what decides its delivery ZONE (Al Ain bills
+    // Zone 2, Abu Dhabi Zone 1). The pin dropped in the map below is passed as
+    // lat/lng to the rate and service-availability queries and takes priority
+    // there via resolveDeliveryZone; this string is only their fallback until
+    // a pin is dropped.
     const emirate = normalizeEmirate(formData.city) ?? 'Dubai';
 
     const weightNum = parseFloat(formData.weight);
@@ -235,6 +240,14 @@ export default function AdminCreateOrderDialog({
         };
     }, [debouncedDims]);
 
+    const pickedLat = pickedLocation?.latitude ? parseFloat(pickedLocation.latitude) : undefined;
+    const pickedLng = pickedLocation?.longitude ? parseFloat(pickedLocation.longitude) : undefined;
+    // Raw city, not the normalized `emirate` label Al Ain collapses to — keeps
+    // zone/region resolution correct even before a pin is dropped (once one
+    // is, lat/lng takes priority anyway). `emirate` itself stays the
+    // administrative label for order persistence and the "Bills as" display.
+    const zoneQueryEmirate = formData.city || emirate;
+
     const rateQuery = trpc.portal.rates.quote.useQuery(
         {
             clientId: parseInt(selectedClientId || '0', 10),
@@ -242,7 +255,9 @@ export default function AdminCreateOrderDialog({
             // NaN would serialise into the query key as null; keep it numeric
             // even while the query is disabled.
             weight: quoteReady ? quoteWeight : 0,
-            emirate,
+            emirate: zoneQueryEmirate,
+            lat: Number.isFinite(pickedLat) ? pickedLat : undefined,
+            lng: Number.isFinite(pickedLng) ? pickedLng : undefined,
             ...dims,
         },
         { enabled: quoteReady },
@@ -284,6 +299,8 @@ export default function AdminCreateOrderDialog({
             clientId: parseInt(selectedClientId || '0', 10),
             emirate,
             weight: quoteReady ? quoteWeight : 1,
+            lat: Number.isFinite(pickedLat) ? pickedLat : undefined,
+            lng: Number.isFinite(pickedLng) ? pickedLng : undefined,
         },
         { enabled: quoteReady },
     );
@@ -304,11 +321,28 @@ export default function AdminCreateOrderDialog({
         }
     }, [services, formData.serviceType]);
 
+    // Fetched whenever a client is selected (not just while overriding) so the
+    // client's default saved location can silently fill the shipper block —
+    // including its exact map pin — without the operator lifting a finger.
     const savedShippersQuery = trpc.portal.admin.adminGetClientSavedShippers.useQuery(
         { clientId: parseInt(selectedClientId || '0', 10) },
-        { enabled: !!selectedClientId && overrideShipper },
+        { enabled: !!selectedClientId },
     );
     const savedShippers = savedShippersQuery.data ?? [];
+    const defaultLocation = savedShippers.find(s => s.isDefault === 1) ?? null;
+
+    // Auto-fill the pickup pin from the client's default location. Only runs
+    // while the operator hasn't manually overridden the shipper — a custom
+    // address means a one-off pickup point that has nothing to do with the
+    // client's saved locations.
+    useEffect(() => {
+        if (overrideShipper) return;
+        if (defaultLocation?.latitude && defaultLocation?.longitude) {
+            setShipperPickedLocation({ latitude: defaultLocation.latitude, longitude: defaultLocation.longitude });
+        } else {
+            setShipperPickedLocation(null);
+        }
+    }, [overrideShipper, defaultLocation?.id]);
 
     const duplicateQuery = trpc.portal.admin.adminCheckOrderReference.useQuery(
         {
@@ -379,6 +413,13 @@ export default function AdminCreateOrderDialog({
             shipperPhonePrefix: prefix,
             shipperPhone: national,
         }));
+        // A saved location's exact pin travels with it now — no more re-pinning
+        // a warehouse the operator already placed on the map once.
+        setShipperPickedLocation(
+            shipper.latitude && shipper.longitude
+                ? { latitude: shipper.latitude, longitude: shipper.longitude }
+                : null
+        );
         toast.success(`Loaded ${shipper.nickname}`);
     }
 
@@ -694,23 +735,36 @@ export default function AdminCreateOrderDialog({
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-75">
-                                                <div className="space-y-1">
-                                                    <label className={labelClass}>Company Name</label>
-                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.companyName} />
+                                            <div className="space-y-3 opacity-75">
+                                                {defaultLocation && (
+                                                    <span className="badge2 b-green">
+                                                        Default location: {defaultLocation.nickname}
+                                                        {defaultLocation.latitude && ' · exact pin on file'}
+                                                    </span>
+                                                )}
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div className="space-y-1">
+                                                        <label className={labelClass}>Company Name</label>
+                                                        <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={defaultLocation?.shipperName || selectedClient.companyName} />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className={labelClass}>Phone</label>
+                                                        <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={defaultLocation?.shipperPhone || selectedClient.phone || '-'} />
+                                                    </div>
+                                                    <div className="md:col-span-2 space-y-1">
+                                                        <label className={labelClass}>Address</label>
+                                                        <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={defaultLocation?.shipperAddress || selectedClient.billingAddress || '-'} />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className={labelClass}>City</label>
+                                                        <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={defaultLocation?.shipperCity || selectedClient.city || '-'} />
+                                                    </div>
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <label className={labelClass}>Phone</label>
-                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.phone || '-'} />
-                                                </div>
-                                                <div className="md:col-span-2 space-y-1">
-                                                    <label className={labelClass}>Address</label>
-                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.billingAddress || '-'} />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className={labelClass}>City</label>
-                                                    <input disabled className="w-full rounded-lg border border-input bg-muted px-3 py-2 text-sm" value={selectedClient.city || '-'} />
-                                                </div>
+                                                {!defaultLocation && (
+                                                    <p className="text-[11px] text-muted-foreground">
+                                                        No saved location yet for this client — set one up in Client Settings to get an exact pickup pin here automatically.
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
 

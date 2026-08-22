@@ -71,6 +71,9 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
   const [locationError, setLocationError] = useState(false);
   const consigneeSearchRef = useRef<HTMLInputElement>(null);
 
+  const pickedLat = pickedLocation?.latitude ? parseFloat(pickedLocation.latitude) : undefined;
+  const pickedLng = pickedLocation?.longitude ? parseFloat(pickedLocation.longitude) : undefined;
+
   // Wizard state
   const [step, setStep] = useState<'details' | 'service'>('details');
   const [selectedService, setSelectedService] = useState('DOM');
@@ -135,7 +138,28 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
       shipperCity: formData.shipperCity,
       shipperCountry: formData.shipperCountry,
       shipperPhone: normalizePhone(formData.shipperPhonePrefix, formData.shipperPhone),
+      latitude: shipperPickedLocation?.latitude,
+      longitude: shipperPickedLocation?.longitude,
     });
+  };
+
+  const applySavedShipper = (shipper: any) => {
+    const { prefix: phonePrefix, national: phoneNum } = splitPhone(shipper.shipperPhone);
+    setFormData(prev => ({
+      ...prev,
+      shipperName: shipper.shipperName || '',
+      shipperAddress: shipper.shipperAddress || '',
+      shipperBuilding: shipper.shipperAddress || '', // Simplified for loaded
+      shipperStreet: '',
+      shipperArea: '',
+      shipperCity: normalizeCity(shipper.shipperCity) ?? prev.shipperCity,
+      shipperCountry: shipper.shipperCountry || 'UAE',
+      shipperPhonePrefix: phonePrefix,
+      shipperPhone: phoneNum,
+    }));
+    setShipperPickedLocation(
+      shipper.latitude && shipper.longitude ? { latitude: shipper.latitude, longitude: shipper.longitude } : null
+    );
   };
 
   const handleLoadShipper = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -143,22 +167,22 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
     if (!shipperId) return;
     const shipper = savedShippers.find((s: any) => s.id.toString() === shipperId);
     if (shipper) {
-      const { prefix: phonePrefix, national: phoneNum } = splitPhone(shipper.shipperPhone);
-      setFormData(prev => ({
-        ...prev,
-        shipperName: shipper.shipperName || '',
-        shipperAddress: shipper.shipperAddress || '',
-        shipperBuilding: shipper.shipperAddress || '', // Simplified for loaded
-        shipperStreet: '', 
-        shipperArea: '',
-        shipperCity: normalizeCity(shipper.shipperCity) ?? prev.shipperCity,
-        shipperCountry: shipper.shipperCountry || 'UAE',
-        shipperPhonePrefix: phonePrefix,
-        shipperPhone: phoneNum,
-      }));
+      applySavedShipper(shipper);
       toast.success(`Loaded shipper: ${shipper.nickname}`);
     }
   };
+
+  // Auto-fill the shipper block from the client's default saved location the
+  // first time it loads — only while the operator hasn't started typing.
+  const defaultShipperApplied = useRef(false);
+  useEffect(() => {
+    if (defaultShipperApplied.current || formData.shipperName.trim()) return;
+    const defaultShipper = savedShippers.find((s: any) => s.isDefault === 1);
+    if (defaultShipper) {
+      applySavedShipper(defaultShipper);
+      defaultShipperApplied.current = true;
+    }
+  }, [savedShippers]);
 
   const calculateRateMutation = trpc.portal.rates.calculate.useMutation({
     onSuccess: (data) => setCalculatedRate(data),
@@ -195,10 +219,12 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
         length: !isNaN(lengthVal) && lengthVal > 0 ? lengthVal : undefined,
         width: !isNaN(widthVal) && widthVal > 0 ? widthVal : undefined,
         height: !isNaN(heightVal) && heightVal > 0 ? heightVal : undefined,
-        emirate: formData.emirate || undefined,
+        emirate: formData.city || formData.emirate || undefined,
+        lat: Number.isFinite(pickedLat) ? pickedLat : undefined,
+        lng: Number.isFinite(pickedLng) ? pickedLng : undefined,
       });
     }
-  }, [formData.weight, formData.length, formData.width, formData.height, formData.serviceType, formData.emirate]);
+  }, [formData.weight, formData.length, formData.width, formData.height, formData.serviceType, formData.emirate, pickedLocation?.latitude, pickedLocation?.longitude]);
 
   // COD calculation effect
   useEffect(() => {
@@ -339,7 +365,12 @@ export default function CreateShipmentForm({ onSuccess }: { onSuccess: () => voi
       {/* Step 2: Service Selection */}
       {step === 'service' && (
         <ServiceSelectionStep
-          emirate={formData.emirate || formData.city || 'Dubai'}
+          // Raw city (not the emirate label Al Ain collapses to) so zone/region
+          // resolution on the server can tell Al Ain apart from Abu Dhabi even
+          // before a pin is dropped — see resolveZoneByEmirateOrCity.
+          emirate={formData.city || formData.emirate || 'Dubai'}
+          lat={Number.isFinite(pickedLat) ? pickedLat : undefined}
+          lng={Number.isFinite(pickedLng) ? pickedLng : undefined}
           weight={parseFloat(formData.weight) || 0}
           selectedService={selectedService}
           onServiceSelect={setSelectedService}

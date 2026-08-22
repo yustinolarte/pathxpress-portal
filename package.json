@@ -48,6 +48,8 @@
     "@trpc/client": "^11.6.0",
     "@trpc/react-query": "^11.6.0",
     "@trpc/server": "^11.6.0",
+    "@turf/boolean-point-in-polygon": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/jszip": "^3.4.0",
     "axios": "^1.12.0",

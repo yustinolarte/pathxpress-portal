@@ -11,6 +11,7 @@ import {
   isPinNearEmirate,
 } from '@shared/uae';
 import { getZoneFromEmirate } from './db';
+import { resolveZoneByEmirateOrCity } from '@shared/deliveryZones';
 
 describe('normalizeEmirate', () => {
   it('maps the legacy admin short codes to canonical names', () => {
@@ -44,8 +45,38 @@ describe('normalizeEmirate', () => {
   it('produces values the rate zone mapper agrees with', () => {
     expect(getZoneFromEmirate(normalizeEmirate('RAK')!)).toBe(2);
     expect(getZoneFromEmirate(normalizeEmirate('UAQ')!)).toBe(2);
-    expect(getZoneFromEmirate(normalizeEmirate('Al Ain')!)).toBe(1);
     expect(getZoneFromEmirate(normalizeEmirate('Dubai')!)).toBe(1);
+    // Al Ain is deliberately NOT tested via normalizeEmirate() here:
+    // normalizeEmirate('Al Ain') always collapses to the canonical emirate
+    // label "Abu Dhabi" (correct for display/persistence), so composing it
+    // with getZoneFromEmirate can never distinguish Al Ain's zone from Abu
+    // Dhabi's — see resolveZoneByEmirateOrCity below, which is what actually
+    // resolves zone and is given the raw string instead.
+  });
+});
+
+describe('resolveZoneByEmirateOrCity', () => {
+  it('bills Al Ain as zone 2 even though it displays under Abu Dhabi', () => {
+    expect(resolveZoneByEmirateOrCity('Al Ain')).toBe(2);
+    expect(resolveZoneByEmirateOrCity('al ain')).toBe(2);
+  });
+
+  it('zones the rest of the emirates as expected', () => {
+    expect(resolveZoneByEmirateOrCity('Dubai')).toBe(1);
+    expect(resolveZoneByEmirateOrCity('Sharjah')).toBe(1);
+    expect(resolveZoneByEmirateOrCity('Ajman')).toBe(1);
+    expect(resolveZoneByEmirateOrCity('Abu Dhabi')).toBe(1);
+    expect(resolveZoneByEmirateOrCity('Ras Al Khaimah')).toBe(2);
+    expect(resolveZoneByEmirateOrCity('RAK')).toBe(2);
+    expect(resolveZoneByEmirateOrCity('Fujairah')).toBe(2);
+    expect(resolveZoneByEmirateOrCity('Umm Al Quwain')).toBe(2);
+  });
+
+  it('defaults to zone 3 for an unrecognised place or missing input', () => {
+    expect(resolveZoneByEmirateOrCity('Kalba')).toBe(3);
+    expect(resolveZoneByEmirateOrCity('')).toBe(3);
+    expect(resolveZoneByEmirateOrCity(null)).toBe(3);
+    expect(resolveZoneByEmirateOrCity(undefined)).toBe(3);
   });
 });
 

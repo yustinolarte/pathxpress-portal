@@ -44,6 +44,7 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
 
         const {
             shipperName, shipperAddress, shipperCity, shipperCountry, shipperPhone,
+            shipperLat, shipperLng,
             customerName, customerPhone, address, city, emirate, postalCode, destinationCountry,
             pieces, weight, length, width, height,
             serviceType, specialInstructions, itemsDescription,
@@ -54,6 +55,35 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
         // Validate required fields
         if (!customerName || !address || !city || !destinationCountry || !weight) {
             return res.status(400).json({ error: 'Missing required shipment fields' });
+        }
+
+        // Shipper is optional in the payload — falls back to the client's
+        // default saved location (exact pin included), then their billing
+        // profile, so a Shopify app integration doesn't have to resend the
+        // same shop address on every order.
+        let resolvedShipperName = shipperName;
+        let resolvedShipperAddress = shipperAddress;
+        let resolvedShipperCity = shipperCity;
+        let resolvedShipperCountry = shipperCountry;
+        let resolvedShipperPhone = shipperPhone;
+        let resolvedShipperLat = shipperLat;
+        let resolvedShipperLng = shipperLng;
+        if (!resolvedShipperName || !resolvedShipperAddress) {
+            const { getDefaultSavedShipper } = await import('./db');
+            const [defaultLocation, clientAccount] = await Promise.all([
+                getDefaultSavedShipper(clientId),
+                getClientAccountById(clientId),
+            ]);
+            resolvedShipperName = resolvedShipperName || defaultLocation?.shipperName || clientAccount?.companyName;
+            resolvedShipperAddress = resolvedShipperAddress || defaultLocation?.shipperAddress || clientAccount?.billingAddress;
+            resolvedShipperCity = resolvedShipperCity || defaultLocation?.shipperCity || clientAccount?.city;
+            resolvedShipperCountry = resolvedShipperCountry || defaultLocation?.shipperCountry || clientAccount?.country;
+            resolvedShipperPhone = resolvedShipperPhone || defaultLocation?.shipperPhone || clientAccount?.phone;
+            resolvedShipperLat = resolvedShipperLat || defaultLocation?.latitude || undefined;
+            resolvedShipperLng = resolvedShipperLng || defaultLocation?.longitude || undefined;
+        }
+        if (!resolvedShipperName || !resolvedShipperAddress || !resolvedShipperCity || !resolvedShipperCountry || !resolvedShipperPhone) {
+            return res.status(400).json({ error: 'Missing shipper details and no default location is set up for this client' });
         }
 
         const isInternational = destinationCountry.toUpperCase() !== 'UAE'
@@ -85,7 +115,9 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
             clientId,
             waybillNumber,
             orderNumber: orderNumber || undefined,
-            shipperName, shipperAddress, shipperCity, shipperCountry, shipperPhone,
+            shipperName: resolvedShipperName, shipperAddress: resolvedShipperAddress, shipperCity: resolvedShipperCity, shipperCountry: resolvedShipperCountry, shipperPhone: resolvedShipperPhone,
+            shipperLat: resolvedShipperLat || null,
+            shipperLng: resolvedShipperLng || null,
             customerName, customerPhone, address, city,
             emirate: emirate || null,
             postalCode: postalCode || null,
@@ -150,8 +182,10 @@ router.post('/create-shipment', integrationAuth, async (req: Request, res: Respo
 
 // ============ GET /api/shopify/services ============
 // Returns the delivery services available to a client.
-//   - ?clientId=123                      → enabled-service listing (settings dropdown)
-//   - ?clientId=123&emirate=Dubai&weight=2 → priced/available services (checkout rates)
+//   - ?clientId=123                                        → enabled-service listing (settings dropdown)
+//   - ?clientId=123&emirate=Dubai&weight=2                 → priced/available services (checkout rates)
+//   - ?clientId=123&emirate=Dubai&weight=2&lat=..&lng=..    → same, zone resolved from the pin when given
+//     (mirrors the latitude/longitude POST /create-shipment already accepts)
 router.get('/services', integrationAuth, async (req: Request, res: Response) => {
     try {
         const clientId = parseInt(String(req.query.clientId ?? ''), 10);
@@ -162,9 +196,13 @@ router.get('/services', integrationAuth, async (req: Request, res: Response) => 
         const emirate = req.query.emirate ? String(req.query.emirate) : undefined;
         const weightRaw = req.query.weight ? parseFloat(String(req.query.weight)) : undefined;
         const weight = weightRaw && weightRaw > 0 ? weightRaw : undefined;
+        const latRaw = req.query.lat ? parseFloat(String(req.query.lat)) : undefined;
+        const lngRaw = req.query.lng ? parseFloat(String(req.query.lng)) : undefined;
+        const lat = latRaw !== undefined && Number.isFinite(latRaw) ? latRaw : undefined;
+        const lng = lngRaw !== undefined && Number.isFinite(lngRaw) ? lngRaw : undefined;
 
         const [services, clientAccount] = await Promise.all([
-            getAvailableServicesForClient(clientId, { emirate, weight }),
+            getAvailableServicesForClient(clientId, { emirate, weight, lat, lng }),
             getClientAccountById(clientId)
         ]);
         

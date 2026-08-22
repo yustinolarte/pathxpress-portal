@@ -4,6 +4,8 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2";
 import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting, quoteRequests } from "../drizzle/schema";
 import { abbreviateServiceType } from '../shared/const';
+import { resolveZoneByEmirateOrCity } from '../shared/deliveryZones';
+import { lookupZoneByPoint } from './zones/zonePolygons';
 import { ENV } from './_core/env';
 import { notifyBotNewOrder } from './_core/botWebhook';
 
@@ -1528,8 +1530,11 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
       }
 
       const serviceType = (order.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
-      // Use emirate first; fall back to city so zone is correctly detected even when emirate field is empty
-      const emirateForZone = order.emirate || order.city || undefined;
+      // City first, not emirate: Al Ain is stored with emirate="Abu Dhabi" (its
+      // administrative label) but city="Al Ain" — preferring emirate here would
+      // silently zone it as Abu Dhabi. Every other city matches its emirate 1:1,
+      // so this is a no-op for them; falls back to emirate only if city is empty.
+      const emirateForZone = order.city || order.emirate || undefined;
 
       // Standard return — use zone-based rate (charge the more expensive zone); fall back to returnFee if no zone rate
       if (order.isReturn === 1 && order.orderType !== 'exchange') {
@@ -1538,6 +1543,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
           serviceType,
           weight: parseFloat(order.weight || '0'),
           emirate: emirateForZone,
+          lat: order.latitude || undefined,
+          lng: order.longitude || undefined,
           asOfDate: order.createdAt,
         });
         const zoneRate = returnRateResult.totalRate;
@@ -1552,14 +1559,19 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
 
       // For exchange delivery leg, charge the most expensive zone between pickup and delivery
       let billingEmirate = emirateForZone;
+      let billingLat: string | null | undefined = order.latitude;
+      let billingLng: string | null | undefined = order.longitude;
       if (order.orderType === 'exchange' && order.isReturn === 0 && order.originalOrderId) {
-        const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city })
+        const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city, latitude: orders.latitude, longitude: orders.longitude })
           .from(orders).where(eq(orders.id, order.originalOrderId)).limit(1);
         if (origOrder) {
-          const pickupEmirate = origOrder.emirate || origOrder.city || undefined;
-          const pickupZone = pickupEmirate ? getZoneFromEmirate(pickupEmirate) : 1;
-          const deliveryZone = emirateForZone ? getZoneFromEmirate(emirateForZone) : 1;
-          billingEmirate = pickupZone > deliveryZone ? pickupEmirate : emirateForZone;
+          const pickupEmirate = origOrder.city || origOrder.emirate || undefined;
+          const pickupZone = resolveDeliveryZone({ lat: origOrder.latitude, lng: origOrder.longitude, emirate: pickupEmirate });
+          const deliveryZone = resolveDeliveryZone({ lat: order.latitude, lng: order.longitude, emirate: emirateForZone });
+          const pickupWins = pickupZone > deliveryZone;
+          billingEmirate = pickupWins ? pickupEmirate : emirateForZone;
+          billingLat = pickupWins ? origOrder.latitude : order.latitude;
+          billingLng = pickupWins ? origOrder.longitude : order.longitude;
         }
       }
 
@@ -1568,6 +1580,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         serviceType,
         weight: parseFloat(order.weight || '0'),
         emirate: billingEmirate,
+        lat: billingLat || undefined,
+        lng: billingLng || undefined,
         asOfDate: order.createdAt,
       });
 
@@ -1665,8 +1679,8 @@ export async function generateInvoiceForClient(
   for (const shipment of shipments) {
     let totalRate = 0;
 
-    // Use emirate first; fall back to city so zone is correctly detected even when emirate field is empty
-    const emirateForZone = shipment.emirate || shipment.city || undefined;
+    // City first, not emirate — see the matching comment in getBillableShipments above.
+    const emirateForZone = shipment.city || shipment.emirate || undefined;
     const serviceType = (shipment.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
 
     // Exchange free return
@@ -1679,6 +1693,8 @@ export async function generateInvoiceForClient(
         serviceType,
         weight: parseFloat(shipment.weight || '0'),
         emirate: emirateForZone,
+        lat: shipment.latitude || undefined,
+        lng: shipment.longitude || undefined,
         asOfDate: shipment.createdAt,
       });
       const zoneRate = returnRateResult.totalRate;
@@ -1687,14 +1703,19 @@ export async function generateInvoiceForClient(
     } else {
       // For exchange delivery leg, charge the most expensive zone between pickup and delivery
       let billingEmirate = emirateForZone;
+      let billingLat: string | null | undefined = shipment.latitude;
+      let billingLng: string | null | undefined = shipment.longitude;
       if (shipment.orderType === 'exchange' && shipment.isReturn === 0 && shipment.originalOrderId) {
-        const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city })
+        const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city, latitude: orders.latitude, longitude: orders.longitude })
           .from(orders).where(eq(orders.id, shipment.originalOrderId)).limit(1);
         if (origOrder) {
-          const pickupEmirate = origOrder.emirate || origOrder.city || undefined;
-          const pickupZone = pickupEmirate ? getZoneFromEmirate(pickupEmirate) : 1;
-          const deliveryZone = emirateForZone ? getZoneFromEmirate(emirateForZone) : 1;
-          billingEmirate = pickupZone > deliveryZone ? pickupEmirate : emirateForZone;
+          const pickupEmirate = origOrder.city || origOrder.emirate || undefined;
+          const pickupZone = resolveDeliveryZone({ lat: origOrder.latitude, lng: origOrder.longitude, emirate: pickupEmirate });
+          const deliveryZone = resolveDeliveryZone({ lat: shipment.latitude, lng: shipment.longitude, emirate: emirateForZone });
+          const pickupWins = pickupZone > deliveryZone;
+          billingEmirate = pickupWins ? pickupEmirate : emirateForZone;
+          billingLat = pickupWins ? origOrder.latitude : shipment.latitude;
+          billingLng = pickupWins ? origOrder.longitude : shipment.longitude;
         }
       }
       const rateResult = await calculateShipmentRate({
@@ -1702,6 +1723,8 @@ export async function generateInvoiceForClient(
         serviceType,
         weight: parseFloat(shipment.weight || '0'),
         emirate: billingEmirate,
+        lat: billingLat || undefined,
+        lng: billingLng || undefined,
         asOfDate: shipment.createdAt,
       });
       totalRate = rateResult.totalRate;
@@ -3488,20 +3511,39 @@ export async function getMonthlyShipmentCount(clientId: number, asOfDate: Date =
  * Calculate rate for a shipment based on service type, weight, and client volume
  */
 /**
- * Map an emirate/city name to a delivery zone (1, 2, or 3).
- * Zone 1: Dubai, Sharjah, Ajman, Abu Dhabi
- * Zone 2: Umm Al Quwain, Ras Al Khaimah, Fujairah
- * Zone 3: everything else (remote areas)
+ * Map an emirate/city name to a delivery zone (1, 2, or 3), by name only.
+ * Thin wrapper kept for callers that only ever have a string (e.g.
+ * server/uae.helpers.test.ts) — prefer `resolveDeliveryZone` below when
+ * coordinates might be available, since geometry is the more accurate signal.
  */
 export function getZoneFromEmirate(emirate: string): 1 | 2 | 3 {
-  // Normaliza guiones/dobles espacios (ej. "Ras al-Khaimah") para que no caigan
-  // silenciosamente en el default de Zona 3 por no matchear los strings de abajo.
-  const normalized = emirate.toLowerCase().trim().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
-  const zone1 = ['dubai', 'sharjah', 'ajman', 'abu dhabi', 'abudhabi'];
-  const zone2 = ['umm al quwain', 'uaq', 'ras al khaimah', 'rak', 'fujairah'];
-  if (zone1.some(z => normalized.includes(z))) return 1;
-  if (zone2.some(z => normalized.includes(z))) return 2;
-  return 3;
+  return resolveZoneByEmirateOrCity(emirate);
+}
+
+/**
+ * Resolve a delivery zone (1, 2, or 3) preferring real geometry (point-in-polygon
+ * against server/zones/delivery-zones.geojson) when a usable lat/lng is given,
+ * falling back to the emirate/city name otherwise. A coordinate that falls
+ * outside every drawn polygon legitimately resolves to zone 3 — that's trusted
+ * as-is, the string fallback only kicks in when there's no usable coordinate at all.
+ */
+export function resolveDeliveryZone(input: {
+  lat?: number | string | null;
+  lng?: number | string | null;
+  emirate?: string | null;
+  city?: string | null;
+}): 1 | 2 | 3 {
+  const lat = typeof input.lat === 'string' ? parseFloat(input.lat) : input.lat;
+  const lng = typeof input.lng === 'string' ? parseFloat(input.lng) : input.lng;
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const byPoint = lookupZoneByPoint(lat as number, lng as number);
+    if (byPoint !== null) return byPoint;
+  }
+  // City first: Al Ain is stored/passed with emirate="Abu Dhabi" (its
+  // administrative label) but city="Al Ain" — preferring emirate would zone
+  // it as Abu Dhabi. Every other city matches its emirate 1:1, so this only
+  // changes the outcome for Al Ain.
+  return resolveZoneByEmirateOrCity(input.city || input.emirate || undefined);
 }
 
 /**
@@ -3535,6 +3577,8 @@ export async function calculateShipmentRate(params: {
   width?: number; // cm
   height?: number; // cm
   emirate?: string; // destination emirate for zone-based pricing
+  lat?: number | string | null; // destination pin, preferred over `emirate` when present — see resolveDeliveryZone
+  lng?: number | string | null;
   // Date to evaluate the automatic monthly-volume tier as of. Defaults to now (live quote
   // at order-creation time). Invoice generation should pass the shipment's own createdAt so
   // re-generating the same invoice on a later date can't change the tier/price.
@@ -3559,7 +3603,10 @@ export async function calculateShipmentRate(params: {
   // PRIORITY 0: Zone-based rates (DOM only)
   // If client has zone rates set, use them. Emirate determines the zone; defaults to Zone 1 if none provided.
   if (client && params.serviceType === "DOM" && (client.zone1BaseRate || client.zone2BaseRate || client.zone3BaseRate)) {
-    const zone = params.emirate ? getZoneFromEmirate(params.emirate) : 1;
+    const hasDestination = !!params.emirate || (params.lat != null && params.lng != null);
+    const zone = hasDestination
+      ? resolveDeliveryZone({ lat: params.lat, lng: params.lng, emirate: params.emirate })
+      : 1; // no destination info at all — same safe default as before, not a new "unknown → zone 3"
     const rawBase = zone === 1 ? client.zone1BaseRate : zone === 2 ? client.zone2BaseRate : client.zone3BaseRate;
     const rawPkg  = zone === 1 ? client.zone1PerKg   : zone === 2 ? client.zone2PerKg   : client.zone3PerKg;
     // If the resolved zone has no rate (e.g. zone 3 not configured), fallback to zone 1
@@ -4009,19 +4056,23 @@ export interface AvailableService {
  */
 export async function getAvailableServicesForClient(
   clientId: number,
-  opts: { emirate?: string; weight?: number } = {}
+  opts: { emirate?: string; weight?: number; lat?: number | string | null; lng?: number | string | null } = {}
 ): Promise<AvailableService[]> {
   const emirate = opts.emirate;
   const weight = opts.weight;
-  const hasContext = typeof emirate === 'string' && emirate.length > 0
-    && typeof weight === 'number' && weight > 0;
+  const hasCoords = (typeof opts.lat === 'number' || typeof opts.lat === 'string')
+    && (typeof opts.lng === 'number' || typeof opts.lng === 'string')
+    && Number.isFinite(typeof opts.lat === 'string' ? parseFloat(opts.lat) : opts.lat)
+    && Number.isFinite(typeof opts.lng === 'string' ? parseFloat(opts.lng) : opts.lng);
+  const hasDestination = (typeof emirate === 'string' && emirate.length > 0) || hasCoords;
+  const hasContext = hasDestination && typeof weight === 'number' && weight > 0;
 
   const [settingsMap, client] = await Promise.all([
     getClientServiceSettings(clientId),
     getClientAccountById(clientId),
   ]);
 
-  const zone = hasContext ? getZoneFromEmirate(emirate!) : 1;
+  const zone = hasContext ? resolveDeliveryZone({ lat: opts.lat, lng: opts.lng, emirate }) : 1;
 
   const SERVICE_DEFS = [
     { code: 'DOM',                defaultName: 'Next Day Delivery',        defaultDeliveryTime: '1–2 business days',     legacyEnabled: true,                      requiresScheduling: false },
@@ -4079,10 +4130,24 @@ export async function getAvailableServicesForClient(
       if (Array.isArray(regions) && regions.length > 0) {
         const norm = (s: string) => String(s).toLowerCase().trim().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
         const dest = norm(emirate);
-        const allowed = regions.some(r => {
-          const rn = norm(r);
-          return rn === dest || dest.includes(rn) || rn.includes(dest);
-        });
+        // This region picker only ever offered the 7 canonical emirates, so
+        // there was never a way to list "Al Ain" separately from "Abu Dhabi" —
+        // yet Al Ain is zone 2 while Abu Dhabi is zone 1. Detect an Al Ain
+        // destination either directly (raw "Al Ain" was passed) or indirectly
+        // (the label collapsed to "Abu Dhabi" but geometry/zone says 2, which
+        // real Abu Dhabi never would), and for that case match by whether the
+        // configured region list is itself zone-2, instead of by literal name
+        // — so a RAK/Fujairah/UAQ-only list (EXPRESS_ZONE2) still offers the
+        // service, while a Dubai/Sharjah/Ajman/Abu Dhabi-only list (SDD)
+        // still excludes it. Every other destination keeps the original
+        // literal-name matching, unaffected.
+        const isAlAin = dest === 'al ain' || (dest === 'abu dhabi' && zone === 2);
+        const allowed = isAlAin
+          ? regions.some(r => resolveZoneByEmirateOrCity(r) === 2)
+          : regions.some(r => {
+              const rn = norm(r);
+              return rn === dest || dest.includes(rn) || rn.includes(dest);
+            });
         if (!allowed) {
           return { ...base, available: false, reason: 'Not available for this destination', price: null, cutoffTime: setting?.cutoffTime ?? null };
         }
@@ -4103,6 +4168,8 @@ export async function getAvailableServicesForClient(
         serviceType: svc.code as any,
         weight: weight!,
         emirate,
+        lat: opts.lat,
+        lng: opts.lng,
       });
       price = rateResult.totalRate;
     } catch {}
@@ -4228,17 +4295,103 @@ export async function createSavedShipper(data: {
   shipperCity: string;
   shipperCountry: string;
   shipperPhone: string;
+  latitude?: string | null;
+  longitude?: string | null;
+  isDefault?: boolean;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   try {
     const { savedShippers } = await import('../drizzle/schema');
-    const [result] = await db.insert(savedShippers).values(data);
+    const { eq, and } = await import('drizzle-orm');
+
+    // If this is the client's first location ever, or explicitly requested,
+    // make it the default. Only one default per client.
+    const existing = await db.select({ id: savedShippers.id }).from(savedShippers).where(eq(savedShippers.clientId, data.clientId));
+    const shouldBeDefault = data.isDefault === true || existing.length === 0;
+
+    if (shouldBeDefault) {
+      await db.update(savedShippers).set({ isDefault: 0 }).where(eq(savedShippers.clientId, data.clientId));
+    }
+
+    const [result] = await db.insert(savedShippers).values({
+      ...data,
+      latitude: data.latitude ?? null,
+      longitude: data.longitude ?? null,
+      isDefault: shouldBeDefault ? 1 : 0,
+    });
     return result.insertId;
   } catch (error) {
     console.error('[Database] Failed to create saved shipper:', error);
     throw error;
+  }
+}
+
+export async function updateSavedShipper(id: number, clientId: number, data: {
+  nickname?: string;
+  shipperName?: string;
+  shipperAddress?: string;
+  shipperCity?: string;
+  shipperCountry?: string;
+  shipperPhone?: string;
+  latitude?: string | null;
+  longitude?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  try {
+    const { savedShippers } = await import('../drizzle/schema');
+    const { eq, and } = await import('drizzle-orm');
+
+    await db.update(savedShippers).set(data).where(
+      and(eq(savedShippers.id, id), eq(savedShippers.clientId, clientId))
+    );
+
+    return true;
+  } catch (error) {
+    console.error('[Database] Failed to update saved shipper:', error);
+    throw error;
+  }
+}
+
+export async function setDefaultSavedShipper(id: number, clientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  try {
+    const { savedShippers } = await import('../drizzle/schema');
+    const { eq, and } = await import('drizzle-orm');
+
+    await db.update(savedShippers).set({ isDefault: 0 }).where(eq(savedShippers.clientId, clientId));
+    await db.update(savedShippers).set({ isDefault: 1 }).where(
+      and(eq(savedShippers.id, id), eq(savedShippers.clientId, clientId))
+    );
+
+    return true;
+  } catch (error) {
+    console.error('[Database] Failed to set default saved shipper:', error);
+    throw error;
+  }
+}
+
+export async function getDefaultSavedShipper(clientId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  try {
+    const { savedShippers } = await import('../drizzle/schema');
+    const { eq, and } = await import('drizzle-orm');
+
+    const [row] = await db.select().from(savedShippers).where(
+      and(eq(savedShippers.clientId, clientId), eq(savedShippers.isDefault, 1))
+    ).limit(1);
+
+    return row ?? null;
+  } catch (error) {
+    console.error('[Database] Failed to get default saved shipper:', error);
+    return null;
   }
 }
 
@@ -4250,6 +4403,11 @@ export async function deleteSavedShipper(id: number, clientId: number) {
     const { savedShippers } = await import('../drizzle/schema');
     const { eq, and } = await import('drizzle-orm');
 
+    const [target] = await db.select().from(savedShippers).where(
+      and(eq(savedShippers.id, id), eq(savedShippers.clientId, clientId))
+    );
+    if (!target) return true;
+
     // Ensure the shipper belongs to this client before deleting
     await db.delete(savedShippers).where(
       and(
@@ -4257,6 +4415,17 @@ export async function deleteSavedShipper(id: number, clientId: number) {
         eq(savedShippers.clientId, clientId)
       )
     );
+
+    // If we just deleted the default, promote the oldest remaining location.
+    if (target.isDefault === 1) {
+      const [next] = await db.select({ id: savedShippers.id }).from(savedShippers)
+        .where(eq(savedShippers.clientId, clientId))
+        .orderBy(savedShippers.createdAt)
+        .limit(1);
+      if (next) {
+        await db.update(savedShippers).set({ isDefault: 1 }).where(eq(savedShippers.id, next.id));
+      }
+    }
 
     return true;
   } catch (error) {

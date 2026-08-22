@@ -520,6 +520,7 @@
       "width": "Width",
       "height": "Height",
       "calculateBtn": "Calculate Rate",
+      "calculating": "Calculating...",
       "result": {
         "title": "Estimated Price",
         "actualWeight": "Actual weight",
@@ -533,7 +534,8 @@
         "requiredField": "This field is required",
         "minWeight": "Weight must be at least 0.1 kg",
         "minDimension": "Dimension must be at least 1 cm",
-        "futureDate": "Please select a future date (minimum tomorrow)"
+        "futureDate": "Please select a future date (minimum tomorrow)",
+        "quoteFailed": "Could not calculate a rate right now. Please try again."
       },
       "emirates": {
         "dubai": "Dubai",

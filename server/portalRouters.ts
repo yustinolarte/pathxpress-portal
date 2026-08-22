@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { publicProcedure, portalAdminProcedure, portalCustomerProcedure, portalProtectedProcedure, router } from './_core/trpc';
 import { normalizeEmirate, normalizeCity, normalizeDisplayName, normalizeStoredPhone } from '@shared/uae';
+import { normalizeForZoneMatching } from '@shared/deliveryZones';
 import { cachedQuery, cacheInvalidate, cacheInvalidatePrefix } from './_core/queryCache';
 import {
   hashPassword,
@@ -1788,22 +1789,27 @@ export const adminPortalRouter = router({
       // Generate waybill number
       const waybillNumber = await generateWaybillNumber(isInternational);
 
-      // Determine shipper info - use override if provided, else use client account
+      // Determine shipper info - use override if provided, else the client's
+      // default saved location (exact pin), falling back to their billing
+      // profile if they haven't set one up yet.
+      const { getDefaultSavedShipper } = await import('./db');
+      const defaultLocation = input.shipment.shipperOverride ? null : await getDefaultSavedShipper(input.clientId);
+
       const shipperName = input.shipment.shipperOverride && input.shipment.shipperName
         ? input.shipment.shipperName
-        : clientAccount.companyName;
+        : defaultLocation?.shipperName || clientAccount.companyName;
       const shipperAddress = input.shipment.shipperOverride && input.shipment.shipperAddress
         ? input.shipment.shipperAddress
-        : clientAccount.billingAddress;
+        : defaultLocation?.shipperAddress || clientAccount.billingAddress;
       const shipperCity = input.shipment.shipperOverride && canonicalShipperCity
         ? canonicalShipperCity
-        : clientAccount.city;
+        : defaultLocation?.shipperCity || clientAccount.city;
       const shipperCountry = input.shipment.shipperOverride && input.shipment.shipperCountry
         ? input.shipment.shipperCountry
-        : clientAccount.country;
+        : defaultLocation?.shipperCountry || clientAccount.country;
       const shipperPhone = input.shipment.shipperOverride && input.shipment.shipperPhone
         ? normalizeStoredPhone(input.shipment.shipperPhone)
-        : clientAccount.phone;
+        : defaultLocation?.shipperPhone || clientAccount.phone;
 
       // Create order with shipper info (override or client)
       const order = await createOrder({
@@ -1959,14 +1965,22 @@ export const adminPortalRouter = router({
       clientId: z.number(),
       emirate: z.string(),
       weight: z.number().positive(),
+      lat: z.number().optional(),
+      lng: z.number().optional(),
     }))
     .query(async ({ input }) => {
       const { getAvailableServicesForClient } = await import('./db');
       return getAvailableServicesForClient(input.clientId, {
         // Region matching compares against the full emirate names stored by
-        // RatesPanel, so a short code like "RAK" has to be expanded first.
-        emirate: normalizeEmirate(input.emirate) ?? input.emirate,
+        // RatesPanel, so a short code like "RAK" has to be expanded first —
+        // but NOT all the way to "Abu Dhabi" for Al Ain, or its zone becomes
+        // indistinguishable from real Abu Dhabi. Zone determination itself
+        // prefers lat/lng (below) when present, so this string only drives
+        // zone as a fallback once no pin has been dropped yet.
+        emirate: normalizeForZoneMatching(input.emirate) ?? input.emirate,
         weight: input.weight,
+        lat: input.lat,
+        lng: input.lng,
       });
     }),
 
@@ -1977,6 +1991,64 @@ export const adminPortalRouter = router({
     .query(async ({ input }) => {
       const { getSavedShippersByClient } = await import('./db');
       return getSavedShippersByClient(input.clientId);
+    }),
+
+  // Admin: full CRUD on a client's saved locations (no count cap, unlike the
+  // client's own self-service limit).
+  adminCreateClientSavedShipper: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      nickname: z.string().min(1, 'Nickname is required'),
+      shipperName: z.string().min(1, 'Contact name is required'),
+      shipperAddress: z.string().min(1, 'Address is required'),
+      shipperCity: z.string().min(1, 'City is required'),
+      shipperCountry: z.string().min(1, 'Country is required'),
+      shipperPhone: z.string().min(1, 'Phone is required'),
+      latitude: z.string().optional(),
+      longitude: z.string().optional(),
+      isDefault: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { createSavedShipper } = await import('./db');
+      const { clientId, ...data } = input;
+      const id = await createSavedShipper({ clientId, ...data });
+      return { id, success: true };
+    }),
+
+  adminUpdateClientSavedShipper: portalAdminProcedure
+    .input(z.object({
+      clientId: z.number(),
+      shipperId: z.number(),
+      nickname: z.string().min(1, 'Nickname is required'),
+      shipperName: z.string().min(1, 'Contact name is required'),
+      shipperAddress: z.string().min(1, 'Address is required'),
+      shipperCity: z.string().min(1, 'City is required'),
+      shipperCountry: z.string().min(1, 'Country is required'),
+      shipperPhone: z.string().min(1, 'Phone is required'),
+      latitude: z.string().optional(),
+      longitude: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { updateSavedShipper } = await import('./db');
+      const { clientId, shipperId, ...data } = input;
+      await updateSavedShipper(shipperId, clientId, data);
+      return { success: true };
+    }),
+
+  adminSetDefaultClientSavedShipper: portalAdminProcedure
+    .input(z.object({ clientId: z.number(), shipperId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { setDefaultSavedShipper } = await import('./db');
+      await setDefaultSavedShipper(input.shipperId, input.clientId);
+      return { success: true };
+    }),
+
+  adminDeleteClientSavedShipper: portalAdminProcedure
+    .input(z.object({ clientId: z.number(), shipperId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { deleteSavedShipper } = await import('./db');
+      await deleteSavedShipper(input.shipperId, input.clientId);
+      return { success: true };
     }),
 
   // Warn (not block) when the same client reference already has a live order.
@@ -2058,6 +2130,8 @@ export const adminPortalRouter = router({
       deliveryAddress: z.string(),
       deliveryCity: z.string(),
       deliveryCountry: z.string().default('UAE'),
+      deliveryLatitude: z.string().optional(),
+      deliveryLongitude: z.string().optional(),
       pieces: z.number().default(1),
       weight: z.number().default(0.5),
       serviceType: z.string().default('DOM'),
@@ -2145,6 +2219,8 @@ async function doCreateReturn(clientId: number, orderId: number, actorLabel: str
     shipperCity: originalOrder.city,
     shipperCountry: originalOrder.destinationCountry,
     shipperPhone: originalOrder.customerPhone,
+    shipperLat: originalOrder.latitude || undefined,
+    shipperLng: originalOrder.longitude || undefined,
 
     // Swap: shipper becomes consignee (hide address if client has privacy enabled)
     customerName: originalOrder.shipperName,
@@ -2152,6 +2228,9 @@ async function doCreateReturn(clientId: number, orderId: number, actorLabel: str
     address: originalOrder.shipperAddress,
     city: originalOrder.shipperCity,
     destinationCountry: originalOrder.shipperCountry,
+    latitude: originalOrder.shipperLat || undefined,
+    longitude: originalOrder.shipperLng || undefined,
+    locationAccuracy: originalOrder.shipperLat ? 'exact' : undefined,
 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
@@ -2223,6 +2302,11 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
 
   const hideConsigneeOnReturn = clientAccount.hideShipperAddress === 1 ? 1 : 0;
 
+  // Client's default saved location (exact pin), falling back to their billing
+  // profile (text-only, geocoded async) if they haven't set one up yet.
+  const { getDefaultSavedShipper } = await import('./db');
+  const defaultLocation = await getDefaultSavedShipper(clientId);
+
   // 1. Create return waybill (client becomes consignee, hide their address if privacy enabled)
   const returnWaybill = await generateWaybillNumber();
   const returnOrder = await createOrder({
@@ -2235,12 +2319,17 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
     shipperCity: originalOrder.city,
     shipperCountry: originalOrder.destinationCountry,
     shipperPhone: originalOrder.customerPhone,
+    shipperLat: originalOrder.latitude || undefined,
+    shipperLng: originalOrder.longitude || undefined,
 
     customerName: originalOrder.shipperName,
     customerPhone: originalOrder.shipperPhone,
     address: originalOrder.shipperAddress,
     city: originalOrder.shipperCity,
     destinationCountry: originalOrder.shipperCountry,
+    latitude: originalOrder.shipperLat || undefined,
+    longitude: originalOrder.shipperLng || undefined,
+    locationAccuracy: originalOrder.shipperLat ? 'exact' : undefined,
 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
@@ -2271,11 +2360,14 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
     orderNumber: `EXC-NEW-${originalOrder.waybillNumber}`,
     waybillNumber: newWaybill,
 
-    shipperName: clientAccount.companyName,
-    shipperAddress: clientAccount.billingAddress || '',
-    shipperCity: clientAccount.city || 'Dubai',
-    shipperCountry: clientAccount.country || 'UAE',
-    shipperPhone: clientAccount.phone || '',
+    shipperName: defaultLocation?.shipperName || clientAccount.companyName,
+    shipperAddress: defaultLocation?.shipperAddress || clientAccount.billingAddress || '',
+    shipperCity: defaultLocation?.shipperCity || clientAccount.city || 'Dubai',
+    shipperCountry: defaultLocation?.shipperCountry || clientAccount.country || 'UAE',
+    shipperPhone: defaultLocation?.shipperPhone || clientAccount.phone || '',
+    shipperLat: defaultLocation?.latitude || undefined,
+    shipperLng: defaultLocation?.longitude || undefined,
+    locationAccuracy: defaultLocation?.latitude ? 'exact' : undefined,
 
     customerName: newShipment.customerName,
     customerPhone: newShipment.customerPhone,
@@ -2367,6 +2459,8 @@ interface ManualReturnExchangeInput {
   deliveryAddress: string;
   deliveryCity: string;
   deliveryCountry: string;
+  deliveryLatitude?: string;
+  deliveryLongitude?: string;
   pieces: number;
   weight: number;
   serviceType: string;
@@ -2420,6 +2514,9 @@ async function doCreateManualReturnExchange(clientId: number, input: ManualRetur
     address: input.deliveryAddress,
     city: input.deliveryCity,
     destinationCountry: input.deliveryCountry,
+    latitude: input.deliveryLatitude || undefined,
+    longitude: input.deliveryLongitude || undefined,
+    locationAccuracy: input.deliveryLatitude ? 'exact' : undefined,
 
     pieces: input.pieces,
     weight: input.weight.toString(),
@@ -2456,17 +2553,23 @@ async function doCreateManualReturnExchange(clientId: number, input: ManualRetur
 
   // If exchange, create new shipment
   if (input.type === 'exchange' && input.exchangeCustomerName && input.exchangeAddress && input.exchangeCity) {
+    const { getDefaultSavedShipper } = await import('./db');
+    const defaultLocation = await getDefaultSavedShipper(clientId);
+
     const newWaybill = await generateWaybillNumber();
     newOrder = await createOrder({
       clientId,
       orderNumber: `EXC-NEW-MANUAL`,
       waybillNumber: newWaybill,
 
-      shipperName: clientAccount.companyName,
-      shipperAddress: clientAccount.billingAddress || '',
-      shipperCity: clientAccount.city || 'Dubai',
-      shipperCountry: clientAccount.country || 'UAE',
-      shipperPhone: clientAccount.phone || '',
+      shipperName: defaultLocation?.shipperName || clientAccount.companyName,
+      shipperAddress: defaultLocation?.shipperAddress || clientAccount.billingAddress || '',
+      shipperCity: defaultLocation?.shipperCity || clientAccount.city || 'Dubai',
+      shipperCountry: defaultLocation?.shipperCountry || clientAccount.country || 'UAE',
+      shipperPhone: defaultLocation?.shipperPhone || clientAccount.phone || '',
+      shipperLat: defaultLocation?.latitude || undefined,
+      shipperLng: defaultLocation?.longitude || undefined,
+      locationAccuracy: defaultLocation?.latitude ? 'exact' : undefined,
 
       customerName: input.exchangeCustomerName,
       customerPhone: input.exchangeCustomerPhone || '',
@@ -2671,8 +2774,13 @@ export const customerPortalRouter = router({
       if (!isInternational) {
         const { getAvailableServicesForClient } = await import('./db');
         const services = await getAvailableServicesForClient(ctx.portalUser.clientId, {
-          emirate: input.shipment.emirate || input.shipment.city,
+          // Raw city preferred over the normalized emirate label for the same
+          // Al Ain reason as elsewhere — lat/lng (below) is the real authority
+          // whenever present.
+          emirate: input.shipment.city || input.shipment.emirate,
           weight: input.shipment.weight,
+          lat: input.shipment.latitude,
+          lng: input.shipment.longitude,
         });
         const chosen = services.find(s => s.code === input.shipment.serviceType);
         if (!chosen || !chosen.available) {
@@ -2949,6 +3057,8 @@ export const customerPortalRouter = router({
       deliveryAddress: z.string(),
       deliveryCity: z.string(),
       deliveryCountry: z.string().default('UAE'),
+      deliveryLatitude: z.string().optional(),
+      deliveryLongitude: z.string().optional(),
       pieces: z.number().default(1),
       weight: z.number().default(0.5),
       serviceType: z.string().default('DOM'),
@@ -3444,7 +3554,7 @@ export const customerPortalRouter = router({
       return await getSavedShippersByClient(ctx.portalUser.clientId);
     }),
 
-  // Create saved shipper
+  // Create saved shipper (a client's "Location" — used as shipper or consignee default)
   createSavedShipper: portalCustomerProcedure
     .input(z.object({
       nickname: z.string().min(1, 'Nickname is required'),
@@ -3453,9 +3563,18 @@ export const customerPortalRouter = router({
       shipperCity: z.string().min(1, 'Shipper city is required'),
       shipperCountry: z.string().min(1, 'Shipper country is required'),
       shipperPhone: z.string().min(1, 'Shipper phone is required'),
+      latitude: z.string().optional(),
+      longitude: z.string().optional(),
+      isDefault: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const { createSavedShipper } = await import('./db');
+      const { createSavedShipper, getSavedShippersByClient } = await import('./db');
+
+      const existing = await getSavedShippersByClient(ctx.portalUser.clientId);
+      if (existing.length >= 10) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'You can save up to 10 locations. Delete one before adding another, or ask support for a higher limit.' });
+      }
+
       const id = await createSavedShipper({
         clientId: ctx.portalUser.clientId,
         nickname: input.nickname,
@@ -3464,9 +3583,45 @@ export const customerPortalRouter = router({
         shipperCity: input.shipperCity,
         shipperCountry: input.shipperCountry,
         shipperPhone: input.shipperPhone,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        isDefault: input.isDefault,
       });
 
       return { id, success: true };
+    }),
+
+  // Update saved shipper (own location only)
+  updateSavedShipper: portalCustomerProcedure
+    .input(z.object({
+      shipperId: z.number(),
+      nickname: z.string().min(1, 'Nickname is required'),
+      shipperName: z.string().min(1, 'Shipper name is required'),
+      shipperAddress: z.string().min(1, 'Shipper address is required'),
+      shipperCity: z.string().min(1, 'Shipper city is required'),
+      shipperCountry: z.string().min(1, 'Shipper country is required'),
+      shipperPhone: z.string().min(1, 'Shipper phone is required'),
+      latitude: z.string().optional(),
+      longitude: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { updateSavedShipper } = await import('./db');
+      const { shipperId, ...data } = input;
+      await updateSavedShipper(shipperId, ctx.portalUser.clientId, data);
+
+      return { success: true };
+    }),
+
+  // Mark a location as this client's default (used to auto-fill shipper/consignee)
+  setDefaultSavedShipper: portalCustomerProcedure
+    .input(z.object({
+      shipperId: z.number(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { setDefaultSavedShipper } = await import('./db');
+      await setDefaultSavedShipper(input.shipperId, ctx.portalUser.clientId);
+
+      return { success: true };
     }),
 
   // Delete saved shipper
@@ -4272,6 +4427,8 @@ const rateQuoteInput = z.object({
   width: z.number().optional(),
   height: z.number().optional(),
   emirate: z.string().optional(),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
 });
 
 const codQuoteInput = z.object({
@@ -4295,7 +4452,9 @@ async function resolveRateQuote(
     length: input.length,
     width: input.width,
     height: input.height,
-    emirate: normalizeEmirate(input.emirate) ?? input.emirate,
+    emirate: normalizeForZoneMatching(input.emirate) ?? input.emirate,
+    lat: input.lat,
+    lng: input.lng,
   });
 }
 
@@ -4611,11 +4770,13 @@ export const servicesRouter = router({
     .input(z.object({
       emirate: z.string(),
       weight: z.number().positive(),
+      lat: z.number().optional(),
+      lng: z.number().optional(),
     }))
     .query(async ({ input, ctx }) => {
       const clientId = ctx.portalUser!.clientId!;
       const { getAvailableServicesForClient } = await import('./db');
-      return getAvailableServicesForClient(clientId, { emirate: input.emirate, weight: input.weight });
+      return getAvailableServicesForClient(clientId, { emirate: input.emirate, weight: input.weight, lat: input.lat, lng: input.lng });
     }),
 });
 
@@ -4655,6 +4816,44 @@ export const publicTrackingRouter = router({
         },
         trackingEvents,
       };
+    }),
+});
+
+/**
+ * Public Pricing Router (no auth required)
+ *
+ * Backs the marketing /pricing page's calculator with a real quote — the rate
+ * of the "Walk-in" client account (id configured via serviceConfig key
+ * WALK_IN_CLIENT_ID, see scripts/seed-walkin-client-id-config.ts), computed
+ * through the same calculateShipmentRate engine every other quote uses.
+ * There's no per-visitor client context on a public page, so this is
+ * intentionally the one generic rate anonymous visitors can see.
+ */
+export const publicPricingRouter = router({
+  quote: publicProcedure
+    .input(z.object({
+      serviceType: z.enum(["DOM", "SDD"]),
+      weight: z.number().positive(),
+      length: z.number().optional(),
+      width: z.number().optional(),
+      height: z.number().optional(),
+      emirate: z.string().optional(),
+    }))
+    .query(async ({ input }) => {
+      const { calculateShipmentRate, getServiceConfig } = await import('./db');
+      const walkInClientId = parseInt(await getServiceConfig('WALK_IN_CLIENT_ID') || '', 10);
+      if (!walkInClientId || Number.isNaN(walkInClientId)) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Pricing is temporarily unavailable' });
+      }
+      return calculateShipmentRate({
+        clientId: walkInClientId,
+        serviceType: input.serviceType,
+        weight: input.weight,
+        length: input.length,
+        width: input.width,
+        height: input.height,
+        emirate: normalizeEmirate(input.emirate) ?? input.emirate,
+      });
     }),
 });
 
@@ -4895,6 +5094,7 @@ export const portalRouter = router({
   clients: clientsRouter,
   services: servicesRouter,
   publicTracking: publicTrackingRouter,
+  publicPricing: publicPricingRouter,
   tracking: trackingRouter,
   drivers: driverRouter,
   internationalRates: internationalRatesRouter,

@@ -29,6 +29,94 @@ async function withManualTier(tierId: number | null, fn: () => Promise<void>) {
   }
 }
 
+async function withZoneRates(
+  rates: { zone1BaseRate?: string | null; zone2BaseRate?: string | null; zone3BaseRate?: string | null },
+  fn: () => Promise<void>,
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [original] = await db
+    .select({
+      zone1BaseRate: clientAccounts.zone1BaseRate,
+      zone2BaseRate: clientAccounts.zone2BaseRate,
+      zone3BaseRate: clientAccounts.zone3BaseRate,
+    })
+    .from(clientAccounts)
+    .where(eq(clientAccounts.id, TEST_CLIENT_ID))
+    .limit(1);
+
+  await db.update(clientAccounts).set(rates).where(eq(clientAccounts.id, TEST_CLIENT_ID));
+  try {
+    await fn();
+  } finally {
+    await db.update(clientAccounts)
+      .set({
+        zone1BaseRate: original?.zone1BaseRate ?? null,
+        zone2BaseRate: original?.zone2BaseRate ?? null,
+        zone3BaseRate: original?.zone3BaseRate ?? null,
+      })
+      .where(eq(clientAccounts.id, TEST_CLIENT_ID));
+  }
+}
+
+describe("calculateShipmentRate — geometry-based zone resolution", () => {
+  it("prefers coordinates over a misleading emirate string", async () => {
+    await withZoneRates({ zone1BaseRate: "20", zone2BaseRate: "35", zone3BaseRate: "50" }, async () => {
+      // Downtown Dubai's real coordinates, but an emirate string claiming Fujairah
+      // (zone 2) — geometry must win and price this as zone 1.
+      const result = await calculateShipmentRate({
+        clientId: TEST_CLIENT_ID,
+        serviceType: "DOM",
+        weight: 1,
+        emirate: "Fujairah",
+        lat: 25.2048,
+        lng: 55.2708,
+      });
+      expect(result.baseRate).toBe(20);
+    });
+  });
+
+  it("bills a coordinate inside the Al Ain polygon as zone 2", async () => {
+    await withZoneRates({ zone1BaseRate: "20", zone2BaseRate: "35", zone3BaseRate: "50" }, async () => {
+      const result = await calculateShipmentRate({
+        clientId: TEST_CLIENT_ID,
+        serviceType: "DOM",
+        weight: 1,
+        lat: 24.2075,
+        lng: 55.7447,
+      });
+      expect(result.baseRate).toBe(35);
+    });
+  });
+
+  it("bills a coordinate outside every mapped polygon as zone 3", async () => {
+    await withZoneRates({ zone1BaseRate: "20", zone2BaseRate: "35", zone3BaseRate: "50" }, async () => {
+      const result = await calculateShipmentRate({
+        clientId: TEST_CLIENT_ID,
+        serviceType: "DOM",
+        weight: 1,
+        lat: 23.14,
+        lng: 53.75,
+      });
+      expect(result.baseRate).toBe(50);
+    });
+  });
+
+  it("falls back to zone 1 when zone 3 has no rate configured", async () => {
+    await withZoneRates({ zone1BaseRate: "20", zone2BaseRate: "35", zone3BaseRate: null }, async () => {
+      const result = await calculateShipmentRate({
+        clientId: TEST_CLIENT_ID,
+        serviceType: "DOM",
+        weight: 1,
+        lat: 23.14,
+        lng: 53.75,
+      });
+      expect(result.baseRate).toBe(20);
+    });
+  });
+});
+
 describe("calculateShipmentRate — manual rate tier override", () => {
   it("uses the admin-pinned manual tier instead of the automatic monthly-volume tier", async () => {
     const db = await getDb();

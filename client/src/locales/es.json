@@ -467,6 +467,7 @@
       "width": "Ancho",
       "height": "Alto",
       "calculateBtn": "Calcular Tarifa",
+      "calculating": "Calculando...",
       "result": {
         "title": "Precio Estimado",
         "actualWeight": "Peso real",
@@ -480,7 +481,8 @@
         "requiredField": "Este campo es obligatorio",
         "minWeight": "El peso debe ser al menos 0.1 kg",
         "minDimension": "La dimensión debe ser al menos 1 cm",
-        "futureDate": "Por favor seleccione una fecha futura (mínimo mañana)"
+        "futureDate": "Por favor seleccione una fecha futura (mínimo mañana)",
+        "quoteFailed": "No se pudo calcular la tarifa en este momento. Intente nuevamente."
       },
       "emirates": {
         "dubai": "Dubái",
