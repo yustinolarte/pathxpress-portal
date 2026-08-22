@@ -253,6 +253,13 @@
       "when": 1786569478378,
       "tag": "0040_sour_darkstar",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1787396775377,
+      "tag": "0041_steady_virginia_dare",
+      "breakpoints": true
     }
   ]
 }

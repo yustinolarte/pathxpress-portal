@@ -1,5 +1,5 @@
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,14 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
 
     // Fetch saved shippers to populate the dropdown
     const { data: savedShippers = [] } = trpc.portal.customer.getSavedShippers.useQuery();
+
+    // Pre-select the client's default location so the operator doesn't have to
+    // pick a shipper for every bulk upload.
+    useEffect(() => {
+        if (shipperDetails) return;
+        const defaultShipper = savedShippers.find((s: any) => s.isDefault === 1);
+        if (defaultShipper) setShipperDetails(defaultShipper);
+    }, [savedShippers]);
 
     const createMutation = trpc.portal.customer.createShipment.useMutation();
 
@@ -149,6 +157,8 @@ export default function BulkShipmentDialog({ onSuccess }: BulkShipmentDialogProp
                         shipperAddress: String(shipperDetails.shipperAddress || ''),
                         shipperCity: String(shipperDetails.shipperCity || ''),
                         shipperCountry: String(shipperDetails.shipperCountry || 'UAE'),
+                        shipperLat: shipperDetails.latitude || undefined,
+                        shipperLng: shipperDetails.longitude || undefined,
 
                         customerName: String(customerName || ''),
                         customerPhone: String(customerPhone || ''),

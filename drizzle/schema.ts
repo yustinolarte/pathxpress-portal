@@ -581,6 +581,9 @@ export const savedShippers = mysqlTable("savedShippers", {
   shipperCity: varchar("shipperCity", { length: 100 }).notNull(),
   shipperCountry: varchar("shipperCountry", { length: 100 }).notNull(),
   shipperPhone: varchar("shipperPhone", { length: 50 }).notNull(),
+  latitude: varchar("latitude", { length: 50 }),
+  longitude: varchar("longitude", { length: 50 }),
+  isDefault: int("isDefault").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({

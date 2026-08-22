@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar, Ban, CheckCircle2 } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar, Ban, CheckCircle2, MapPin } from 'lucide-react';
 import { APP_LOGO, abbreviateServiceType } from '@/const';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import ModernDashboardLayout, { ModernMenuItem } from '@/components/ModernDashboardLayout';
@@ -28,6 +28,7 @@ import EditOrderDialog from '@/components/EditOrderDialog';
 import AdminInternationalShipping from '@/components/AdminInternationalShipping';
 import CreateClientWizard from '@/components/CreateClientWizard';
 import EmailStudioPanel from '@/components/EmailStudioPanel';
+import AdminClientLocationsSection from '@/components/AdminClientLocationsSection';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -2228,6 +2229,16 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+
+              {editingClient?.id && (
+                <div className="space-y-4 pb-8 border-b border-border mb-6">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-normal">Locations</h3>
+                  </div>
+                  <AdminClientLocationsSection clientId={editingClient.id} />
+                </div>
+              )}
 
               <DialogFooter className="gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setEditClientDialogOpen(false)}>

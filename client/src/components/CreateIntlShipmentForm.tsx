@@ -75,6 +75,14 @@ export default function CreateIntlShipmentForm({ onSuccess, clientId }: { onSucc
     // Fetch saved shippers
     const { data: savedShippers = [], refetch: refetchShippers } = trpc.portal.customer.getSavedShippers.useQuery();
 
+    // Auto-fill the shipper block from the client's default saved location —
+    // only while the operator hasn't started typing.
+    useEffect(() => {
+        if (formData.shipperName.trim()) return;
+        const s = savedShippers.find((x: any) => x.isDefault === 1);
+        if (s) setFormData(f => ({ ...f, shipperName: s.shipperName, shipperAddress: s.shipperAddress, shipperCity: s.shipperCity, shipperCountry: s.shipperCountry, shipperPhone: s.shipperPhone }));
+    }, [savedShippers]);
+
     // Fetch destination countries
     const { data: countries = [] } = trpc.portal.internationalRates.countries.useQuery();
 

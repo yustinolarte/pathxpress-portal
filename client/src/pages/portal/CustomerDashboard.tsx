@@ -66,6 +66,7 @@ import CustomerReports from '@/components/CustomerReports';
 import BulkShipmentDialog from '@/components/BulkShipmentDialog';
 import CustomerAnalytics from '@/components/CustomerAnalytics';
 import ReturnsExchangesPanel from '@/components/ReturnsExchangesPanel';
+import CustomerLocationsSection from '@/components/CustomerLocationsSection';
 import InternationalRateCalculator from '@/components/InternationalRateCalculator';
 import CreateIntlShipmentForm from '@/components/CreateIntlShipmentForm';
 import CreateShipmentForm from '@/components/CreateShipmentForm';
@@ -79,7 +80,7 @@ export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'overview';
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['overview', 'analytics', 'orders', 'returns', 'tracking', 'calculator', 'international', 'invoices', 'cod', 'reports', 'guide'];
+    const valid = ['overview', 'analytics', 'orders', 'returns', 'tracking', 'calculator', 'international', 'invoices', 'cod', 'reports', 'guide', 'locations'];
     return tab && valid.includes(tab) ? tab : 'overview';
   });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -532,6 +533,7 @@ export default function CustomerDashboard() {
     { icon: 'receipt_long', label: 'Invoices', value: 'invoices', section: 'Finance' },
     { icon: 'payments', label: 'COD', value: 'cod', section: 'Finance' },
     { icon: 'summarize', label: 'Reports', value: 'reports', section: 'Finance' },
+    { icon: 'location_on', label: 'My Locations', value: 'locations', section: 'Tools' },
     { icon: 'menu_book', label: 'Guide', value: 'guide', section: 'Help' },
   ];
 
@@ -1364,6 +1366,11 @@ export default function CustomerDashboard() {
           {/* Invoices Tab */}
           <TabsContent value="invoices" className="space-y-4">
             <CustomerInvoices />
+          </TabsContent>
+
+          {/* My Locations Tab */}
+          <TabsContent value="locations" className="space-y-4 mt-0">
+            <CustomerLocationsSection />
           </TabsContent>
 
           {/* COD Tab */}

@@ -16,6 +16,7 @@ import { Search, Plus, RotateCcw, ArrowLeftRight, Package, Download, DollarSign 
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { LocationPicker, type PickedLocation } from '@/components/LocationPicker';
 import { DOMESTIC_SERVICE_TYPES, DEFAULT_PREFERRED_SLOTS, isPreferredTimeService, isSameDayPreferredService, todayStr, tomorrowStr } from '@/const';
+import { splitPhone, normalizeEmirate } from '@shared/uae';
 
 interface ReturnsExchangesPanelProps {
     codAllowed?: boolean;
@@ -30,7 +31,6 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
     const [manualDialogOpen, setManualDialogOpen] = useState(false);
     const [pickedLocationExchange, setPickedLocationExchange] = useState<PickedLocation | null>(null);
     const [pickedLocationManual, setPickedLocationManual] = useState<PickedLocation | null>(null);
-    const [exchangeLocationError, setExchangeLocationError] = useState(false);
     const [manualLocationError, setManualLocationError] = useState(false);
 
     // Edit COD state
@@ -106,22 +106,75 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
     // Fetch returns/exchanges for this client
     const { data: returnsExchanges, isLoading, refetch } = trpc.portal.customer.getMyReturnsExchanges.useQuery();
     const { data: customerAccount } = trpc.portal.customer.getMyAccount.useQuery();
+    const { data: savedLocations = [] } = trpc.portal.customer.getSavedShippers.useQuery();
 
-    // Auto-populate pickup & delivery from customer profile when dialog opens
+    // Real availability (zone + cut-off time), same as any other order — the
+    // return/exchange service pickers used to offer every service regardless
+    // of whether it can actually be booked for that destination/weight.
+    const returnEmirate = normalizeEmirate(foundOrder?.shipperCity) ?? foundOrder?.shipperCity;
+    const returnWeight = parseFloat(foundOrder?.weight) || 0;
+    const returnServicesQuery = trpc.portal.services.getAvailable.useQuery(
+        { emirate: returnEmirate || '', weight: returnWeight || 1 },
+        { enabled: createDialogOpen && !!foundOrder && !!returnEmirate },
+    );
+    const returnServices = returnServicesQuery.data ?? [];
+
+    const exchangeEmirate = normalizeEmirate(exchangeForm.city) ?? exchangeForm.city;
+    const exchangeWeightNum = parseFloat(exchangeForm.weight) || 0;
+    const exchangeServicesQuery = trpc.portal.services.getAvailable.useQuery(
+        { emirate: exchangeEmirate || '', weight: exchangeWeightNum || 1 },
+        { enabled: createDialogOpen && createType === 'exchange' && !!exchangeEmirate },
+    );
+    const exchangeServices = exchangeServicesQuery.data ?? [];
+
+    // If the destination/weight makes the chosen service unavailable, fall back
+    // to the first one that still works rather than submitting a blocked service.
     useEffect(() => {
-        if (!manualDialogOpen || !customerAccount) return;
+        if (!returnServices.length) return;
+        const current = returnServices.find(s => s.code === returnService.serviceType);
+        if (current && current.available) return;
+        const firstAvailable = returnServices.find(s => s.available);
+        if (firstAvailable && firstAvailable.code !== returnService.serviceType) {
+            setReturnService(prev => ({ ...prev, serviceType: firstAvailable.code }));
+        }
+    }, [returnServices]);
+
+    useEffect(() => {
+        if (!exchangeServices.length) return;
+        const current = exchangeServices.find(s => s.code === exchangeForm.serviceType);
+        if (current && current.available) return;
+        const firstAvailable = exchangeServices.find(s => s.available);
+        if (firstAvailable && firstAvailable.code !== exchangeForm.serviceType) {
+            setExchangeForm(prev => ({ ...prev, serviceType: firstAvailable.code }));
+        }
+    }, [exchangeServices]);
+    const defaultLocation = savedLocations.find((s: any) => s.isDefault === 1) ?? null;
+
+    // Exact pin for "Delivery Details (To)", inherited from the default saved
+    // location — cleared the moment the customer hand-edits that address.
+    const [deliveryLocationCoords, setDeliveryLocationCoords] = useState<{ latitude: string; longitude: string } | null>(null);
+
+    // Auto-populate pickup & delivery from the default saved location (falling
+    // back to the account profile if none is set up yet) when the dialog opens.
+    useEffect(() => {
+        if (!manualDialogOpen) return;
         setManualForm(prev => {
             if (prev.pickupName) return prev;
             return {
                 ...prev,
-                deliveryName: customerAccount.companyName ?? '',
-                deliveryPhone: customerAccount.phone ?? '',
-                deliveryAddress: customerAccount.billingAddress ?? '',
-                deliveryCity: customerAccount.city ?? '',
-                deliveryCountry: customerAccount.country ?? 'UAE',
+                deliveryName: defaultLocation?.shipperName ?? customerAccount?.companyName ?? '',
+                deliveryPhone: defaultLocation?.shipperPhone ?? customerAccount?.phone ?? '',
+                deliveryAddress: defaultLocation?.shipperAddress ?? customerAccount?.billingAddress ?? '',
+                deliveryCity: defaultLocation?.shipperCity ?? customerAccount?.city ?? '',
+                deliveryCountry: defaultLocation?.shipperCountry ?? customerAccount?.country ?? 'UAE',
             };
         });
-    }, [manualDialogOpen, customerAccount]);
+        setDeliveryLocationCoords(
+            defaultLocation?.latitude && defaultLocation?.longitude
+                ? { latitude: defaultLocation.latitude, longitude: defaultLocation.longitude }
+                : null
+        );
+    }, [manualDialogOpen, customerAccount, defaultLocation]);
 
     // Search order mutation
     const searchOrderMutation = trpc.portal.customer.searchOrderForReturn.useMutation({
@@ -301,10 +354,8 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
 
     const handleCreateExchange = () => {
         if (!foundOrder) return;
-        if (!exchangeForm.customerName || !exchangeForm.customerPhone || !exchangeForm.address || !exchangeForm.city) {
-            toast.error('Please fill in all required fields for the new shipment');
-            return;
-        }
+        // Name/phone/address/city are fixed to the original order's — an
+        // exchange ships the replacement to the same place, not editable here.
         const returnServicePayload = buildReturnServicePayload();
         if (!returnServicePayload) return;
         const exchangeIsPreferred = isPreferredTimeService(exchangeForm.serviceType);
@@ -312,12 +363,6 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             toast.error('Please select a preferred delivery date and time window for the new shipment');
             return;
         }
-        if (!pickedLocationExchange) {
-            setExchangeLocationError(true);
-            toast.error('Please place a map pin to confirm the delivery location.');
-            return;
-        }
-        setExchangeLocationError(false);
         createExchangeMutation.mutate({
             orderId: foundOrder.id,
             ...returnServicePayload,
@@ -389,6 +434,10 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
             latitude: pickedLocationManual?.latitude,
             // @ts-ignore
             longitude: pickedLocationManual?.longitude,
+            // @ts-ignore
+            deliveryLatitude: deliveryLocationCoords?.latitude,
+            // @ts-ignore
+            deliveryLongitude: deliveryLocationCoords?.longitude,
         });
     };
 
@@ -511,6 +560,33 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                     onClick={() => {
                                         setCreateType('exchange');
                                         setReturnService({ serviceType: 'DOM', preferredDate: '', preferredTime: '' });
+                                        // An exchange usually ships the replacement back to the same
+                                        // person at the same address — pre-fill it (including the exact
+                                        // pin, if the original order already had one) instead of making
+                                        // the customer retype and re-pin an address we already know.
+                                        const { prefix, national } = splitPhone(foundOrder.customerPhone);
+                                        setExchangeForm({
+                                            customerName: foundOrder.customerName || '',
+                                            customerPhonePrefix: prefix,
+                                            customerPhone: national,
+                                            address: foundOrder.address || '',
+                                            city: foundOrder.city || '',
+                                            destinationCountry: foundOrder.destinationCountry || 'UAE',
+                                            pieces: foundOrder.pieces || 1,
+                                            weight: foundOrder.weight != null ? String(foundOrder.weight) : '',
+                                            serviceType: 'DOM',
+                                            specialInstructions: '',
+                                            preferredDate: '',
+                                            preferredTime: '',
+                                            codRequired: 0,
+                                            codAmount: '',
+                                            codCurrency: 'AED',
+                                        });
+                                        setPickedLocationExchange(
+                                            foundOrder.latitude && foundOrder.longitude
+                                                ? { latitude: foundOrder.latitude, longitude: foundOrder.longitude }
+                                                : null
+                                        );
                                         setCreateDialogOpen(true);
                                     }}
                                     variant="outline"
@@ -771,12 +847,14 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                     onChange={(e) => setReturnService({ ...returnService, serviceType: e.target.value, preferredDate: '', preferredTime: '' })}
                                                     className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
                                                 >
-                                                    {DOMESTIC_SERVICE_TYPES.map((svc) => (
-                                                        <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                    {(returnServices.length > 0 ? returnServices : DOMESTIC_SERVICE_TYPES.map(s => ({ code: s.code, displayName: s.label, available: true, reason: null }))).map((svc) => (
+                                                        <option key={svc.code} value={svc.code} disabled={!svc.available}>
+                                                            {svc.displayName}{!svc.available && svc.reason ? ` — ${svc.reason}` : ''}
+                                                        </option>
                                                     ))}
                                                 </select>
                                                 <p className="text-[11px] text-muted-foreground">
-                                                    The return is booked as a new shipment — it does not reuse the service of {foundOrder.waybillNumber}.
+                                                    The return is booked as a new shipment — it does not reuse the service of {foundOrder.waybillNumber}. Only services available for {foundOrder.shipperCity} are shown.
                                                 </p>
                                             </div>
                                             {isPreferredTimeService(returnService.serviceType) && (
@@ -818,69 +896,22 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                 <h2 className="font-bold">New Shipment Details</h2>
                                             </div>
                                             <div className="p-6 space-y-4">
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Customer Name</Label>
-                                                        <Input
-                                                            value={exchangeForm.customerName}
-                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, customerName: e.target.value })}
-                                                            placeholder="Name"
-                                                            className="bg-background border-border"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Phone</Label>
-                                                        <div className="flex">
-                                                            <select className="px-2 rounded-l-md border border-r-0 border-input bg-muted text-foreground text-sm font-medium focus:outline-none" value={exchangeForm.customerPhonePrefix} onChange={(e) => setExchangeForm({ ...exchangeForm, customerPhonePrefix: e.target.value })}>
-                                                                <option value="+971">🇦🇪 +971</option>
-                                                                <option value="+966">🇸🇦 +966</option>
-                                                                <option value="+965">🇰🇼 +965</option>
-                                                                <option value="+973">🇧🇭 +973</option>
-                                                                <option value="+968">🇴🇲 +968</option>
-                                                                <option value="+974">🇶🇦 +974</option>
-                                                            </select>
-                                                            <Input
-                                                                value={exchangeForm.customerPhone}
-                                                                onChange={(e) => setExchangeForm({ ...exchangeForm, customerPhone: e.target.value })}
-                                                                placeholder="Phone"
-                                                                className="bg-background border-border rounded-l-none"
-                                                            />
-                                                        </div>
-                                                    </div>
+                                                <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-1">
+                                                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ships to (same as original — not editable)</p>
+                                                    <p className="font-bold text-foreground">{exchangeForm.customerName}</p>
+                                                    <p className="text-sm text-muted-foreground">{exchangeForm.customerPhonePrefix} {exchangeForm.customerPhone}</p>
+                                                    <p className="text-sm text-muted-foreground">{exchangeForm.address}, {exchangeForm.city}</p>
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Address</Label>
-                                                    <Textarea
-                                                        value={exchangeForm.address}
-                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, address: e.target.value })}
-                                                        placeholder="Delivery address"
-                                                        rows={2}
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Weight (kg)</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.1"
+                                                        min="0.1"
+                                                        value={exchangeForm.weight}
+                                                        onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })}
                                                         className="bg-background border-border"
                                                     />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">City</Label>
-                                                        <select
-                                                            value={exchangeForm.city}
-                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, city: e.target.value })}
-                                                            className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
-                                                        >
-                                                            <option value="">Select City</option>
-                                                            {['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain', 'Al Ain'].map(c => <option key={c} value={c}>{c}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <Label className="text-xs font-bold text-muted-foreground uppercase">Weight (kg)</Label>
-                                                        <Input
-                                                            type="number"
-                                                            step="0.1"
-                                                            min="0.1"
-                                                            value={exchangeForm.weight}
-                                                            onChange={(e) => setExchangeForm({ ...exchangeForm, weight: e.target.value })}
-                                                            className="bg-background border-border"
-                                                        />
-                                                    </div>
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className="text-xs font-bold text-muted-foreground uppercase">Service Type</Label>
@@ -889,10 +920,13 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                         onChange={(e) => setExchangeForm({ ...exchangeForm, serviceType: e.target.value, preferredDate: '', preferredTime: '' })}
                                                         className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
                                                     >
-                                                        {DOMESTIC_SERVICE_TYPES.map((svc) => (
-                                                            <option key={svc.code} value={svc.code}>{svc.label}</option>
+                                                        {(exchangeServices.length > 0 ? exchangeServices : DOMESTIC_SERVICE_TYPES.map(s => ({ code: s.code, displayName: s.label, available: true, reason: null }))).map((svc) => (
+                                                            <option key={svc.code} value={svc.code} disabled={!svc.available}>
+                                                                {svc.displayName}{!svc.available && svc.reason ? ` — ${svc.reason}` : ''}
+                                                            </option>
                                                         ))}
                                                     </select>
+                                                    <p className="text-[11px] text-muted-foreground">Only services available for {exchangeForm.city || 'this city'} and {exchangeForm.weight || '—'}kg are shown.</p>
                                                 </div>
                                                 {isPreferredTimeService(exchangeForm.serviceType) && (
                                                     <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
@@ -923,11 +957,11 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                                     </div>
                                                 )}
 
-                                                {/* Location Picker for Exchange */}
-                                                <div className={`pt-2 border-t mt-4 ${exchangeLocationError ? 'border-destructive' : 'border-border'}`}>
-                                                    <Label className="text-xs font-bold text-muted-foreground uppercase block mb-3">Delivery Map Location <span className="text-destructive ml-0.5">*</span></Label>
-                                                    <LocationPicker onLocationPicked={(loc) => { setPickedLocationExchange(loc); if (loc) setExchangeLocationError(false); }} />
-                                                </div>
+                                                {!pickedLocationExchange && (
+                                                    <p className="text-[11px] text-muted-foreground pt-2 border-t border-border">
+                                                        {foundOrder.waybillNumber} has no exact map pin on file — the driver will use the address above.
+                                                    </p>
+                                                )}
                                             </div>
                                         </section>
                                     )}
@@ -1117,7 +1151,7 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div className="space-y-1">
                                                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</Label>
-                                                <Input value={manualForm.deliveryName} onChange={(e) => setManualForm({ ...manualForm, deliveryName: e.target.value })} className="bg-background border-border" />
+                                                <Input value={manualForm.deliveryName} onChange={(e) => { setManualForm({ ...manualForm, deliveryName: e.target.value }); setDeliveryLocationCoords(null); }} className="bg-background border-border" />
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</Label>
@@ -1135,13 +1169,16 @@ export default function ReturnsExchangesPanel({ codAllowed = false }: ReturnsExc
                                             </div>
                                             <div className="md:col-span-2 space-y-1">
                                                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Address</Label>
-                                                <Textarea value={manualForm.deliveryAddress} onChange={(e) => setManualForm({ ...manualForm, deliveryAddress: e.target.value })} rows={2} className="bg-background border-border" />
+                                                <Textarea value={manualForm.deliveryAddress} onChange={(e) => { setManualForm({ ...manualForm, deliveryAddress: e.target.value }); setDeliveryLocationCoords(null); }} rows={2} className="bg-background border-border" />
+                                                {deliveryLocationCoords && (
+                                                    <p className="text-[11px] text-primary">Using your default location — exact pin on file.</p>
+                                                )}
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">City</Label>
                                                 <select
                                                     value={manualForm.deliveryCity}
-                                                    onChange={(e) => setManualForm({ ...manualForm, deliveryCity: e.target.value })}
+                                                    onChange={(e) => { setManualForm({ ...manualForm, deliveryCity: e.target.value }); setDeliveryLocationCoords(null); }}
                                                     className="w-full rounded-lg border-input bg-background px-3 h-10 text-sm border focus:ring-2 focus:ring-primary focus:border-primary"
                                                 >
                                                     <option value="">Select City</option>
