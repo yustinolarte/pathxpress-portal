@@ -482,16 +482,28 @@ export interface GuardableStop {
     proofPhotoUrl?: string | null;
     proofPhotoUrl2?: string | null;
     deliveredAt?: Date | null;
+    pickedUpAt?: Date | null;
+    attemptedAt?: Date | null;
     waybillNumber?: string | null;
 }
 
-/** A stop carries field evidence once it has been worked, whatever the outcome. */
+/**
+ * A stop carries field evidence once the driver app actually recorded work on
+ * it — a POD photo, a collected amount, or one of the completion timestamps.
+ * Deliberately NOT keyed off `status` alone: updateOrderStatus's admin-side
+ * sync (server/db.ts) can stamp a routeOrders row with a terminal status
+ * (e.g. 'picked_up') without any of this evidence when an order's status is
+ * corrected by hand, and once stamped that row can never be re-synced (the
+ * sync only touches pending/in_progress rows) — so status alone goes stale
+ * and would block removal of a stop nothing was ever actually done to.
+ */
 function stopHasEvidence(s: GuardableStop): boolean {
-    return FINISHED_STOP_STATUSES.includes(s.status ?? '')
-        || !!s.collectedAmount
+    return !!s.collectedAmount
         || !!s.proofPhotoUrl
         || !!s.proofPhotoUrl2
-        || !!s.deliveredAt;
+        || !!s.deliveredAt
+        || !!s.pickedUpAt
+        || !!s.attemptedAt;
 }
 
 /**
@@ -837,6 +849,8 @@ export async function deleteRoute(routeId: string) {
                 proofPhotoUrl: routeOrders.proofPhotoUrl,
                 proofPhotoUrl2: routeOrders.proofPhotoUrl2,
                 deliveredAt: routeOrders.deliveredAt,
+                pickedUpAt: routeOrders.pickedUpAt,
+                attemptedAt: routeOrders.attemptedAt,
             })
             .from(routeOrders)
             .where(eq(routeOrders.routeId, routeId));
@@ -924,6 +938,8 @@ export async function removeOrderFromRoute(
                 proofPhotoUrl: routeOrders.proofPhotoUrl,
                 proofPhotoUrl2: routeOrders.proofPhotoUrl2,
                 deliveredAt: routeOrders.deliveredAt,
+                pickedUpAt: routeOrders.pickedUpAt,
+                attemptedAt: routeOrders.attemptedAt,
                 waybillNumber: orders.waybillNumber,
             })
             .from(routeOrders)

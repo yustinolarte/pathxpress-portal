@@ -34,6 +34,8 @@ const openStop = (over: Partial<GuardableStop> = {}): GuardableStop => ({
     proofPhotoUrl: null,
     proofPhotoUrl2: null,
     deliveredAt: null,
+    pickedUpAt: null,
+    attemptedAt: null,
     waybillNumber: "PX202600001-001",
     ...over,
 });
@@ -119,13 +121,27 @@ describe("assertRouteDeletable", () => {
         expect(() => assertRouteDeletable({ status: "completed" }, [])).toThrow(/cancelada/);
     });
 
-    it.each(["picked_up", "delivered", "attempted", "returned", "failed"])(
-        "refuses a route holding a %s stop",
-        (status) => {
-            expect(() => assertRouteDeletable({ status: "in_progress" }, [openStop({ status })]))
+    it.each([
+        ["picked_up", { pickedUpAt: new Date() }],
+        ["delivered", { deliveredAt: new Date() }],
+        ["attempted", { attemptedAt: new Date() }],
+        ["returned", { attemptedAt: new Date() }],
+        ["failed", { attemptedAt: new Date() }],
+    ] as const)(
+        "refuses a route holding a %s stop with recorded evidence",
+        (status, evidence) => {
+            expect(() => assertRouteDeletable({ status: "in_progress" }, [openStop({ status, ...evidence })]))
                 .toThrow(/POD/);
         },
     );
+
+    it("allows deleting a route whose stop only has a stale status with no recorded evidence", () => {
+        // updateOrderStatus's admin-side sync (server/db.ts) can stamp a terminal
+        // status onto a routeOrders row by hand, with no photo/amount/timestamp —
+        // that must not read as proof of real driver work.
+        expect(() => assertRouteDeletable({ status: "in_progress" }, [openStop({ status: "picked_up" })]))
+            .not.toThrow();
+    });
 
     it("refuses a route holding collected cash even if the stop looks open", () => {
         expect(() => assertRouteDeletable({ status: "in_progress" }, [openStop({ collectedAmount: "150.00" })]))
@@ -150,12 +166,19 @@ describe("assertStopsRemovable", () => {
     });
 
     it("refuses a delivered stop and names the waybill", () => {
-        expect(() => assertStopsRemovable([openStop({ status: "delivered", waybillNumber: "PX202600987-828" })]))
-            .toThrow(/PX202600987-828/);
+        expect(() => assertStopsRemovable([openStop({
+            status: "delivered", deliveredAt: new Date(), waybillNumber: "PX202600987-828",
+        })])).toThrow(/PX202600987-828/);
     });
 
     it("refuses a stop with COD already collected", () => {
         expect(() => assertStopsRemovable([openStop({ collectedAmount: "75.50" })])).toThrow();
+    });
+
+    it("allows removing a stop with a stale status but no recorded evidence", () => {
+        // Same root cause as the assertRouteDeletable case above: a status-only
+        // row from the admin-side sync must not block removal.
+        expect(() => assertStopsRemovable([openStop({ status: "picked_up" })])).not.toThrow();
     });
 
     it("accepts an empty list", () => {
