@@ -437,7 +437,47 @@ export const TEMPLATES: EmailTemplate[] = [
       cta('Pay now', v.pay_url, true),
   },
 
-  /* 7) GENERAL ANNOUNCEMENT — free-form, brand-wrapped */
+  /* 7) SERVICES OFFER — for a prospective (new) client */
+  {
+    key: 'services_offer',
+    label: 'Services offer (new client)',
+    from: 'PATHXPRESS <info@pathxpress.net>',
+    subject: 'Delivery services for {{client_name}} — PathXpress',
+    attachments: true,
+    fields: [
+      { name: 'client_name', label: 'Prospect company', type: 'text', value: 'Atlas Retail' },
+      { name: 'contact_name', label: 'Contact name', type: 'text', value: 'there' },
+      {
+        name: 'message',
+        label: 'Intro message (optional, editable)',
+        type: 'textarea',
+        value: "We'd love to become {client}'s delivery partner across the UAE. Fast, reliable last-mile delivery with real-time tracking, flexible COD/CCOD collection, and a dedicated account manager — built for e-commerce and retail teams that can't afford delays.",
+      },
+      { name: 'manager_name', label: 'Account manager', type: 'text', value: 'Angelica Ospina' },
+      { name: 'manager_email', label: 'Manager email', type: 'text', value: 'angelica@pathxpress.net' },
+      { name: 'manager_phone', label: 'Manager phone', type: 'text', value: '+971 58 814 2535' },
+      { name: 'quote_url', label: 'Get a quote — URL', type: 'text', value: 'mailto:info@pathxpress.net' },
+      { name: 'site_url', label: 'Learn more — URL', type: 'text', value: 'https://pathxpress.net' },
+    ],
+    render: (v) =>
+      tag('Services overview', 'blue') +
+      h1('A faster way to deliver, ' + esc(v.client_name) + '.') +
+      lede('Hi ' + esc(v.contact_name) + ', ' + nl(v.message)) +
+      onb([
+        { title: 'Same-Day Delivery', desc: 'Delivered within hours, across all 7 Emirates.' },
+        { title: 'Next-Day Delivery', desc: 'Reliable standard delivery, next business day.' },
+        { title: 'Bullet Service (4h)', desc: 'Premium ultra-fast delivery for urgent shipments.' },
+        { title: 'Cash / Card on Delivery', desc: 'We collect payment at the door and remit it weekly.' },
+      ]) +
+      addrGrid(
+        { label: 'Your account manager', html: bold(v.manager_name) + '<br/><a href="mailto:' + esc(v.manager_email) + '" style="color:' + C.ink + ';text-decoration:none;">' + esc(v.manager_email) + '</a><br/><a href="tel:' + esc(v.manager_phone) + '" style="color:' + C.ink + ';text-decoration:none;">' + esc(v.manager_phone) + '</a>' },
+        { label: 'Why teams choose us', html: 'Real-time tracking<br/>Flexible COD / CCOD<br/>Coverage across the UAE' },
+      ) +
+      cta('Request a rate quote', v.quote_url) +
+      cta('Learn more', v.site_url, true),
+  },
+
+  /* 8) GENERAL ANNOUNCEMENT — free-form, brand-wrapped */
   {
     key: 'general',
     label: 'General announcement',
