@@ -716,12 +716,14 @@ export async function previewOptimizedOrder(
 }
 
 /**
- * Coordinate of a stop leg. orders.latitude/longitude es la ubicación de la
- * persona a la que Bot Ubicación le pidió el pin: en una orden normal es el
- * destinatario (delivery), pero en un return es quien tiene el paquete para
- * devolver (pickup) — shipper/customer quedan intercambiados en returns.
- * shipperLat/shipperLng es el otro extremo (donde se recoge en órdenes
- * normales, donde se entrega en returns).
+ * Coordinate of a stop leg. shipperLat/shipperLng is always where the
+ * package is physically picked up and orders.latitude/longitude is always
+ * where it's physically delivered — this holds for returns/exchanges too,
+ * because the return-order creation code (doCreateReturn /
+ * doCreateManualReturnExchange in portalRouters.ts) already writes those
+ * columns as the physical pickup/delivery entity, not the original
+ * shipper/consignee. Do NOT re-invert on isReturn here, that double-swaps
+ * it back to wrong.
  *
  * A shipper-side leg falls back to the consignee pin, matching what the portal
  * map already draws (DriversSection route map). Without the fallback the server
@@ -730,7 +732,7 @@ export async function previewOptimizedOrder(
  */
 function resolveStopCoords(
     type: string,
-    o: { latitude: string | null; longitude: string | null; shipperLat: string | null; shipperLng: string | null; isReturn: number },
+    o: { latitude: string | null; longitude: string | null; shipperLat: string | null; shipperLng: string | null },
 ): LatLng | null {
     const parse = (latStr: string | null, lngStr: string | null): LatLng | null => {
         if (!latStr || !lngStr) return null;
@@ -741,7 +743,7 @@ function resolveStopCoords(
     };
 
     const isPickup = type === 'pickup';
-    const consigneeSide = o.isReturn === 1 ? isPickup : !isPickup;
+    const consigneeSide = !isPickup;
     return consigneeSide
         ? parse(o.latitude, o.longitude)
         : parse(o.shipperLat, o.shipperLng) ?? parse(o.latitude, o.longitude);

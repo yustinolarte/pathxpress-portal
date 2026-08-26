@@ -408,13 +408,14 @@ router.get('/profile', driverAuthMiddleware, async (req: DriverRequest, res: Res
 /**
  * Shapes one routeOrders+orders row into what the app displays for a stop.
  *
- * A stop's real-world location/contact is the shipper's on a normal order's
- * pickup leg and the consignee's on its delivery leg — but a return inverts
- * that (the pickup leg collects the item back from the consignee, the
- * delivery leg drops it back at the shipper). Getting this backwards for
- * returns is exactly the bug that shipped before: the delivery leg showed
- * the address where the item was collected instead of where it's going.
- * Same rule as server/driverAdmin.ts `resolveStopCoords`.
+ * A stop's real-world location/contact is always the shipper's on the
+ * pickup leg and the consignee's on the delivery leg. For a return/exchange
+ * order this still holds because the return-order creation code already
+ * writes shipperName/shipperLat as whoever the package is physically
+ * collected from and customerName/latitude as whoever it's delivered to
+ * (see doCreateReturn / doCreateManualReturnExchange in portalRouters.ts) —
+ * do NOT re-invert based on isReturn here, that double-swaps it back to
+ * wrong. Same rule as server/driverAdmin.ts `resolveStopCoords`.
  */
 function formatDriverStop(
     item: { routeOrder: typeof routeOrders.$inferSelect; order: typeof orders.$inferSelect },
@@ -422,7 +423,7 @@ function formatDriverStop(
 ) {
     const stopType = item.routeOrder.type || 'delivery';
     const isPickup = stopType === 'pickup';
-    const isShipperSide = item.order.isReturn === 1 ? !isPickup : isPickup;
+    const isShipperSide = isPickup;
 
     const shipperLat = item.order.shipperLat ? parseFloat(item.order.shipperLat) : null;
     const shipperLng = item.order.shipperLng ? parseFloat(item.order.shipperLng) : null;

@@ -138,13 +138,15 @@ export function distinctStatuses(orders: any[]): string[] {
 // the order a given stop refers to.
 
 /**
- * A pickup stop happens at the shipper (except on returns, where the pickup
- * is at the consignee and the "delivery" leg goes back to the shipper) — so
- * the non-consignee side always corresponds to the shipperLat/shipperLng
- * columns on the order.
+ * A pickup stop always happens at the shipper and a delivery stop at the
+ * consignee — this holds for returns/exchanges too, because the return-order
+ * creation code (doCreateReturn / doCreateManualReturnExchange in
+ * portalRouters.ts) already writes shipperLat/shipperLng as the physical
+ * pickup point and latitude/longitude as the physical delivery point. Do NOT
+ * re-invert based on isReturn here, that double-swaps it back to wrong.
  */
 export function stopLocationTarget(d: { type?: string; isReturn?: number }): 'delivery' | 'shipper' {
-  const consigneeSide = d.isReturn === 1 ? d.type === 'pickup' : d.type !== 'pickup';
+  const consigneeSide = d.type !== 'pickup';
   return consigneeSide ? 'delivery' : 'shipper';
 }
 

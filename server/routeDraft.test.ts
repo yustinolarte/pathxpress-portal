@@ -2,9 +2,12 @@
  * Tests for the wizard's draft stop list and the per-leg coordinate resolver.
  *
  * The coordinate half matters because the two legs of an order sit at DIFFERENT
- * addresses, and returns swap which end is which. Getting it wrong pins a pickup
- * at the customer's door — and, worse, made the server optimizer and the portal
- * map disagree about where a stop actually is.
+ * addresses. A pickup always reads the shipper columns and a delivery always
+ * reads the consignee columns — including for returns/exchanges, since the
+ * return-order creation code already writes those columns as the physical
+ * pickup/delivery entity (not the original shipper/consignee). Getting this
+ * backwards pins a pickup at the wrong door — and, worse, made the server
+ * optimizer and the portal map disagree about where a stop actually is.
  */
 import { describe, expect, it } from "vitest";
 import { buildDraftStops, type SequencerStop } from "../client/src/lib/routeDraft";
@@ -36,9 +39,9 @@ describe("stopLocationTarget", () => {
         expect(stopLocationTarget({ type: "delivery", isReturn: 0 })).toBe("delivery");
     });
 
-    it("swaps both ends on a return", () => {
-        expect(stopLocationTarget({ type: "pickup", isReturn: 1 })).toBe("delivery");
-        expect(stopLocationTarget({ type: "delivery", isReturn: 1 })).toBe("shipper");
+    it("does not re-invert on a return — the order's columns are already the physical pickup/delivery entity", () => {
+        expect(stopLocationTarget({ type: "pickup", isReturn: 1 })).toBe("shipper");
+        expect(stopLocationTarget({ type: "delivery", isReturn: 1 })).toBe("delivery");
     });
 });
 
@@ -48,10 +51,10 @@ describe("stopLegCoords", () => {
         expect(stopLegCoords({ ...order(), type: "delivery" })).toMatchObject({ lat: 25.0802, lng: 55.1402 });
     });
 
-    it("swaps the pins on a return", () => {
+    it("keeps shipper-pin-for-pickup / consignee-pin-for-delivery on a return", () => {
         const ret = { ...order({ isReturn: 1 }) };
-        expect(stopLegCoords({ ...ret, type: "pickup" })).toMatchObject({ lat: 25.0802, lng: 55.1402 });
-        expect(stopLegCoords({ ...ret, type: "delivery" })).toMatchObject({ lat: 25.1972, lng: 55.2744 });
+        expect(stopLegCoords({ ...ret, type: "pickup" })).toMatchObject({ lat: 25.1972, lng: 55.2744 });
+        expect(stopLegCoords({ ...ret, type: "delivery" })).toMatchObject({ lat: 25.0802, lng: 55.1402 });
     });
 
     it("falls back to the consignee pin when the shipper has none, flagged approx", () => {
