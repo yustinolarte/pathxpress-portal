@@ -633,8 +633,11 @@ export default function BillingPanel() {
     setIntlSelectedShipmentIds(checked && intlBillableShipments ? intlBillableShipments.map((s: any) => s.id) : []);
   };
 
-  const handleDeleteInvoice = (invoiceId: number, invoiceNumber: string) => {
-    if (!confirm(`Are you sure you want to delete invoice ${invoiceNumber}?\n\nThis will allow the shipments to be billed again.`)) return;
+  const handleDeleteInvoice = (invoiceId: number, invoiceNumber: string, isPaidWalkIn = false) => {
+    const msg = isPaidWalkIn
+      ? `Delete paid walk-in invoice ${invoiceNumber}?\n\nThis voids the receipt and resets the shipment's origin payment so it can be re-invoiced.`
+      : `Are you sure you want to delete invoice ${invoiceNumber}?\n\nThis will allow the shipments to be billed again.`;
+    if (!confirm(msg)) return;
     deleteInvoiceMutation.mutate({ invoiceId });
   };
 
@@ -966,6 +969,8 @@ export default function BillingPanel() {
                 const isOverdue = invoice.status === 'overdue';
                 const balance = parseFloat(invoice.balance || invoice.total || '0');
                 const sp = invoice.settlementPeriod || 'custom';
+                const isWalkIn = clients?.find(c => c.id === invoice.clientId)?.payAtOrigin === 1;
+                const canDelete = invoice.status === 'pending' || isWalkIn;
                 return (
                   <TableRow key={invoice.id} className={isOverdue ? 'bg-primary/5 hover:bg-primary/10' : ''}>
                     <TableCell className="wb font-medium cursor-pointer hover:text-primary hover:underline" onClick={() => handlePreviewInvoice(invoice)}>
@@ -1022,7 +1027,7 @@ export default function BillingPanel() {
                         <Button variant="outline" size="sm" onClick={() => handleSendInvoiceEmail(invoice)} disabled={sendInvoiceEmailMutation.isPending} title="Email invoice to client">
                           <Mail className="w-4 h-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDeleteInvoice(invoice.id, invoice.invoiceNumber)} title={invoice.status === 'pending' ? 'Delete invoice' : 'Only pending invoices can be deleted'} disabled={invoice.status !== 'pending' || deleteInvoiceMutation.isPending} className={invoice.status === 'pending' ? 'text-primary hover:text-primary hover:bg-primary/10' : 'opacity-50'}>
+                        <Button variant="outline" size="sm" onClick={() => handleDeleteInvoice(invoice.id, invoice.invoiceNumber, canDelete && invoice.status !== 'pending')} title={canDelete ? (invoice.status === 'pending' ? 'Delete invoice' : 'Void walk-in receipt') : 'Only pending invoices can be deleted'} disabled={!canDelete || deleteInvoiceMutation.isPending} className={canDelete ? 'text-primary hover:text-primary hover:bg-primary/10' : 'opacity-50'}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>

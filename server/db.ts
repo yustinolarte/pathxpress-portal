@@ -2796,7 +2796,7 @@ export async function markInvoiceSentToClient(id: number): Promise<{ success: bo
   return { success: true, alreadySent: false };
 }
 
-// Delete invoice (only if pending)
+// Delete invoice (pending always; paid/overdue only for walk-in / payAtOrigin clients)
 export async function deleteInvoice(id: number): Promise<{ success: boolean; error?: string }> {
   const db = await getDb();
   if (!db) return { success: false, error: "Database not available" };
@@ -2807,8 +2807,44 @@ export async function deleteInvoice(id: number): Promise<{ success: boolean; err
     return { success: false, error: "Invoice not found" };
   }
 
+  // Pending invoices are always deletable. A paid/overdue invoice is only
+  // deletable for a pay-per-shipment (walk-in) client: there the invoice is a
+  // point-of-sale receipt auto-generated for a single drop-off, and staff
+  // routinely need to void one created by mistake.
+  let isWalkInInvoice = false;
   if (invoice.status !== 'pending') {
-    return { success: false, error: "Only pending invoices can be deleted" };
+    const [client] = await db
+      .select({ payAtOrigin: clientAccounts.payAtOrigin })
+      .from(clientAccounts)
+      .where(eq(clientAccounts.id, invoice.clientId))
+      .limit(1);
+    isWalkInInvoice = client?.payAtOrigin === 1;
+    if (!isWalkInInvoice) {
+      return { success: false, error: "Only pending invoices can be deleted" };
+    }
+  }
+
+  // Voiding a walk-in receipt: clear the "payment collected" proof on the
+  // linked shipment(s) so they drop back to clean, unbilled orders that can be
+  // re-invoiced from scratch. The expected method/amount are left in place.
+  if (isWalkInInvoice) {
+    const items = await db
+      .select({ shipmentId: invoiceItems.shipmentId })
+      .from(invoiceItems)
+      .where(eq(invoiceItems.invoiceId, id));
+    const shipmentIds = Array.from(
+      new Set(items.map((i) => i.shipmentId).filter((s): s is number => s != null))
+    );
+    for (const shipmentId of shipmentIds) {
+      await db
+        .update(orders)
+        .set({
+          originPaymentCollected: 0,
+          originPaymentReference: null,
+          originPaymentCollectedAt: null,
+        })
+        .where(eq(orders.id, shipmentId));
+    }
   }
 
   // Delete invoice items first
