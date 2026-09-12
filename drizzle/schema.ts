@@ -334,6 +334,69 @@ export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 
 /**
+ * WhatsApp location bot — state tables. Written by the bot service (its own
+ * DB user is limited to bot_* for writes), read by the portal's admin
+ * "WhatsApp Bot" section. One bot_sessions row per WhatsApp number.
+ */
+export const botSessions = mysqlTable("bot_sessions", {
+  jid: varchar("jid", { length: 64 }).primaryKey(), // e.g. "971501234567@s.whatsapp.net"
+  phone: varchar("phone", { length: 32 }).notNull(),
+  botActive: int("botActive").default(1).notNull(), // 0 = human took over (!pause), bot stays silent
+  lastInteractionAt: timestamp("lastInteractionAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BotSession = typeof botSessions.$inferSelect;
+
+export const botOrders = mysqlTable("bot_orders", {
+  id: int("id").autoincrement().primaryKey(),
+  jid: varchar("jid", { length: 64 }).notNull(),
+  waybillNumber: varchar("waybillNumber", { length: 50 }).notNull().unique(),
+  storeName: varchar("storeName", { length: 255 }),
+  isReturn: int("isReturn").default(0).notNull(),
+  status: mysqlEnum("status", ["awaiting_location", "location_received", "reused", "expired"]).notNull(),
+  // Whether the "share your location" WhatsApp message actually went out
+  deliveryStatus: mysqlEnum("deliveryStatus", ["queued", "sent", "failed"]).default("queued").notNull(),
+  sendAttempts: int("sendAttempts").default(0).notNull(),
+  lastError: text("lastError"),
+  requestedAt: timestamp("requestedAt").notNull(),
+  sentAt: timestamp("sentAt"),
+  expiresAt: timestamp("expiresAt"),
+  expiredReason: varchar("expiredReason", { length: 64 }), // 'ttl' | 'status:<order status>'
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  jidIdx: index("bot_orders_jid_idx").on(table.jid),
+  statusIdx: index("bot_orders_status_idx").on(table.status),
+}));
+
+export type BotOrder = typeof botOrders.$inferSelect;
+
+export const botMessages = mysqlTable("bot_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  jid: varchar("jid", { length: 64 }).notNull(),
+  direction: mysqlEnum("direction", ["in", "out", "system"]).notNull(),
+  text: text("text").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  jidCreatedAtIdx: index("bot_messages_jid_createdAt_idx").on(table.jid, table.createdAt),
+}));
+
+export type BotMessage = typeof botMessages.$inferSelect;
+
+/** Single-row liveness record (id = 1) the bot refreshes every few seconds, so the portal can tell "offline" from "connected". */
+export const botRuntime = mysqlTable("bot_runtime", {
+  id: int("id").primaryKey(),
+  whatsappConnected: int("whatsappConnected").default(0).notNull(),
+  connectedSince: timestamp("connectedSince"),
+  lastHeartbeatAt: timestamp("lastHeartbeatAt").defaultNow().notNull(),
+  version: varchar("version", { length: 32 }),
+});
+
+export type BotRuntime = typeof botRuntime.$inferSelect;
+
+/**
  * Tracking events table for shipment timeline
  */
 export const trackingEvents = mysqlTable("trackingEvents", {

@@ -436,6 +436,7 @@ export const driverRouter = router({
                 waybillNumber: order.waybillNumber,
                 customerName: order.customerName,
                 customerPhone: order.customerPhone,
+                force: true,
             });
             return { sent: true };
         }),

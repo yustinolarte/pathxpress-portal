@@ -29,6 +29,7 @@ import AdminInternationalShipping from '@/components/AdminInternationalShipping'
 import CreateClientWizard from '@/components/CreateClientWizard';
 import EmailStudioPanel from '@/components/EmailStudioPanel';
 import AdminClientLocationsSection from '@/components/AdminClientLocationsSection';
+import WhatsAppBotSection from '@/components/WhatsAppBotSection';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -655,6 +656,7 @@ export default function AdminDashboard() {
     { icon: 'group', label: 'Clients', value: 'clients', section: 'Operations' },
     { icon: 'package_2', label: 'All Orders', value: 'orders', section: 'Operations' },
     { icon: 'local_shipping', label: 'Drivers', value: 'drivers', section: 'Operations' },
+    { icon: 'sms', label: 'WhatsApp Bot', value: 'whatsapp', section: 'Operations' },
     { icon: 'receipt_long', label: 'Billing', value: 'billing', section: 'Finance' },
     { icon: 'payments', label: 'COD Management', value: 'cod', section: 'Finance' },
     { icon: 'trending_up', label: 'Rates & Pricing', value: 'rates', section: 'Finance' },
@@ -1611,6 +1613,11 @@ export default function AdminDashboard() {
           {/* Drivers Tab */}
           <TabsContent value="drivers" className="space-y-4">
             <DriversSection />
+          </TabsContent>
+
+          {/* WhatsApp Bot Tab */}
+          <TabsContent value="whatsapp" className="space-y-4">
+            <WhatsAppBotSection active={activeTab === 'whatsapp'} />
           </TabsContent>
 
           {/* Billing Tab */}

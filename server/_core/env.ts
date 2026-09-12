@@ -14,4 +14,5 @@ export const ENV = {
   googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "", // Server-side Geocoding API key (NOT the VITE_ browser key)
   botWebhookUrl: process.env.BOT_WEBHOOK_URL ?? "",       // Bot Ubicación: notified on every new order
   botWebhookSecret: process.env.BOT_WEBHOOK_SECRET ?? "", // Shared secret for that webhook call
+  botBaseUrl: process.env.BOT_BASE_URL ?? "",             // Bot Ubicación base URL (e.g. http://bot.railway.internal:4500) for the admin "WhatsApp Bot" section actions
 };

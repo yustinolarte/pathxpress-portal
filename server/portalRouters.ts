@@ -66,6 +66,7 @@ import {
 import { driverRouter } from './driverRouter';
 import { notifyAdminNewOrder } from './_core/mailer';
 import { emailRouter } from './emailRouter';
+import { whatsappBotRouter } from './whatsappBotRouter';
 
 // Shared input for paginated/windowed order lists. All fields optional; when no
 // date filter is supplied the data layer defaults to the current month.
@@ -5100,4 +5101,5 @@ export const portalRouter = router({
   internationalRates: internationalRatesRouter,
   notifications: notificationsRouter,
   email: emailRouter,
+  whatsappBot: whatsappBotRouter,
 });

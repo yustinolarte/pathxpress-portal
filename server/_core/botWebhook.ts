@@ -4,6 +4,8 @@ export type NewOrderWebhookPayload = {
   waybillNumber: string;
   customerName: string;
   customerPhone: string;
+  /** Re-send the request even if this number was already asked (explicit staff action). */
+  force?: boolean;
 };
 
 /**
