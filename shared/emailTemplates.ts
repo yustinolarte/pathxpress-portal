@@ -222,7 +222,21 @@ export function repl(tpl: string, v: Vars): string {
    TEMPLATE DEFINITIONS
    ============================================================ */
 export type FieldType = 'text' | 'textarea';
-export interface TemplateField { name: string; label: string; type: FieldType; value: string; }
+export interface TemplateField {
+  name: string;
+  label: string;
+  type: FieldType;
+  value: string;
+  /** Must be filled in before sending; has no default so a sample value can never go out by accident. */
+  required?: boolean;
+}
+
+/** Labels of required fields that are still blank for the given template. */
+export function missingRequiredFields(key: string, vars: Vars): string[] {
+  const t = getTemplate(key);
+  if (!t) return [];
+  return t.fields.filter((f) => f.required && !(vars[f.name] ?? '').trim()).map((f) => f.label);
+}
 export interface EmailTemplate {
   key: string;
   label: string;
@@ -246,7 +260,7 @@ export const TEMPLATES: EmailTemplate[] = [
       { name: 'contact_name', label: 'Contact name', type: 'text', value: 'Prasha Lifestyle team' },
       { name: 'portal_url', label: 'Portal URL', type: 'text', value: 'pathxpress.net/portal/login' },
       { name: 'username', label: 'Email / username', type: 'text', value: 'prasha@pathxpress.net' },
-      { name: 'temp_password', label: 'Temporary password', type: 'text', value: 'Prasha2026' },
+      { name: 'temp_password', label: 'Temporary password', type: 'text', value: '', required: true },
       { name: 'manager_name', label: 'Account manager', type: 'text', value: 'Angelica Ospina' },
       { name: 'manager_email', label: 'Manager email', type: 'text', value: 'angelica@pathxpress.net' },
       { name: 'manager_phone', label: 'Manager phone', type: 'text', value: '+971 58 814 2535' },

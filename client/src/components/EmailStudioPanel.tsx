@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Mail, Send, FlaskConical, Paperclip, X, FileText, Loader2 } from 'lucide-react';
-import { TEMPLATES, FROMS, renderEmail, getTemplate, type Vars } from '@shared/emailTemplates';
+import { TEMPLATES, FROMS, renderEmail, getTemplate, missingRequiredFields, type Vars } from '@shared/emailTemplates';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 
 function defaultsFor(key: string): Vars {
@@ -274,6 +274,11 @@ export default function EmailStudioPanel({ initialOrder }: EmailStudioPanelProps
       toast.error('Enter a destination email');
       return;
     }
+    const missing = missingRequiredFields(selectedKey, values);
+    if (missing.length) {
+      toast.error(`Fill in: ${missing.join(', ')}`);
+      return;
+    }
     sendMutation.mutate({
       templateKey: selectedKey,
       from: fromValue,
@@ -431,7 +436,7 @@ export default function EmailStudioPanel({ initialOrder }: EmailStudioPanelProps
             </div>
             {template.fields.map((f) => (
               <div key={f.name} className="space-y-1.5">
-                <Label className="text-xs">{f.label}</Label>
+                <Label className="text-xs">{f.label}{f.required && <span className="text-primary"> *</span>}</Label>
                 {f.type === 'textarea' ? (
                   <Textarea
                     rows={3}

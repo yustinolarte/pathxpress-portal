@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { portalAdminProcedure, router } from './_core/trpc';
-import { renderEmail, isAllowedFrom, getTemplate } from '@shared/emailTemplates';
+import { renderEmail, isAllowedFrom, getTemplate, missingRequiredFields } from '@shared/emailTemplates';
 import { sendViaResend } from './_core/resendMailer';
 
 /**
@@ -39,6 +39,10 @@ export const emailRouter = router({
       // 2) template must exist
       if (!getTemplate(input.templateKey)) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Unknown template.' });
+      }
+      const missing = missingRequiredFields(input.templateKey, input.vars);
+      if (missing.length) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `Fill in: ${missing.join(', ')}` });
       }
 
       // 3) server-side render (brand guaranteed)
