@@ -62,6 +62,8 @@ export default function CustomerCODPanel() {
       'Gross Amount': parseFloat(r.grossAmount).toFixed(2),
       'Commission': parseFloat(r.feeAmount).toFixed(2),
       'Net Amount': parseFloat(r.totalAmount).toFixed(2),
+      'Invoices Deducted': parseFloat(r.offsetAmount || '0').toFixed(2),
+      'Transferred': (parseFloat(r.totalAmount) - parseFloat(r.offsetAmount || '0')).toFixed(2),
       'Currency': r.currency,
       'Payment Method': r.paymentMethod || 'N/A',
       'Created Date': formatDate(r.createdAt),
@@ -220,6 +222,7 @@ export default function CustomerCODPanel() {
                   <TableHead className="font-semibold text-muted-foreground">Gross</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Commission</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Net to You</TableHead>
+                  <TableHead className="font-semibold text-muted-foreground">Invoices Deducted</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Method</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Created</TableHead>
                   <TableHead className="font-semibold text-muted-foreground">Completed</TableHead>
@@ -245,6 +248,11 @@ export default function CustomerCODPanel() {
                         : '—'}
                     </TableCell>
                     <TableCell className="money" style={{ color: 'var(--st-green)' }}>{formatCurrency(remittance.totalAmount, remittance.currency)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground font-mono">
+                      {parseFloat(remittance.offsetAmount || '0') > 0
+                        ? `− ${formatCurrency(remittance.offsetAmount, remittance.currency)}`
+                        : '—'}
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{remittance.paymentMethod || 'N/A'}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(remittance.createdAt)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground font-medium">{formatDate(remittance.processedDate)}</TableCell>

@@ -88,6 +88,7 @@ export default function AdminDashboard() {
     customBulletPerKg: '',
     // Billing settlement
     defaultSettlementPeriod: 'custom' as 'weekly' | 'biweekly' | 'monthly' | 'custom',
+    codOffsetInvoices: false,
   });
 
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
@@ -352,6 +353,7 @@ export default function AdminDashboard() {
         intlAllowed: editForm.intlAllowed,
         intlDiscountPercent: editForm.intlDiscountPercent,
         defaultSettlementPeriod: editForm.defaultSettlementPeriod,
+        codOffsetInvoices: editForm.codOffsetInvoices,
       });
     } catch (error) {
       // handled by onError
@@ -390,6 +392,7 @@ export default function AdminDashboard() {
         intlAllowed: !!editingClient.intlAllowed,
         intlDiscountPercent: editingClient.intlDiscountPercent || '',
         defaultSettlementPeriod: (editingClient.defaultSettlementPeriod || 'custom') as 'weekly' | 'biweekly' | 'monthly' | 'custom',
+        codOffsetInvoices: !!editingClient.codOffsetInvoices,
       });
     }
   }, [editingClient]);
@@ -2105,6 +2108,18 @@ export default function AdminDashboard() {
                         <SelectItem value="monthly">Monthly — previous calendar month</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-[10px] text-muted-foreground">Weekly/biweekly/monthly clients get a draft invoice automatically every Friday 19:00 (Dubai), after the 18:00 cutoff. Custom = manual only.</p>
+                    <label htmlFor="editCodOffsetInvoices" className="flex items-start gap-2 pt-1 cursor-pointer">
+                      <Checkbox
+                        id="editCodOffsetInvoices"
+                        checked={editForm.codOffsetInvoices}
+                        onCheckedChange={(checked) => setEditForm({ ...editForm, codOffsetInvoices: checked as boolean })}
+                      />
+                      <span className="text-xs">
+                        Deduct open invoices from COD payouts
+                        <span className="block text-[10px] text-muted-foreground">The weekly remittance draft nets this client's sent, unpaid invoices and marks them paid when approved.</span>
+                      </span>
+                    </label>
                   </div>
                 </div>
 

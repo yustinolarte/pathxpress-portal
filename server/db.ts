@@ -1289,6 +1289,73 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
 }
 
 /**
+ * A delivery closed from the admin portal (tracking event / status change) never
+ * went through the driver app, which is the only other place that marks COD as
+ * collected. Left alone, the record sat in 'pending_collection' until someone
+ * marked it by hand days later — stamped with *that* moment, so it routinely
+ * missed the Friday cutoff of the week it was actually delivered in.
+ *
+ * Marks the pending COD collected as of the delivery instant itself, with the
+ * method staff picked (default: card if the shipper only accepts card, else
+ * cash) and the fee frozen per that method, like the driver app does.
+ * No-op when there's no pending COD record for the order.
+ */
+export async function markCODCollectedOnDelivery(
+  orderId: number,
+  deliveredAt: Date,
+  opts: { method?: 'cash' | 'card'; paymentReference?: string } = {},
+): Promise<{ updated: boolean; method?: 'cash' | 'card' }> {
+  const db = await getDb();
+  if (!db) return { updated: false };
+
+  const [record] = await db.select().from(codRecords)
+    .where(and(eq(codRecords.shipmentId, orderId), eq(codRecords.status, 'pending_collection')))
+    .limit(1);
+  if (!record) return { updated: false };
+
+  const order = await getOrderById(orderId);
+  if (!order) return { updated: false };
+
+  const method: 'cash' | 'card' = opts.method ?? (record.allowedMethods === 'card' ? 'card' : 'cash');
+  const fee = await calculateCODFeeByMethod(parseFloat(record.codAmount) || 0, order.clientId, method);
+
+  await db.update(codRecords).set({
+    status: 'collected',
+    collectedDate: deliveredAt,
+    collectedMethod: method,
+    paymentReference: method === 'card'
+      ? (opts.paymentReference?.trim() || 'Confirmed by office - no gateway ref')
+      : null,
+    feeAmount: fee.toFixed(2),
+  }).where(eq(codRecords.id, record.id));
+  cacheInvalidate('admin:allCODRecords');
+
+  return { updated: true, method };
+}
+
+/**
+ * When a shipment was actually delivered: its latest 'delivered' tracking event
+ * (staff can backdate those), else the driver-app delivery timestamp. Used to
+ * date a COD collection that's marked by hand after the fact.
+ */
+export async function getDeliveryInstant(orderId: number): Promise<Date | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const { trackingEvents } = await import("../drizzle/schema");
+
+  const [event] = await db
+    .select({ at: trackingEvents.eventDatetime })
+    .from(trackingEvents)
+    .where(and(eq(trackingEvents.shipmentId, orderId), eq(trackingEvents.statusCode, 'delivered')))
+    .orderBy(desc(trackingEvents.eventDatetime))
+    .limit(1);
+  if (event?.at) return new Date(event.at);
+
+  const order = await getOrderById(orderId);
+  return order?.deliveryDateReal ? new Date(order.deliveryDateReal) : null;
+}
+
+/**
  * Tracking Events
  */
 export async function createTrackingEvent(event: InsertTrackingEvent): Promise<void> {
@@ -1483,6 +1550,41 @@ export function getBillingWindow(periodStart: Date, periodEnd: Date): { from: Da
   };
 }
 
+/**
+ * Flat fee charged once per shipment that was ever marked `address_issue` —
+ * billed as its own invoice line ("<waybill> - Address Issue Fee"). Only events
+ * on/after ADDRESS_ISSUE_FEE_FROM count (older shipments were never charged and
+ * that's not being revisited). If either config value is missing, the fee is off.
+ * Returns shipmentId → fee for the shipments that owe it.
+ */
+export async function getAddressIssueFees(shipmentIds: number[]): Promise<Map<number, number>> {
+  const fees = new Map<number, number>();
+  if (shipmentIds.length === 0) return fees;
+  const db = await getDb();
+  if (!db) return fees;
+
+  const [feeRaw, fromRaw] = await Promise.all([
+    getServiceConfig('ADDRESS_ISSUE_FEE'),
+    getServiceConfig('ADDRESS_ISSUE_FEE_FROM'),
+  ]);
+  const fee = feeRaw ? parseFloat(feeRaw) : NaN;
+  const fromDay = fromRaw?.trim();
+  if (!fromDay || !/^\d{4}-\d{2}-\d{2}$/.test(fromDay) || isNaN(fee) || fee <= 0) return fees;
+  const from = new Date(`${fromDay}T00:00:00+04:00`); // midnight Dubai
+
+  const { trackingEvents } = await import("../drizzle/schema");
+  const rows = await db
+    .selectDistinct({ shipmentId: trackingEvents.shipmentId })
+    .from(trackingEvents)
+    .where(and(
+      inArray(trackingEvents.shipmentId, shipmentIds),
+      eq(trackingEvents.statusCode, 'address_issue'),
+      gte(trackingEvents.eventDatetime, from),
+    ));
+  for (const r of rows) fees.set(r.shipmentId, Math.round(fee * 100) / 100);
+  return fees;
+}
+
 // Helper to get billable shipments with calculated rates
 export async function getBillableShipments(clientId: number, periodStart: Date, periodEnd: Date) {
   const db = await getDb();
@@ -1611,7 +1713,15 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
     })
   );
 
-  return shipmentsWithRates;
+  // Same address-issue fee generateInvoiceForClient adds as its own line, so the
+  // preview total matches what the invoice will actually say.
+  const addressIssueFees = await getAddressIssueFees(shipmentsWithRates.map(s => s.id));
+  return shipmentsWithRates.map(s => {
+    const addressIssueFee = addressIssueFees.get(s.id) ?? 0;
+    return addressIssueFee > 0
+      ? { ...s, calculatedRate: Math.round((s.calculatedRate + addressIssueFee) * 100) / 100, addressIssueFee }
+      : { ...s, addressIssueFee: 0 };
+  });
 }
 
 export async function generateInvoiceForClient(
@@ -1674,7 +1784,8 @@ export async function generateInvoiceForClient(
 
   // Calculate totals using the zone-based rate engine
   let subtotal = 0;
-  const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number; fodFee: number }[] = [];
+  const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number; fodFee: number; addressIssueFee: number }[] = [];
+  const addressIssueFees = await getAddressIssueFees(shipments.map(s => s.id));
 
   for (const shipment of shipments) {
     let totalRate = 0;
@@ -1739,8 +1850,11 @@ export async function generateInvoiceForClient(
       totalRate += fodFee;
     }
 
+    const addressIssueFee = addressIssueFees.get(shipment.id) ?? 0;
+    totalRate += addressIssueFee;
+
     subtotal += totalRate;
-    shipmentRates.push({ shipment, shippingRate, fodFee });
+    shipmentRates.push({ shipment, shippingRate, fodFee, addressIssueFee });
   }
 
   const tax = 0; // No tax for shipping in UAE
@@ -1810,7 +1924,7 @@ export async function generateInvoiceForClient(
       });
 
       // Create invoice items with correct rates
-      for (const { shipment, shippingRate, fodFee } of shipmentRates) {
+      for (const { shipment, shippingRate, fodFee, addressIssueFee } of shipmentRates) {
         const weight = parseFloat(shipment.weight || '0');
         // Label the line with the same short code the portal shows. The old
         // hardcoded if/else only knew DOM/SDD/BULLET, so every newer service
@@ -1839,6 +1953,17 @@ export async function generateInvoiceForClient(
             quantity: 1,
             unitPrice: fodFee.toFixed(2),
             total: fodFee.toFixed(2),
+          });
+        }
+
+        if (addressIssueFee > 0) {
+          await tx.insert(invoiceItems).values({
+            invoiceId: invoice.insertId,
+            shipmentId: shipment.id,
+            description: `${shipment.waybillNumber} - Address Issue Fee`,
+            quantity: 1,
+            unitPrice: addressIssueFee.toFixed(2),
+            total: addressIssueFee.toFixed(2),
           });
         }
       }
@@ -1938,7 +2063,13 @@ export async function getBillableIntlShipments(clientId: number, periodStart: Da
     })
   );
 
-  return shipmentsWithRates;
+  const addressIssueFees = await getAddressIssueFees(shipmentsWithRates.map(s => s.id));
+  return shipmentsWithRates.map(s => {
+    const addressIssueFee = addressIssueFees.get(s.id) ?? 0;
+    return addressIssueFee > 0
+      ? { ...s, calculatedRate: Math.round((s.calculatedRate + addressIssueFee) * 100) / 100, addressIssueFee }
+      : { ...s, addressIssueFee: 0 };
+  });
 }
 
 export async function generateIntlInvoiceForClient(
@@ -1993,8 +2124,9 @@ export async function generateIntlInvoiceForClient(
   const discountPct = client.intlDiscountPercent ? parseFloat(client.intlDiscountPercent) : undefined;
 
   let subtotal = 0;
-  const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number }[] = [];
+  const shipmentRates: { shipment: typeof orders.$inferSelect; shippingRate: number; addressIssueFee: number }[] = [];
   const mismatchedShipments: { id: number; waybillNumber: string | null; storedServiceType: string | null; appliedServiceKey: string | null }[] = [];
+  const addressIssueFees = await getAddressIssueFees(shipments.map(s => s.id));
 
   for (const shipment of shipments) {
     let totalRate = 0;
@@ -2040,8 +2172,9 @@ export async function generateIntlInvoiceForClient(
       }
     }
 
-    subtotal += totalRate;
-    shipmentRates.push({ shipment, shippingRate: totalRate });
+    const addressIssueFee = addressIssueFees.get(shipment.id) ?? 0;
+    subtotal += totalRate + addressIssueFee;
+    shipmentRates.push({ shipment, shippingRate: totalRate, addressIssueFee });
   }
 
   const now = new Date();
@@ -2102,7 +2235,7 @@ export async function generateIntlInvoiceForClient(
         sentToClient: 0,
       });
 
-      for (const { shipment, shippingRate } of shipmentRates) {
+      for (const { shipment, shippingRate, addressIssueFee } of shipmentRates) {
         const weight = parseFloat(shipment.weight || '0');
         const svcLabel = shipment.serviceType || 'INTL';
         await tx.insert(invoiceItems).values({
@@ -2113,6 +2246,16 @@ export async function generateIntlInvoiceForClient(
           unitPrice: shippingRate.toFixed(2),
           total: shippingRate.toFixed(2),
         });
+        if (addressIssueFee > 0) {
+          await tx.insert(invoiceItems).values({
+            invoiceId: invoice.insertId,
+            shipmentId: shipment.id,
+            description: `${shipment.waybillNumber} - Address Issue Fee`,
+            quantity: 1,
+            unitPrice: addressIssueFee.toFixed(2),
+            total: addressIssueFee.toFixed(2),
+          });
+        }
       }
 
       return invoice.insertId;
@@ -2162,6 +2305,7 @@ export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd
       shipmentId: invoiceItems.shipmentId,
       unitPrice: invoiceItems.unitPrice,
       lineTotal: invoiceItems.total,
+      description: invoiceItems.description,
       waybillNumber: orders.waybillNumber,
       destinationCountry: orders.destinationCountry,
       serviceType: orders.serviceType,
@@ -2177,11 +2321,16 @@ export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd
   // the base unitPrice is NOT what the client actually paid for the shipment.
   // Spread each invoice's adjustments across its shipment lines, weighted by
   // line value, so profit is measured against the real net charge.
+  // An address-issue fee line carries its shipment's id but is a surcharge, not a
+  // second shipment — treat it like the other adjustments so the shipment's
+  // cost isn't counted twice.
+  const isSurchargeLine = (r: { shipmentId: number | null; description: string | null }) =>
+    r.shipmentId === null || /- Address Issue Fee$/.test(r.description ?? '');
   const adjustmentByInvoice = new Map<number, number>();
   const baseByInvoice = new Map<number, number>();
   for (const r of results) {
     const value = parseFloat(r.lineTotal || r.unitPrice || '0');
-    if (r.shipmentId === null) {
+    if (isSurchargeLine(r)) {
       adjustmentByInvoice.set(r.invoiceId, (adjustmentByInvoice.get(r.invoiceId) || 0) + value);
     } else {
       baseByInvoice.set(r.invoiceId, (baseByInvoice.get(r.invoiceId) || 0) + value);
@@ -2193,7 +2342,7 @@ export async function getIntlProfitData(filters: { periodStart?: Date; periodEnd
   let itemsMissingCost = 0;
 
   const rows = results
-    .filter(r => r.shipmentId !== null)
+    .filter(r => !isSurchargeLine(r))
     .map(r => {
       const base = parseFloat(r.lineTotal || r.unitPrice || '0');
       const invoiceBase = baseByInvoice.get(r.invoiceId) || 0;
@@ -2257,7 +2406,7 @@ export async function getAllInvoices() {
         lastAdjustedAt: invoices.lastAdjustedAt,
         createdAt: invoices.createdAt,
         updatedAt: invoices.updatedAt,
-        shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
+        shipmentCount: sql<number>`COUNT(DISTINCT ${invoiceItems.shipmentId})`,
       })
       .from(invoices)
       .leftJoin(invoiceItems, eq(invoices.id, invoiceItems.invoiceId))
@@ -2344,7 +2493,7 @@ export async function getInvoicesPaged(filters: InvoiceListFilters): Promise<{ r
         sentAt: invoices.sentAt,
         createdAt: invoices.createdAt,
         updatedAt: invoices.updatedAt,
-        shipmentCount: sql<number>`COUNT(${invoiceItems.id})`,
+        shipmentCount: sql<number>`COUNT(DISTINCT ${invoiceItems.shipmentId})`,
       })
       .from(invoices)
       .leftJoin(invoiceItems, eq(invoices.id, invoiceItems.invoiceId))
@@ -2546,6 +2695,23 @@ function computeSuggestedPeriod(
 }
 
 /**
+ * Stretches a weekly/biweekly period forward, one cadence step at a time, over
+ * every period that has already closed. Without this, a client whose week after
+ * the last invoice had nothing billable stayed stuck on that empty week forever
+ * (its next period is derived from the last invoice, which never advanced) and
+ * later shipments were never suggested. The invoiceItems NULL check is what
+ * prevents double billing, so a wider catch-up window is safe.
+ */
+export function extendPeriodToLastClosed(periodStart: Date, periodEnd: Date, stepDays: number, now: Date): Date {
+  let end = periodEnd;
+  for (;;) {
+    const next = new Date(end.getTime() + stepDays * 86400000);
+    if (getBillingWindow(periodStart, next).to > now) return end;
+    end = next;
+  }
+}
+
+/**
  * Active clients whose configured settlement period has fully elapsed and who have
  * at least one billable shipment waiting — the list behind the "Generate Pending
  * Invoices" batch action. Clients on a 'custom' settlement period are never
@@ -2579,11 +2745,15 @@ export async function getClientsDueForBilling(isIntl: boolean) {
     if (!billingInfo) continue;
 
     const settlementPeriod = client.defaultSettlementPeriod as 'weekly' | 'biweekly' | 'monthly';
-    const { periodStart, periodEnd } = computeSuggestedPeriod(settlementPeriod, billingInfo.suggestedPeriodStart);
+    const suggested = computeSuggestedPeriod(settlementPeriod, billingInfo.suggestedPeriodStart);
+    const periodStart = suggested.periodStart;
     // The week isn't closed until its Friday 18:00 Dubai cutoff has passed. Suggesting
     // it earlier would invoice a period that is still taking shipments, and everything
     // delivered between now and the cutoff would fall outside the next period too.
-    if (getBillingWindow(periodStart, periodEnd).to > now) continue;
+    if (getBillingWindow(periodStart, suggested.periodEnd).to > now) continue;
+    const periodEnd = settlementPeriod === 'monthly'
+      ? suggested.periodEnd
+      : extendPeriodToLastClosed(periodStart, suggested.periodEnd, settlementPeriod === 'weekly' ? 7 : 14, now);
 
     const billable = isIntl
       ? await getBillableIntlShipments(client.id, periodStart, periodEnd)
@@ -2773,6 +2943,25 @@ export async function updateInvoice(id: number, data: Partial<{
       const derived = settlementForStatus(data.status, data.total ?? current.total);
       if (data.amountPaid === undefined) updateData.amountPaid = derived.amountPaid;
       if (data.balance === undefined) updateData.balance = derived.balance;
+    }
+  }
+
+  // The balance always follows the stored total (which only line-item edits
+  // change, via recalculateInvoiceTotals). Deriving it from a total the caller
+  // computed on its side let a stale form overwrite a fresh line edit — that's
+  // how INV-2026-09-021 ended up showing 150 over lines summing 162.
+  if (data.total === undefined && (updateData.amountPaid !== undefined || data.status === 'paid')) {
+    const [current] = await db.select({ total: invoices.total, status: invoices.status }).from(invoices).where(eq(invoices.id, id)).limit(1);
+    if (current) {
+      const total = parseFloat(current.total || '0');
+      const finalStatus = data.status ?? current.status;
+      if (finalStatus === 'paid') {
+        updateData.amountPaid = total.toFixed(2);
+        updateData.balance = '0.00';
+      } else {
+        const paid = parseFloat(updateData.amountPaid ?? '0') || 0;
+        updateData.balance = (total - paid).toFixed(2);
+      }
     }
   }
 
@@ -3117,16 +3306,82 @@ export function getLastWeeklyCutoff(referenceDate: Date = new Date()): Date {
   return cutoffUtc;
 }
 
+const DEFAULT_CARD_REMIT_ANCHOR = '2026-10-16';
+
 /**
- * COD records that are 'collected' and past the last weekly cutoff for a given
- * client — i.e. ready to be grouped into a remittance right now. Records
- * collected after the cutoff are excluded; they belong to next week's batch.
+ * Card COD is remitted bi-weekly: its cutoffs are the weekly Friday 18:00 Dubai
+ * cutoffs that fall an even number of weeks away from the anchor Friday
+ * (CARD_COD_REMIT_ANCHOR). Returns the most recent such cutoff <= referenceDate.
+ */
+export function getLastCardCutoff(referenceDate: Date = new Date(), anchorDate: string = DEFAULT_CARD_REMIT_ANCHOR): Date {
+  const weekly = getLastWeeklyCutoff(referenceDate);
+  // Anchor cutoff instant: the anchor Friday at 18:00 Dubai (14:00 UTC).
+  const [y, m, d] = anchorDate.split('-').map(Number);
+  const anchorCutoff = Date.UTC(y, m - 1, d, 14, 0, 0, 0);
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const weeksFromAnchor = Math.round((weekly.getTime() - anchorCutoff) / WEEK_MS);
+  const offWeek = ((weeksFromAnchor % 2) + 2) % 2 === 1;
+  return offWeek ? new Date(weekly.getTime() - WEEK_MS) : weekly;
+}
+
+export async function getCardRemitAnchor(): Promise<string> {
+  const value = await getServiceConfig('CARD_COD_REMIT_ANCHOR');
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) ? value.trim() : DEFAULT_CARD_REMIT_ANCHOR;
+}
+
+/** Both remittance cutoffs that apply right now: cash weekly, card bi-weekly. */
+export async function getRemittanceCutoffs(referenceDate: Date = new Date()) {
+  return {
+    cash: getLastWeeklyCutoff(referenceDate),
+    card: getLastCardCutoff(referenceDate, await getCardRemitAnchor()),
+  };
+}
+
+// A collected record already sitting in an unapproved draft remittance is
+// spoken for — it must not show up as "ready" again or land in a second draft.
+const notInDraftRemittance = sql`NOT EXISTS (
+  SELECT 1 FROM codRemittanceItems ri
+  JOIN codRemittances r ON r.id = ri.remittanceId
+  WHERE ri.codRecordId = ${codRecords.id} AND r.status = 'draft'
+)`;
+
+/**
+ * 'collected', not reserved by a draft, and past its own cutoff — the weekly one
+ * for cash, the bi-weekly one for card. Everything else collected is still
+ * accumulating towards a later payout.
+ */
+export function codRemittableCondition(cutoffs: { cash: Date; card: Date }) {
+  return and(
+    eq(codRecords.status, 'collected'),
+    notInDraftRemittance,
+    or(
+      and(eq(codRecords.collectedMethod, 'card'), lte(codRecords.collectedDate, cutoffs.card)),
+      and(or(isNull(codRecords.collectedMethod), ne(codRecords.collectedMethod, 'card')), lte(codRecords.collectedDate, cutoffs.cash)),
+    ),
+  );
+}
+
+function codAccumulatingCondition(cutoffs: { cash: Date; card: Date }) {
+  return and(
+    eq(codRecords.status, 'collected'),
+    notInDraftRemittance,
+    or(
+      and(eq(codRecords.collectedMethod, 'card'), gt(codRecords.collectedDate, cutoffs.card)),
+      and(or(isNull(codRecords.collectedMethod), ne(codRecords.collectedMethod, 'card')), gt(codRecords.collectedDate, cutoffs.cash)),
+    ),
+  );
+}
+
+/**
+ * COD records that are 'collected' and past their cutoff for a given client —
+ * i.e. ready to be grouped into a remittance right now. Records collected after
+ * the cutoff are excluded; they belong to a later batch.
  */
 export async function getReadyToRemitRecordsByClient(clientId: number, referenceDate: Date = new Date()) {
   const db = await getDb();
   if (!db) return [];
 
-  const cutoff = getLastWeeklyCutoff(referenceDate);
+  const cutoffs = await getRemittanceCutoffs(referenceDate);
 
   const result = await db
     .select({
@@ -3138,8 +3393,7 @@ export async function getReadyToRemitRecordsByClient(clientId: number, reference
     .where(
       and(
         eq(orders.clientId, clientId),
-        eq(codRecords.status, 'collected'),
-        lte(codRecords.collectedDate, cutoff)
+        codRemittableCondition(cutoffs)
       )
     )
     .orderBy(desc(codRecords.collectedDate));
@@ -3148,15 +3402,15 @@ export async function getReadyToRemitRecordsByClient(clientId: number, reference
 }
 
 /**
- * Per-client totals for everything past the last weekly cutoff — the "Ready to
- * Remit" list. Replaces the manual "pick a client, tick every shipment"
- * workflow: the grouping and math are already done, the admin just confirms.
+ * Per-client totals for everything past its cutoff — the "Ready to Remit" list.
+ * Replaces the manual "pick a client, tick every shipment" workflow: the
+ * grouping and math are already done, the admin just confirms.
  */
 export async function getReadyToRemitByClient(referenceDate: Date = new Date()) {
   const db = await getDb();
   if (!db) return [];
 
-  const cutoff = getLastWeeklyCutoff(referenceDate);
+  const cutoffs = await getRemittanceCutoffs(referenceDate);
 
   const rows = await db
     .select({
@@ -3171,7 +3425,7 @@ export async function getReadyToRemitByClient(referenceDate: Date = new Date()) 
     .from(codRecords)
     .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
     .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
-    .where(and(eq(codRecords.status, 'collected'), lte(codRecords.collectedDate, cutoff)))
+    .where(codRemittableCondition(cutoffs))
     .groupBy(orders.clientId, clientAccounts.companyName, codRecords.codCurrency);
 
   return rows.map(r => {
@@ -3192,14 +3446,14 @@ export async function getReadyToRemitByClient(referenceDate: Date = new Date()) 
 
 /**
  * Mirror of getReadyToRemitByClient for the other side of the cutoff — COD
- * collected AFTER the last Friday 18:00 Dubai cutoff, still building up
- * towards next week's batch. Read-only; nothing here can be remitted yet.
+ * collected after its last cutoff (weekly cash, bi-weekly card), still building
+ * up towards a later batch. Read-only; nothing here can be remitted yet.
  */
 export async function getAccumulatingByClient(referenceDate: Date = new Date()) {
   const db = await getDb();
   if (!db) return [];
 
-  const cutoff = getLastWeeklyCutoff(referenceDate);
+  const cutoffs = await getRemittanceCutoffs(referenceDate);
 
   const rows = await db
     .select({
@@ -3212,7 +3466,7 @@ export async function getAccumulatingByClient(referenceDate: Date = new Date()) 
     .from(codRecords)
     .innerJoin(orders, eq(codRecords.shipmentId, orders.id))
     .leftJoin(clientAccounts, eq(orders.clientId, clientAccounts.id))
-    .where(and(eq(codRecords.status, 'collected'), gt(codRecords.collectedDate, cutoff)))
+    .where(codAccumulatingCondition(cutoffs))
     .groupBy(orders.clientId, clientAccounts.companyName, codRecords.codCurrency);
 
   return rows.map(r => ({
@@ -3225,9 +3479,11 @@ export async function getAccumulatingByClient(referenceDate: Date = new Date()) 
 }
 
 // Generates the next sequential REM-YYYY-NNNNNN number. Must only be called
-// from inside createCODRemittance's named-lock section — read-then-increment
-// is not safe to call standalone under concurrency.
-async function generateRemittanceNumberTx(tx: any): Promise<string> {
+// from inside a GET_LOCK('cod_remittance_number') section (createCODRemittance,
+// approveDraftRemittance) — read-then-increment is not safe standalone.
+// Ordered by the number itself, not createdAt: an approved draft gets its number
+// days after it was created, so "latest created" is no longer "highest number".
+export async function generateRemittanceNumberTx(tx: any): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `REM-${year}-`;
 
@@ -3235,7 +3491,7 @@ async function generateRemittanceNumberTx(tx: any): Promise<string> {
     .select()
     .from(codRemittances)
     .where(sql`${codRemittances.remittanceNumber} LIKE ${prefix + '%'}`)
-    .orderBy(desc(codRemittances.createdAt))
+    .orderBy(desc(codRemittances.remittanceNumber))
     .limit(1);
 
   let nextNumber = 1;
@@ -3305,6 +3561,15 @@ export async function createCODRemittance(data: {
         throw new Error('One or more COD records are no longer available for remittance (already remitted, disputed, or not yet collected)');
       }
 
+      const reserved = await tx
+        .select({ id: codRemittanceItems.codRecordId })
+        .from(codRemittanceItems)
+        .innerJoin(codRemittances, eq(codRemittanceItems.remittanceId, codRemittances.id))
+        .where(and(inArray(codRemittanceItems.codRecordId, data.codRecordIds), eq(codRemittances.status, 'draft')));
+      if (reserved.length > 0) {
+        throw new Error('One or more COD records are already in a draft remittance — approve or discard that draft instead');
+      }
+
       if (allCodRecords.length > 0) {
         await tx.insert(codRemittanceItems).values(
           allCodRecords.map(codRecord => ({
@@ -3332,11 +3597,15 @@ export async function createCODRemittance(data: {
   });
 }
 
+// Customer-facing: a draft remittance doesn't exist for the client until an
+// admin approves it (same rule as draft invoices in getInvoicesByClient).
 export async function getRemittancesByClient(clientId: number) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(codRemittances).where(eq(codRemittances.clientId, clientId)).orderBy(desc(codRemittances.createdAt));
+  return await db.select().from(codRemittances)
+    .where(and(eq(codRemittances.clientId, clientId), ne(codRemittances.status, 'draft')))
+    .orderBy(desc(codRemittances.createdAt));
 }
 
 export async function getAllRemittances() {
@@ -3345,6 +3614,7 @@ export async function getAllRemittances() {
 
   // Cached + capped: admin list view, bounded so it never grows unbounded over the years.
   // 60s staleness is the same tolerance already accepted by getOrdersPaged/getAnalytics.
+  // Drafts are excluded — nothing has been paid yet; they live in the drafts section.
   return await cachedQuery('admin:allRemittances', 60, async () => {
     const result = await db
       .select({
@@ -3353,6 +3623,7 @@ export async function getAllRemittances() {
       })
       .from(codRemittances)
       .leftJoin(clientAccounts, eq(codRemittances.clientId, clientAccounts.id))
+      .where(ne(codRemittances.status, 'draft'))
       .orderBy(desc(codRemittances.createdAt))
       .limit(500);
 
@@ -3379,6 +3650,7 @@ export async function getRemittancesPaged(filters: RemittanceListFilters): Promi
   const conditions = [];
   if (filters.clientId) conditions.push(eq(codRemittances.clientId, filters.clientId));
   if (filters.status) conditions.push(eq(codRemittances.status, filters.status as typeof codRemittances.status.enumValues[number]));
+  else conditions.push(ne(codRemittances.status, 'draft')); // drafts have their own section
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const result = await db
@@ -3432,6 +3704,13 @@ export async function getRemittanceItems(remittanceId: number) {
 export async function updateRemittanceStatus(id: number, status: 'pending' | 'processed' | 'completed', processedDate?: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  // A draft's COD records are still 'collected' and it has no REM number yet —
+  // flipping its status here would skip all of that. It must go through approval.
+  const [current] = await db.select({ status: codRemittances.status }).from(codRemittances).where(eq(codRemittances.id, id)).limit(1);
+  if (current?.status === 'draft') {
+    throw new Error('This remittance is a draft — approve it from the drafts section instead');
+  }
 
   const updateData: any = { status };
   if (processedDate) {

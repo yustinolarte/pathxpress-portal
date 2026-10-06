@@ -152,6 +152,21 @@ export default function AddTrackingEventDialog({
   });
   const [podFileUrl, setPodFileUrl] = useState('');
   const [podFileUrl2, setPodFileUrl2] = useState('');
+  // Closing a COD delivery here records the collection (server-side) — ask how it was paid.
+  const [codMethod, setCodMethod] = useState<'cash' | 'card'>('cash');
+  const [codReference, setCodReference] = useState('');
+
+  const { data: pendingCOD } = trpc.portal.cod.getPendingCODForShipment.useQuery(
+    { shipmentId },
+    { enabled: open && shipmentId > 0 && formData.statusCode === 'delivered' }
+  );
+
+  useEffect(() => {
+    if (pendingCOD) {
+      setCodMethod(pendingCOD.allowedMethods === 'card' ? 'card' : 'cash');
+      setCodReference('');
+    }
+  }, [pendingCOD]);
 
   useEffect(() => {
     if (open) {
@@ -266,6 +281,9 @@ export default function AddTrackingEventDialog({
       description: finalDescription,
       podFileUrl: podFileUrl || undefined,
       podFileUrl2: podFileUrl2 || undefined,
+      ...(formData.statusCode === 'delivered' && pendingCOD
+        ? { codMethod, codPaymentReference: codMethod === 'card' ? (codReference.trim() || undefined) : undefined }
+        : {}),
     });
   };
 
@@ -503,6 +521,45 @@ export default function AddTrackingEventDialog({
                 className="bg-white/5 border-border resize-none"
               />
             </div>
+
+            {/* COD collected at the door — recorded as of the event date/time above */}
+            {formData.statusCode === 'delivered' && pendingCOD && (
+              <div className="space-y-3 p-4 rounded-lg bg-[var(--st-amber-bg)] border border-[var(--st-amber)]/30">
+                <Label className="flex items-center gap-2 text-[var(--st-amber)]">
+                  <Package className="w-4 h-4" />
+                  COD collected: {pendingCOD.codCurrency} {parseFloat(pendingCOD.codAmount).toFixed(2)}
+                </Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Paid by</Label>
+                    <Select value={codMethod} onValueChange={(v: 'cash' | 'card') => setCodMethod(v)}>
+                      <SelectTrigger className="bg-background border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="card">Card</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {codMethod === 'card' && (
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Card reference (optional)</Label>
+                      <Input
+                        placeholder="Transaction ID"
+                        value={codReference}
+                        onChange={(e) => setCodReference(e.target.value)}
+                        className="bg-background border-border font-mono"
+                      />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Saving marks the COD as collected at the date/time of this event, so it lands in that week's remittance.
+                  {codMethod === 'cash' && pendingCOD.allowedMethods === 'card' && ' This shipment was set as card only.'}
+                </p>
+              </div>
+            )}
 
             {/* POD URL - only show for delivered status */}
             {formData.statusCode === 'delivered' && (

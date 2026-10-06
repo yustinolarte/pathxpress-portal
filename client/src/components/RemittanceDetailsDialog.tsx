@@ -83,6 +83,14 @@ export default function RemittanceDetailsDialog({ remittanceId, isOpen, onClose,
                                 <div className="text-xl font-bold">
                                     {formatCurrency(details.remittance.totalAmount, details.remittance.currency)}
                                 </div>
+                                {parseFloat(details.remittance.offsetAmount || '0') > 0 && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                        Transferred: {formatCurrency(
+                                            (parseFloat(details.remittance.totalAmount) - parseFloat(details.remittance.offsetAmount || '0')).toFixed(2),
+                                            details.remittance.currency
+                                        )} (after invoices)
+                                    </div>
+                                )}
                             </div>
                             <div className="p-4 bg-muted/40 rounded-lg border">
                                 <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
@@ -115,6 +123,19 @@ export default function RemittanceDetailsDialog({ remittanceId, isOpen, onClose,
                             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-900/50">
                                 <h4 className="font-semibold text-sm mb-1 text-blue-800 dark:text-blue-300">Notes</h4>
                                 <p className="text-sm text-blue-700 dark:text-blue-200">{details.remittance.notes}</p>
+                            </div>
+                        )}
+
+                        {/* Invoices netted against this payout */}
+                        {details.offsets && details.offsets.length > 0 && (
+                            <div className="p-4 rounded-lg border bg-muted/40">
+                                <h4 className="font-semibold text-sm mb-2">Invoices deducted from this payout</h4>
+                                {details.offsets.map((o: any) => (
+                                    <div key={o.invoiceId} className="flex justify-between text-sm py-1">
+                                        <span className="font-mono">{o.invoiceNumber}</span>
+                                        <span className="font-mono">− {formatCurrency(o.amount, details.remittance.currency)}</span>
+                                    </div>
+                                ))}
                             </div>
                         )}
 

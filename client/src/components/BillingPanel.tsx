@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { FileText, Download, DollarSign, Calendar, CheckCircle, Clock, AlertCircle, Edit, Eye, Loader2, Trash2, Globe, Package, TrendingUp, TrendingDown, BarChart3, ArrowUpRight, ArrowDownRight, Banknote, Zap, Mail, Send } from 'lucide-react';
 import { generateInvoicePDF } from '@/utils/invoicePdfGenerator';
 import EditInvoiceDialog from '@/components/EditInvoiceDialog';
+import BillingAutomationBanner from '@/components/BillingAutomationBanner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useEffect } from 'react';
 import { abbreviateServiceType } from '@/const';
@@ -314,6 +315,11 @@ const GenerateDialog = ({
                             {rateSourceLabel(shipment)}
                           </span>
                         )}
+                        {shipment.addressIssueFee > 0 && (
+                          <span className="text-[10px] uppercase tracking-wide font-sans" style={{ color: 'var(--st-amber)' }} title="Marked Address Issue — billed as its own line">
+                            +{Number(shipment.addressIssueFee).toFixed(2)} address issue
+                          </span>
+                        )}
                         <div className="text-xs font-mono font-medium">
                           AED {shipment.calculatedRate !== undefined ? Number(shipment.calculatedRate).toFixed(2) : '---'}
                         </div>
@@ -449,6 +455,8 @@ export default function BillingPanel() {
     utils.portal.billing.getInvoicesPaged.invalidate();
     utils.portal.billing.getInvoiceStats.invalidate();
     utils.portal.billing.getAllInvoices.invalidate();
+    utils.portal.billing.getDraftInvoices.invalidate();
+    utils.portal.billing.getAutomationStatus.invalidate();
   };
 
   const sharedFilterInput = useMemo(() => ({
@@ -1463,6 +1471,8 @@ export default function BillingPanel() {
         <h2 className="font-display text-2xl font-bold tracking-tight">Billing & Invoices</h2>
         <p className="text-muted-foreground">Manage client invoices and payments</p>
       </div>
+
+      <BillingAutomationBanner />
 
       <AdjustmentsReportCard />
 

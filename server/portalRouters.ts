@@ -1451,14 +1451,21 @@ export const adminPortalRouter = router({
       }
 
       // Create tracking event
+      const eventDatetime = new Date();
       await createTrackingEvent({
         shipmentId: input.orderId,
-        eventDatetime: new Date(),
+        eventDatetime,
         statusCode: input.status,
         statusLabel: input.status.replace(/_/g, ' ').toUpperCase(),
         description: `Status updated to ${input.status}`,
         createdBy: 'admin',
       });
+
+      // Same as tracking.addEvent: a COD delivery closed from the admin was collected.
+      if (input.status === 'delivered') {
+        const { markCODCollectedOnDelivery } = await import('./db');
+        await markCODCollectedOnDelivery(input.orderId, eventDatetime);
+      }
 
       invalidateOrderCaches();
       return order;
@@ -3846,6 +3853,58 @@ export const billingRouter = router({
       return result;
     }),
 
+  // Admin: send several reviewed drafts at once — same as sendInvoiceToClient per invoice.
+  sendInvoicesToClient: portalAdminProcedure
+    .input(z.object({ invoiceIds: z.array(z.number()).min(1).max(100) }))
+    .mutation(async ({ input }) => {
+      const { markInvoiceSentToClient } = await import('./db');
+      let sent = 0;
+      for (const invoiceId of input.invoiceIds) {
+        const invoice = await getInvoiceById(invoiceId);
+        if (!invoice) continue;
+        const result = await markInvoiceSentToClient(invoiceId);
+        if (result.alreadySent) continue;
+        sent++;
+        try {
+          const from = new Date(invoice.periodFrom).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          const to = new Date(invoice.periodTo).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+          await createNotification(
+            invoice.clientId,
+            'INVOICE_GENERATED',
+            'New Invoice Available',
+            `Your invoice for the period ${from} – ${to} has been generated and is ready for review.`,
+            'invoices'
+          );
+        } catch (_) { /* notification errors must never block sending */ }
+      }
+      return { sent };
+    }),
+
+  // Admin: invoices still in draft — the review queue behind "Send all drafts".
+  getDraftInvoices: portalAdminProcedure
+    .query(async () => {
+      const { getDraftInvoices } = await import('./billingAutomation');
+      return getDraftInvoices();
+    }),
+
+  // Admin: weekly automation — next run, last run summary, open drafts.
+  getAutomationStatus: portalAdminProcedure
+    .query(async () => {
+      const { getBillingAutomationStatus } = await import('./billingAutomation');
+      return getBillingAutomationStatus();
+    }),
+
+  // Admin: run the weekly automation now (idempotent — only creates what's missing).
+  runAutomationNow: portalAdminProcedure
+    .mutation(async () => {
+      const { runWeeklyBillingAutomation } = await import('./billingAutomation');
+      try {
+        return await runWeeklyBillingAutomation({ trigger: 'manual' });
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Automation failed' });
+      }
+    }),
+
   // Admin: Get billing info for a specific client (last invoice, pending balance, etc.)
   getClientBillingInfo: portalAdminProcedure
     .input(z.object({ clientId: z.number() }))
@@ -3974,8 +4033,12 @@ export const billingRouter = router({
       }),
     }))
     .mutation(async ({ input, ctx }) => {
+      // Totals are never taken from the client: they follow the line items
+      // (recalculateInvoiceTotals) and the balance is derived server-side from
+      // the stored total. A dialog's own copy of the total can be stale.
+      const { subtotal: _subtotal, taxes: _taxes, total: _total, balance: _balance, ...editable } = input.data;
       // Mark as adjusted if there are adjustment notes
-      const updateData: any = { ...input.data };
+      const updateData: any = { ...editable };
       if (input.data.adjustmentNotes) {
         updateData.isAdjusted = 1;
         updateData.lastAdjustedBy = ctx.portalUser.userId;
@@ -4214,19 +4277,28 @@ const codRouter = router({
       };
 
       if (input.status === 'collected') {
-        updateData.collectedDate = new Date();
-
         // Record how it was paid and freeze the fee used later by remittances
         const [record] = await db.select().from(codRecords)
           .where(eq(codRecords.id, input.codRecordId))
           .limit(1);
+        // Keep the original collection date when re-marking (e.g. remitted → collected):
+        // it drives which weekly cutoff the record falls into. Marking it for the
+        // first time after the fact dates it at the delivery, not at the click —
+        // clicking on Saturday used to push a Thursday delivery into next week.
+        const { getDeliveryInstant } = await import('./db');
+        updateData.collectedDate = record?.collectedDate
+          ?? (record ? await getDeliveryInstant(record.shipmentId) : null)
+          ?? new Date();
         if (record) {
-          const method = input.collectedMethod || (record.allowedMethods === 'card' ? 'card' : 'cash');
+          const method = input.collectedMethod
+            || (record.collectedMethod === 'card' || record.collectedMethod === 'cash' ? record.collectedMethod : null)
+            || (record.allowedMethods === 'card' ? 'card' : 'cash');
           if (method === 'card' && !input.paymentReference && !record.paymentReference) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Payment reference is required for card collections' });
           }
           updateData.collectedMethod = method;
-          if (input.paymentReference) updateData.paymentReference = input.paymentReference;
+          if (method === 'card' && input.paymentReference) updateData.paymentReference = input.paymentReference.trim();
+          if (method === 'cash') updateData.paymentReference = null;
 
           const order = await getOrderById(record.shipmentId);
           if (order) {
@@ -4339,7 +4411,9 @@ const codRouter = router({
     }),
 
   // Admin: Get remittance details
-  getRemittanceDetails: portalAdminProcedure
+  // Protected (not admin-only): the customer COD tab opens this same dialog for
+  // its own remittances — the check below scopes it, and hides drafts.
+  getRemittanceDetails: portalProtectedProcedure
     .input(z.object({
       remittanceId: z.number(),
     }))
@@ -4351,14 +4425,111 @@ const codRouter = router({
 
       // Authorization check
       if (ctx.portalUser.role !== 'admin') {
-        if (ctx.portalUser.role !== 'customer' || !ctx.portalUser.clientId || remittance.clientId !== ctx.portalUser.clientId) {
+        if (ctx.portalUser.role !== 'customer' || !ctx.portalUser.clientId || remittance.clientId !== ctx.portalUser.clientId || remittance.status === 'draft') {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
         }
       }
 
       const items = await getRemittanceItems(input.remittanceId);
+      const { getRemittanceOffsets } = await import('./billingAutomation');
+      const offsets = await getRemittanceOffsets(input.remittanceId);
 
-      return { remittance, items };
+      return { remittance, items, offsets };
+    }),
+
+  // Admin: auto-generated remittances waiting for approval (with shipments and netted invoices)
+  getDraftRemittances: portalAdminProcedure
+    .query(async () => {
+      const { getDraftRemittances } = await import('./billingAutomation');
+      return getDraftRemittances();
+    }),
+
+  // Admin: the money went out — assigns the REM number, completes it, marks the
+  // COD remitted and netted invoices paid, and notifies the client.
+  approveDraftRemittance: portalAdminProcedure
+    .input(z.object({
+      remittanceId: z.number(),
+      paymentReference: z.string().trim().min(1, 'Payment reference is required').max(100),
+      paymentMethod: z.string().max(50).optional(),
+      notes: z.string().max(2000).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { approveDraftRemittance } = await import('./billingAutomation');
+      try {
+        return await approveDraftRemittance(input.remittanceId, {
+          paymentReference: input.paymentReference,
+          paymentMethod: input.paymentMethod,
+          notes: input.notes,
+          approvedBy: ctx.portalUser.userId,
+        });
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Failed to approve remittance' });
+      }
+    }),
+
+  discardDraftRemittance: portalAdminProcedure
+    .input(z.object({ remittanceId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { discardDraftRemittance } = await import('./billingAutomation');
+      try {
+        await discardDraftRemittance(input.remittanceId);
+        return { success: true };
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Failed to discard draft' });
+      }
+    }),
+
+  removeDraftRemittanceItem: portalAdminProcedure
+    .input(z.object({ remittanceId: z.number(), codRecordId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { removeDraftRemittanceItem } = await import('./billingAutomation');
+      try {
+        return await removeDraftRemittanceItem(input.remittanceId, input.codRecordId);
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Failed to update draft' });
+      }
+    }),
+
+  removeDraftRemittanceOffset: portalAdminProcedure
+    .input(z.object({ remittanceId: z.number(), invoiceId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { removeDraftRemittanceOffset } = await import('./billingAutomation');
+      try {
+        await removeDraftRemittanceOffset(input.remittanceId, input.invoiceId);
+        return { success: true };
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Failed to update draft' });
+      }
+    }),
+
+  rebuildDraftRemittance: portalAdminProcedure
+    .input(z.object({ remittanceId: z.number() }))
+    .mutation(async ({ input }) => {
+      const { rebuildDraftRemittance } = await import('./billingAutomation');
+      try {
+        return await rebuildDraftRemittance(input.remittanceId);
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Failed to rebuild draft' });
+      }
+    }),
+
+  // Admin: the pending COD on a shipment, if any — lets the "Delivered" tracking
+  // dialog ask how the consignee paid before it records the collection.
+  getPendingCODForShipment: portalAdminProcedure
+    .input(z.object({ shipmentId: z.number() }))
+    .query(async ({ input }) => {
+      const db = await import('./db').then(m => m.getDb());
+      if (!db) return null;
+      const { codRecords } = await import('../drizzle/schema');
+      const { and, eq } = await import('drizzle-orm');
+      const [record] = await db.select({
+        codAmount: codRecords.codAmount,
+        codCurrency: codRecords.codCurrency,
+        allowedMethods: codRecords.allowedMethods,
+      }).from(codRecords)
+        .where(and(eq(codRecords.shipmentId, input.shipmentId), eq(codRecords.status, 'pending_collection')))
+        .limit(1);
+      return record ?? null;
     }),
 
   // Admin: Update remittance status
@@ -4369,7 +4540,11 @@ const codRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const processedDate = input.status === 'processed' || input.status === 'completed' ? new Date() : undefined;
-      await updateRemittanceStatus(input.remittanceId, input.status, processedDate);
+      try {
+        await updateRemittanceStatus(input.remittanceId, input.status, processedDate);
+      } catch (err: any) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: err?.message || 'Failed to update remittance status' });
+      }
 
       // Notify client when a remittance has been completed (money paid)
       if (input.status === 'completed') {
@@ -4595,6 +4770,7 @@ export const clientsRouter = router({
       intlDiscountPercent: z.string().optional(),
       defaultSettlementPeriod: z.enum(['weekly', 'biweekly', 'monthly', 'custom']).optional(),
       payAtOrigin: z.boolean().optional(),
+      codOffsetInvoices: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const { getDb } = await import('./db');
@@ -4622,7 +4798,11 @@ export const clientsRouter = router({
           intlAllowed: input.intlAllowed ? 1 : 0,
           intlDiscountPercent: input.intlDiscountPercent || null,
           defaultSettlementPeriod: input.defaultSettlementPeriod ?? 'custom',
-          payAtOrigin: input.payAtOrigin ? 1 : 0,
+          // Only when sent: the Edit Client dialog doesn't carry payAtOrigin, and
+          // writing `undefined ? 1 : 0` here silently switched Walk-in back to
+          // regular invoicing every time its settings were saved.
+          ...(input.payAtOrigin !== undefined ? { payAtOrigin: input.payAtOrigin ? 1 : 0 } : {}),
+          ...(input.codOffsetInvoices !== undefined ? { codOffsetInvoices: input.codOffsetInvoices ? 1 : 0 } : {}),
         })
         .where(eq(clientAccounts.id, input.clientId));
 
@@ -4862,6 +5042,9 @@ const trackingRouter = router({
       description: z.string().optional(),
       podFileUrl: z.string().optional(),
       podFileUrl2: z.string().optional(),
+      // How the consignee paid, when this event closes a COD delivery
+      codMethod: z.enum(['cash', 'card']).optional(),
+      codPaymentReference: z.string().max(100).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await createTrackingEvent({
@@ -4878,6 +5061,16 @@ const trackingRouter = router({
 
       // Update order status
       await updateOrderStatus(input.shipmentId, input.statusCode);
+
+      // Closing a COD delivery here means the money was collected at the door:
+      // record it as of the event time so it lands in the right weekly cutoff.
+      if (input.statusCode === 'delivered') {
+        const { markCODCollectedOnDelivery } = await import('./db');
+        await markCODCollectedOnDelivery(input.shipmentId, new Date(input.eventDatetime), {
+          method: input.codMethod,
+          paymentReference: input.codPaymentReference,
+        });
+      }
 
       invalidateOrderCaches();
       return { success: true };

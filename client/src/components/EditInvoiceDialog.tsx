@@ -190,21 +190,14 @@ export default function EditInvoiceDialog({ open, onOpenChange, invoice, onSucce
   };
 
   const handleSave = () => {
-    // Calculate totals from items
-    const subtotal = items.reduce((sum, item) => sum + parseFloat(item.total), 0);
-    const taxes = 0;
-    const total = subtotal + taxes;
+    // Totals/balance are derived server-side from the saved line items — sending
+    // our local copy raced the inline price edit still in flight and overwrote it.
     const amountPaid = parseFloat(formData.amountPaid) || 0;
-    const balance = total - amountPaid;
 
     updateMutation.mutate({
       invoiceId: invoice.id,
       data: {
-        subtotal: subtotal.toFixed(2),
-        taxes: taxes.toFixed(2),
-        total: total.toFixed(2),
         amountPaid: amountPaid.toFixed(2),
-        balance: balance.toFixed(2),
         status: formData.status,
         notes: formData.notes,
         adjustmentNotes: formData.adjustmentNotes || undefined,

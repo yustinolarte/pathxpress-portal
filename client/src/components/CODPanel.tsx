@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import RemittanceDetailsDialog from './RemittanceDetailsDialog';
+import CODDraftRemittances from './CODDraftRemittances';
 
 const CODRECORDS_PAGE_SIZE = 50;
 const REMITTANCES_PAGE_SIZE = 25;
@@ -50,6 +51,7 @@ export default function CODPanel() {
   const [reportMonth, setReportMonth] = useState<string>('all'); // 'all' or 'YYYY-MM' format
   const [codPage, setCodPage] = useState(0);
   const [remittancePage, setRemittancePage] = useState(0);
+  const [collectDialog, setCollectDialog] = useState<{ record: any; method: 'cash' | 'card'; reference: string } | null>(null);
 
   const handleFilterClientChange = (value: string) => {
     setFilterClientId(value);
@@ -370,11 +372,41 @@ export default function CODPanel() {
     });
   };
 
-  const handleCODStatusChange = (codRecordId: number, status: 'pending_collection' | 'collected' | 'remitted' | 'disputed') => {
+  const handleCODStatusChange = (record: any, status: 'pending_collection' | 'collected' | 'remitted' | 'disputed' | 'cancelled') => {
+    // Marking as collected needs to know cash vs card (and the card reference) —
+    // the server rejects a card collection without one, so ask first.
+    if (status === 'collected') {
+      const allowed = record.allowedMethods || 'cash';
+      const method: 'cash' | 'card' = record.collectedMethod === 'card' || record.collectedMethod === 'cash'
+        ? record.collectedMethod
+        : allowed === 'card' ? 'card' : 'cash';
+      if (allowed !== 'cash' || record.collectedMethod === 'card') {
+        setCollectDialog({ record, method, reference: record.paymentReference || '' });
+        return;
+      }
+    }
     updateCODStatusMutation.mutate({
-      codRecordId,
+      codRecordId: record.id,
       status,
     });
+  };
+
+  const confirmCollect = () => {
+    if (!collectDialog) return;
+    const reference = collectDialog.reference.trim();
+    if (collectDialog.method === 'card' && !reference) {
+      toast.error('Payment reference is required for card collections');
+      return;
+    }
+    updateCODStatusMutation.mutate(
+      {
+        codRecordId: collectDialog.record.id,
+        status: 'collected',
+        collectedMethod: collectDialog.method,
+        paymentReference: collectDialog.method === 'card' ? reference : undefined,
+      },
+      { onSuccess: () => setCollectDialog(null) }
+    );
   };
 
   const toggleCODSelection = (codRecordId: number) => {
@@ -620,6 +652,9 @@ export default function CODPanel() {
         </CardContent>
       </Card>
 
+      {/* Drafts built by the weekly automation — approve once the transfer is sent */}
+      <CODDraftRemittances />
+
       {/* Ready to Remit — automated cutoff-based grouping, replaces manual per-shipment selection */}
       <Card className="bg-card rounded-2xl border border-border shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between">
@@ -628,7 +663,7 @@ export default function CODPanel() {
               <BadgeCheck className="h-5 w-5" style={{ color: 'var(--st-green)' }} />
               Ready to Remit
             </CardTitle>
-            <CardDescription>Grouped by the weekly cutoff — every Friday 18:00 (Dubai time). Review the total, then confirm.</CardDescription>
+            <CardDescription>Anything past its cutoff (cash weekly, card every other Friday 18:00 Dubai) that isn't in a draft yet — e.g. collections marked late. Review the total, then confirm.</CardDescription>
           </div>
           {readyToRemit && readyToRemit.length > 0 && (
             <Button onClick={() => setCreateAllConfirmOpen(true)} disabled={isCreatingAll || createRemittanceMutation.isPending}>
@@ -1047,6 +1082,59 @@ export default function CODPanel() {
         </CardContent>
       </Card>
 
+      {/* Mark as collected — cash vs card + card reference */}
+      <Dialog open={!!collectDialog} onOpenChange={(open) => { if (!open) setCollectDialog(null); }}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle>Mark as Collected</DialogTitle>
+            <DialogDescription>
+              {collectDialog?.record.order?.waybillNumber} · {collectDialog && formatCurrency(collectDialog.record.codAmount, collectDialog.record.codCurrency)}
+            </DialogDescription>
+          </DialogHeader>
+          {collectDialog && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="collectMethod">Payment Method</Label>
+                <Select
+                  value={collectDialog.method}
+                  onValueChange={(value: 'cash' | 'card') => setCollectDialog({ ...collectDialog, method: value })}
+                >
+                  <SelectTrigger id="collectMethod">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="card">Card (Tap to Pay)</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                  </SelectContent>
+                </Select>
+                {collectDialog.method === 'cash' && collectDialog.record.allowedMethods === 'card' && (
+                  <p className="text-xs" style={{ color: 'var(--st-amber)' }}>This shipment was set as card only.</p>
+                )}
+              </div>
+              {collectDialog.method === 'card' && (
+                <div className="space-y-2">
+                  <Label htmlFor="collectReference">Payment Reference</Label>
+                  <Input
+                    id="collectReference"
+                    value={collectDialog.reference}
+                    onChange={(e) => setCollectDialog({ ...collectDialog, reference: e.target.value })}
+                    placeholder="Tap to Pay transaction ID"
+                  />
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setCollectDialog(null)} disabled={updateCODStatusMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button onClick={confirmCollect} disabled={updateCODStatusMutation.isPending}>
+                  {updateCODStatusMutation.isPending ? 'Saving...' : 'Mark Collected'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <RemittanceDetailsDialog
         isOpen={detailsDialogOpen}
         onClose={() => setDetailsDialogOpen(false)}
@@ -1097,8 +1185,8 @@ export default function CODPanel() {
                       <TableCell>
                         <Select
                           value={record.status}
-                          onValueChange={(value: 'pending_collection' | 'collected' | 'remitted' | 'disputed') =>
-                            handleCODStatusChange(record.id, value)
+                          onValueChange={(value: 'pending_collection' | 'collected' | 'remitted' | 'disputed' | 'cancelled') =>
+                            handleCODStatusChange(record, value)
                           }
                         >
                           <SelectTrigger className="w-[160px] h-8">

@@ -15,6 +15,7 @@ import { serveStatic, setupVite } from "./vite";
 import driverApiRouter from "../driverApi";
 import botRouter from "../botRouter";
 import shopifyIntegrationRouter from "../shopifyIntegrationApi";
+import { startBillingScheduler } from "../billingAutomation";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -185,6 +186,8 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Friday 19:00 Dubai: weekly invoice + COD remittance drafts (production only)
+    startBillingScheduler();
   });
 }
 
