@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar, Ban, CheckCircle2, MapPin } from 'lucide-react';
 import { APP_LOGO, abbreviateServiceType } from '@/const';
 import { statusBadgeClass } from '@/lib/statusStyles';
+import { downloadCsv } from '@/lib/csv';
 import ModernDashboardLayout, { ModernMenuItem } from '@/components/ModernDashboardLayout';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { toast } from 'sonner';
@@ -401,24 +402,12 @@ export default function AdminDashboard() {
       status: requestStatus === 'all' ? undefined : requestStatus,
       search: requestSearch || undefined,
     });
-    const safeCell = (value: unknown) => {
-      let text = String(value ?? '');
-      if (/^[=+\-@]/.test(text)) text = `'${text}`;
-      return `"${text.replace(/"/g, '""')}"`;
-    };
     const headers = ['Date', 'Status', 'Name', 'Phone', 'Email', 'Service', 'Pickup Address', 'Delivery Address', 'Weight', 'Comments'];
-    const csvRows = rows.map((request) => [
+    downloadCsv(`pickup-requests-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows.map((request) => [
       new Date(request.createdAt).toISOString(), request.status, request.name, request.phone,
       request.email, request.serviceType, request.pickupAddress, request.deliveryAddress,
       request.weight, request.comments,
-    ].map(safeCell).join(','));
-    const blob = new Blob([`\uFEFF${headers.map(safeCell).join(',')}\n${csvRows.join('\n')}`], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `pickup-requests-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    ]));
   };
 
   const openRequestDetails = (request: any) => {
@@ -1197,17 +1186,13 @@ export default function AdminDashboard() {
                         p++;
                       }
 
-                      // CSV Header
-                      let csvContent = "data:text/csv;charset=utf-8,";
-                      csvContent += "Waybill,Client,Consignee,Phone,City,Service,Weight(kg),Pieces,COD Amount,Status,Created At\n";
-
-                      // Rows
-                      exportRows.forEach(order => {
-                        const clientName = clientsMap.get(order.clientId)?.companyName || 'Unknown Client';
-                        const row = [
+                      downloadCsv(
+                        `orders_export_${new Date().toISOString().slice(0, 10)}.csv`,
+                        ['Waybill', 'Client', 'Consignee', 'Phone', 'City', 'Service', 'Weight(kg)', 'Pieces', 'COD Amount', 'Status', 'Created At'],
+                        exportRows.map(order => [
                           order.waybillNumber,
-                          `"${clientName.replace(/"/g, '""')}"`, // Handle commas in name
-                          `"${order.customerName.replace(/"/g, '""')}"`,
+                          clientsMap.get(order.clientId)?.companyName || 'Unknown Client',
+                          order.customerName,
                           order.customerPhone,
                           order.city,
                           order.serviceType,
@@ -1215,22 +1200,12 @@ export default function AdminDashboard() {
                           order.pieces,
                           order.codRequired ? order.codAmount : "0",
                           order.status,
-                          new Date(order.createdAt).toLocaleDateString()
-                        ].join(",");
-                        csvContent += row + "\n";
-                      });
-
-                      // Download
-                      const encodedUri = encodeURI(csvContent);
-                      const link = document.createElement("a");
-                      link.setAttribute("href", encodedUri);
-                      link.setAttribute("download", `orders_export_${new Date().toISOString().slice(0, 10)}.csv`);
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
+                          new Date(order.createdAt).toLocaleDateString(),
+                        ]),
+                      );
                     }}>
                       <Download className="mr-2 h-4 w-4" />
-                      Export to Excel
+                      Export CSV
                     </Button>
                   </div>
                 </div>
