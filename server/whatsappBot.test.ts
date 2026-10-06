@@ -3,6 +3,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { createClientAccount, getDb } from "./db";
+import { ENV } from "./_core/env";
 import { clientAccounts, orders, botSessions, botOrders, botMessages, botRuntime } from "../drizzle/schema";
 
 // Read side of the WhatsApp Bot admin section: the list/conversation/status
@@ -166,12 +167,13 @@ describe("portal.whatsappBot", () => {
 
   it("fails clearly when the bot service is not configured", async () => {
     const caller = appRouter.createCaller(createAdminContext());
-    const previous = process.env.BOT_BASE_URL;
-    delete process.env.BOT_BASE_URL;
+    // ENV snapshots process.env at import time, so blank the snapshot itself.
+    const previous = ENV.botBaseUrl;
+    ENV.botBaseUrl = "";
     try {
       await expect(caller.portal.whatsappBot.setPaused({ waybillNumber: WB_WAITING, paused: true })).rejects.toThrow(/BOT_BASE_URL/);
     } finally {
-      if (previous !== undefined) process.env.BOT_BASE_URL = previous;
+      ENV.botBaseUrl = previous;
     }
   });
 });
