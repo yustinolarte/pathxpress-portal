@@ -5,6 +5,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { portalRouter } from "./portalRouters";
+import { notifyAdmin } from "./_core/mailer";
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -99,6 +100,15 @@ export const appRouter = router({
         const { createInternationalRateRequest } = await import('./db');
         await createInternationalRateRequest(input);
 
+        void notifyAdmin(`New international rate request: ${input.originCountry} → ${input.destinationCountry}`, 'New International Rate Request', [
+          ['Route', `${input.originCountry} → ${input.destinationCountry}`],
+          ['Delivery date', input.deliveryDate],
+          ['Weight', input.weight],
+          ['Dimensions (L×W×H)', `${input.length} × ${input.width} × ${input.height}`],
+          ['Phone', input.phone],
+          ['Email', input.email],
+        ]);
+
         return { success: true };
       }),
   }),
@@ -122,8 +132,16 @@ export const appRouter = router({
         const { createQuoteRequest } = await import('./db');
         await createQuoteRequest(input);
 
-        // TODO: Send email to pathxpress@outlook.com
-        // This would require email service integration
+        void notifyAdmin(`New quote request: ${input.name}`, 'New Quote Request', [
+          ['Name', input.name],
+          ['Phone', input.phone],
+          ['Email', input.email],
+          ['Service', input.serviceType],
+          ['Weight', input.weight],
+          ['Pickup', input.pickupAddress],
+          ['Delivery', input.deliveryAddress],
+          ['Comments', input.comments],
+        ]);
 
         return { success: true };
       }),
@@ -139,6 +157,11 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         const { createContactMessage } = await import('./db');
         await createContactMessage(input);
+        void notifyAdmin(`New contact message: ${input.name}`, 'New Contact Message', [
+          ['Name', input.name],
+          ['Email', input.email],
+          ['Message', input.message],
+        ]);
         return { success: true };
       }),
   }),

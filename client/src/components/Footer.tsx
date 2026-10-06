@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Linkedin, Instagram, Music2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { trpc } from '@/lib/trpc';
 import { APP_LOGO, APP_LOGO_LIGHT } from '@/const';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -14,16 +15,28 @@ export default function Footer() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
 
+  // Signups land in the admin contact inbox (and notify the team) — there is
+  // no mailing-list provider yet, so success is only shown once it's stored.
+  const subscribe = trpc.contact.submit.useMutation({
+    onSuccess: () => {
+      toast.success(t('footer.newsletter.success'));
+      setPhone('');
+      setEmail('');
+    },
+    onError: () => toast.error(t('footer.newsletter.failed', 'Something went wrong. Please try again.')),
+  });
+
   const handleNewsletterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!phone || !email) {
       toast.error(t('footer.newsletter.error'));
       return;
     }
-    // TODO: Implement newsletter subscription
-    toast.success(t('footer.newsletter.success'));
-    setPhone('');
-    setEmail('');
+    subscribe.mutate({
+      name: 'Newsletter signup',
+      email: email.trim(),
+      message: `Newsletter signup request.\nPhone: ${phone.trim()}`,
+    });
   };
 
   return (
@@ -172,6 +185,7 @@ export default function Footer() {
               />
               <Button
                 type="submit"
+                disabled={subscribe.isPending}
                 className="w-full bg-primary hover:bg-primary/90 transition-smooth"
               >
                 {t('footer.newsletter.subscribe')}
