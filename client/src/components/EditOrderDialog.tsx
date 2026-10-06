@@ -248,14 +248,14 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSuccess }
                 <div className="pt-1 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className={`badge2 ${accuracy === 'exact' ? 'b-green' : accuracy === 'approximate' ? 'b-amber' : 'b-red'}`}>
-                      {accuracy === 'exact' ? 'Ubicación exacta' : accuracy === 'approximate' ? 'Ubicación aproximada' : 'Sin ubicación'}
+                      {accuracy === 'exact' ? 'Exact location' : accuracy === 'approximate' ? 'Approximate location' : 'No location'}
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowMap(v => !v)}
                       className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
                     >
-                      {showMap ? <><ChevronUp className="w-3 h-3" /> Ocultar mapa</> : <><MapPin className="w-3 h-3" /> Corregir ubicación</>}
+                      {showMap ? <><ChevronUp className="w-3 h-3" /> Hide map</> : <><MapPin className="w-3 h-3" /> Fix location</>}
                     </button>
                   </div>
                   {showMap && (
@@ -268,7 +268,7 @@ export default function EditOrderDialog({ open, onOpenChange, order, onSuccess }
                   )}
                   {pickedLocation && (
                     <p className="text-xs text-[var(--st-green)]">
-                      Nuevo pin listo — se guardará como ubicación exacta al guardar cambios.
+                      New pin ready — it will be saved as the exact location when you save changes.
                     </p>
                   )}
                 </div>

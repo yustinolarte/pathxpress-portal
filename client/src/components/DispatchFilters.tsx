@@ -1,6 +1,6 @@
 /**
  * Filter bar for the dispatch map + order pickers. Pure controlled component:
- * state lives in DriversSection so map, "sin ubicación" panel and pick list
+ * state lives in DriversSection so map, "no location" panel and pick list
  * all consume the same filtered set.
  */
 import { Button } from '@/components/ui/button';
@@ -15,19 +15,19 @@ import {
 } from '@/lib/orderFilters';
 
 const STATUS_LABELS: Record<string, string> = {
-    pending: 'Pendiente',
-    pending_pickup: 'Pendiente pickup',
-    picked_up: 'Recogido',
-    in_transit: 'En tránsito',
-    out_for_delivery: 'En reparto',
-    delivery_attempted: 'Intento fallido',
-    failed_pickup: 'Pickup fallido',
-    failed_delivery: 'Entrega fallida',
-    on_hold: 'En espera',
-    address_issue: 'Problema de dirección',
-    rescheduled: 'Reprogramado',
-    processing: 'Procesando',
-    exchange: 'Cambio',
+    pending: 'Pending',
+    pending_pickup: 'Pending pickup',
+    picked_up: 'Picked up',
+    in_transit: 'In transit',
+    out_for_delivery: 'Out for delivery',
+    delivery_attempted: 'Delivery attempted',
+    failed_pickup: 'Failed pickup',
+    failed_delivery: 'Failed delivery',
+    on_hold: 'On hold',
+    address_issue: 'Address issue',
+    rescheduled: 'Rescheduled',
+    processing: 'Processing',
+    exchange: 'Exchange',
 };
 
 export function statusLabel(status: string): string {
@@ -35,11 +35,11 @@ export function statusLabel(status: string): string {
 }
 
 const TYPE_OPTIONS: { value: OrderTypeFilter; label: string }[] = [
-    { value: 'all', label: 'Todos los tipos' },
+    { value: 'all', label: 'All types' },
     { value: 'pickup', label: '📦 Pickup' },
-    { value: 'delivery', label: '🚚 Entrega' },
-    { value: 'return', label: '↩️ Retorno' },
-    { value: 'exchange', label: '🔄 Cambio' },
+    { value: 'delivery', label: '🚚 Delivery' },
+    { value: 'return', label: '↩️ Return' },
+    { value: 'exchange', label: '🔄 Exchange' },
 ];
 
 interface DispatchFiltersProps {
@@ -47,7 +47,7 @@ interface DispatchFiltersProps {
     onChange: (next: DispatchFilterState) => void;
     statuses: string[];
     emirates: string[];
-    /** "{shown} de {total} pedidos" counter */
+    /** "{shown} of {total} orders" counter */
     shown: number;
     total: number;
 }
@@ -63,16 +63,16 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                     <Input
                         value={value.search}
                         onChange={(e) => set({ search: e.target.value })}
-                        placeholder="Buscar waybill, cliente o dirección..."
+                        placeholder="Search waybill, client or address..."
                         className="bg-white/5 border-border h-8 text-sm"
                     />
                 </div>
                 <Select value={value.status || 'all'} onValueChange={(v) => set({ status: v === 'all' ? '' : v })}>
                     <SelectTrigger className="bg-white/5 border-border h-8 w-[160px] text-sm">
-                        <SelectValue placeholder="Estado" />
+                        <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todos los estados</SelectItem>
+                        <SelectItem value="all">All statuses</SelectItem>
                         {statuses.map((s) => (
                             <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>
                         ))}
@@ -80,7 +80,7 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                 </Select>
                 <Select value={value.type} onValueChange={(v) => set({ type: v as OrderTypeFilter })}>
                     <SelectTrigger className="bg-white/5 border-border h-8 w-[150px] text-sm">
-                        <SelectValue placeholder="Tipo" />
+                        <SelectValue placeholder="Type" />
                     </SelectTrigger>
                     <SelectContent>
                         {TYPE_OPTIONS.map((t) => (
@@ -90,10 +90,10 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                 </Select>
                 <Select value={value.emirate || 'all'} onValueChange={(v) => set({ emirate: v === 'all' ? '' : v })}>
                     <SelectTrigger className="bg-white/5 border-border h-8 w-[150px] text-sm">
-                        <SelectValue placeholder="Emirato" />
+                        <SelectValue placeholder="Emirate" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todos los emiratos</SelectItem>
+                        <SelectItem value="all">All emirates</SelectItem>
                         {emirates.map((e) => (
                             <SelectItem key={e} value={e}>{e}</SelectItem>
                         ))}
@@ -101,13 +101,13 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                 </Select>
                 <Select value={value.zone || 'all'} onValueChange={(v) => set({ zone: v === 'all' ? '' : v })}>
                     <SelectTrigger className="bg-white/5 border-border h-8 w-[120px] text-sm">
-                        <SelectValue placeholder="Zona" />
+                        <SelectValue placeholder="Zone" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todas las zonas</SelectItem>
-                        <SelectItem value="ZONA 1">Zona 1</SelectItem>
-                        <SelectItem value="ZONA 2">Zona 2</SelectItem>
-                        <SelectItem value="ZONA 3">Zona 3</SelectItem>
+                        <SelectItem value="all">All zones</SelectItem>
+                        <SelectItem value="ZONA 1">Zone 1</SelectItem>
+                        <SelectItem value="ZONA 2">Zone 2</SelectItem>
+                        <SelectItem value="ZONA 3">Zone 3</SelectItem>
                     </SelectContent>
                 </Select>
                 <div className="flex items-center gap-2">
@@ -117,7 +117,7 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                         value={value.dateFrom}
                         onChange={(e) => set({ dateFrom: e.target.value })}
                         className="bg-white/5 border-border h-8 text-sm w-[140px]"
-                        title="Desde (fecha de creación)"
+                        title="From (creation date)"
                     />
                     <span className="text-xs text-muted-foreground">→</span>
                     <Input
@@ -125,7 +125,7 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                         value={value.dateTo}
                         onChange={(e) => set({ dateTo: e.target.value })}
                         className="bg-white/5 border-border h-8 text-sm w-[140px]"
-                        title="Hasta (fecha de creación)"
+                        title="To (creation date)"
                     />
                 </div>
                 {hasActiveFilters(value) && (
@@ -135,14 +135,14 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                         className="h-8 text-xs"
                         onClick={() => onChange({ ...EMPTY_DISPATCH_FILTERS })}
                     >
-                        <XCircle className="w-3 h-3 mr-1" /> Limpiar
+                        <XCircle className="w-3 h-3 mr-1" /> Clear
                     </Button>
                 )}
             </div>
             <p className="text-xs text-muted-foreground">
                 {shown === total
-                    ? `${total} pedido${total !== 1 ? 's' : ''} disponible${total !== 1 ? 's' : ''}`
-                    : `${shown} de ${total} pedidos (filtros activos)`}
+                    ? `${total} order${total !== 1 ? 's' : ''} available`
+                    : `${shown} of ${total} orders (filters active)`}
             </p>
         </div>
     );

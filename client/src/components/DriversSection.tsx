@@ -98,9 +98,9 @@ function toSequencerStops(deliveries: any[] | undefined): SequencerStop[] {
                 type: d.type === 'pickup' ? 'pickup' : 'delivery',
                 stopId: d.id,
                 waybillNumber: d.waybillNumber,
-                customerName: d.customerName,
-                city: d.city,
-                address: d.address,
+                customerName: d.type === 'pickup' ? d.shipperName : d.customerName,
+                city: d.type === 'pickup' ? d.shipperCity : d.city,
+                address: d.type === 'pickup' ? d.shipperAddress : d.address,
                 companyName: d.companyName,
                 serviceType: d.serviceType,
                 codRequired: d.codRequired,
@@ -409,7 +409,7 @@ export default function DriversSection() {
 
     const removeOrderFromRouteMutation = trpc.portal.drivers.removeOrderFromRoute.useMutation({
         onSuccess: () => {
-            toast.success('Paquete eliminado de la ruta');
+            toast.success('Package removed from the route');
             refetchRouteDetails();
             refetchRoutes();
         },
@@ -418,7 +418,7 @@ export default function DriversSection() {
 
     const optimizeRouteMutation = trpc.portal.drivers.optimizeRoute.useMutation({
         onSuccess: (data) => {
-            toast.success(`Ruta optimizada — ${data.optimized} paradas reordenadas`);
+            toast.success(`Route optimized — ${data.optimized} stops reordered`);
             refetchRouteDetails();
         },
         onError: (error) => toast.error(error.message),
@@ -466,9 +466,9 @@ export default function DriversSection() {
     const geocodePendingMutation = trpc.portal.drivers.geocodePendingOrders.useMutation({
         onSuccess: (data) => {
             if (data.geocoded > 0) {
-                toast.success(`${data.geocoded} pedido${data.geocoded !== 1 ? 's' : ''} ubicado${data.geocoded !== 1 ? 's' : ''} — ${data.remaining} restante${data.remaining !== 1 ? 's' : ''}`);
+                toast.success(`${data.geocoded} order${data.geocoded !== 1 ? 's' : ''} located — ${data.remaining} remaining`);
             } else {
-                toast.info(`Sin resultados en este lote — ${data.remaining} pendiente${data.remaining !== 1 ? 's' : ''} (direcciones muy imprecisas: usar "Ubicar" manual)`);
+                toast.info(`No results in this batch — ${data.remaining} pending (addresses too vague: use "Locate" manually)`);
             }
             refetchAvailableOrders();
         },
@@ -477,7 +477,7 @@ export default function DriversSection() {
 
     const reorderStopsMutation = trpc.portal.drivers.reorderRouteStops.useMutation({
         onSuccess: () => {
-            toast.success('Secuencia guardada');
+            toast.success('Sequence saved');
             setReorderMode(false);
             refetchRouteDetails();
         },
@@ -655,6 +655,7 @@ export default function DriversSection() {
             accuracy: s.accuracy,
             details: {
                 customerName: s.customerName,
+                address: s.address,
                 city: s.city,
                 codRequired: s.codRequired,
                 codAmount: s.codAmount,
@@ -712,7 +713,7 @@ export default function DriversSection() {
                 accuracy,
                 details: {
                     customerName: type === 'pickup' ? (o.shipperName || o.customerName) : o.customerName,
-                    address: o.address,
+                    address: type === 'pickup' ? o.shipperAddress : o.address,
                     city: type === 'pickup' ? (o.shipperCity || o.city) : o.city,
                     emirate: o.emirate,
                     pieces: o.pieces,
@@ -1104,6 +1105,9 @@ export default function DriversSection() {
                                 </p>
                             ) : unassignedOrders.slice(0, 60).map((o: any) => {
                                 const selected = dispatchSelected.some(s => s.id === o.id);
+                                const leg = plannedLegs(o)[0];
+                                const coords = stopLegCoords({ ...o, type: leg });
+                                const missingPin = coords.lat === null || coords.lng === null;
                                 return (
                                     <button
                                         key={o.id}
@@ -1125,7 +1129,7 @@ export default function DriversSection() {
                                         <span className="flex-1 min-w-0">
                                             <span className="block font-mono font-bold text-[12.5px] truncate">{o.waybillNumber}</span>
                                             <span className="block text-[11.5px] text-muted-foreground truncate">
-                                                {[o.city, o.weight ? `${o.weight} kg` : null].filter(Boolean).join(' · ')}
+                                                 {[leg === 'pickup' ? o.shipperCity : o.city, o.weight ? `${o.weight} kg` : null].filter(Boolean).join(' · ')}
                                             </span>
                                         </span>
                                         {o.codRequired === 1 && (
@@ -1135,16 +1139,16 @@ export default function DriversSection() {
                                         )}
                                         {/* Unassigned orders no longer appear on the live map, so a
                                             missing pin has to be visible (and fixable) from this list. */}
-                                        {(!o.latitude || !o.longitude) && (
+                                         {missingPin && (
                                             <span
                                                 role="button"
                                                 tabIndex={0}
-                                                title="No location — click to place a pin"
-                                                onClick={(e) => { e.stopPropagation(); setLocateTarget('delivery'); setLocateOrder(o); }}
+                                                 title={`${leg === 'pickup' ? 'Pickup' : 'Delivery'} has no location — click to place a pin`}
+                                                 onClick={(e) => { e.stopPropagation(); setLocateTarget(stopLocationTarget({ type: leg })); setLocateOrder(o); }}
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter' || e.key === ' ') {
                                                         e.preventDefault(); e.stopPropagation();
-                                                        setLocateTarget('delivery'); setLocateOrder(o);
+                                                         setLocateTarget(stopLocationTarget({ type: leg })); setLocateOrder(o);
                                                     }
                                                 }}
                                                 className="flex-none grid place-items-center w-6 h-6 rounded-md text-[var(--st-amber)] bg-[var(--st-amber-bg)] hover:opacity-80"
@@ -1432,8 +1436,8 @@ export default function DriversSection() {
                         {withCoords.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-[520px] gap-2 text-muted-foreground rounded-xl border border-border">
                                 <MapPin className="w-8 h-8 opacity-30" />
-                                <p className="text-sm">Ningún pedido filtrado tiene coordenadas</p>
-                                <p className="text-xs">Usa "Ubicar" en el panel para ponerles pin</p>
+                                <p className="text-sm">No filtered order has coordinates</p>
+                                <p className="text-xs">Use "Locate" in the panel to place their pin</p>
                             </div>
                         ) : (
                             <OrdersMap
@@ -1451,10 +1455,10 @@ export default function DriversSection() {
                             />
                         )}
                         <p className="text-xs text-muted-foreground text-center mt-2">
-                            Cada pin está en su propia dirección: <span className="text-[var(--st-green)] font-medium">verde = recogida (remitente)</span> · <span className="text-[var(--st-blue)] font-medium">azul = entrega (cliente)</span>.
-                            Un paquete sin recoger solo muestra su recogida — la entrega aparece cuando esté en la furgoneta.
+                            Each pin sits at its own address: <span className="text-[var(--st-green)] font-medium">green = pickup (shipper)</span> · <span className="text-[var(--st-blue)] font-medium">blue = delivery (customer)</span>.
+                            A package not yet picked up only shows its pickup — the delivery appears once it is in the van.
                             <br />
-                            Clic para seleccionar (✓) · pines abiertos en abanico = varias paradas en la misma dirección · borde punteado = ubicación aproximada.
+                            Click to select (✓) · fanned-out pins = several stops at the same address · dashed border = approximate location.
                         </p>
                     </div>
 
@@ -1464,12 +1468,12 @@ export default function DriversSection() {
                             {withoutCoords.length > 0 ? (
                                 <span className="badge2 b-amber">
                                     <MapPinOff className="w-3 h-3 mr-1" />
-                                    {withoutCoords.length} parada{withoutCoords.length !== 1 ? 's' : ''} sin ubicación
+                                    {withoutCoords.length} stop{withoutCoords.length !== 1 ? 's' : ''} without location
                                 </span>
                             ) : (
                                 <span className="badge2 b-green">
                                     <CheckCircle2 className="w-3 h-3 mr-1" />
-                                    Todas las paradas tienen ubicación
+                                    All stops have a location
                                 </span>
                             )}
                             {geoCaps?.geocoding && withoutCoords.length > 0 && (
@@ -1481,20 +1485,20 @@ export default function DriversSection() {
                                     onClick={() => geocodePendingMutation.mutate({ limit: 25 })}
                                 >
                                     {geocodePendingMutation.isPending
-                                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Geocodificando...</>
-                                        : <><MapPin className="w-3.5 h-3.5 mr-1.5" /> Geocodificar direcciones</>}
+                                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Geocoding...</>
+                                        : <><MapPin className="w-3.5 h-3.5 mr-1.5" /> Geocode addresses</>}
                                 </Button>
                             )}
                             {!geoCaps?.geocoding && withoutCoords.length > 0 && (
                                 <p className="text-[11px] text-muted-foreground leading-snug">
-                                    Geocodificación automática no configurada (GOOGLE_MAPS_API_KEY) — ubica manualmente con "Ubicar".
+                                    Automatic geocoding not configured (GOOGLE_MAPS_API_KEY) — place pins manually with "Locate".
                                 </p>
                             )}
                         </div>
                         <div className="flex-1 overflow-y-auto divide-y divide-border">
                             {withoutCoords.length === 0 ? (
                                 <p className="text-xs text-muted-foreground text-center py-8 px-3">
-                                    Todas las paradas filtradas aparecen en el mapa.
+                                    All filtered stops are shown on the map.
                                 </p>
                             ) : withoutCoords.map(({ order: o, type }) => {
                                 const isPickup = type === 'pickup';
@@ -1505,14 +1509,14 @@ export default function DriversSection() {
                                             {getStatusBadge(o.status)}
                                         </div>
                                         <p className={`text-[10px] font-bold uppercase ${isPickup ? 'text-[var(--st-green)]' : 'text-[var(--st-blue)]'}`}>
-                                            {isPickup ? 'Falta ubicación de recogida' : 'Falta ubicación de entrega'}
+                                            {isPickup ? 'Missing pickup location' : 'Missing delivery location'}
                                         </p>
                                         <p className="text-sm font-medium truncate">
                                             {isPickup ? (o.shipperName || o.customerName) : o.customerName}
                                         </p>
                                         <p className="text-xs text-muted-foreground line-clamp-2">
                                             {(isPickup
-                                                ? [o.shipperCity, o.emirate]
+                                                ? [o.shipperAddress, o.shipperCity]
                                                 : [o.address, o.city, o.emirate]
                                             ).filter(Boolean).join(', ')}
                                         </p>
@@ -1525,7 +1529,7 @@ export default function DriversSection() {
                                                 setLocateOrder(o);
                                             }}
                                         >
-                                            <MapPin className="w-3 h-3 mr-1" /> Ubicar
+                                            <MapPin className="w-3 h-3 mr-1" /> Locate
                                         </Button>
                                     </div>
                                 );
@@ -3141,13 +3145,13 @@ export default function DriversSection() {
                                             onClick={() => setRouteDetailsTab('list')}
                                             className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'list' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
                                         >
-                                            Lista
+                                            List
                                         </button>
                                         <button
                                             onClick={() => setRouteDetailsTab('map')}
                                             className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'map' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
                                         >
-                                            Mapa
+                                            Map
                                         </button>
                                     </div>
                                 )}
@@ -3160,7 +3164,7 @@ export default function DriversSection() {
                                             size="sm"
                                             onClick={() => setReorderMode(false)}
                                         >
-                                            Cancelar
+                                            Cancel
                                         </Button>
                                         <Button
                                             size="sm"
@@ -3176,8 +3180,8 @@ export default function DriversSection() {
                                             className="gap-2"
                                         >
                                             {reorderStopsMutation.isPending
-                                                ? <><Loader2 className="h-4 w-4 animate-spin" /> Guardando...</>
-                                                : <><CheckCircle2 className="h-4 w-4" /> Guardar secuencia</>}
+                                                ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
+                                                : <><CheckCircle2 className="h-4 w-4" /> Save sequence</>}
                                         </Button>
                                     </>
                                 ) : (
@@ -3192,7 +3196,7 @@ export default function DriversSection() {
                                             }}
                                             className="gap-2"
                                         >
-                                            <ListOrdered className="h-4 w-4" /> Reordenar
+                                            <ListOrdered className="h-4 w-4" /> Reorder
                                         </Button>
                                         <Button
                                             variant="outline"
@@ -3206,9 +3210,9 @@ export default function DriversSection() {
                                             className="gap-2"
                                         >
                                             {optimizeRouteMutation.isPending ? (
-                                                <><Loader2 className="h-4 w-4 animate-spin" /> Optimizando...</>
+                                                <><Loader2 className="h-4 w-4 animate-spin" /> Optimizing...</>
                                             ) : (
-                                                <><TrendingUp className="h-4 w-4 text-[var(--st-green)]" /> Optimizar ruta</>
+                                                <><TrendingUp className="h-4 w-4 text-[var(--st-green)]" /> Optimize route</>
                                             )}
                                         </Button>
                                         <Button onClick={() => setAddOrdersDialogOpen(true)}>
@@ -3241,9 +3245,9 @@ export default function DriversSection() {
                                 sequence: d.sequence ?? idx + 1,
                                 accuracy: d._accuracy,
                                 details: {
-                                    customerName: d.customerName,
-                                    address: d.address,
-                                    city: d.city,
+                                    customerName: d.type === 'pickup' ? d.shipperName : d.customerName,
+                                    address: d.type === 'pickup' ? d.shipperAddress : d.address,
+                                    city: d.type === 'pickup' ? d.shipperCity : d.city,
                                     pieces: d.pieces,
                                     weight: d.weight,
                                     serviceType: d.serviceType,
@@ -3257,15 +3261,15 @@ export default function DriversSection() {
                                 <div className="mb-4 space-y-2">
                                     {stopsNoCoords.length > 0 && (
                                         <p className="text-xs px-3 py-2 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)]">
-                                            {stopsNoCoords.length} parada{stopsNoCoords.length !== 1 ? 's' : ''} sin coordenadas — se muestra{stopsNoCoords.length !== 1 ? 'n' : ''} solo en la lista:{' '}
+                                            {stopsNoCoords.length} stop{stopsNoCoords.length !== 1 ? 's' : ''} without coordinates — list only:{' '}
                                             {stopsNoCoords.map((d: any) => d.waybillNumber).filter(Boolean).join(', ')}
                                         </p>
                                     )}
                                     {stopsWithCoords.length === 0 ? (
                                         <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
                                             <MapPin className="w-8 h-8 opacity-30" />
-                                            <p className="text-sm">No hay paradas con coordenadas en esta ruta</p>
-                                            <p className="text-xs">Usa "Ubicar" en el mapa de despacho para ponerles pin</p>
+                                            <p className="text-sm">No stops with coordinates on this route</p>
+                                            <p className="text-xs">Use "Locate" on the dispatch map to place their pin</p>
                                         </div>
                                     ) : (
                                         <>
@@ -3283,6 +3287,9 @@ export default function DriversSection() {
                                                         customerName: stop.customerName,
                                                         address: stop.address,
                                                         city: stop.city,
+                                                        shipperName: stop.shipperName,
+                                                        shipperAddress: stop.shipperAddress,
+                                                        shipperCity: stop.shipperCity,
                                                         latitude: stop.latitude,
                                                         longitude: stop.longitude,
                                                         locationAccuracy: stop.locationAccuracy,
@@ -3292,7 +3299,7 @@ export default function DriversSection() {
                                                 }}
                                             />
                                             <p className="text-xs text-muted-foreground mt-2 text-center">
-                                                Verde = pickups (en el remitente) · Azul = entregas · Número = secuencia actual · Pasa el mouse sobre un pin para corregir su ubicación
+                                                Green = pickups (at the shipper) · Blue = deliveries · Number = current sequence · Hover a pin to fix its location
                                             </p>
                                         </>
                                     )}
@@ -3310,7 +3317,7 @@ export default function DriversSection() {
                                 origin={routeDetails?.startLat && routeDetails?.startLng ? {
                                     lat: parseFloat(routeDetails.startLat),
                                     lng: parseFloat(routeDetails.startLng),
-                                    label: routeDetails.startAddress || 'Origen',
+                                    label: routeDetails.startAddress || 'Start',
                                 } : null}
                                 onEditLocation={(stop) => {
                                     const d = (routeDetails?.deliveries || []).find((x: any) => x.id === stop.stopId);
@@ -3322,6 +3329,9 @@ export default function DriversSection() {
                                         customerName: d.customerName,
                                         address: d.address,
                                         city: d.city,
+                                        shipperName: d.shipperName,
+                                        shipperAddress: d.shipperAddress,
+                                        shipperCity: d.shipperCity,
                                         latitude: d.latitude,
                                         longitude: d.longitude,
                                         locationAccuracy: d.locationAccuracy,
@@ -3372,9 +3382,9 @@ export default function DriversSection() {
 
                                                         <div className="flex items-center gap-2 text-sm mb-1">
                                                             <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                                            <span className="font-medium">{delivery.customerName}</span>
+                                                            <span className="font-medium">{delivery.type === 'pickup' ? delivery.shipperName : delivery.customerName}</span>
                                                             <span className="text-muted-foreground">•</span>
-                                                            <span className="text-muted-foreground truncate">{delivery.city}</span>
+                                                            <span className="text-muted-foreground truncate">{delivery.type === 'pickup' ? delivery.shipperCity : delivery.city}</span>
                                                         </div>
 
                                                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
@@ -3407,6 +3417,9 @@ export default function DriversSection() {
                                                                     customerName: delivery.customerName,
                                                                     address: delivery.address,
                                                                     city: delivery.city,
+                                                                    shipperName: delivery.shipperName,
+                                                                    shipperAddress: delivery.shipperAddress,
+                                                                    shipperCity: delivery.shipperCity,
                                                                     latitude: delivery.latitude,
                                                                     longitude: delivery.longitude,
                                                                     locationAccuracy: delivery.locationAccuracy,
@@ -3417,11 +3430,11 @@ export default function DriversSection() {
                                                             className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors"
                                                         >
                                                             <MapPin className="w-3 h-3" />
-                                                            Ubicar
+                                                            Locate
                                                         </button>
                                                         <button
                                                             onClick={() => {
-                                                                if (confirm(`¿Eliminar el paquete ${delivery.waybillNumber} de esta ruta?`)) {
+                                                                if (confirm(`Remove package ${delivery.waybillNumber} from this route?`)) {
                                                                     removeOrderFromRouteMutation.mutate({
                                                                         routeId: routeDetails.id,
                                                                         orderId: delivery.orderId,
@@ -3432,7 +3445,7 @@ export default function DriversSection() {
                                                             className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
                                                         >
                                                             <Trash2 className="w-3 h-3" />
-                                                            Eliminar
+                                                            Remove
                                                         </button>
                                                     </div>
                                                 </div>

@@ -4,6 +4,7 @@
  * keeps map, panel and pick list on one source of truth.
  */
 import { resolveZoneByEmirateOrCity } from '@shared/deliveryZones';
+import { stopCoordinates } from '@shared/geo';
 
 export type ZoneName = 'ZONA 1' | 'ZONA 2' | 'ZONA 3';
 
@@ -105,7 +106,9 @@ export function filterAvailableOrders(orders: any[], f: DispatchFilterState): an
       const hit =
         o.waybillNumber?.toLowerCase().includes(q) ||
         o.customerName?.toLowerCase().includes(q) ||
+        o.shipperName?.toLowerCase().includes(q) ||
         o.address?.toLowerCase().includes(q) ||
+        o.shipperAddress?.toLowerCase().includes(q) ||
         o.city?.toLowerCase().includes(q);
       if (!hit) return false;
     }
@@ -164,36 +167,19 @@ export interface LegCoords {
   lat: number | null;
   lng: number | null;
   accuracy: string | null;
-  /** True when the shipper leg had to borrow the consignee pin. */
-  approx: boolean;
 }
 
-const num = (v: string | number | null | undefined): number | null => {
-  if (v === null || v === undefined || v === '') return null;
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : null;
-};
-
 /**
- * Coordinates for one stop leg. Mirrors resolveStopCoords() in
- * server/driverAdmin.ts, fallback included: a shipper-side leg with no
- * shipperLat/Lng borrows the consignee pin rather than dropping off the map,
- * because most orders have never had a shipper pin captured. Those are flagged
- * `approx` so the UI can say the position is only indicative.
+ * Coordinates for one stop leg. A missing pickup pin must stay missing; using
+ * the delivery pin would send the driver to the wrong address. The map shows
+ * stops without coordinates in its "Ubicar" panel instead.
  */
 export function stopLegCoords(d: LegCoordSource): LegCoords {
   const consigneeSide = stopLocationTarget(d) === 'delivery';
-  const lat = num(d.latitude);
-  const lng = num(d.longitude);
-
-  if (consigneeSide) {
-    return { lat, lng, accuracy: d.locationAccuracy ?? null, approx: false };
-  }
-
-  const sLat = num(d.shipperLat);
-  const sLng = num(d.shipperLng);
-  if (sLat !== null && sLng !== null) {
-    return { lat: sLat, lng: sLng, accuracy: null, approx: false };
-  }
-  return { lat, lng, accuracy: d.locationAccuracy ?? null, approx: lat !== null && lng !== null };
+  const coords = stopCoordinates(d.type ?? 'delivery', d);
+  return {
+    lat: coords?.lat ?? null,
+    lng: coords?.lng ?? null,
+    accuracy: consigneeSide ? d.locationAccuracy ?? null : null,
+  };
 }

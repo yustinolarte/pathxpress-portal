@@ -18,9 +18,9 @@ interface OrderPickListProps {
 }
 
 const MODE_META: Record<OrderMode, { label: string }> = {
-  both: { label: '🔄 Pickup + Entrega' },
-  pickup_only: { label: '📦 Solo Pickup' },
-  delivery_only: { label: '🚚 Solo Entrega' },
+  both: { label: '🔄 Pickup + Delivery' },
+  pickup_only: { label: '📦 Pickup only' },
+  delivery_only: { label: '🚚 Delivery only' },
 };
 
 /** Which modes an order can be assigned to, derived from the backend availability flags. */
@@ -64,6 +64,8 @@ export default function OrderPickList({
     return list.filter((o: any) =>
       o.waybillNumber?.toLowerCase().includes(q) ||
       o.customerName?.toLowerCase().includes(q) ||
+      o.shipperName?.toLowerCase().includes(q) ||
+      o.shipperAddress?.toLowerCase().includes(q) ||
       o.city?.toLowerCase().includes(q),
     );
   }, [orders, search]);
@@ -91,7 +93,7 @@ export default function OrderPickList({
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por waybill, cliente o ciudad..."
+          placeholder="Search by waybill, client or city..."
           className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-colors"
         />
       </div>
@@ -101,7 +103,7 @@ export default function OrderPickList({
         <div className="p-3 rounded-lg bg-primary/10 border border-border flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
           <span className="text-sm text-primary font-medium">
-            {value.length} orden{value.length > 1 ? 'es' : ''} seleccionada{value.length > 1 ? 's' : ''}
+            {value.length} order{value.length > 1 ? 's' : ''} selected
           </span>
         </div>
       )}
@@ -111,12 +113,12 @@ export default function OrderPickList({
         {loading ? (
           <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Cargando órdenes...</span>
+            <span className="text-sm">Loading orders...</span>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground">
             <Package className="w-8 h-8 opacity-30" />
-            <p className="text-sm">No hay órdenes disponibles para asignar</p>
+            <p className="text-sm">No orders available to assign</p>
           </div>
         ) : (
           <div className="divide-y divide-border">
@@ -126,6 +128,7 @@ export default function OrderPickList({
               const isReturn = order.isReturn === 1 || order.orderType === 'return';
               const isExchange = order.orderType === 'exchange';
               const modes = allowedModes(order);
+              const displayMode = selectedMode ?? defaultModeFor(order);
               return (
                 <div
                   key={order.id}
@@ -150,12 +153,12 @@ export default function OrderPickList({
                         </Badge>
                         {isReturn && (
                           <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/30 text-xs">
-                            <RotateCcw className="w-3 h-3 mr-1" />Retorno
+                            <RotateCcw className="w-3 h-3 mr-1" />Return
                           </Badge>
                         )}
                         {isExchange && (
                           <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-xs">
-                            <RefreshCw className="w-3 h-3 mr-1" />Cambio
+                            <RefreshCw className="w-3 h-3 mr-1" />Exchange
                           </Badge>
                         )}
                         {order.serviceType === 'same-day' && (
@@ -165,23 +168,30 @@ export default function OrderPickList({
                           <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">⚡ Express</Badge>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 text-sm mb-1 min-w-0">
-                        <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                        <span className="font-medium flex-shrink-0">{order.customerName}</span>
-                        <span className="text-muted-foreground flex-shrink-0">•</span>
-                        <span className="text-muted-foreground truncate min-w-0">{order.address}</span>
+                      <div className="space-y-1 text-sm mb-1 min-w-0">
+                        {displayMode !== 'delivery_only' && (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <MapPin className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                            <span className="font-medium flex-shrink-0">Pickup:</span>
+                            <span className="text-muted-foreground truncate">{[order.shipperAddress, order.shipperCity].filter(Boolean).join(', ') || 'No pickup address'}</span>
+                          </div>
+                        )}
+                        {displayMode !== 'pickup_only' && (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Users className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                            <span className="font-medium flex-shrink-0">Delivery:</span>
+                            <span className="text-muted-foreground truncate">{[order.address, order.city].filter(Boolean).join(', ') || 'No delivery address'}</span>
+                          </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />{order.city}{order.emirate ? `, ${order.emirate}` : ''}
-                        </span>
-                        <span>{order.pieces} pieza{order.pieces > 1 ? 's' : ''} • {order.weight} kg</span>
+                        <span>{order.pieces} piece{order.pieces > 1 ? 's' : ''} • {order.weight} kg</span>
                         {order.codRequired ? (
                           <Badge variant="outline" className="bg-yellow-500/10 text-yellow-400 border-yellow-500/30 text-xs">
                             <DollarSign className="w-3 h-3 mr-0.5" />COD {order.codAmount} AED
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepago</Badge>
+                          <Badge variant="outline" className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">Prepaid</Badge>
                         )}
                       </div>
 
@@ -189,7 +199,7 @@ export default function OrderPickList({
                       {isSelected && (
                         <div onClick={e => e.stopPropagation()} className="mt-3">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Tipo de parada
+                            Stop type
                           </p>
                           <div className="grid grid-cols-3 gap-2 w-full">
                             {(['both', 'pickup_only', 'delivery_only'] as OrderMode[]).map(mode => {

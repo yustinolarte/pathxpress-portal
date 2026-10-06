@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDraftStops, type SequencerStop } from "../client/src/lib/routeDraft";
 import { stopLegCoords, stopLocationTarget } from "../client/src/lib/orderFilters";
+import { stopCoordinates } from "../shared/geo";
 
 const order = (over: Record<string, any> = {}) => ({
     id: 1,
@@ -20,6 +21,7 @@ const order = (over: Record<string, any> = {}) => ({
     city: "Dubai",
     address: "Marina Gate 1",
     shipperName: "Noon",
+    shipperAddress: "Warehouse 5",
     shipperCity: "Al Quoz",
     latitude: "25.0802",
     longitude: "55.1402",
@@ -57,9 +59,24 @@ describe("stopLegCoords", () => {
         expect(stopLegCoords({ ...ret, type: "delivery" })).toMatchObject({ lat: 25.0802, lng: 55.1402 });
     });
 
-    it("falls back to the consignee pin when the shipper has none, flagged approx", () => {
+    it("plots an exchange return pickup at the original delivery even if its new delivery has no pin", () => {
+        const original = order();
+        const exchangeReturn = {
+            isReturn: 1,
+            shipperLat: original.latitude,
+            shipperLng: original.longitude,
+            latitude: null,
+            longitude: null,
+        };
+        expect(stopCoordinates("pickup", exchangeReturn)).toEqual({ lat: 25.0802, lng: 55.1402 });
+        expect(stopCoordinates("delivery", exchangeReturn)).toBeNull();
+    });
+
+    it("leaves a pickup unpinned when only the delivery has coordinates", () => {
         const noShipper = { ...order({ shipperLat: null, shipperLng: null }), type: "pickup" };
-        expect(stopLegCoords(noShipper)).toMatchObject({ lat: 25.0802, lng: 55.1402, approx: true });
+        expect(stopLegCoords(noShipper)).toMatchObject({ lat: null, lng: null });
+        expect(stopCoordinates("pickup", noShipper)).toBeNull();
+        expect(stopCoordinates("delivery", noShipper)).toEqual({ lat: 25.0802, lng: 55.1402 });
     });
 
     it("returns nulls when neither end has coordinates", () => {
@@ -67,7 +84,7 @@ describe("stopLegCoords", () => {
             ...order({ latitude: null, longitude: null, shipperLat: null, shipperLng: null }),
             type: "delivery",
         };
-        expect(stopLegCoords(blind)).toMatchObject({ lat: null, lng: null, approx: false });
+        expect(stopLegCoords(blind)).toMatchObject({ lat: null, lng: null });
     });
 
     it("tolerates empty strings and garbage", () => {
@@ -89,8 +106,8 @@ describe("buildDraftStops", () => {
 
     it("labels each leg with the party the driver actually visits", () => {
         const [pickup, delivery] = buildDraftStops([{ id: 1, mode: "both" }], mapOf(order()));
-        expect(pickup).toMatchObject({ customerName: "Noon", city: "Al Quoz" });
-        expect(delivery).toMatchObject({ customerName: "Aisha", city: "Dubai" });
+        expect(pickup).toMatchObject({ customerName: "Noon", address: "Warehouse 5", city: "Al Quoz" });
+        expect(delivery).toMatchObject({ customerName: "Aisha", address: "Marina Gate 1", city: "Dubai" });
     });
 
     it("skips orders that aren't in the map instead of emitting blank stops", () => {

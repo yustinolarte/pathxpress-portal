@@ -10,6 +10,7 @@ import { drivers, driverRoutes, driverShifts, routeOrders, orders, driverReports
 import { optimizeStops } from './routeOptimizer';
 import type { OptimizableStop, LatLng } from './routeOptimizer';
 import { findPrecedenceViolation } from '@shared/routeSequence';
+import { stopCoordinates } from '@shared/geo';
 import { cachedQuery } from './_core/queryCache';
 import { MAX_SHIFT_HOURS, isStaleOpenShift } from './driverShiftRules';
 
@@ -657,7 +658,7 @@ export async function optimizeRoute(routeId: string, origin?: { lat: number; lng
         // then the caller's origin, then the route's configured warehouse.
         const lastFinished = [...stopsRaw].reverse().find(isFinished);
         const startOrigin: LatLng | null =
-            (lastFinished ? resolveStopCoords(lastFinished.ro.type, lastFinished.o) : null) ??
+            (lastFinished ? stopCoordinates(lastFinished.ro.type, lastFinished.o) : null) ??
             origin ??
             (route.startLat && route.startLng
                 ? { lat: parseFloat(route.startLat), lng: parseFloat(route.startLng) }
@@ -667,7 +668,7 @@ export async function optimizeRoute(routeId: string, origin?: { lat: number; lng
             id: ro.id,
             orderId: ro.orderId,
             type: ro.type,
-            coords: resolveStopCoords(ro.type, o),
+            coords: stopCoordinates(ro.type, o),
         }));
 
         const optimizedIds = optimizeStops(stops, startOrigin);
@@ -720,45 +721,11 @@ export async function previewOptimizedOrder(
             id: i,
             orderId: spec.orderId,
             type: spec.type,
-            coords: o ? resolveStopCoords(spec.type, o) : null,
+            coords: o ? stopCoordinates(spec.type, o) : null,
         };
     });
 
     return optimizeStops(stops, origin ?? null).map(i => specs[i]);
-}
-
-/**
- * Coordinate of a stop leg. shipperLat/shipperLng is always where the
- * package is physically picked up and orders.latitude/longitude is always
- * where it's physically delivered — this holds for returns/exchanges too,
- * because the return-order creation code (doCreateReturn /
- * doCreateManualReturnExchange in portalRouters.ts) already writes those
- * columns as the physical pickup/delivery entity, not the original
- * shipper/consignee. Do NOT re-invert on isReturn here, that double-swaps
- * it back to wrong.
- *
- * A shipper-side leg falls back to the consignee pin, matching what the portal
- * map already draws (DriversSection route map). Without the fallback the server
- * treated those pickups as coordinate-less and parked them at the end of the
- * tour, so the sequence number the admin saw wasn't the one the optimizer used.
- */
-function resolveStopCoords(
-    type: string,
-    o: { latitude: string | null; longitude: string | null; shipperLat: string | null; shipperLng: string | null },
-): LatLng | null {
-    const parse = (latStr: string | null, lngStr: string | null): LatLng | null => {
-        if (!latStr || !lngStr) return null;
-        const lat = parseFloat(latStr);
-        const lng = parseFloat(lngStr);
-        if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-        return { lat, lng };
-    };
-
-    const isPickup = type === 'pickup';
-    const consigneeSide = !isPickup;
-    return consigneeSide
-        ? parse(o.latitude, o.longitude)
-        : parse(o.shipperLat, o.shipperLng) ?? parse(o.latitude, o.longitude);
 }
 
 /**
@@ -1277,6 +1244,7 @@ export async function getAvailableOrders() {
             longitude: orders.longitude,
             locationAccuracy: orders.locationAccuracy,
             shipperCity: orders.shipperCity,
+            shipperAddress: orders.shipperAddress,
             shipperLat: orders.shipperLat,
             shipperLng: orders.shipperLng,
             status: orders.status,
@@ -2096,6 +2064,7 @@ export interface DispatchLiveStop {
     driverName: string;
     waybillNumber: string;
     customerName: string;
+    address: string | null;
     city: string | null;
     lat: number;
     lng: number;
@@ -2348,7 +2317,11 @@ export async function getDispatchOverview(dateStr?: string): Promise<DispatchOve
             orderId: routeOrders.orderId,
             waybillNumber: orders.waybillNumber,
             customerName: orders.customerName,
+            address: orders.address,
             city: orders.city,
+            shipperName: orders.shipperName,
+            shipperAddress: orders.shipperAddress,
+            shipperCity: orders.shipperCity,
             codRequired: orders.codRequired,
             codAmount: orders.codAmount,
             latitude: orders.latitude,
@@ -2356,7 +2329,6 @@ export async function getDispatchOverview(dateStr?: string): Promise<DispatchOve
             locationAccuracy: orders.locationAccuracy,
             shipperLat: orders.shipperLat,
             shipperLng: orders.shipperLng,
-            isReturn: orders.isReturn,
         })
         .from(routeOrders)
         .innerJoin(orders, eq(routeOrders.orderId, orders.id))
@@ -2396,17 +2368,12 @@ export async function getDispatchOverview(dateStr?: string): Promise<DispatchOve
                 });
             }
 
-            // Live map: only routes actually on the road, and only stops we can pin.
-            // A pickup happens at the shipper (inverted on returns, where the package
-            // sits at the consignee) — same rule the route-detail map uses.
+            // Live map: use the same physical leg as route planning. Return
+            // orders already store the original consignee as their shipper.
             if (!inProgressIds.has(route.id)) continue;
-            const consigneeSide = s.isReturn === 1 ? s.type === 'pickup' : s.type !== 'pickup';
-            const lat = consigneeSide ? s.latitude : (s.shipperLat ?? s.latitude);
-            const lng = consigneeSide ? s.longitude : (s.shipperLng ?? s.longitude);
-            if (!lat || !lng) continue;
-            const parsedLat = parseFloat(String(lat));
-            const parsedLng = parseFloat(String(lng));
-            if (!Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)) continue;
+            const coords = stopCoordinates(s.type, s);
+            if (!coords) continue;
+            const isPickup = s.type === 'pickup';
 
             base.liveStops.push({
                 stopId: s.stopId,
@@ -2414,11 +2381,12 @@ export async function getDispatchOverview(dateStr?: string): Promise<DispatchOve
                 routeId: route.id,
                 driverName: driverName || 'Unassigned',
                 waybillNumber: s.waybillNumber,
-                customerName: s.customerName,
-                city: s.city,
-                lat: parsedLat,
-                lng: parsedLng,
-                accuracy: consigneeSide ? s.locationAccuracy : null,
+                customerName: isPickup ? s.shipperName : s.customerName,
+                address: isPickup ? s.shipperAddress : s.address,
+                city: isPickup ? s.shipperCity : s.city,
+                lat: coords.lat,
+                lng: coords.lng,
+                accuracy: isPickup ? null : s.locationAccuracy,
                 type: s.type as 'pickup' | 'delivery',
                 status: s.status,
                 sequence: s.sequence,

@@ -66,7 +66,7 @@ interface OrdersMapProps {
     /** When true, draws a numbered polyline connecting points in array order */
     showRoute?: boolean;
     onPointClick?: (id: MapPointId) => void;
-    /** When set, hover cards get a "Corregir ubicación" button. */
+    /** When set, hover cards get a "Fix location" button. */
     onEditLocation?: (id: MapPointId) => void;
     /** Ringed + enlarged pin, kept in sync with an external list selection. */
     selectedId?: MapPointId | null;
@@ -139,7 +139,7 @@ function makeHoverCard(point: MapPoint, onEditLocation?: (id: MapPointId) => voi
     if (d.type) {
         const chip = document.createElement('span');
         chip.style.cssText = `font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap;background:${d.type === 'pickup' ? 'rgba(15,90,46,.9)' : 'rgba(255,255,255,.18)'};`;
-        chip.textContent = d.type === 'pickup' ? '📦 Pickup' : '🚚 Entrega';
+        chip.textContent = d.type === 'pickup' ? '📦 Pickup' : '🚚 Delivery';
         header.appendChild(chip);
     }
     card.appendChild(header);
@@ -158,7 +158,7 @@ function makeHoverCard(point: MapPoint, onEditLocation?: (id: MapPointId) => voi
     if (loc) addLine(loc, true);
 
     const meta: string[] = [];
-    if (d.pieces != null) meta.push(`${d.pieces} pza${Number(d.pieces) > 1 ? 's' : ''}`);
+    if (d.pieces != null) meta.push(`${d.pieces} pc${Number(d.pieces) > 1 ? 's' : ''}`);
     if (d.weight != null && d.weight !== '') meta.push(`${d.weight} kg`);
     const svc = serviceLabel(d.serviceType);
     if (svc) meta.push(svc);
@@ -169,7 +169,7 @@ function makeHoverCard(point: MapPoint, onEditLocation?: (id: MapPointId) => voi
     if (point.accuracy === 'approximate') {
         const approx = document.createElement('div');
         approx.style.cssText = 'margin-top:4px;color:#F2B632;font-size:11px;';
-        approx.textContent = '≈ Ubicación aproximada (geocodificada)';
+        approx.textContent = '≈ Approximate location (geocoded)';
         card.appendChild(approx);
     }
 
@@ -184,7 +184,7 @@ function makeHoverCard(point: MapPoint, onEditLocation?: (id: MapPointId) => voi
         `;
         btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,.25)'; });
         btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,.12)'; });
-        btn.textContent = '📍 Corregir ubicación';
+        btn.textContent = '📍 Fix location';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             e.preventDefault();

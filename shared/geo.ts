@@ -9,6 +9,25 @@ export interface LatLng {
     lng: number;
 }
 
+export interface StopCoordinateSource {
+    latitude?: string | number | null;
+    longitude?: string | number | null;
+    shipperLat?: string | number | null;
+    shipperLng?: string | number | null;
+}
+
+/** A pickup uses the physical shipper pin, including on returns/exchanges. */
+export function stopCoordinates(type: string, order: StopCoordinateSource): LatLng | null {
+    const isPickup = type === 'pickup';
+    const rawLat = isPickup ? order.shipperLat : order.latitude;
+    const rawLng = isPickup ? order.shipperLng : order.longitude;
+    if (rawLat === null || rawLat === undefined || rawLat === '' ||
+        rawLng === null || rawLng === undefined || rawLng === '') return null;
+    const lat = Number(rawLat);
+    const lng = Number(rawLng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
 /** Metres between two coordinates. */
 export function haversine(a: LatLng, b: LatLng): number {
     const R = 6_371_000;

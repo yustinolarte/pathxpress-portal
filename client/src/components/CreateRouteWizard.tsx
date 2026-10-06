@@ -44,7 +44,7 @@ const ZONE_OPTIONS = [
   { value: 'rak', label: 'Ras Al Khaimah' },
   { value: 'fujairah', label: 'Fujairah' },
   { value: 'uaq', label: 'Umm Al Quwain' },
-  { value: '__custom__', label: 'Personalizado...' },
+  { value: '__custom__', label: 'Custom...' },
 ];
 
 interface CreateRouteWizardProps {
@@ -68,11 +68,11 @@ const defaultForm = {
 };
 
 const STEPS = [
-  { id: 1, label: 'Ruta',      icon: MapPin       },
-  { id: 2, label: 'Conductor', icon: Truck        },
-  { id: 3, label: 'Paquetes',  icon: Package      },
-  { id: 4, label: 'Orden',     icon: ListOrdered  },
-  { id: 5, label: 'Resumen',   icon: CheckCircle2 },
+  { id: 1, label: 'Route',     icon: MapPin       },
+  { id: 2, label: 'Driver',    icon: Truck        },
+  { id: 3, label: 'Packages',  icon: Package      },
+  { id: 4, label: 'Order',     icon: ListOrdered  },
+  { id: 5, label: 'Summary',   icon: CheckCircle2 },
 ];
 
 // ─── Componentes auxiliares ────────────────────────────────────────────────
@@ -163,7 +163,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   }
 
   const errors: Record<string, string> = {};
-  if (touched.date && !form.date) errors.date = 'Requerido';
+  if (touched.date && !form.date) errors.date = 'Required';
 
   const ordersById = useMemo(
     () => new Map(((availableOrders as any[]) || []).map(o => [o.id, o])),
@@ -238,7 +238,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       // regenerate on the rare collision), so use the returned id downstream.
       // Route and stops are created in ONE transactional call. Splitting it in
       // two used to leave an empty route behind whenever the second call failed,
-      // while the toast still said "Error al crear la ruta".
+      // while the toast still said "Error creating the route".
       const created = await createRouteMutation.mutateAsync({
         id: form.id.trim() || undefined,
         date: form.date,
@@ -251,11 +251,11 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         stops: draftStops.map(s => ({ orderId: s.orderId, type: s.type })),
       });
 
-      toast.success('Ruta creada exitosamente');
+      toast.success('Route created');
       onSuccess(created.id);
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.message || 'Error al crear la ruta');
+      toast.error(err?.message || 'Error creating the route');
     } finally {
       setIsSubmitting(false);
     }
@@ -272,11 +272,11 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
           <MapPin className="w-4 h-4 text-primary" />
-          <span className="font-bold text-sm">Información de la Ruta</span>
+          <span className="font-bold text-sm">Route details</span>
         </div>
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <Field label="ID de la Ruta">
+            <Field label="Route ID">
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -290,15 +290,15 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 <button
                   type="button"
                   onClick={() => setField('id', makeRouteId())}
-                  title="Regenerar ID"
+                  title="Regenerate ID"
                   className="flex-shrink-0 px-3 rounded-lg border border-input bg-background hover:bg-muted/40 transition-colors flex items-center justify-center"
                 >
                   <RefreshCw className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
-              <p className="text-xs text-muted-foreground">Generado automáticamente y aleatorio (no editable por seguridad)</p>
+              <p className="text-xs text-muted-foreground">Randomly generated (not editable for security)</p>
             </Field>
-            <Field label="Fecha" required error={errors.date}>
+            <Field label="Date" required error={errors.date}>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
@@ -311,13 +311,13 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               </div>
             </Field>
           </div>
-          <Field label="Zona (opcional)">
+          <Field label="Zone (optional)">
             <select
               value={form.zone}
               onChange={e => setField('zone', e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
             >
-              <option value="">Sin zona asignada</option>
+              <option value="">No zone</option>
               {ZONE_OPTIONS.map(z => (
                 <option key={z.value} value={z.value}>{z.label}</option>
               ))}
@@ -327,24 +327,24 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 type="text"
                 value={form.zoneCustom}
                 onChange={e => setField('zoneCustom', e.target.value)}
-                placeholder="Escribe la zona..."
+                placeholder="Type the zone..."
                 className={`mt-2 ${textInputClass('zoneCustom')}`}
               />
             )}
           </Field>
-          <Field label="Punto de origen (opcional)">
+          <Field label="Start point (optional)">
             <div className="relative">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
                 value={form.startAddress}
                 onChange={e => setField('startAddress', e.target.value)}
-                placeholder="Ej: Al Quoz Industrial, Dubai — bodega o punto de partida"
+                placeholder="e.g. Al Quoz Industrial, Dubai — warehouse or departure point"
                 className={`pl-9 ${textInputClass('startAddress')}`}
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Si lo indicas, la optimización de ruta arrancará desde aquí. Déjalo vacío para que el sistema elija el mejor punto de inicio.
+              If set, route optimization starts here. Leave empty to let the system pick the best starting point.
             </p>
           </Field>
         </div>
@@ -358,25 +358,25 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
           <Truck className="w-4 h-4 text-primary" />
-          <span className="font-bold text-sm">Conductor y Vehículo</span>
+          <span className="font-bold text-sm">Driver & vehicle</span>
         </div>
         <div className="p-6 space-y-5">
-          <Field label="Conductor (opcional)">
+          <Field label="Driver (optional)">
             <select
               value={form.driverId}
               onChange={e => setField('driverId', e.target.value)}
               className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
             >
-              <option value="none">Sin asignar</option>
+              <option value="none">Unassigned</option>
               {activeDrivers.map(driver => (
                 <option key={driver.id} value={driver.id.toString()}>
                   {driver.fullName}{driver.vehicleNumber ? ` • ${driver.vehicleNumber}` : ''}
                 </option>
               ))}
             </select>
-            <p className="text-xs text-muted-foreground">Solo se muestran conductores activos</p>
+            <p className="text-xs text-muted-foreground">Only active drivers are shown</p>
           </Field>
-          <Field label="Info del Vehículo (opcional)">
+          <Field label="Vehicle info (optional)">
             <div className="relative">
               <Truck className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
@@ -403,7 +403,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
           onChange={setSelectedOrders}
         />
         <p className="text-xs text-muted-foreground text-center">
-          Puedes omitir este paso y agregar paquetes después desde el detalle de la ruta
+          You can skip this step and add packages later from the route detail
         </p>
       </div>
     );
@@ -414,20 +414,20 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 bg-muted/30 border-b border-border flex items-center gap-2">
           <ListOrdered className="w-4 h-4 text-primary" />
-          <span className="font-bold text-sm">Orden de las paradas</span>
+          <span className="font-bold text-sm">Stop order</span>
         </div>
         <div className="p-6">
           {draftStops.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground">
               <Package className="w-8 h-8 opacity-30" />
-              <p className="text-sm">Sin paquetes seleccionados</p>
-              <p className="text-xs">Vuelve al paso anterior para agregarlos</p>
+              <p className="text-sm">No packages selected</p>
+              <p className="text-xs">Go back to the previous step to add them</p>
             </div>
           ) : (
             <>
               <p className="text-xs text-muted-foreground mb-3">
-                Arrastra las paradas para fijar el recorrido. Este es el orden exacto que verá el
-                conductor en su app — solo se puede cambiar desde aquí o desde el detalle de la ruta.
+                Drag the stops to set the sequence. This is the exact order the driver will see in
+                their app — it can only be changed here or from the route detail.
               </p>
               <RouteStopSequencer
                 stops={draftStops}
@@ -438,7 +438,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 origin={form.startLat && form.startLng ? {
                   lat: parseFloat(form.startLat),
                   lng: parseFloat(form.startLng),
-                  label: form.startAddress || 'Origen',
+                  label: form.startAddress || 'Start',
                 } : null}
                 onEditLocation={(stop) => {
                   const order = ordersById.get(stop.orderId);
@@ -450,6 +450,9 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                     customerName: order.customerName,
                     address: order.address,
                     city: order.city,
+                    shipperName: order.shipperName,
+                    shipperAddress: order.shipperAddress,
+                    shipperCity: order.shipperCity,
                     emirate: order.emirate,
                     latitude: order.latitude,
                     longitude: order.longitude,
@@ -491,29 +494,29 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         {/* Resumen */}
         <div className="bg-slate-900 text-white rounded-xl p-5 space-y-4">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <Check className="w-3.5 h-3.5 text-green-400" /> Resumen de la ruta
+            <Check className="w-3.5 h-3.5 text-green-400" /> Route summary
           </p>
 
           {/* Ruta */}
           <div className="space-y-1 text-sm border-b border-border pb-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Ruta</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Route</p>
             <div className="flex justify-between">
               <span className="text-slate-400">ID</span>
               <span className="font-mono font-semibold">{form.id.trim()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Fecha</span>
+              <span className="text-slate-400">Date</span>
               <span>{form.date}</span>
             </div>
             {finalZone && (
               <div className="flex justify-between">
-                <span className="text-slate-400">Zona</span>
+                <span className="text-slate-400">Zone</span>
                 <span>{finalZone}</span>
               </div>
             )}
             {form.startAddress && (
               <div className="flex justify-between gap-4">
-                <span className="text-slate-400 flex-shrink-0">Origen</span>
+                <span className="text-slate-400 flex-shrink-0">Start</span>
                 <span className="text-right text-slate-300 truncate">{form.startAddress}</span>
               </div>
             )}
@@ -521,14 +524,14 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
           {/* Conductor */}
           <div className="space-y-1 text-sm border-b border-border pb-3">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Conductor</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Driver</p>
             <div className="flex justify-between">
-              <span className="text-slate-400">Conductor</span>
-              <span>{assignedDriver?.fullName || 'Sin asignar'}</span>
+              <span className="text-slate-400">Driver</span>
+              <span>{assignedDriver?.fullName || 'Unassigned'}</span>
             </div>
             {form.vehicleInfo && (
               <div className="flex justify-between">
-                <span className="text-slate-400">Vehículo</span>
+                <span className="text-slate-400">Vehicle</span>
                 <span>{form.vehicleInfo}</span>
               </div>
             )}
@@ -536,19 +539,19 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
 
           {/* Paquetes */}
           <div className="space-y-1 text-sm">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Paquetes</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Packages</p>
             {selectedOrders.length === 0 ? (
-              <p className="text-slate-400 text-sm">Sin paquetes — se pueden agregar después</p>
+              <p className="text-slate-400 text-sm">No packages — they can be added later</p>
             ) : (
               <div className="space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Órdenes</span>
+                  <span className="text-slate-400">Orders</span>
                   <span className="font-semibold">{selectedOrders.length}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Paradas</span>
+                  <span className="text-slate-400">Stops</span>
                   <span className="font-semibold">
-                    {draftStops.length} ({pickupCount} recogida{pickupCount !== 1 ? 's' : ''}, {deliveryCount} entrega{deliveryCount !== 1 ? 's' : ''})
+                    {draftStops.length} ({pickupCount} pickup{pickupCount !== 1 ? 's' : ''}, {deliveryCount} deliver{deliveryCount !== 1 ? 'ies' : 'y'})
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-1">
@@ -556,7 +559,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                     <span key={wb} className="text-xs font-mono bg-white/10 px-2 py-0.5 rounded">{wb}</span>
                   ))}
                   {extra > 0 && (
-                    <span className="text-xs text-slate-400">+{extra} más</span>
+                    <span className="text-xs text-slate-400">+{extra} more</span>
                   )}
                 </div>
               </div>
@@ -566,7 +569,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
           {/* Recorrido */}
           {draftStops.length > 0 && (
             <div className="space-y-1 text-sm border-t border-border pt-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Recorrido</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Sequence</p>
               <ol className="space-y-1">
                 {draftStops.slice(0, 4).map((s, i) => (
                   <li key={s.key} className="flex items-center gap-2 text-xs">
@@ -574,14 +577,14 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                       {i + 1}
                     </span>
                     <span className={s.type === 'pickup' ? 'text-green-400' : 'text-blue-400'}>
-                      {s.type === 'pickup' ? 'Recoger' : 'Entregar'}
+                      {s.type === 'pickup' ? 'Pickup' : 'Deliver'}
                     </span>
                     <span className="font-mono text-slate-300 truncate">{s.waybillNumber}</span>
                   </li>
                 ))}
               </ol>
               {draftStops.length > 4 && (
-                <p className="text-xs text-slate-400 pl-7">+{draftStops.length - 4} paradas más</p>
+                <p className="text-xs text-slate-400 pl-7">+{draftStops.length - 4} more stops</p>
               )}
             </div>
           )}
@@ -591,7 +594,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
           <QrCode className="w-4 h-4 text-blue-400 flex-shrink-0" />
           <p className="text-xs text-muted-foreground">
-            Se generará un código QR automáticamente al crear la ruta para que el conductor pueda escanearla.
+            A QR code is generated automatically when the route is created so the driver can scan it.
           </p>
         </div>
       </div>
@@ -612,8 +615,8 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               <MapPin className="w-5 h-5 text-blue-500" />
             </div>
             <div>
-              <h2 className="text-xl font-extrabold tracking-tight">Nueva Ruta</h2>
-              <p className="text-xs text-muted-foreground">Completa los pasos para crear la ruta de entrega</p>
+              <h2 className="text-xl font-extrabold tracking-tight">New route</h2>
+              <p className="text-xs text-muted-foreground">Complete the steps to create the delivery route</p>
             </div>
           </div>
 
@@ -671,9 +674,9 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 className="flex-1 py-4 bg-primary text-primary-foreground rounded-xl font-bold text-base hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Creando...</>
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Creating...</>
                 ) : (
-                  <><MapPin className="w-5 h-5" /> Crear Ruta</>
+                  <><MapPin className="w-5 h-5" /> Create route</>
                 )}
               </button>
             ) : (
@@ -682,7 +685,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 disabled={!canAdvance()}
                 className="flex-1 py-4 bg-primary text-primary-foreground rounded-xl font-bold text-base hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Siguiente <ChevronRight className="w-5 h-5" />
+                Next <ChevronRight className="w-5 h-5" />
               </button>
             )}
             {step > 1 && (
@@ -691,7 +694,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 disabled={isSubmitting}
                 className="py-4 px-6 bg-white/10 text-foreground rounded-xl font-bold text-sm hover:bg-white/20 transition-all flex items-center gap-2 disabled:opacity-50"
               >
-                <ChevronLeft className="w-4 h-4" /> Atrás
+                <ChevronLeft className="w-4 h-4" /> Back
               </button>
             )}
           </div>

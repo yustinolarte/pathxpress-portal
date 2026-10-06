@@ -19,7 +19,7 @@ export interface SequencerStop {
     city?: string | null;
     address?: string | null;
     companyName?: string | null;
-    /** Returns swap which end is the shipper — needed to know which pin to edit. */
+    /** Return orders already store their physical pickup in the shipper fields. */
     isReturn?: number;
     serviceType?: string | null;
     codRequired?: number | boolean | null;
@@ -75,7 +75,7 @@ export function buildDraftStops(
                 waybillNumber: order.waybillNumber,
                 customerName: isPickup ? (order.shipperName || order.customerName) : order.customerName,
                 city: isPickup ? (order.shipperCity || order.city) : order.city,
-                address: order.address,
+                address: isPickup ? order.shipperAddress : order.address,
                 companyName: order.companyName,
                 isReturn: order.isReturn,
                 serviceType: order.serviceType,

@@ -17,6 +17,9 @@ export interface SetLocationOrder {
     address?: string | null;
     city?: string | null;
     emirate?: string | null;
+    shipperName?: string | null;
+    shipperAddress?: string | null;
+    shipperCity?: string | null;
     latitude?: string | null;
     longitude?: string | null;
     locationAccuracy?: string | null;
@@ -47,19 +50,19 @@ export default function SetLocationDialog({ order, open, onOpenChange, target = 
 
     const setLocationMutation = trpc.portal.drivers.setOrderLocation.useMutation({
         onSuccess: () => {
-            toast.success('Ubicación guardada');
+            toast.success('Location saved');
             onSaved?.();
             onOpenChange(false);
         },
-        onError: (e) => toast.error(e.message || 'No se pudo guardar la ubicación'),
+        onError: (e) => toast.error(e.message || 'Could not save the location'),
     });
 
     const requestBotMutation = trpc.portal.drivers.requestLocationViaBot.useMutation({
         onSuccess: (res) => {
-            if (res.sent) toast.success('Solicitud de ubicación enviada por WhatsApp');
-            else toast.error('Bot de ubicación no configurado');
+            if (res.sent) toast.success('Location request sent via WhatsApp');
+            else toast.error('Location bot is not configured');
         },
-        onError: (e) => toast.error(e.message || 'No se pudo contactar al bot'),
+        onError: (e) => toast.error(e.message || 'Could not reach the bot'),
     });
 
     if (!order) return null;
@@ -88,20 +91,22 @@ export default function SetLocationDialog({ order, open, onOpenChange, target = 
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-primary" />
-                        {isShipper ? 'Ubicar recogida (remitente)' : 'Ubicar pedido'} {order.waybillNumber || `#${order.id}`}
+                        {isShipper ? 'Locate pickup (shipper)' : 'Locate order'} {order.waybillNumber || `#${order.id}`}
                     </DialogTitle>
                     <DialogDescription>
                         {isShipper
-                            ? 'Corrige el pin del remitente/recogida. No afecta la ubicación de entrega del cliente.'
-                            : 'Busca la dirección o coloca el pin en el mapa. La ubicación guardada se marca como exacta.'}
+                            ? 'Fix the shipper/pickup pin. It does not affect the customer delivery location.'
+                            : 'Search the address or drop the pin on the map. The saved location is marked as exact.'}
                     </DialogDescription>
                 </DialogHeader>
 
                 {/* Written address as context for placing the pin */}
                 <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                    <p className="font-medium">{order.customerName}</p>
+                    <p className="font-medium">{isShipper ? (order.shipperName || 'Shipper') : order.customerName}</p>
                     <p className="text-muted-foreground">
-                        {[order.address, order.city, order.emirate].filter(Boolean).join(', ')}
+                        {isShipper
+                            ? ([order.shipperAddress, order.shipperCity].filter(Boolean).join(', ') || 'No pickup address on file')
+                            : [order.address, order.city, order.emirate].filter(Boolean).join(', ')}
                     </p>
                 </div>
 
@@ -118,12 +123,12 @@ export default function SetLocationDialog({ order, open, onOpenChange, target = 
                             size="sm"
                             disabled={requestBotMutation.isPending}
                             onClick={() => requestBotMutation.mutate({ orderId: order.id })}
-                            title="Pide al cliente su ubicación por WhatsApp"
+                            title="Ask the customer for their location via WhatsApp"
                         >
                             {requestBotMutation.isPending
                                 ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                                 : <MessageCircle className="w-3.5 h-3.5 mr-1.5" />}
-                            Pedir por WhatsApp
+                            Ask via WhatsApp
                         </Button>
                     )}
                     <Button
@@ -137,7 +142,7 @@ export default function SetLocationDialog({ order, open, onOpenChange, target = 
                         })}
                     >
                         {setLocationMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        Guardar ubicación
+                        Save location
                     </Button>
                 </DialogFooter>
             </DialogContent>

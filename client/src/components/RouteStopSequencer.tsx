@@ -37,7 +37,7 @@ interface RouteStopSequencerProps {
     onEditLocation?: (stop: SequencerStop) => void;
     /** Wizard only — drop a stop from the draft. Omit to hide the button. */
     onRemoveStop?: (key: string) => void;
-    /** "Ordenar automáticamente". Omit to hide the button. */
+    /** "Auto-order". Omit to hide the button. */
     onAutoOrder?: () => void;
     autoOrdering?: boolean;
     disabled?: boolean;
@@ -105,7 +105,7 @@ export default function RouteStopSequencer({
                 id: '__origin__',
                 lat: origin.lat,
                 lng: origin.lng,
-                label: origin.label || 'Origen',
+                label: origin.label || 'Start',
                 kind: 'origin' as PinKind,
                 sequence: 0,
                 accuracy: null,
@@ -130,7 +130,7 @@ export default function RouteStopSequencer({
             // Revert rather than persist-and-warn: dragging a delivery above its own
             // pickup is never a legitimate intent, so a saved-but-broken order would
             // be worse than the bounce-back.
-            toast.error(`La entrega de ${violation.delivery.waybillNumber} no puede ir antes de su recogida`);
+            toast.error(`The delivery of ${violation.delivery.waybillNumber} can't come before its pickup`);
             return;
         }
         onChange(pinned);
@@ -167,8 +167,8 @@ export default function RouteStopSequencer({
                         mapClassName,
                     )}>
                         <MapPin className="w-8 h-8 opacity-30" />
-                        <p className="text-sm">Ninguna parada tiene coordenadas</p>
-                        <p className="text-xs">Puedes ordenarlas igualmente en la lista</p>
+                        <p className="text-sm">No stop has coordinates</p>
+                        <p className="text-xs">You can still order them in the list</p>
                     </div>
                 ) : (
                     <OrdersMap
@@ -183,7 +183,7 @@ export default function RouteStopSequencer({
                     />
                 )}
                 <p className="text-xs text-muted-foreground text-center">
-                    Verde = recogidas · Azul = entregas · El número es el orden en que el conductor las hará
+                    Green = pickups · Blue = deliveries · The number is the order the driver will follow
                 </p>
             </div>
 
@@ -191,7 +191,7 @@ export default function RouteStopSequencer({
             <div className="flex flex-col min-w-0 gap-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                     <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                        Orden de paradas
+                        Stop order
                     </p>
                     <div className="flex items-center gap-2">
                         {incomingViolation && (
@@ -204,7 +204,7 @@ export default function RouteStopSequencer({
                                 )}
                                 className="text-xs font-semibold px-2 py-1 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)] hover:opacity-80 disabled:opacity-50"
                             >
-                                Corregir orden
+                                Fix order
                             </button>
                         )}
                         {onAutoOrder && (
@@ -215,8 +215,8 @@ export default function RouteStopSequencer({
                                 className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border border-input bg-background hover:bg-muted/40 disabled:opacity-50"
                             >
                                 {autoOrdering
-                                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Ordenando...</>
-                                    : <><Wand2 className="w-3.5 h-3.5 text-[var(--st-green)]" /> Ordenar automáticamente</>}
+                                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Ordering...</>
+                                    : <><Wand2 className="w-3.5 h-3.5 text-[var(--st-green)]" /> Auto-order</>}
                             </button>
                         )}
                     </div>
@@ -226,8 +226,8 @@ export default function RouteStopSequencer({
                     <p className="text-xs px-3 py-2 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)] flex items-start gap-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                         <span>
-                            La entrega de <strong>{incomingViolation.delivery.waybillNumber}</strong> está antes de su
-                            recogida. El conductor la vería bloqueada hasta llegar a la recogida.
+                            The delivery of <strong>{incomingViolation.delivery.waybillNumber}</strong> comes before its
+                            pickup. The driver would see it blocked until reaching the pickup.
                         </span>
                     </p>
                 )}
@@ -235,7 +235,7 @@ export default function RouteStopSequencer({
                 {stops.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12 gap-2 text-muted-foreground border border-dashed border-border rounded-xl">
                         <Package className="w-7 h-7 opacity-30" />
-                        <p className="text-sm">Sin paradas todavía</p>
+                        <p className="text-sm">No stops yet</p>
                     </div>
                 ) : (
                     <Reorder.Group
@@ -293,17 +293,17 @@ export default function RouteStopSequencer({
                                             <span className="font-mono text-xs font-medium truncate">{stop.waybillNumber}</span>
                                             {stop.locked && (
                                                 <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase text-muted-foreground">
-                                                    <Lock className="w-2.5 h-2.5" /> Hecha
+                                                    <Lock className="w-2.5 h-2.5" /> Done
                                                 </span>
                                             )}
                                             {stop.lat === null && (
                                                 <span className="text-[10px] font-bold uppercase text-[var(--st-amber)]">
-                                                    Sin ubicación
+                                                    No location
                                                 </span>
                                             )}
                                         </div>
                                         <p className="text-xs text-muted-foreground truncate">
-                                            {isPickup ? 'Recoger' : 'Entregar'} · {stop.customerName || '—'}
+                                            {isPickup ? 'Pickup' : 'Deliver'} · {stop.customerName || '—'}
                                             {stop.city ? ` · ${stop.city}` : ''}
                                         </p>
                                     </div>
@@ -325,11 +325,11 @@ export default function RouteStopSequencer({
                                                     : 'text-muted-foreground hover:text-primary hover:bg-primary/10',
                                             )}
                                             title={stop.lat === null
-                                                ? `Falta la ubicación de ${isPickup ? 'recogida' : 'entrega'} — haz clic para ponerla`
-                                                : 'Corregir ubicación'}
+                                                ? `Missing ${isPickup ? 'pickup' : 'delivery'} location — click to place it`
+                                                : 'Fix location'}
                                         >
                                             <MapPin className="w-3.5 h-3.5" />
-                                            {stop.lat === null && 'Ubicar'}
+                                            {stop.lat === null && 'Locate'}
                                         </button>
                                     )}
 
@@ -340,7 +340,7 @@ export default function RouteStopSequencer({
                                             onPointerDownCapture={(e) => e.stopPropagation()}
                                             onClick={(e) => { e.stopPropagation(); onRemoveStop(stop.key); }}
                                             className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 flex-shrink-0 disabled:opacity-50"
-                                            aria-label={`Quitar ${stop.waybillNumber}`}
+                                            aria-label={`Remove ${stop.waybillNumber}`}
                                         >
                                             <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -355,7 +355,7 @@ export default function RouteStopSequencer({
                                             onPointerDownCapture={(e) => e.stopPropagation()}
                                             onClick={(e) => { e.stopPropagation(); nudge(idx, -1); }}
                                             className="p-0.5 rounded hover:bg-muted/60 disabled:opacity-20"
-                                            aria-label={`Subir ${stop.waybillNumber}`}
+                                            aria-label={`Move up ${stop.waybillNumber}`}
                                         >
                                             <ChevronUp className="w-3.5 h-3.5" />
                                         </button>
@@ -365,7 +365,7 @@ export default function RouteStopSequencer({
                                             onPointerDownCapture={(e) => e.stopPropagation()}
                                             onClick={(e) => { e.stopPropagation(); nudge(idx, 1); }}
                                             className="p-0.5 rounded hover:bg-muted/60 disabled:opacity-20"
-                                            aria-label={`Bajar ${stop.waybillNumber}`}
+                                            aria-label={`Move down ${stop.waybillNumber}`}
                                         >
                                             <ChevronDown className="w-3.5 h-3.5" />
                                         </button>
@@ -384,17 +384,17 @@ export default function RouteStopSequencer({
                 {/* ── Summary ── */}
                 <div className="text-xs text-muted-foreground border-t border-border pt-2 space-y-1">
                     <p>
-                        <strong className="text-foreground">{stops.length}</strong> parada{stops.length !== 1 ? 's' : ''}
-                        {' · '}{pickups} recogida{pickups !== 1 ? 's' : ''}
-                        {' · '}{deliveries} entrega{deliveries !== 1 ? 's' : ''}
+                        <strong className="text-foreground">{stops.length}</strong> stop{stops.length !== 1 ? 's' : ''}
+                        {' · '}{pickups} pickup{pickups !== 1 ? 's' : ''}
+                        {' · '}{deliveries} deliver{deliveries !== 1 ? 'ies' : 'y'}
                         {withCoords.length > 1 && <> · ~{fmtKm(totalMetres)}</>}
                     </p>
                     {noCoords.length > 0 && (
                         <div className="px-2 py-1.5 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)] space-y-1">
                             <p>
-                                {noCoords.length} parada{noCoords.length !== 1 ? 's' : ''} sin ubicación —
-                                {noCoords.length !== 1 ? ' no aparecen' : ' no aparece'} en el mapa
-                                {onEditLocation && ', pulsa "Ubicar" para ponerle el pin'}:
+                                {noCoords.length} stop{noCoords.length !== 1 ? 's' : ''} without location —
+                                {' '}not shown on the map
+                                {onEditLocation && ', click "Locate" to place the pin'}:
                             </p>
                             <div className="flex flex-wrap gap-1">
                                 {noCoords.map(s => (
