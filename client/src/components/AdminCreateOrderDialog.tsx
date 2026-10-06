@@ -147,7 +147,7 @@ export default function AdminCreateOrderDialog({
     // a pickup pin survived into the next order and routed the driver to the
     // previous shipper.
     const [resetSignal, setResetSignal] = useState(0);
-    const [keepClientAfterCreate, setKeepClientAfterCreate] = useState(true);
+    const [keepClientAfterCreate, setKeepClientAfterCreate] = useState(false);
     const consigneeSearchRef = useRef<HTMLInputElement>(null);
     const shipperSearchRef = useRef<HTMLInputElement>(null);
 
