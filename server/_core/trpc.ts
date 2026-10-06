@@ -3,7 +3,6 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import type { PortalTokenPayload } from "../portalAuth";
-import { getPortalUserById } from "../db";
 
 // Customer portal users always have clientId (guaranteed by middleware check)
 type CustomerPortalUser = Omit<PortalTokenPayload, 'clientId'> & { clientId: number };
@@ -50,17 +49,12 @@ export const adminProcedure = t.procedure.use(
 );
 
 // Portal-specific procedures (use portalUser from HttpOnly cookie, separate from OAuth users).
-// The JWT is valid for 7 days, so a truthy-token check alone would let a
-// suspended/deactivated portal user keep making requests for up to a week
-// after an admin disables them. Re-checking status against the DB here means
-// the very next request after a suspension is rejected instead.
+// createContext already re-validates the 7-day JWT against the DB on every
+// request (suspension, password change, current role/clientId), so a non-null
+// ctx.portalUser here is always the user's current state.
 export const portalProtectedProcedure = t.procedure.use(
   t.middleware(async ({ ctx, next }) => {
     if (!ctx.portalUser) {
-      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Portal login required' });
-    }
-    const currentUser = await getPortalUserById(ctx.portalUser.userId);
-    if (!currentUser || currentUser.status !== 'active') {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Portal login required' });
     }
     return next({ ctx: { ...ctx, portalUser: ctx.portalUser } });

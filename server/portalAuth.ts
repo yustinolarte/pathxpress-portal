@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { ENV } from './_core/env';
 
@@ -7,6 +8,42 @@ export interface PortalTokenPayload {
   email: string;
   role: 'admin' | 'customer';
   clientId?: number;
+  /** Fingerprint of the password hash the token was issued against (see passwordFingerprint). */
+  pwf?: string;
+}
+
+/**
+ * Short digest of the stored bcrypt hash. Embedded in the JWT so that any
+ * password change/reset (which always produces a new hash) revokes every
+ * session issued before it, without a session table or schema change.
+ */
+export function passwordFingerprint(passwordHash: string): string {
+  return createHash('sha256').update(passwordHash).digest('hex').slice(0, 16);
+}
+
+export const PORTAL_COOKIE = 'pathxpress_portal_token';
+
+export function portalCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict' as const,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/',
+  };
+}
+
+/** Token for a DB user row — role/clientId/pwf always come from the row. */
+export function generatePortalTokenForUser(user: {
+  id: number; email: string; role: 'admin' | 'customer'; clientId: number | null; passwordHash: string;
+}): string {
+  return generatePortalToken({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    clientId: user.clientId || undefined,
+    pwf: passwordFingerprint(user.passwordHash),
+  });
 }
 
 const PORTAL_TOKEN_SECRET = ENV.cookieSecret + '_portal'; // Separate secret for portal (using JWT_SECRET from env)

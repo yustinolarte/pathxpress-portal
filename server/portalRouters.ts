@@ -7,7 +7,9 @@ import { cachedQuery, cacheInvalidate, cacheInvalidatePrefix } from './_core/que
 import {
   hashPassword,
   comparePassword,
-  generatePortalToken,
+  generatePortalTokenForUser,
+  PORTAL_COOKIE,
+  portalCookieOptions,
   validatePassword,
   validateEmail,
   type PortalTokenPayload
@@ -202,21 +204,7 @@ export const portalAuthRouter = router({
       // Update last sign in
       await updatePortalUserLastSignIn(user.id);
 
-      // Generate token
-      const token = generatePortalToken({
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-        clientId: user.clientId || undefined,
-      });
-
-      ctx.res.cookie('pathxpress_portal_token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        path: '/',
-      });
+      ctx.res.cookie(PORTAL_COOKIE, generatePortalTokenForUser(user), portalCookieOptions());
 
       return {
         user: {
@@ -285,13 +273,14 @@ export const portalAuthRouter = router({
   me: portalProtectedProcedure
     .query(async ({ ctx }) => {
       if (!ctx.portalUser) return { user: null };
-      return { user: ctx.portalUser };
+      const { pwf: _pwf, ...user } = ctx.portalUser;
+      return { user };
     }),
 
   // Logout
   logout: portalProtectedProcedure
     .mutation(async ({ ctx }) => {
-      ctx.res.clearCookie('pathxpress_portal_token', { path: '/' });
+      ctx.res.clearCookie(PORTAL_COOKIE, { path: '/' });
       return { success: true };
     }),
 
@@ -333,6 +322,10 @@ export const portalAuthRouter = router({
       const newHash = await hashPassword(input.newPassword);
       const { updatePortalUserPassword } = await import('./db');
       await updatePortalUserPassword(user.id, newHash);
+
+      // The new hash revokes every other session (see passwordFingerprint);
+      // re-issue this browser's cookie so the user who changed it stays signed in.
+      ctx.res.cookie(PORTAL_COOKIE, generatePortalTokenForUser({ ...user, passwordHash: newHash }), portalCookieOptions());
 
       return { success: true, message: 'Password changed successfully' };
     }),
