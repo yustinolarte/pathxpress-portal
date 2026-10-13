@@ -61,6 +61,23 @@ export interface MapPoint {
     details?: MapPointDetails;
 }
 
+/** A driver's live GPS position (dispatch map), drawn on its own layer above the stops. */
+export interface DriverMarker {
+    id: number;
+    lat: number;
+    lng: number;
+    name: string;
+    initials: string;
+    vehicleNumber?: string | null;
+    routeIds?: string[];
+    /** Degrees from north; the arrow only shows while the driver is moving. */
+    heading?: number | null;
+    /** Metres per second. */
+    speed?: number | null;
+    /** When the phone took the fix — drives the freshness colour. */
+    recordedAt: string | Date;
+}
+
 interface OrdersMapProps {
     points: MapPoint[];
     /** When true, draws a numbered polyline connecting points in array order */
@@ -70,7 +87,125 @@ interface OrdersMapProps {
     onEditLocation?: (id: MapPointId) => void;
     /** Ringed + enlarged pin, kept in sync with an external list selection. */
     selectedId?: MapPointId | null;
+    /** Live driver positions. Updated in place, so polling them never rebuilds the stop pins. */
+    drivers?: DriverMarker[];
+    onDriverClick?: (id: number) => void;
+    /** Pans to this driver whenever it changes (e.g. a roster row was clicked). */
+    focusDriverId?: number | null;
     className?: string;
+}
+
+// Freshness of a driver's last fix: live, lagging, or signal lost.
+const DRIVER_FRESH_MS = 2 * 60 * 1000;
+const DRIVER_LAGGING_MS = 10 * 60 * 1000;
+const MOVING_SPEED_MS = 0.5; // m/s — below this, heading is GPS noise
+
+function driverAgeMs(d: DriverMarker): number {
+    return Math.max(0, Date.now() - new Date(d.recordedAt).getTime());
+}
+
+function driverPinColor(ageMs: number): string {
+    if (ageMs <= DRIVER_FRESH_MS) return TONE_COLOR.green;
+    if (ageMs <= DRIVER_LAGGING_MS) return TONE_COLOR.amber;
+    return TONE_COLOR.gray;
+}
+
+export function formatAge(ms: number): string {
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${s}s ago`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m ago`;
+}
+
+/**
+ * (Re)draws a driver pin's contents in place. The marker element itself is kept
+ * across polls — only its children change — so the hover listeners and the
+ * marker's position animation survive every refresh.
+ */
+function renderDriverPin(el: HTMLElement, d: DriverMarker) {
+    const ageMs = driverAgeMs(d);
+    const color = driverPinColor(ageMs);
+    const moving = d.speed != null && d.speed >= MOVING_SPEED_MS && d.heading != null;
+    el.replaceChildren();
+
+    if (moving) {
+        // Arrow sits outside the disc and rotates around its centre.
+        const arrowWrap = document.createElement('div');
+        arrowWrap.style.cssText = `position:absolute;inset:-9px;transform:rotate(${d.heading}deg);pointer-events:none;`;
+        const arrow = document.createElement('div');
+        arrow.style.cssText = `
+            position:absolute;top:0;left:50%;transform:translateX(-50%);
+            width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+            border-bottom:9px solid ${color};
+        `;
+        arrowWrap.appendChild(arrow);
+        el.appendChild(arrowWrap);
+    }
+
+    const disc = document.createElement('div');
+    disc.style.cssText = `
+        width:34px;height:34px;border-radius:50%;
+        display:flex;align-items:center;justify-content:center;
+        background:${color};color:#fff;border:3px solid #fff;
+        box-shadow:0 0 0 2px ${color}, 0 3px 10px rgba(0,0,0,.4);
+        font-size:12px;font-weight:800;letter-spacing:.3px;font-family:inherit;
+    `;
+    disc.textContent = d.initials;
+    el.appendChild(disc);
+
+    const wrapper = document.createElement('div');
+    wrapper.dataset.card = '1';
+    wrapper.style.cssText = `
+        position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+        display:${el.dataset.hover === '1' ? 'block' : 'none'}; z-index:60; padding-bottom:10px; pointer-events:none;
+    `;
+    const card = document.createElement('div');
+    card.style.cssText = `
+        min-width:180px; max-width:240px; background:#1e3a5f; color:#fff;
+        border:1px solid rgba(255,255,255,.15); border-radius:10px; padding:10px 12px;
+        box-shadow:0 8px 24px rgba(0,0,0,.35); font-size:12px; line-height:1.45;
+        font-family:inherit; text-align:left; white-space:normal;
+    `;
+    const addLine = (text: string, style = '') => {
+        const line = document.createElement('div');
+        line.style.cssText = style;
+        line.textContent = text;
+        card.appendChild(line);
+    };
+    addLine(d.name, 'font-weight:700;margin-bottom:2px;');
+    if (d.vehicleNumber) addLine(`🚚 ${d.vehicleNumber}`, 'color:rgba(255,255,255,.75);');
+    if (d.routeIds?.length) addLine(`Route ${d.routeIds.join(', ')}`, 'color:rgba(255,255,255,.75);font-family:ui-monospace,monospace;font-size:11px;');
+    addLine(
+        moving ? `${Math.round(d.speed! * 3.6)} km/h` : 'Stopped',
+        'color:rgba(255,255,255,.75);',
+    );
+    addLine(
+        ageMs > DRIVER_LAGGING_MS ? `⚠ No signal · last fix ${formatAge(ageMs)}` : `Updated ${formatAge(ageMs)}`,
+        `margin-top:4px;font-size:11px;color:${ageMs > DRIVER_FRESH_MS ? '#F2B632' : 'rgba(255,255,255,.7)'};`,
+    );
+    wrapper.appendChild(card);
+    el.appendChild(wrapper);
+}
+
+function makeDriverPin(d: DriverMarker): HTMLElement {
+    const el = document.createElement('div');
+    el.style.cssText = 'position:relative;cursor:pointer;transition:transform .15s;';
+    el.addEventListener('mouseenter', () => {
+        el.dataset.hover = '1';
+        el.style.transform = 'scale(1.12)';
+        const card = el.querySelector<HTMLElement>('[data-card]');
+        if (card) card.style.display = 'block';
+    });
+    el.addEventListener('mouseleave', () => {
+        el.dataset.hover = '';
+        el.style.transform = 'scale(1)';
+        const card = el.querySelector<HTMLElement>('[data-card]');
+        if (card) card.style.display = 'none';
+    });
+    renderDriverPin(el, d);
+    return el;
 }
 
 // Functional tone colors (hex fallbacks match --st-* in index.css light theme).
@@ -245,7 +380,7 @@ function makePin(kind: PinKind, pinLabel: string, point: MapPoint, onEditLocatio
     return el;
 }
 
-export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocation, selectedId = null, className }: OrdersMapProps) {
+export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocation, selectedId = null, drivers, onDriverClick, focusDriverId = null, className }: OrdersMapProps) {
     const containerRef  = useRef<HTMLDivElement>(null);
     const mapRef        = useRef<google.maps.Map | null>(null);
     const markersRef    = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
@@ -268,6 +403,12 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
     onPointClickRef.current = onPointClick;
     const onEditLocationRef = useRef(onEditLocation);
     onEditLocationRef.current = onEditLocation;
+    const onDriverClickRef = useRef(onDriverClick);
+    onDriverClickRef.current = onDriverClick;
+
+    /** Driver markers by driver id — moved in place on every poll, never rebuilt. */
+    const driverMarkersRef = useRef(new Map<number, { marker: google.maps.marker.AdvancedMarkerElement; el: HTMLElement }>());
+    const driversFramedRef = useRef(false);
 
     // ── Viewport persistence ──
     // Re-fitting on every `points` change yanked the camera back out whenever the
@@ -441,6 +582,83 @@ export function OrdersMap({ points, showRoute = false, onPointClick, onEditLocat
             if (marker) marker.zIndex = on ? 900 : null;
         });
     }, [selectedId, points, mapReady]);
+
+    // Driver layer. Kept out of the stop-marker effect above (which tears down and
+    // recreates every pin) and out of its fit signature: a poll every few seconds
+    // must only slide the driver pins, never flicker the stops or move the camera.
+    useEffect(() => {
+        if (!mapReady || !mapRef.current || !window.google?.maps) return;
+        const map = mapRef.current;
+        const live = drivers ?? [];
+        const seen = new Set<number>();
+
+        for (const d of live) {
+            seen.add(d.id);
+            const existing = driverMarkersRef.current.get(d.id);
+            try {
+                if (existing) {
+                    existing.marker.position = { lat: d.lat, lng: d.lng };
+                    existing.marker.title = d.name;
+                    renderDriverPin(existing.el, d);
+                } else {
+                    const el = makeDriverPin(d);
+                    const marker = new window.google.maps.marker.AdvancedMarkerElement({
+                        map,
+                        position: { lat: d.lat, lng: d.lng },
+                        title: d.name,
+                        content: el,
+                        zIndex: 1500, // above every stop pin, including a hovered one
+                    });
+                    marker.addListener('click', () => onDriverClickRef.current?.(d.id));
+                    driverMarkersRef.current.set(d.id, { marker, el });
+                }
+            } catch (e) {
+                console.error('[OrdersMap] driver marker failed:', e);
+            }
+        }
+
+        driverMarkersRef.current.forEach((entry, id) => {
+            if (seen.has(id)) return;
+            try { entry.marker.map = null; } catch { /* degraded Maps API — see marker effect */ }
+            driverMarkersRef.current.delete(id);
+        });
+
+        // With no stops on the map there's nothing else to frame, so frame the
+        // drivers once — after that the camera is the operator's.
+        if (points.length === 0 && live.length > 0 && !driversFramedRef.current && !userMovedRef.current) {
+            driversFramedRef.current = true;
+            try {
+                programmaticMoveRef.current = true;
+                if (live.length === 1) {
+                    map.setCenter({ lat: live[0].lat, lng: live[0].lng });
+                    map.setZoom(14);
+                } else {
+                    const bounds = new window.google.maps.LatLngBounds();
+                    live.forEach(d => bounds.extend({ lat: d.lat, lng: d.lng }));
+                    map.fitBounds(bounds, 60);
+                }
+                window.google.maps.event.addListenerOnce(map, 'idle', () => { programmaticMoveRef.current = false; });
+            } catch {
+                programmaticMoveRef.current = false;
+            }
+        }
+    }, [drivers, mapReady, points.length]);
+
+    // Pan to a driver picked from outside the map (roster row). Counts as the
+    // operator taking the camera, so the next stop refresh doesn't snap back.
+    useEffect(() => {
+        if (focusDriverId === null || !mapReady || !mapRef.current) return;
+        const entry = driverMarkersRef.current.get(focusDriverId);
+        const pos = entry?.marker.position;
+        if (!pos) return;
+        userMovedRef.current = true;
+        try {
+            mapRef.current.panTo(pos);
+            if ((mapRef.current.getZoom() ?? 0) < 14) mapRef.current.setZoom(14);
+        } catch (e) {
+            console.error('[OrdersMap] focus driver failed:', e);
+        }
+    }, [focusDriverId, mapReady]);
 
     return (
         <div ref={containerRef} className={cn('w-full h-[400px] rounded-xl border border-border overflow-hidden', className)} />

@@ -5,9 +5,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq, and, inArray, isNull, desc, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, isNull, desc, sql } from 'drizzle-orm';
 import { getDb, calculateCODFeeByMethod } from './db';
-import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, trackingEvents, codRecords } from '../drizzle/schema';
+import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, driverLocations, trackingEvents, codRecords } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
 import { extractDeliveryPhotoBase64s, extractDeliveryPhotoUrls, getProofPhotoUrls } from '../shared/podPhotos';
 import { isStaleOpenShift } from './driverShiftRules';
@@ -94,8 +94,13 @@ async function lastAttributableActivity(db: Db, shiftId: number): Promise<Date |
  * MAX_SHIFT_HOURS cap, both of which would invent paid hours nobody worked —
  * before a fresh shift is opened. This happens inside the same driver-row lock
  * as the rest of the function so a concurrent request can't race the close.
+ *
+ * clientRef is the app's own id for the shift (sent by /shifts/start). It is
+ * attached to an open shift that doesn't have one yet — a route claim usually
+ * opens the shift a moment before the app's clock-in call arrives — so a later
+ * /shifts/end replayed from the offline queue can find this exact shift.
  */
-export async function findOrCreateOpenShift(db: Db, driverId: number) {
+export async function findOrCreateOpenShift(db: Db, driverId: number, clientRef?: string) {
     return db.transaction(async (tx) => {
         await tx.select({ id: drivers.id })
             .from(drivers)
@@ -105,7 +110,13 @@ export async function findOrCreateOpenShift(db: Db, driverId: number) {
         const existing = await findOpenShift(tx as unknown as Db, driverId);
         const now = new Date();
         if (existing) {
-            if (!isStaleOpenShift(existing, now)) return existing;
+            if (!isStaleOpenShift(existing, now)) {
+                if (clientRef && !existing.clientRef) {
+                    await tx.update(driverShifts).set({ clientRef }).where(eq(driverShifts.id, existing.id));
+                    return { ...existing, clientRef };
+                }
+                return existing;
+            }
 
             const closeAt = (await lastAttributableActivity(tx as unknown as Db, existing.id)) ?? existing.startTime;
             await tx.update(driverShifts).set({ endTime: closeAt }).where(eq(driverShifts.id, existing.id));
@@ -114,9 +125,9 @@ export async function findOrCreateOpenShift(db: Db, driverId: number) {
         const startTime = now;
         const [inserted] = await tx
             .insert(driverShifts)
-            .values({ driverId, startTime })
+            .values({ driverId, startTime, clientRef: clientRef ?? null })
             .$returningId();
-        return { id: inserted.id, driverId, startTime, endTime: null };
+        return { id: inserted.id, driverId, startTime, endTime: null, clientRef: clientRef ?? null };
     });
 }
 
@@ -195,6 +206,346 @@ export function buildRouteReportPatch(
         updateData.completedStopsReported = Math.max(0, Math.round(fields.completedStops));
     }
     return updateData;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// A client-sent timestamp, or null when it's missing or unparseable.
+const parseClientDate = (value: unknown): Date | null => {
+    if (typeof value !== 'string' && typeof value !== 'number') return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const clampDate = (d: Date, min: Date, max: Date): Date =>
+    d < min ? min : d > max ? max : d;
+
+export interface WalletSummaryOrder {
+    id: number;
+    waybillNumber: string;
+    customerName: string;
+    expectedAmount: number;
+    collectedAmount: number;
+    paymentMethod: string;
+    paymentReference: string | null;
+    status: string | undefined;
+    isDelivered: boolean;
+}
+
+export interface WalletSummary {
+    /** Cash due on delivered cash-COD stops. */
+    totalExpected: number;
+    /** Cash the stops recorded as collected. */
+    totalCollected: number;
+    /** totalCollected − totalExpected: negative means short. */
+    discrepancy: number;
+    /** Charged by card — never passes through the driver, so it's outside the cash figures. */
+    cardCollected: number;
+    orders: WalletSummaryOrder[];
+}
+
+/**
+ * COD expected vs collected across the given routes (the caller has already
+ * scoped them to one driver). Expected comes from orders.codAmount, collected
+ * from routeOrders.collectedAmount, and codRecords only decides cash vs card.
+ * Only delivered stops count toward the totals.
+ */
+export async function computeWalletSummary(db: Db, routeIds: string[]): Promise<WalletSummary> {
+    if (routeIds.length === 0) {
+        return { totalExpected: 0, totalCollected: 0, discrepancy: 0, cardCollected: 0, orders: [] };
+    }
+
+    const codStops = await db
+        .select({ routeOrder: routeOrders, order: orders })
+        .from(routeOrders)
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(and(
+            inArray(routeOrders.routeId, routeIds),
+            eq(routeOrders.type, 'delivery'), // only delivery stops carry COD
+            eq(orders.codRequired, 1),
+        ));
+
+    // Collection method lives on codRecords — card payments are charged on
+    // the driver's phone and must stay out of the cash reconciliation
+    const shipmentIds = codStops.map(s => s.order.id);
+    const codRecordRows = shipmentIds.length > 0
+        ? await db.select().from(codRecords).where(inArray(codRecords.shipmentId, shipmentIds))
+        : [];
+    const codRecordByShipment = new Map(codRecordRows.map(r => [r.shipmentId, r]));
+
+    let totalExpected = 0;   // cash the driver should have in hand
+    let totalCollected = 0;  // cash actually reported
+    let cardCollected = 0;   // charged by card — never passes through the driver
+
+    const codOrders = codStops.map(s => {
+        const expected = parseFloat(s.order.codAmount || '0');
+        const collected = s.routeOrder.collectedAmount ? parseFloat(s.routeOrder.collectedAmount) : 0;
+        const status = s.routeOrder.status?.toLowerCase();
+        const isDelivered = status === 'delivered';
+        const codRecord = codRecordByShipment.get(s.order.id);
+        const paymentMethod = codRecord?.collectedMethod
+            || (isDelivered ? 'cash' : (s.order.codPaymentMethod || 'cash'));
+
+        // Only count towards totals if delivered; card stays out of the cash discrepancy
+        if (isDelivered) {
+            if (paymentMethod === 'card') {
+                cardCollected += collected || expected;
+            } else {
+                totalExpected += expected;
+                totalCollected += collected;
+            }
+        }
+
+        return {
+            id: s.order.id,
+            waybillNumber: s.order.waybillNumber,
+            customerName: s.order.customerName,
+            expectedAmount: expected,
+            // Never report a collected amount for a non-delivered stop, even if
+            // routeOrders.collectedAmount has a stale/leftover value — mirrors the
+            // isDelivered gate already applied to the totals above.
+            collectedAmount: isDelivered ? collected : 0,
+            paymentMethod,
+            paymentReference: codRecord?.paymentReference || null,
+            status: status, // delivered, returned, etc.
+            isDelivered
+        };
+    });
+
+    return {
+        totalExpected,
+        totalCollected,
+        discrepancy: totalCollected - totalExpected,
+        cardCollected,
+        orders: codOrders,
+    };
+}
+
+/**
+ * The routes a shift's reconciliation covers: every route linked to it
+ * (driverRoutes.shiftId — set when the route is claimed/started), plus any of
+ * the driver's in-progress routes that never got linked to a shift (legacy rows).
+ */
+export async function resolveShiftRouteIds(db: Db, driverId: number, shiftId: number | null): Promise<string[]> {
+    const unlinkedInProgress = and(eq(driverRoutes.status, 'in_progress'), isNull(driverRoutes.shiftId));
+    const rows = await db
+        .select({ id: driverRoutes.id })
+        .from(driverRoutes)
+        .where(and(
+            eq(driverRoutes.driverId, driverId),
+            shiftId !== null ? or(eq(driverRoutes.shiftId, shiftId), unlinkedInProgress) : unlinkedInProgress,
+        ));
+    return rows.map(r => r.id);
+}
+
+export interface ShiftReconciliation {
+    expectedCash: number;
+    collectedCash: number;
+    cardCollected: number;
+    declaredCash: number;
+    /** collectedCash − expectedCash */
+    cashDiscrepancy: number;
+    /** declaredCash − collectedCash */
+    declaredVariance: number;
+}
+
+export interface EndShiftInput {
+    clientRef?: unknown;
+    clockIn?: unknown;
+    clockOut?: unknown;
+    declaredCash?: unknown;
+    note?: unknown;
+}
+
+export type EndShiftResult =
+    | { ok: true; shiftId: number; alreadyClosed: boolean; reconciliation: ShiftReconciliation | null }
+    | {
+        ok: false;
+        status: 400 | 404;
+        code: 'NO_ACTIVE_SHIFT' | 'INVALID_DECLARED_CASH' | 'NOTE_REQUIRED';
+        error: string;
+        reconciliation?: ShiftReconciliation;
+    };
+
+/**
+ * Clock-out, optionally with the driver's end-of-shift cash reconciliation.
+ *
+ * Which shift: the one carrying the app's clientRef if there is one, else the
+ * open shift. A clientRef match that is already closed means this is a replay
+ * (offline queue) of a clock-out that already landed, or an admin/stale close
+ * that beat it — nothing moves, but a reconciliation that hasn't been recorded
+ * yet is still attached. With no shift at all (clock-in never reached the
+ * server) a closed shift is recorded from the app's clockIn/clockOut.
+ *
+ * endTime is the phone's clockOut clamped to [startTime, now], so a clock-out
+ * sent later from the offline queue records when the driver actually stopped.
+ *
+ * Reconciliation (when declaredCash is sent): the money figures are computed
+ * here from the shift's routes, never taken from the app. A note is required
+ * whenever the stops don't match what was due or the declared cash doesn't
+ * match what the stops recorded. A body with no declaredCash (older app
+ * builds) closes the shift exactly like before, unreconciled.
+ */
+export async function endShiftWithReconciliation(db: Db, driverId: number, input: EndShiftInput, now: Date = new Date()): Promise<EndShiftResult> {
+    const clientRef = typeof input.clientRef === 'string' && input.clientRef.trim()
+        ? input.clientRef.trim().slice(0, 64)
+        : null;
+    const note = typeof input.note === 'string' ? input.note.trim().slice(0, 1000) : '';
+    const reconciling = input.declaredCash !== undefined && input.declaredCash !== null && input.declaredCash !== '';
+    const declaredCash = reconciling ? Number(input.declaredCash) : null;
+    if (declaredCash !== null && (!Number.isFinite(declaredCash) || declaredCash < 0)) {
+        return { ok: false, status: 400, code: 'INVALID_DECLARED_CASH', error: 'declaredCash must be a non-negative number' };
+    }
+    const clockIn = parseClientDate(input.clockIn);
+    const clockOut = parseClientDate(input.clockOut);
+
+    return db.transaction(async (tx) => {
+        const t = tx as unknown as Db;
+        // Same driver-row lock as findOrCreateOpenShift: a clock-out racing a
+        // clock-in (or its own replay) must not both act on the same shift.
+        await tx.select({ id: drivers.id }).from(drivers).where(eq(drivers.id, driverId)).for('update');
+
+        const reconcile = async (shiftId: number | null): Promise<ShiftReconciliation> => {
+            const summary = await computeWalletSummary(t, await resolveShiftRouteIds(t, driverId, shiftId));
+            const declared = round2(declaredCash ?? 0);
+            const collectedCash = round2(summary.totalCollected);
+            return {
+                expectedCash: round2(summary.totalExpected),
+                collectedCash,
+                cardCollected: round2(summary.cardCollected),
+                declaredCash: declared,
+                cashDiscrepancy: round2(summary.totalCollected - summary.totalExpected),
+                declaredVariance: round2(declared - collectedCash),
+            };
+        };
+        const reconciliationColumns = (rec: ShiftReconciliation) => ({
+            reconciledAt: now,
+            expectedCash: rec.expectedCash.toFixed(2),
+            collectedCash: rec.collectedCash.toFixed(2),
+            cardCollected: rec.cardCollected.toFixed(2),
+            declaredCash: rec.declaredCash.toFixed(2),
+            cashDiscrepancy: rec.cashDiscrepancy.toFixed(2),
+            declaredVariance: rec.declaredVariance.toFixed(2),
+            reconciliationNote: note || null,
+        });
+        const noteMissing = (rec: ShiftReconciliation) =>
+            (rec.cashDiscrepancy !== 0 || rec.declaredVariance !== 0) && !note;
+        const noteRequired = (rec: ShiftReconciliation): EndShiftResult => ({
+            ok: false, status: 400, code: 'NOTE_REQUIRED',
+            error: 'A note is required when the cash does not match', reconciliation: rec,
+        });
+
+        const [byRef] = clientRef
+            ? await tx.select().from(driverShifts)
+                .where(and(eq(driverShifts.driverId, driverId), eq(driverShifts.clientRef, clientRef)))
+                .orderBy(desc(driverShifts.startTime))
+                .limit(1)
+            : [];
+
+        if (byRef?.endTime) {
+            if (!reconciling || byRef.reconciledAt) {
+                return { ok: true, shiftId: byRef.id, alreadyClosed: true, reconciliation: null };
+            }
+            const rec = await reconcile(byRef.id);
+            if (noteMissing(rec)) return noteRequired(rec);
+            await tx.update(driverShifts).set(reconciliationColumns(rec)).where(eq(driverShifts.id, byRef.id));
+            return { ok: true, shiftId: byRef.id, alreadyClosed: true, reconciliation: rec };
+        }
+
+        const shift = byRef ?? await findOpenShift(t, driverId);
+
+        if (!shift) {
+            if (!clockIn) return { ok: false, status: 404, code: 'NO_ACTIVE_SHIFT', error: 'No active shift found' };
+            const rec = reconciling ? await reconcile(null) : null;
+            if (rec && noteMissing(rec)) return noteRequired(rec);
+            const startTime = clockIn > now ? now : clockIn;
+            const [inserted] = await tx.insert(driverShifts).values({
+                driverId,
+                startTime,
+                endTime: clampDate(clockOut ?? now, startTime, now),
+                clientRef,
+                ...(rec ? reconciliationColumns(rec) : {}),
+            }).$returningId();
+            return { ok: true, shiftId: inserted.id, alreadyClosed: false, reconciliation: rec };
+        }
+
+        const rec = reconciling ? await reconcile(shift.id) : null;
+        if (rec && noteMissing(rec)) return noteRequired(rec);
+        await tx.update(driverShifts).set({
+            endTime: clampDate(clockOut ?? now, shift.startTime, now),
+            // Stamp the ref so a replay of this same clock-out matches the
+            // now-closed shift instead of closing whatever opens next.
+            ...(clientRef ? { clientRef } : {}),
+            ...(rec ? reconciliationColumns(rec) : {}),
+        }).where(eq(driverShifts.id, shift.id));
+        return { ok: true, shiftId: shift.id, alreadyClosed: false, reconciliation: rec };
+    });
+}
+
+/** Most points accepted per ping — the app's offline buffer is capped at the same size. */
+export const MAX_LOCATION_POINTS = 20;
+// A fix older than this is history, not a position worth putting on the live map.
+const MAX_LOCATION_AGE_MS = 12 * 60 * 60 * 1000;
+
+const finiteOrNull = (value: unknown, min = -Infinity, max = Infinity): number | null => {
+    const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    return Number.isFinite(n) && n >= min && n <= max ? n : null;
+};
+
+/**
+ * Stores the newest valid fix from a ping as the driver's live position.
+ *
+ * Only while the driver has an open, non-stale shift: off duty nothing is
+ * stored and `tracking: false` tells the app to switch its GPS watcher off,
+ * so a driver is never tracked outside their shift. A fix older than the one
+ * already stored (a late offline batch) is ignored.
+ */
+export async function upsertDriverLocation(
+    db: Db,
+    driverId: number,
+    input: { points?: unknown; routeId?: unknown },
+    now: Date = new Date(),
+): Promise<{ tracking: boolean; accepted: number }> {
+    const openShift = await findOpenShift(db, driverId);
+    if (!openShift || isStaleOpenShift(openShift, now)) return { tracking: false, accepted: 0 };
+
+    const raw = Array.isArray(input.points) ? input.points.slice(-MAX_LOCATION_POINTS) : [];
+    const points = raw.flatMap((p) => {
+        if (!p || typeof p !== 'object') return [];
+        const point = p as Record<string, unknown>;
+        const lat = finiteOrNull(point.lat, -90, 90);
+        const lng = finiteOrNull(point.lng, -180, 180);
+        if (lat === null || lng === null || (lat === 0 && lng === 0)) return [];
+        const taken = parseClientDate(point.recordedAt) ?? now;
+        const recordedAt = taken > now ? now : taken;
+        if (now.getTime() - recordedAt.getTime() > MAX_LOCATION_AGE_MS) return [];
+        return [{
+            lat,
+            lng,
+            accuracy: finiteOrNull(point.accuracy, 0),
+            heading: finiteOrNull(point.heading, 0, 360),
+            speed: finiteOrNull(point.speed, 0),
+            recordedAt,
+        }];
+    });
+    if (points.length === 0) return { tracking: true, accepted: 0 };
+
+    const newest = points.reduce((a, b) => (b.recordedAt > a.recordedAt ? b : a));
+    // Timestamps are stored to the second; compare at that precision.
+    newest.recordedAt = new Date(Math.floor(newest.recordedAt.getTime() / 1000) * 1000);
+
+    const [existing] = await db.select({ recordedAt: driverLocations.recordedAt })
+        .from(driverLocations).where(eq(driverLocations.driverId, driverId)).limit(1);
+    if (existing && existing.recordedAt >= newest.recordedAt) return { tracking: true, accepted: 0 };
+
+    const routeId = typeof input.routeId === 'string' && input.routeId.trim()
+        ? input.routeId.trim().slice(0, 50)
+        : typeof input.routeId === 'number' ? String(input.routeId) : null;
+    const values = { ...newest, routeId, receivedAt: now };
+    await db.insert(driverLocations)
+        .values({ driverId, ...values })
+        .onDuplicateKeyUpdate({ set: values });
+    return { tracking: true, accepted: points.length };
 }
 
 async function resolveDeliveryPhotoUrls(
@@ -1386,7 +1737,9 @@ router.post('/shifts/start', driverAuthMiddleware, async (req: DriverRequest, re
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const shift = await findOrCreateOpenShift(db, req.driverId!);
+        const { clientRef } = (req.body ?? {}) as { clientRef?: unknown };
+        const ref = typeof clientRef === 'string' && clientRef.trim() ? clientRef.trim().slice(0, 64) : undefined;
+        const shift = await findOrCreateOpenShift(db, req.driverId!, ref);
 
         res.json(shift);
     } catch (error) {
@@ -1395,22 +1748,25 @@ router.post('/shifts/start', driverAuthMiddleware, async (req: DriverRequest, re
     }
 });
 
+// Body (all optional): { clientRef, clockIn, clockOut, declaredCash, note }.
+// With declaredCash this is the end-of-shift reconciliation and the shift is
+// recorded as completed; see endShiftWithReconciliation.
 router.post('/shifts/end', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const openShift = await findOpenShift(db, req.driverId!);
-        if (!openShift) {
-            return res.status(404).json({ error: 'No active shift found' });
+        const result = await endShiftWithReconciliation(db, req.driverId!, (req.body ?? {}) as EndShiftInput);
+        if (!result.ok) {
+            return res.status(result.status).json({ error: result.error, code: result.code, reconciliation: result.reconciliation });
         }
 
-        await db
-            .update(driverShifts)
-            .set({ endTime: new Date() })
-            .where(eq(driverShifts.id, openShift.id));
-
-        res.json({ message: 'Shift ended successfully' });
+        res.json({
+            message: result.alreadyClosed ? 'Shift already ended' : 'Shift ended successfully',
+            shiftId: result.shiftId,
+            alreadyClosed: result.alreadyClosed,
+            reconciliation: result.reconciliation,
+        });
     } catch (error) {
         console.error('End shift error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1594,6 +1950,25 @@ router.post('/push-token', driverAuthMiddleware, async (req: DriverRequest, res:
     }
 });
 
+// ============ LIVE LOCATION ============
+
+// Streamed by the app every ~15s while the driver is on duty (background GPS).
+// Body: { points: [{ lat, lng, accuracy?, heading?, speed?, recordedAt }], routeId? }.
+// `tracking: false` in the response tells the app the driver is off duty and to
+// stop its GPS watcher. Has its own per-driver rate limit (server/_core/index.ts).
+router.post('/location', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        const db = await getDb();
+        if (!db) return res.status(500).json({ error: 'Database not available' });
+
+        const body = (req.body ?? {}) as { points?: unknown; routeId?: unknown };
+        res.json(await upsertDriverLocation(db, req.driverId!, body));
+    } catch (error) {
+        console.error('Driver location error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 // ============ WALLET / RECONCILIATION ============
 
 router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
@@ -1601,112 +1976,37 @@ router.get('/wallet/summary', driverAuthMiddleware, async (req: DriverRequest, r
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const { routeId } = req.query as { routeId?: string };
+        const { routeId, shift } = req.query as { routeId?: string; shift?: string };
 
-        const allRoutes = await db
-            .select()
-            .from(driverRoutes)
-            .where(eq(driverRoutes.driverId, req.driverId!));
-
-        let routes;
-        if (routeId) {
-            // Scoped to exactly the route the driver is currently on — the wallet
-            // reads as "what this route collected", not a blend of every route
-            // worked today (a driver can finish one route and start a second
-            // one on the same day, and those shouldn't be summed together).
-            routes = allRoutes.filter(r => String(r.id) === String(routeId));
+        let routeIds: string[];
+        if (shift === 'current') {
+            // End-of-shift reconciliation: every route worked under the open
+            // shift — the same scope /shifts/end snapshots when it closes it.
+            const openShift = await findOpenShift(db, req.driverId!);
+            routeIds = await resolveShiftRouteIds(db, req.driverId!, openShift?.id ?? null);
         } else {
-            // No active route given (e.g. between routes) — fall back to
-            // today's/in-progress routes so the screen still shows something.
-            const todayStr = new Date().toISOString().slice(0, 10);
-            routes = allRoutes.filter(r =>
-                r.status === 'in_progress' || new Date(r.date).toISOString().slice(0, 10) === todayStr
-            );
-        }
+            const allRoutes = await db
+                .select({ id: driverRoutes.id, status: driverRoutes.status, date: driverRoutes.date })
+                .from(driverRoutes)
+                .where(eq(driverRoutes.driverId, req.driverId!));
 
-        const routeIds = routes.map(r => r.id);
-
-        if (routeIds.length === 0) {
-            return res.json({
-                totalExpected: 0,
-                totalCollected: 0,
-                discrepancy: 0,
-                cardCollected: 0,
-                orders: []
-            });
-        }
-
-        // Get all COD deliveries for these routes (assuming today's route/shift context)
-        // We filter for "delivery" type stops that have codRequired
-        const allStops = await db
-            .select({
-                routeOrder: routeOrders,
-                order: orders
-            })
-            .from(routeOrders)
-            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
-            .where(eq(routeOrders.type, 'delivery')); // Only care about delivery stops for COD
-
-        // Filter valid stops for this driver's routes
-        const driverStops = allStops.filter(s => routeIds.includes(s.routeOrder.routeId));
-
-        // Filter for COD orders
-        const codStops = driverStops.filter(s => s.order.codRequired === 1);
-
-        // Collection method lives on codRecords — card payments are charged on
-        // the driver's phone and must stay out of the cash reconciliation
-        const shipmentIds = codStops.map(s => s.order.id);
-        const codRecordRows = shipmentIds.length > 0
-            ? await db.select().from(codRecords).where(inArray(codRecords.shipmentId, shipmentIds))
-            : [];
-        const codRecordByShipment = new Map(codRecordRows.map(r => [r.shipmentId, r]));
-
-        let totalExpected = 0;   // cash the driver should have in hand
-        let totalCollected = 0;  // cash actually reported
-        let cardCollected = 0;   // charged by card — never passes through the driver
-
-        const codOrders = codStops.map(s => {
-            const expected = parseFloat(s.order.codAmount || '0');
-            const collected = s.routeOrder.collectedAmount ? parseFloat(s.routeOrder.collectedAmount) : 0;
-            const status = s.routeOrder.status?.toLowerCase();
-            const isDelivered = status === 'delivered';
-            const codRecord = codRecordByShipment.get(s.order.id);
-            const paymentMethod = codRecord?.collectedMethod
-                || (isDelivered ? 'cash' : (s.order.codPaymentMethod || 'cash'));
-
-            // Only count towards totals if delivered; card stays out of the cash discrepancy
-            if (isDelivered) {
-                if (paymentMethod === 'card') {
-                    cardCollected += collected || expected;
-                } else {
-                    totalExpected += expected;
-                    totalCollected += collected;
-                }
+            if (routeId) {
+                // Scoped to exactly the route the driver is currently on — the wallet
+                // reads as "what this route collected", not a blend of every route
+                // worked today (a driver can finish one route and start a second
+                // one on the same day, and those shouldn't be summed together).
+                routeIds = allRoutes.filter(r => String(r.id) === String(routeId)).map(r => r.id);
+            } else {
+                // No active route given (e.g. between routes) — fall back to
+                // today's/in-progress routes so the screen still shows something.
+                const todayStr = new Date().toISOString().slice(0, 10);
+                routeIds = allRoutes.filter(r =>
+                    r.status === 'in_progress' || new Date(r.date).toISOString().slice(0, 10) === todayStr
+                ).map(r => r.id);
             }
+        }
 
-            return {
-                id: s.order.id,
-                waybillNumber: s.order.waybillNumber,
-                customerName: s.order.customerName,
-                expectedAmount: expected,
-                // Never report a collected amount for a non-delivered stop, even if
-                // routeOrders.collectedAmount has a stale/leftover value — mirrors the
-                // isDelivered gate already applied to the totals above.
-                collectedAmount: isDelivered ? collected : 0,
-                paymentMethod,
-                paymentReference: codRecord?.paymentReference || null,
-                status: status, // delivered, returned, etc.
-                isDelivered
-            };
-        });
-
-        res.json({
-            totalExpected,
-            totalCollected,
-            discrepancy: totalCollected - totalExpected,
-            cardCollected,
-            orders: codOrders
-        });
+        res.json(await computeWalletSummary(db, routeIds));
 
     } catch (error) {
         console.error('Get wallet summary error:', error);

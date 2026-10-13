@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { customAlphabet } from 'nanoid';
 import { eq, and, or, desc, sql, gte, lt, notInArray, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { getDb } from './db';
-import { drivers, driverRoutes, driverShifts, routeOrders, orders, driverReports, clientAccounts, codRecords } from '../drizzle/schema';
+import { drivers, driverRoutes, driverShifts, driverLocations, routeOrders, orders, driverReports, clientAccounts, codRecords } from '../drizzle/schema';
 import { optimizeStops } from './routeOptimizer';
 import type { OptimizableStop, LatLng } from './routeOptimizer';
 import { findPrecedenceViolation } from '@shared/routeSequence';
@@ -1305,12 +1305,36 @@ export interface DriverShiftReportRoute {
     codCollected: number;
 }
 
+/**
+ * The driver's end-of-shift reconciliation, as /shifts/end snapshotted it. The
+ * money figures were computed server-side at submission; only declaredCash and
+ * the note came from the driver.
+ */
+export interface DriverShiftReconciliation {
+    reconciledAt: Date;
+    expectedCash: number;
+    collectedCash: number;
+    cardCollected: number;
+    declaredCash: number;
+    /** collectedCash − expectedCash */
+    cashDiscrepancy: number;
+    /** declaredCash − collectedCash */
+    declaredVariance: number;
+    note: string | null;
+}
+
 export interface DriverShiftReportGroup {
     driverId: number;
     driverName: string;
     shiftId: number | null; // null = these routes aren't linked to a reported shift yet (still in progress)
     shiftStartTime: Date | null;
     shiftEndTime: Date | null;
+    /**
+     * Null while the shift is open, for the unlinked bucket, and for a shift that
+     * was closed without one (admin close, stale close, older app build). A shift
+     * with both shiftEndTime and reconciliation is "completed".
+     */
+    reconciliation: DriverShiftReconciliation | null;
     /** Paid time for this shift, clipped to the requested range. Null when there's no shift. */
     onDutySeconds: number | null;
     routes: DriverShiftReportRoute[];
@@ -1547,7 +1571,22 @@ export async function getDriverShiftReport(filters?: ShiftReportFilters | string
         return Math.max(0, Math.round((to - from) / 1000));
     };
 
-    const getGroup = (driverId: number, shiftId: number | null, shiftStartTime: Date | null, shiftEndTime: Date | null) => {
+    const num = (v: string | null) => (v === null ? 0 : Number(v));
+    const reconciliationOf = (shift: (typeof dayShifts)[number] | undefined): DriverShiftReconciliation | null =>
+        shift?.reconciledAt ? {
+            reconciledAt: shift.reconciledAt,
+            expectedCash: num(shift.expectedCash),
+            collectedCash: num(shift.collectedCash),
+            cardCollected: num(shift.cardCollected),
+            declaredCash: num(shift.declaredCash),
+            cashDiscrepancy: num(shift.cashDiscrepancy),
+            declaredVariance: num(shift.declaredVariance),
+            note: shift.reconciliationNote,
+        } : null;
+
+    const getGroup = (driverId: number, shiftId: number | null, shift?: (typeof dayShifts)[number]) => {
+        const shiftStartTime = shift?.startTime ?? null;
+        const shiftEndTime = shift?.endTime ?? null;
         const key = `${driverId}:${shiftId ?? 'unlinked'}`;
         let group = groups.get(key);
         if (!group) {
@@ -1557,6 +1596,7 @@ export async function getDriverShiftReport(filters?: ShiftReportFilters | string
                 shiftId,
                 shiftStartTime,
                 shiftEndTime,
+                reconciliation: reconciliationOf(shift),
                 onDutySeconds: shiftStartTime ? clippedSeconds(shiftStartTime, shiftEndTime) : null,
                 routes: [],
                 totalActiveSeconds: 0,
@@ -1570,7 +1610,7 @@ export async function getDriverShiftReport(filters?: ShiftReportFilters | string
 
     // Seed a group per shift so shifts with no routes yet still show up.
     for (const shift of dayShifts) {
-        getGroup(shift.driverId, shift.id, shift.startTime, shift.endTime);
+        getGroup(shift.driverId, shift.id, shift);
     }
 
     for (const route of dayRoutes) {
@@ -1581,12 +1621,7 @@ export async function getDriverShiftReport(filters?: ShiftReportFilters | string
         // requested range, so an out-of-range shift correctly clips to 0 rather
         // than leaking time from outside the window.
         const shift = route.shiftId !== null ? shiftsById.get(route.shiftId) : undefined;
-        const group = getGroup(
-            route.driverId,
-            route.shiftId ?? null,
-            shift?.startTime ?? null,
-            shift?.endTime ?? null,
-        );
+        const group = getGroup(route.driverId, route.shiftId ?? null, shift);
         const report = routeReportById.get(route.id)!;
         group.routes.push(report);
         group.totalActiveSeconds += report.activeSeconds || 0;
@@ -2437,4 +2472,88 @@ export async function getDispatchOverview(dateStr?: string): Promise<DispatchOve
         || (a.sequence ?? 0) - (b.sequence ?? 0));
 
     return base;
+}
+
+// ============ LIVE DRIVER LOCATIONS ============
+
+/** One on-duty driver's last GPS fix, for the dispatch live map. */
+export interface LiveDriverLocation {
+    driverId: number;
+    driverName: string;
+    initials: string;
+    vehicleNumber: string | null;
+    /** The driver's in-progress routes (the ping's routeId is only the one the app had open). */
+    routeIds: string[];
+    lat: number;
+    lng: number;
+    accuracy: number | null;
+    heading: number | null;
+    /** Metres per second. */
+    speed: number | null;
+    /** When the phone took the fix — the map greys the pin out as this ages. */
+    recordedAt: Date;
+    onDutySince: Date;
+}
+
+/**
+ * Last known position of every driver on duty right now. Polled by the dispatch
+ * map far more often than getDispatchOverview, so it stays a few indexed reads.
+ *
+ * "On duty" is the same open, non-stale shift rule as the dispatch roster, so a
+ * driver who clocked out (or whose shift went stale) drops off the map even if
+ * their last fix is only seconds old. A driver on duty who hasn't sent a fix yet
+ * simply has no pin.
+ */
+export async function getLiveDriverLocations(): Promise<LiveDriverLocation[]> {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const now = new Date();
+    const openShifts = await db.select({ driverId: driverShifts.driverId, startTime: driverShifts.startTime })
+        .from(driverShifts).where(isNull(driverShifts.endTime));
+    const onDutySince = new Map<number, Date>();
+    for (const s of openShifts) {
+        if (isStaleOpenShift(s, now)) continue;
+        const current = onDutySince.get(s.driverId);
+        if (!current || s.startTime > current) onDutySince.set(s.driverId, s.startTime);
+    }
+    const driverIds = Array.from(onDutySince.keys());
+    if (driverIds.length === 0) return [];
+
+    const [locations, driverRows, routes] = await Promise.all([
+        db.select().from(driverLocations).where(inArray(driverLocations.driverId, driverIds)),
+        db.select({ id: drivers.id, fullName: drivers.fullName, vehicleNumber: drivers.vehicleNumber })
+            .from(drivers).where(inArray(drivers.id, driverIds)),
+        db.select({ id: driverRoutes.id, driverId: driverRoutes.driverId })
+            .from(driverRoutes)
+            .where(and(eq(driverRoutes.status, 'in_progress'), inArray(driverRoutes.driverId, driverIds))),
+    ]);
+    const driverById = new Map(driverRows.map(d => [d.id, d]));
+    const routesByDriver = new Map<number, string[]>();
+    for (const r of routes) {
+        if (r.driverId === null) continue;
+        routesByDriver.set(r.driverId, [...(routesByDriver.get(r.driverId) ?? []), r.id]);
+    }
+
+    return locations
+        .map((loc) => {
+            const d = driverById.get(loc.driverId);
+            const name = d?.fullName || `Driver #${loc.driverId}`;
+            const routeIds = routesByDriver.get(loc.driverId) ?? (loc.routeId ? [loc.routeId] : []);
+            return {
+                driverId: loc.driverId,
+                driverName: name,
+                initials: initialsOf(name),
+                vehicleNumber: d?.vehicleNumber ?? null,
+                routeIds,
+                lat: loc.lat,
+                lng: loc.lng,
+                accuracy: loc.accuracy,
+                heading: loc.heading,
+                speed: loc.speed,
+                recordedAt: loc.recordedAt,
+                onDutySince: onDutySince.get(loc.driverId)!,
+            };
+        })
+        .sort((a, b) => a.driverName.localeCompare(b.driverName));
 }

@@ -27,12 +27,12 @@ import {
     TrendingUp, BarChart2, Search, ChevronRight,
     Activity, Download, ChevronUp, ChevronDown, ListOrdered, MapPinOff,
     Map as MapIcon, Inbox, Route as RouteIcon, CreditCard, Banknote,
-    Maximize2, ShieldCheck, AlertCircle,
+    Maximize2, ShieldCheck, AlertCircle, LocateFixed,
 } from 'lucide-react';
 import CreateRouteWizard from '@/components/CreateRouteWizard';
 import OrderPickList, { type SelectedOrder, type OrderMode } from '@/components/OrderPickList';
-import { OrdersMap } from '@/components/OrdersMap';
-import type { MapPoint, PinKind } from '@/components/OrdersMap';
+import { OrdersMap, formatAge } from '@/components/OrdersMap';
+import type { MapPoint, PinKind, DriverMarker } from '@/components/OrdersMap';
 import DispatchFilters from '@/components/DispatchFilters';
 import SetLocationDialog from '@/components/SetLocationDialog';
 import RouteStopSequencer, { type SequencerStop } from '@/components/RouteStopSequencer';
@@ -125,6 +125,9 @@ const initialsOf = (name?: string | null) =>
         .join('') || '?';
 
 /** AED amounts read as money, not as raw floats — thousands separated, cents only when they exist. */
+/** Signed AED for variances: "+20", "-50", "0". */
+const fmtSignedAed = (n: number) => `${n > 0 ? '+' : ''}${fmtAed(n)}`;
+
 const fmtAed = (value: number | string | null | undefined) => {
     const n = typeof value === 'string' ? parseFloat(value) : value;
     if (n === null || n === undefined || Number.isNaN(n)) return '0';
@@ -211,6 +214,7 @@ export default function DriversSection() {
     const [dispatchFilters, setDispatchFilters] = useState<DispatchFilterState>({ ...EMPTY_DISPATCH_FILTERS });
     /** Quick city chip on the dispatch map — 'all' or a city name. */
     const [mapZone, setMapZone] = useState('all');
+    const [focusDriverId, setFocusDriverId] = useState<number | null>(null);
     /** Dispatch board driver filter — 'all' or a driver id. */
     const [dispatchDriver, setDispatchDriver] = useState('all');
     /** Expanded state of the "stuck routes" alert. */
@@ -254,6 +258,14 @@ export default function DriversSection() {
             {},
             { refetchInterval: 60_000 },
         );
+
+    // Driver GPS for the live map. Polled much faster than the overview — the app
+    // pings every ~15s while a driver is on duty — but only while Dispatch is open.
+    const { data: liveDriverLocations } =
+        trpc.portal.drivers.getLiveDriverLocations.useQuery(undefined, {
+            enabled: view === 'dispatch',
+            refetchInterval: 15_000,
+        });
 
     const { data: drivers, isLoading: driversLoading, refetch: refetchDrivers } =
         trpc.portal.drivers.getAllDrivers.useQuery();
@@ -895,6 +907,21 @@ export default function DriversSection() {
     const roster = dispatchDriver === 'all'
         ? rosterAll
         : rosterAll.filter(d => String(d.driverId) === dispatchDriver);
+    const driverMarkers: DriverMarker[] = (liveDriverLocations ?? [])
+        .filter(l => dispatchDriver === 'all' || String(l.driverId) === dispatchDriver)
+        .map(l => ({
+            id: l.driverId,
+            lat: l.lat,
+            lng: l.lng,
+            name: l.driverName,
+            initials: l.initials,
+            vehicleNumber: l.vehicleNumber,
+            routeIds: l.routeIds,
+            heading: l.heading,
+            speed: l.speed,
+            recordedAt: l.recordedAt,
+        }));
+    const driverLocationById = new Map((liveDriverLocations ?? []).map(l => [l.driverId, l]));
     const cashAlerts = dispatch?.cashAlerts || [];
     const failedStops = dispatch?.failedStops || [];
     const stalledRoutes = dispatch?.stalledRoutes || [];
@@ -1024,7 +1051,7 @@ export default function DriversSection() {
                     </div>
 
                     <div className="flex-1 relative min-h-[420px]">
-                        {zoneLiveStops.length === 0 ? (
+                        {zoneLiveStops.length === 0 && driverMarkers.length === 0 ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground px-6 text-center">
                                 <RouteIcon className="w-8 h-8 opacity-30" />
                                 <p className="text-sm">
@@ -1033,7 +1060,7 @@ export default function DriversSection() {
                                         : 'No stops on the road in this zone'}
                                 </p>
                                 <p className="text-xs">
-                                    The live map only shows stops of routes a driver has started.
+                                    The live map shows stops of routes a driver has started, and the GPS of drivers on duty.
                                 </p>
                             </div>
                         ) : (
@@ -1043,12 +1070,19 @@ export default function DriversSection() {
                                     const stop = zoneLiveStops.find(s => s.stopId === stopId);
                                     if (stop) openRouteDetails(stop.routeId);
                                 }}
+                                drivers={driverMarkers}
+                                focusDriverId={focusDriverId}
+                                onDriverClick={(driverId) => {
+                                    const routeId = driverLocationById.get(driverId)?.routeIds[0];
+                                    if (routeId) openRouteDetails(routeId);
+                                }}
                                 className="absolute inset-0 h-full w-full rounded-none border-0"
                             />
                         )}
 
-                        {/* legend — pins are colored by STOP status; there is no driver GPS feed */}
-                        <div className="absolute bottom-3.5 left-3.5 z-10 inline-flex items-center gap-4 bg-card border border-border rounded-xl px-3.5 py-2.5 shadow-lg text-xs font-display font-semibold text-[var(--ink-2)]">
+                        {/* legend — stop pins are colored by STOP status; the round initials
+                            pins are drivers' live GPS, colored by how fresh the last fix is */}
+                        <div className="absolute bottom-3.5 left-3.5 z-10 inline-flex items-center gap-4 flex-wrap bg-card border border-border rounded-xl px-3.5 py-2.5 shadow-lg text-xs font-display font-semibold text-[var(--ink-2)]">
                             <span className="inline-flex items-center gap-1.5">
                                 <span className="w-2.5 h-2.5 rounded-full bg-[var(--st-green)]" />Delivered
                             </span>
@@ -1060,6 +1094,12 @@ export default function DriversSection() {
                             </span>
                             <span className="inline-flex items-center gap-1.5">
                                 <span className="w-2.5 h-2.5 rounded-full bg-primary" />Problem
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 pl-3 border-l border-border">
+                                <span className="w-3.5 h-3.5 rounded-full border-2 border-white bg-[var(--st-green)] shadow" />Driver (live)
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                                <span className="w-3.5 h-3.5 rounded-full border-2 border-white bg-[#64748b] shadow" />No signal
                             </span>
                         </div>
 
@@ -1177,12 +1217,15 @@ export default function DriversSection() {
                                 <p className="text-center py-8 text-sm text-muted-foreground">Loading roster…</p>
                             ) : roster.length === 0 ? (
                                 <p className="text-center py-8 text-sm text-muted-foreground">No routes assigned today</p>
-                            ) : roster.map((d) => (
+                            ) : roster.map((d) => {
+                                const gps = driverLocationById.get(d.driverId);
+                                const gpsAgeMs = gps ? Date.now() - new Date(gps.recordedAt).getTime() : null;
+                                return (
+                                <div key={d.driverId} className="flex items-stretch border-b border-border last:border-b-0">
                                 <button
-                                    key={d.driverId}
                                     type="button"
                                     onClick={() => { setProfileDriverId(d.driverId); setView('drivers'); }}
-                                    className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-border last:border-b-0 hover:bg-[var(--surface-2)] transition-colors text-left"
+                                    className="flex-1 min-w-0 flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--surface-2)] transition-colors text-left"
                                 >
                                     <span className="w-[38px] h-[38px] rounded-xl bg-[var(--surface-2)] grid place-items-center font-display font-bold text-[13px] relative flex-none">
                                         {d.initials}
@@ -1202,6 +1245,18 @@ export default function DriversSection() {
                                                 : 'Not clocked in'}
                                             {d.vehicleNumber ? ` · ${d.vehicleNumber}` : ''}
                                         </span>
+                                        {d.dutyState === 'active' && (
+                                            <span
+                                                className="block text-[11px] font-mono truncate"
+                                                style={{
+                                                    color: gpsAgeMs === null || gpsAgeMs > 10 * 60_000
+                                                        ? 'var(--muted-foreground)'
+                                                        : gpsAgeMs > 2 * 60_000 ? 'var(--st-amber)' : 'var(--st-green)',
+                                                }}
+                                            >
+                                                {gpsAgeMs === null ? 'No GPS yet' : `GPS ${formatAge(gpsAgeMs)}`}
+                                            </span>
+                                        )}
                                     </span>
                                     <span className="text-right flex-none">
                                         {d.totalStops > 0 ? (
@@ -1223,7 +1278,20 @@ export default function DriversSection() {
                                         )}
                                     </span>
                                 </button>
-                            ))}
+                                {gps && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFocusDriverId(d.driverId)}
+                                        title={`Show ${d.driverName} on the map`}
+                                        aria-label={`Show ${d.driverName} on the map`}
+                                        className="flex-none w-10 grid place-items-center text-muted-foreground hover:text-primary hover:bg-[var(--surface-2)] transition-colors border-l border-border"
+                                    >
+                                        <LocateFixed className="w-4 h-4" />
+                                    </button>
+                                )}
+                                </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -2101,6 +2169,14 @@ export default function DriversSection() {
             Routes: g.routes.length,
             'Stops completed': g.totalCompletedStops,
             'COD collected (AED)': g.totalCodCollected,
+            Status: !g.shiftId ? '' : !g.shiftEndTime ? 'On duty' : g.reconciliation ? 'Completed' : 'Closed, not reconciled',
+            'Expected cash (AED)': g.reconciliation?.expectedCash ?? '',
+            'Cash collected (AED)': g.reconciliation?.collectedCash ?? '',
+            'Card (AED)': g.reconciliation?.cardCollected ?? '',
+            'Declared cash (AED)': g.reconciliation?.declaredCash ?? '',
+            'Stops vs expected (AED)': g.reconciliation?.cashDiscrepancy ?? '',
+            'Declared vs collected (AED)': g.reconciliation?.declaredVariance ?? '',
+            'Driver note': g.reconciliation?.note ?? '',
         }));
 
         const workbook = XLSX.utils.book_new();
@@ -2292,6 +2368,15 @@ export default function DriversSection() {
                                 <span className="badge2 b-amber">not linked to a reported shift yet</span>
                             )}
                             {group.shiftId && !group.shiftEndTime && <span className="badge2 b-green">on duty</span>}
+                            {group.shiftId && group.shiftEndTime && (group.reconciliation ? (
+                                <span className="badge2 b-green" title="The driver submitted the end-of-shift cash reconciliation">
+                                    <CheckCircle2 className="w-3 h-3 inline -mt-0.5 mr-1" />completed
+                                </span>
+                            ) : (
+                                <span className="badge2 b-amber" title="Closed without the driver's cash reconciliation — admin close, missed clock-out or an older app version">
+                                    closed · not reconciled
+                                </span>
+                            ))}
                         </div>
                         <div className="flex items-center gap-[18px] text-[13px] flex-wrap">
                             {group.onDutySeconds !== null && (
@@ -2346,6 +2431,48 @@ export default function DriversSection() {
                             )}
                         </div>
                     </div>
+
+                    {group.reconciliation && (() => {
+                        const r = group.reconciliation;
+                        const mismatch = r.cashDiscrepancy !== 0 || r.declaredVariance !== 0;
+                        const cells: { label: string; value: string; title: string; alert?: boolean }[] = [
+                            { label: 'Expected cash', value: fmtAed(r.expectedCash), title: 'Cash due on the delivered cash-COD stops' },
+                            { label: 'Collected (stops)', value: fmtAed(r.collectedCash), title: 'Cash the driver recorded at each stop' },
+                            { label: 'Card', value: fmtAed(r.cardCollected), title: 'Charged by card — never in the driver\'s hands' },
+                            { label: 'Declared by driver', value: fmtAed(r.declaredCash), title: 'Cash the driver says they are holding' },
+                            { label: 'Stops vs expected', value: fmtSignedAed(r.cashDiscrepancy), title: 'Collected − expected', alert: r.cashDiscrepancy !== 0 },
+                            { label: 'Declared vs collected', value: fmtSignedAed(r.declaredVariance), title: 'Declared − collected', alert: r.declaredVariance !== 0 },
+                        ];
+                        return (
+                            <div className={`mt-3.5 rounded-xl border px-3.5 py-3 ${mismatch
+                                ? 'border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_6%,transparent)]'
+                                : 'border-border bg-[var(--surface-2)]'}`}
+                            >
+                                <div className="flex items-center gap-2 mb-2.5 text-[12.5px] font-display font-semibold flex-wrap">
+                                    {mismatch
+                                        ? <AlertTriangle className="w-4 h-4 text-primary flex-none" />
+                                        : <ShieldCheck className="w-4 h-4 text-[var(--st-green)] flex-none" />}
+                                    Cash reconciliation · {mismatch ? 'mismatch' : 'balanced'}
+                                    <span className="ml-auto text-[11.5px] text-muted-foreground font-mono font-normal">
+                                        submitted {new Date(r.reconciledAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+                                    {cells.map(c => (
+                                        <div key={c.label} title={c.title}>
+                                            <div style={thStyle}>{c.label}</div>
+                                            <div className={`font-mono text-[13px] font-semibold ${c.alert ? 'text-primary' : ''}`}>{c.value} AED</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {r.note && (
+                                    <div className="mt-2.5 text-[12.5px]">
+                                        <span className="text-muted-foreground">Driver note: </span>{r.note}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {group.routes.length > 0 && (
                         <div className="mt-3.5 border border-border rounded-xl overflow-hidden">

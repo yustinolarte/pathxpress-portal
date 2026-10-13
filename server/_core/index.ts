@@ -6,7 +6,8 @@ import helmet from "helmet";
 import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { createHash } from "crypto";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -113,6 +114,28 @@ async function startServer() {
     message: "Too many tracking lookups from this IP, please try again after 15 minutes",
   });
 
+  // Live GPS pings from the driver app (~every 15s per on-duty driver). Keyed by
+  // the driver's bearer token instead of IP: drivers on the same carrier NAT or
+  // depot Wi-Fi share one IP, and at 60 pings/15min each a handful of them would
+  // exhaust apiLimiter's per-IP budget on location alone — taking their status
+  // updates and the admin portal on that IP down with it. The token is hashed so
+  // the raw JWT never sits in the limiter's memory store; a forged token still
+  // costs a request against its own bucket and then fails driverAuthMiddleware.
+  const LOCATION_PATH = "/api/driver/location";
+  const locationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 150,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      const auth = req.headers.authorization;
+      return auth
+        ? `driver:${createHash("sha256").update(auth).digest("hex")}`
+        : ipKeyGenerator(req.ip ?? "");
+    },
+    message: { error: "Too many location updates, please slow down" },
+  });
+
   // tRPC batches multiple calls into one request as a comma-separated procedure
   // list in the URL, e.g. /api/trpc/portal.auth.login,portal.auth.me?batch=1 — an
   // exact-path `app.use("/api/trpc/portal.auth.login", ...)` never matches that
@@ -146,7 +169,10 @@ async function startServer() {
 
   // Apply rate limiting
   app.use("/api/driver/auth/login", authLimiter);
-  app.use("/api", apiLimiter);
+  app.use(LOCATION_PATH, locationLimiter);
+  // Location pings are budgeted by locationLimiter above, not the shared per-IP one.
+  app.use("/api", (req, res, next) =>
+    req.originalUrl.split("?")[0] === LOCATION_PATH ? next() : apiLimiter(req, res, next));
 
   // Cookie parser (must be before tRPC middleware)
   app.use(cookieParser());

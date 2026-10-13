@@ -835,16 +835,56 @@ export const driverShifts = mysqlTable("driverShifts", {
   driverId: int("driverId").notNull(),
   startTime: timestamp("startTime").notNull(),
   endTime: timestamp("endTime"),
+  // App-generated id for this shift (sent on /shifts/start and /shifts/end) so a
+  // clock-out replayed from the offline queue closes the right shift exactly once.
+  clientRef: varchar("clientRef", { length: 64 }),
+  // End-of-shift reconciliation. A shift is "completed" when endTime AND
+  // reconciledAt are set; endTime without reconciledAt means it was closed some
+  // other way (admin close, stale auto-close, an app build without reconciliation).
+  // The money figures are a server-computed snapshot at submission time — only
+  // declaredCash and the note come from the driver.
+  reconciledAt: timestamp("reconciledAt"),
+  expectedCash: decimal("expectedCash", { precision: 10, scale: 2 }),
+  collectedCash: decimal("collectedCash", { precision: 10, scale: 2 }),
+  cardCollected: decimal("cardCollected", { precision: 10, scale: 2 }),
+  declaredCash: decimal("declaredCash", { precision: 10, scale: 2 }),
+  /** collectedCash − expectedCash: negative means the stops recorded less than was due. */
+  cashDiscrepancy: decimal("cashDiscrepancy", { precision: 10, scale: 2 }),
+  /** declaredCash − collectedCash: what the driver says they hold vs what the stops recorded. */
+  declaredVariance: decimal("declaredVariance", { precision: 10, scale: 2 }),
+  reconciliationNote: text("reconciliationNote"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => ({
   // findOpenShift/findOrCreateOpenShift filter on (driverId, endTime) on every
   // clock-in, route start and dispatch refresh — there was no index at all
   // beyond the PK, so every one of those was a full table scan.
   driverIdEndTimeIdx: index("driverShifts_driverId_endTime_idx").on(table.driverId, table.endTime),
+  driverIdClientRefIdx: index("driverShifts_driverId_clientRef_idx").on(table.driverId, table.clientRef),
 }));
 
 export type DriverShift = typeof driverShifts.$inferSelect;
 export type InsertDriverShift = typeof driverShifts.$inferInsert;
+
+/**
+ * Driver locations - latest GPS fix per driver, streamed by the app while the
+ * driver is on duty. One row per driver (upserted), not a history: it feeds the
+ * dispatch live map. Kept off `drivers` so a ping every ~15s doesn't churn
+ * drivers.updatedAt, which the auth middleware re-reads on every request.
+ */
+export const driverLocations = mysqlTable("driverLocations", {
+  driverId: int("driverId").primaryKey(),
+  lat: double("lat").notNull(),
+  lng: double("lng").notNull(),
+  accuracy: double("accuracy"), // metres
+  heading: double("heading"), // degrees from north
+  speed: double("speed"), // metres per second
+  routeId: varchar("routeId", { length: 50 }),
+  recordedAt: timestamp("recordedAt").notNull(), // when the phone took the fix
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+});
+
+export type DriverLocation = typeof driverLocations.$inferSelect;
+export type InsertDriverLocation = typeof driverLocations.$inferInsert;
 
 // ==================== INTERNATIONAL SHIPPING TABLES ====================
 

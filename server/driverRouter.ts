@@ -534,6 +534,16 @@ export const driverRouter = router({
             return driverAdmin.getDispatchOverview(input?.date);
         }),
 
+    // Last GPS fix of every on-duty driver, for the dispatch live map. Kept apart
+    // from getDispatchOverview so the map can poll it every few seconds cheaply.
+    getLiveDriverLocations: publicProcedure
+        .query(async ({ ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.getLiveDriverLocations();
+        }),
+
     // Per-driver COD reconciliation for one day: cash vs card (Tap to Pay) and
     // how much cash is still in the driver's hands. date defaults to today.
     getCodReconciliation: publicProcedure
