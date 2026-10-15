@@ -34,11 +34,10 @@ const UAE_BOUNDS = { south: 22.55, west: 51.45, north: 26.1, east: 56.65 };
 
 function zoneAt(lat: number, lng: number): Selection {
   const point: [number, number] = [lng, lat];
-  if (!booleanPointInPolygon(point, uae)) return { outside: true };
   const match = zoneFeatures.find(feature => booleanPointInPolygon(point, feature));
-  return match
-    ? { zone: match.properties.zone_code, area: match.properties.area_name.replace(' Urban', '') }
-    : { zone: 3 };
+  if (match) return { zone: match.properties.zone_code, area: match.properties.area_name.replace(' Urban', '') };
+  if (!booleanPointInPolygon(point, uae)) return { outside: true };
+  return { zone: 3 };
 }
 
 export default function DeliveryZones() {
