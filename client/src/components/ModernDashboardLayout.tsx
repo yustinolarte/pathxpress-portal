@@ -23,7 +23,7 @@ import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/useMobile";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2, Key, FileText, LogOut, Plus, Sun, Moon } from "lucide-react";
+import { Loader2, Key, FileText, LogOut, Plus, Sun, Moon, Map } from "lucide-react";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import NotificationBell from "./NotificationBell";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -281,7 +281,9 @@ export default function ModernDashboardLayout({
                                         {isActive && !isCollapsed && (
                                             <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-primary" />
                                         )}
-                                        <span className="material-symbols-outlined shrink-0 text-[20px]">{item.icon}</span>
+                                        {item.value === 'delivery-zones'
+                                            ? <Map className="h-5 w-5 shrink-0" aria-hidden="true" />
+                                            : <span className="material-symbols-outlined shrink-0 text-[20px]">{item.icon}</span>}
                                         {(!isCollapsed || isMobile) && <span className="text-[13.5px] truncate flex-1">{item.label}</span>}
                                         {(!isCollapsed || isMobile) && typeof item.badge === 'number' && item.badge > 0 && (
                                             <span className="font-mono text-[10.5px] font-bold bg-primary text-white rounded-full px-[7px] py-px shrink-0">
