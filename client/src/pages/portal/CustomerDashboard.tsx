@@ -80,7 +80,7 @@ export default function CustomerDashboard() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window === 'undefined') return 'overview';
     const tab = new URLSearchParams(window.location.search).get('tab');
-    const valid = ['overview', 'analytics', 'orders', 'returns', 'tracking', 'calculator', 'international', 'invoices', 'cod', 'reports', 'guide', 'locations'];
+    const valid = ['overview', 'analytics', 'orders', 'returns', 'tracking', 'calculator', 'delivery-zones', 'international', 'invoices', 'cod', 'reports', 'guide', 'locations'];
     return tab && valid.includes(tab) ? tab : 'overview';
   });
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -529,6 +529,7 @@ export default function CustomerDashboard() {
     { icon: 'swap_horiz', label: 'Returns & Exchanges', value: 'returns', section: 'Shipping' },
     { icon: 'search', label: 'Track Shipment', value: 'tracking', section: 'Shipping' },
     { icon: 'calculate', label: 'Rate Calculator', value: 'calculator', section: 'Tools' },
+    { icon: 'map', label: 'Delivery Zones', value: 'delivery-zones', section: 'Tools' },
     { icon: 'public', label: 'International', value: 'international', section: 'Tools' },
     { icon: 'receipt_long', label: 'Invoices', value: 'invoices', section: 'Finance' },
     { icon: 'payments', label: 'COD', value: 'cod', section: 'Finance' },
@@ -1356,6 +1357,25 @@ export default function CustomerDashboard() {
           {/* Rate Calculator Tab */}
           <TabsContent value="calculator" className="space-y-4">
             <CustomerRateCalculator />
+          </TabsContent>
+
+          <TabsContent value="delivery-zones" className="space-y-4 mt-0">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow mb-2">Coverage</p>
+                <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Delivery Zones</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Explore exact boundaries, search an address, or select a point to check its zone.</p>
+              </div>
+              <a href="/delivery-zones" target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-primary hover:underline">
+                Open full map ↗
+              </a>
+            </div>
+            <iframe
+              src="/delivery-zones?embed=1"
+              title="PathXpress delivery zones map"
+              className="h-[850px] w-full rounded-xl border border-border bg-white"
+              loading="lazy"
+            />
           </TabsContent>
 
           {/* Returns & Exchanges Tab */}

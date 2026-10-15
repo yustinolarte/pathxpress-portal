@@ -98,6 +98,11 @@ export default function Footer() {
             <h4 className="mono-label mb-5">{t('nav.services')}</h4>
             <ul className="space-y-3 text-[14.5px] text-muted-foreground">
               <li>
+                <Link href="/delivery-zones">
+                  <span className="hover:text-primary transition-smooth cursor-pointer">Delivery Zones Map</span>
+                </Link>
+              </li>
+              <li>
                 <Link href="/services">
                   <span className="hover:text-primary transition-smooth cursor-pointer">
                     {t('services.sameDay.title')}

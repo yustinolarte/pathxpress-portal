@@ -74,6 +74,9 @@ export default function Pricing() {
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-4">{t('pricing.title')}</h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t('pricing.subtitle')}</p>
+            <Link href="/delivery-zones" className="mt-6 inline-flex items-center gap-2 rounded-lg border border-primary/40 px-5 py-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10">
+              <MapPin className="h-4 w-4" /> Explore delivery zones on the map
+            </Link>
           </AnimatedSection>
 
           {/* Features Row */}

@@ -44,6 +44,7 @@ export default function Header() {
     { path: '/tracking', label: t('nav.tracking') },
     { path: '/request-pickup', label: t('nav.requestPickup') },
     { path: '/pricing', label: t('nav.rates') },
+    { path: '/delivery-zones', label: t('nav.deliveryZones') },
     { path: '/contact', label: t('nav.contact') },
   ];
 
@@ -64,11 +65,11 @@ export default function Header() {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-8">
+          <nav className="hidden lg:flex items-center gap-4">
             {navItems.map((item) => (
               <Link key={item.path} href={item.path}>
                 <span
-                  className={`text-[14.5px] font-medium transition-smooth cursor-pointer relative group ${
+                  className={`text-[13.5px] whitespace-nowrap font-medium transition-smooth cursor-pointer relative group ${
                     location === item.path ? 'text-primary' : 'text-foreground/70 hover:text-foreground'
                   }`}
                 >

@@ -13,6 +13,7 @@ const TrackShipment = lazy(() => import("./pages/TrackShipment"));
 const RequestQuote = lazy(() => import("./pages/RequestQuote"));
 const RequestPickup = lazy(() => import("./pages/RequestPickup"));
 const Pricing = lazy(() => import("./pages/Pricing"));
+const DeliveryZones = lazy(() => import("./pages/DeliveryZones"));
 const CustomerPortal = lazy(() => import("./pages/CustomerPortal"));
 const Contact = lazy(() => import("./pages/Contact"));
 const Services = lazy(() => import("./pages/Services"));
@@ -44,6 +45,7 @@ function Router() {
         <Route path="/request-quote" component={RequestQuote} />
         <Route path="/request-pickup" component={RequestPickup} />
         <Route path="/pricing" component={Pricing} />
+        <Route path="/delivery-zones" component={DeliveryZones} />
         <Route path="/customer-portal" component={CustomerPortal} />
         <Route path="/portal/login" component={PortalLogin} />
         <Route path="/portal/reset-password" component={PortalResetPassword} />
