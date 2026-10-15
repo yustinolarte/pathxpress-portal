@@ -1034,3 +1034,24 @@ input[type="number"] {
   pointer-events: auto !important;
   z-index: 99999 !important;
 }
+
+.dark .pac-container {
+  background: var(--popover);
+  border-color: var(--border);
+  color: var(--popover-foreground);
+}
+
+.dark .pac-item {
+  border-color: var(--border);
+  color: var(--muted-foreground);
+}
+
+.dark .pac-item:hover,
+.dark .pac-item-selected {
+  background: var(--secondary);
+}
+
+.dark .pac-item-query,
+.dark .pac-matched {
+  color: var(--popover-foreground);
+}

@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import SEOHead, { createBreadcrumbSchema } from '@/components/SEOHead';
 import { loadGoogleMaps } from '@/lib/googleMaps';
+import { useTheme } from '@/contexts/ThemeContext';
 import zonesRaw from '../../../server/zones/delivery-zones.geojson?raw';
 import uaeRaw from '../../../shared/uae-outline.geojson?raw';
 
@@ -31,6 +32,17 @@ const areas = [
   { name: 'Ras Al Khaimah', source: 'Ras Al Khaimah Urban', zone: 2 },
 ] as const;
 const UAE_BOUNDS = { south: 22.55, west: 51.45, north: 26.1, east: 56.65 };
+const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#182A3F' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#DAE4EF' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#182A3F' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#53687F' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#21374C' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#294057' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#3A5269' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#58718B' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0B1828' }] },
+];
 
 function zoneAt(lat: number, lng: number): Selection {
   const point: [number, number] = [lng, lat];
@@ -41,15 +53,26 @@ function zoneAt(lat: number, lng: number): Selection {
 }
 
 export default function DeliveryZones() {
-  const embedded = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embed') === '1';
+  const { theme: siteTheme } = useTheme();
+  const params = new URLSearchParams(window.location.search);
+  const embedded = params.get('embed') === '1';
+  const requestedTheme = params.get('theme');
+  const theme = embedded && (requestedTheme === 'light' || requestedTheme === 'dark') ? requestedTheme : siteTheme;
   const mapElement = useRef<HTMLDivElement>(null);
   const searchElement = useRef<HTMLInputElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const pin = useRef<google.maps.Marker | null>(null);
+  const zone2Layers = useRef<google.maps.Polygon[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [activeArea, setActiveArea] = useState('Dubai');
   const [selection, setSelection] = useState<Selection | null>(null);
+
+  useEffect(() => {
+    if (!embedded) return;
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.documentElement.classList.toggle('light', theme === 'light');
+  }, [embedded, theme]);
 
   useEffect(() => {
     let disposed = false;
@@ -105,6 +128,7 @@ export default function DeliveryZones() {
           map: gmap,
         });
         overlays.push(layer);
+        if (zone === 2) zone2Layers.current.push(layer);
       }
 
       const selectPoint = (lat: number, lng: number, address?: string) => {
@@ -147,10 +171,21 @@ export default function DeliveryZones() {
       disposed = true;
       listeners.forEach(listener => listener.remove());
       overlays.forEach(layer => layer.setMap(null));
+      zone2Layers.current = [];
       pin.current?.setMap(null);
       map.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    map.current.setOptions({ styles: theme === 'dark' ? DARK_MAP_STYLES : [] });
+    for (const layer of zone2Layers.current) {
+      layer.setOptions(theme === 'dark'
+        ? { strokeColor: '#D7E0EA', fillColor: '#3C4046' }
+        : { strokeColor: '#16181C', fillColor: '#16181C' });
+    }
+  }, [ready, theme]);
 
   const focusArea = (name: string, source?: string) => {
     if (!map.current) return;
@@ -171,8 +206,8 @@ export default function DeliveryZones() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F3EF] text-[#16181C]">
-      {!embedded && <div className="fixed inset-x-0 top-0 z-40 h-[76px] bg-[#16181C]" aria-hidden="true" />}
+    <div className={`${theme} min-h-screen bg-background text-foreground`} style={{ colorScheme: theme }}>
+      {!embedded && <div className="fixed inset-x-0 top-0 z-40 h-[76px] bg-background" aria-hidden="true" />}
       {!embedded && <SEOHead
         title="UAE Delivery Zone Map | PATHXPRESS"
         description="Explore the exact PathXpress UAE delivery-zone boundaries. Zoom into your area or search an address to see its zone."
@@ -186,27 +221,27 @@ export default function DeliveryZones() {
       <main className={embedded ? 'p-4' : 'pt-28 pb-16'}>
         <div className={embedded ? 'mx-auto max-w-[1500px]' : 'container max-w-[1500px]'}>
           {!embedded && <div className="mb-8">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#E10600]">PathXpress coverage</p>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-primary">PathXpress coverage</p>
             <h1 className="mt-3 text-4xl md:text-5xl font-bold tracking-tight">Explore our UAE delivery zones</h1>
-            <p className="mt-3 max-w-3xl text-base md:text-lg text-[#51545A]">
+            <p className="mt-3 max-w-3xl text-base md:text-lg text-muted-foreground">
               Zoom in to see the exact boundaries on the street map. Search an address or click a location to find its delivery zone.
             </p>
           </div>}
           <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-            <aside className="rounded-2xl border border-[#D7D7D5] bg-white p-5 shadow-sm">
+            <aside className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="relative">
-                <Search className="absolute left-3 top-3.5 h-5 w-5 text-[#6B6F77]" />
+                <Search className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground" />
                 <input
                   ref={searchElement}
                   type="search"
                   placeholder="Search an address in UAE"
                   aria-label="Search an address in UAE"
-                  className="w-full rounded-xl border border-[#C9CACC] bg-white py-3 pl-10 pr-3 text-sm outline-none focus:border-[#E10600]"
+                  className="w-full rounded-xl border border-border bg-background py-3 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary"
                 />
               </div>
-              <p className="mt-5 text-xs font-bold uppercase tracking-widest text-[#6B6F77]">Jump to an area</p>
+              <p className="mt-5 text-xs font-bold uppercase tracking-widest text-muted-foreground">Jump to an area</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => focusArea('All UAE')} className={`col-span-2 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors ${activeArea === 'All UAE' ? 'border-[#E10600] bg-[#FFF0EF] text-[#B52200]' : 'border-[#D7D7D5] hover:border-[#E10600]'}`}>
+                <button type="button" onClick={() => focusArea('All UAE')} className={`col-span-2 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors ${activeArea === 'All UAE' ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary'}`}>
                   All UAE
                 </button>
                 {areas.map(area => (
@@ -214,45 +249,45 @@ export default function DeliveryZones() {
                     key={area.name}
                     type="button"
                     onClick={() => focusArea(area.name, area.source)}
-                    className={`rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${activeArea === area.name ? 'border-[#E10600] bg-[#FFF0EF] text-[#B52200]' : 'border-[#D7D7D5] hover:border-[#E10600]'}`}
+                    className={`rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${activeArea === area.name ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary'}`}
                   >
                     {area.name}
                   </button>
                 ))}
               </div>
-              <div className="mt-6 border-t border-[#E2E2E0] pt-5">
-                <p className="text-xs font-bold uppercase tracking-widest text-[#6B6F77]">Zone key</p>
+              <div className="mt-6 border-t border-border pt-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Zone key</p>
                 <div className="mt-3 space-y-3 text-sm">
                   <div className="flex items-start gap-3"><span className="mt-1 h-4 w-4 shrink-0 rounded-sm border-2 border-[#E10600] bg-[#E10600]/20" /><span><b>Zone 1</b><br />Red urban polygons</span></div>
-                  <div className="flex items-start gap-3"><span className="mt-1 h-4 w-4 shrink-0 rounded-sm border-2 border-[#16181C] bg-[#16181C]/20" /><span><b>Zone 2</b><br />Charcoal urban polygons</span></div>
+                  <div className="flex items-start gap-3"><span className={`mt-1 h-4 w-4 shrink-0 rounded-sm border-2 ${theme === 'dark' ? 'border-[#D7E0EA] bg-[#3C4046]' : 'border-[#16181C] bg-[#16181C]/20'}`} /><span><b>Zone 2</b><br />Urban polygons</span></div>
                   <div className="flex items-start gap-3"><span className="mt-1 h-4 w-4 shrink-0 rounded-sm border border-[#6B6F77] bg-[#6B6F77]/20" /><span><b>Zone 3</b><br />All other UAE locations outside Zones 1 and 2</span></div>
                 </div>
               </div>
             </aside>
             <section className="min-w-0">
-              <div className="relative overflow-hidden rounded-2xl border border-[#C9CACC] bg-[#E7E7E5] shadow-sm">
+              <div className="relative overflow-hidden rounded-2xl border border-border bg-secondary shadow-sm">
                 <div ref={mapElement} className="h-[560px] w-full md:h-[720px]" role="application" aria-label="Interactive UAE delivery zone map" />
-                {!ready && <div className="absolute inset-0 flex items-center justify-center bg-[#F4F3EF] text-[#51545A]">{error || 'Loading map…'}</div>}
-                {ready && <div className="absolute left-4 top-4 rounded-lg bg-white/95 px-3 py-2 text-sm font-semibold shadow"><ZoomIn className="mr-2 inline h-4 w-4 text-[#E10600]" />Zoom in for street-level boundaries</div>}
+                {!ready && <div className="absolute inset-0 flex items-center justify-center bg-background text-muted-foreground">{error || 'Loading map…'}</div>}
+                {ready && <div className="absolute left-4 top-4 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-card-foreground shadow"><ZoomIn className="mr-2 inline h-4 w-4 text-primary" />Zoom in for street-level boundaries</div>}
               </div>
-              <div className="mt-4 flex items-start gap-3 rounded-xl border border-[#D7D7D5] bg-white p-4">
-                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#E10600]" />
+              <div className="mt-4 flex items-start gap-3 rounded-xl border border-border bg-card p-4">
+                <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div aria-live="polite">
                   {selection ? (
                     'outside' in selection ? (
-                      <><p className="font-bold">Outside UAE coverage</p><p className="text-sm text-[#51545A]">Choose a location within the UAE to check its zone.</p></>
+                      <><p className="font-bold">Outside UAE coverage</p><p className="text-sm text-muted-foreground">Choose a location within the UAE to check its zone.</p></>
                     ) : (
-                      <><p className="font-bold">Zone {selection.zone}{selection.area ? ` · ${selection.area}` : ''}</p><p className="text-sm text-[#51545A]">{selection.address || 'Selected map location'} is in Zone {selection.zone}.</p></>
+                      <><p className="font-bold">Zone {selection.zone}{selection.area ? ` · ${selection.area}` : ''}</p><p className="text-sm text-muted-foreground">{selection.address || 'Selected map location'} is in Zone {selection.zone}.</p></>
                     )
                   ) : (
-                    <><p className="font-bold">Check a delivery location</p><p className="text-sm text-[#51545A]">Search an address or click the map. The exact destination pin determines the zone.</p></>
+                    <><p className="font-bold">Check a delivery location</p><p className="text-sm text-muted-foreground">Search an address or click the map. The exact destination pin determines the zone.</p></>
                   )}
                 </div>
               </div>
-              <p className="mt-3 text-xs text-[#6B6F77]">The colored boundaries use the same 11 polygons as the PathXpress portal. Streets and place names are provided by Google Maps.</p>
+              <p className="mt-3 text-xs text-muted-foreground">The colored boundaries use the same 11 polygons as the PathXpress portal. Streets and place names are provided by Google Maps.</p>
             </section>
           </div>
-          {!embedded && <p className="mt-10 text-sm text-[#51545A]">Ready to ship? <Link href="/request-quote" className="font-semibold text-[#B52200] underline">Request a quote</Link> for your destination.</p>}
+          {!embedded && <p className="mt-10 text-sm text-muted-foreground">Ready to ship? <Link href="/request-quote" className="font-semibold text-primary underline">Request a quote</Link> for your destination.</p>}
         </div>
       </main>
       {!embedded && <Footer />}

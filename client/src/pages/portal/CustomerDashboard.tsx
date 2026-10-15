@@ -71,7 +71,20 @@ import InternationalRateCalculator from '@/components/InternationalRateCalculato
 import CreateIntlShipmentForm from '@/components/CreateIntlShipmentForm';
 import CreateShipmentForm from '@/components/CreateShipmentForm';
 import CustomerPortalGuide from '@/components/CustomerPortalGuide';
+import { useTheme } from '@/contexts/ThemeContext';
 import * as XLSX from 'xlsx';
+
+function DeliveryZonesFrame() {
+  const { theme } = useTheme();
+  return (
+    <iframe
+      src={`/delivery-zones?embed=1&theme=${theme}`}
+      title="PathXpress delivery zones map"
+      className="h-[850px] w-full rounded-xl border border-border bg-background"
+      loading="lazy"
+    />
+  );
+}
 
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
@@ -1370,12 +1383,7 @@ export default function CustomerDashboard() {
                 Open full map ↗
               </a>
             </div>
-            <iframe
-              src="/delivery-zones?embed=1"
-              title="PathXpress delivery zones map"
-              className="h-[850px] w-full rounded-xl border border-border bg-white"
-              loading="lazy"
-            />
+            <DeliveryZonesFrame />
           </TabsContent>
 
           {/* Returns & Exchanges Tab */}
