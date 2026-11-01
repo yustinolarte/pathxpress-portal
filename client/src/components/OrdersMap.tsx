@@ -44,6 +44,10 @@ export interface MapPointDetails {
     codRequired?: number | boolean | null;
     codAmount?: string | number | null;
     type?: 'pickup' | 'delivery' | null;
+    /** Admin-only ETA line, e.g. "ETA 10:45" or "Done 10:42". */
+    etaLabel?: string | null;
+    /** Highlights the ETA line in red (misses a time window / Bullet deadline). */
+    etaLate?: boolean;
 }
 
 export interface MapPoint {
@@ -300,6 +304,13 @@ function makeHoverCard(point: MapPoint, onEditLocation?: (id: MapPointId) => voi
     if (meta.length) addLine(meta.join(' · '), true);
 
     if (d.codRequired === 1 || d.codRequired === true) addLine(`💰 COD ${d.codAmount ?? ''} AED`);
+
+    if (d.etaLabel) {
+        const eta = document.createElement('div');
+        eta.style.cssText = `margin-top:4px;font-size:11px;${d.etaLate ? 'color:#FF6B6B;font-weight:600;' : 'color:rgba(255,255,255,.85);'}`;
+        eta.textContent = d.etaLabel;
+        card.appendChild(eta);
+    }
 
     if (point.accuracy === 'approximate') {
         const approx = document.createElement('div');

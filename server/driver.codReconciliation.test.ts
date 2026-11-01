@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vitest";
 import { getDb } from "./db";
 import { getDriverCodReconciliation, markDriverCashRemitted } from "./driverAdmin";
-import { drivers, driverRoutes, routeOrders, orders } from "../drizzle/schema";
+import { drivers, driverRoutes, routeOrders, orders, driverCashHandovers } from "../drizzle/schema";
 import { eq, inArray } from "drizzle-orm";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -116,6 +116,7 @@ async function withFixture<T>(
         if (orderIds.length > 0) {
             await db.delete(orders).where(inArray(orders.id, orderIds));
         }
+        await db.delete(driverCashHandovers).where(eq(driverCashHandovers.driverId, driverId));
         await db.delete(drivers).where(eq(drivers.id, driverId));
     }
 }

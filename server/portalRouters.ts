@@ -3,6 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { publicProcedure, portalAdminProcedure, portalCustomerProcedure, portalProtectedProcedure, router } from './_core/trpc';
 import { normalizeEmirate, normalizeCity, normalizeDisplayName, normalizeStoredPhone } from '@shared/uae';
 import { normalizeForZoneMatching } from '@shared/deliveryZones';
+import { deliveredStatusFor } from '@shared/rto';
+import { initiateReturnToOrigin, undoReturnToOrigin } from './rto';
 import { cachedQuery, cacheInvalidate, cacheInvalidatePrefix } from './_core/queryCache';
 import {
   hashPassword,
@@ -596,6 +598,10 @@ export const adminPortalRouter = router({
       const { eq } = await import('drizzle-orm');
 
       try {
+        // Off every route first — its stops would otherwise linger as orphans.
+        const { detachOrderFromRoutes } = await import('./driverAdmin');
+        await detachOrderFromRoutes(input.orderId, ctx.portalUser.email || 'admin');
+
         // Delete related tracking events first
         await db.delete(trackingEvents).where(eq(trackingEvents.shipmentId, input.orderId));
 
@@ -1445,7 +1451,11 @@ export const adminPortalRouter = router({
       status: z.enum(['pending', 'in_progress', 'picked_up', 'delivered', 'attempted', 'returned', 'returned_to_sender', 'failed', 'on_hold']),
     }))
     .mutation(async ({ input, ctx }) => {
-      const order = await updateOrderStatus(input.orderId, input.status);
+      // A Return to Origin handed back to the shipper closes as returned_to_sender
+      const current = await getOrderById(input.orderId);
+      const status = input.status === 'delivered' && current ? deliveredStatusFor(current) : input.status;
+
+      const order = await updateOrderStatus(input.orderId, status, ctx.portalUser.email || 'admin');
       if (!order) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found' });
       }
@@ -1455,18 +1465,36 @@ export const adminPortalRouter = router({
       await createTrackingEvent({
         shipmentId: input.orderId,
         eventDatetime,
-        statusCode: input.status,
-        statusLabel: input.status.replace(/_/g, ' ').toUpperCase(),
-        description: `Status updated to ${input.status}`,
+        statusCode: status,
+        statusLabel: status.replace(/_/g, ' ').toUpperCase(),
+        description: `Status updated to ${status}`,
         createdBy: 'admin',
       });
 
       // Same as tracking.addEvent: a COD delivery closed from the admin was collected.
-      if (input.status === 'delivered') {
+      if (status === 'delivered') {
         const { markCODCollectedOnDelivery } = await import('./db');
         await markCODCollectedOnDelivery(input.orderId, eventDatetime);
       }
 
+      invalidateOrderCaches();
+      return order;
+    }),
+
+  // Return to Origin: the same waybill goes back to the shipper, free of charge
+  // (see shared/rto.ts). Closes as returned_to_sender when the driver delivers it.
+  returnToOrigin: portalAdminProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const order = await initiateReturnToOrigin(input.orderId, ctx.portalUser.email || 'admin');
+      invalidateOrderCaches();
+      return order;
+    }),
+
+  undoReturnToOrigin: portalAdminProcedure
+    .input(z.object({ orderId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const order = await undoReturnToOrigin(input.orderId, ctx.portalUser.email || 'admin');
       invalidateOrderCaches();
       return order;
     }),
@@ -2222,6 +2250,7 @@ async function doCreateReturn(clientId: number, orderId: number, actorLabel: str
     shipperPhone: originalOrder.customerPhone,
     shipperLat: originalOrder.latitude || undefined,
     shipperLng: originalOrder.longitude || undefined,
+    shipperLocationSource: originalOrder.latitude ? originalOrder.locationSource : null,
 
     // Swap: shipper becomes consignee (hide address if client has privacy enabled)
     customerName: originalOrder.shipperName,
@@ -2232,6 +2261,7 @@ async function doCreateReturn(clientId: number, orderId: number, actorLabel: str
     latitude: originalOrder.shipperLat || undefined,
     longitude: originalOrder.shipperLng || undefined,
     locationAccuracy: originalOrder.shipperLat ? 'exact' : undefined,
+    locationSource: originalOrder.shipperLat ? originalOrder.shipperLocationSource : null,
 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
@@ -2322,6 +2352,7 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
     shipperPhone: originalOrder.customerPhone,
     shipperLat: originalOrder.latitude || undefined,
     shipperLng: originalOrder.longitude || undefined,
+    shipperLocationSource: originalOrder.latitude ? originalOrder.locationSource : null,
 
     customerName: originalOrder.shipperName,
     customerPhone: originalOrder.shipperPhone,
@@ -2331,6 +2362,7 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
     latitude: originalOrder.shipperLat || undefined,
     longitude: originalOrder.shipperLng || undefined,
     locationAccuracy: originalOrder.shipperLat ? 'exact' : undefined,
+    locationSource: originalOrder.shipperLat ? originalOrder.shipperLocationSource : null,
 
     pieces: originalOrder.pieces,
     weight: originalOrder.weight,
@@ -2368,7 +2400,6 @@ async function doCreateExchange(clientId: number, orderId: number, newShipment: 
     shipperPhone: defaultLocation?.shipperPhone || clientAccount.phone || '',
     shipperLat: defaultLocation?.latitude || undefined,
     shipperLng: defaultLocation?.longitude || undefined,
-    locationAccuracy: defaultLocation?.latitude ? 'exact' : undefined,
 
     customerName: newShipment.customerName,
     customerPhone: newShipment.customerPhone,
@@ -2570,7 +2601,6 @@ async function doCreateManualReturnExchange(clientId: number, input: ManualRetur
       shipperPhone: defaultLocation?.shipperPhone || clientAccount.phone || '',
       shipperLat: defaultLocation?.latitude || undefined,
       shipperLng: defaultLocation?.longitude || undefined,
-      locationAccuracy: defaultLocation?.latitude ? 'exact' : undefined,
 
       customerName: input.exchangeCustomerName,
       customerPhone: input.exchangeCustomerPhone || '',
@@ -2928,6 +2958,10 @@ export const customerPortalRouter = router({
       const { eq } = await import('drizzle-orm');
 
       try {
+        // Off any route it was planned on (a pickup may already be scheduled).
+        const { detachOrderFromRoutes } = await import('./driverAdmin');
+        await detachOrderFromRoutes(input.orderId, ctx.portalUser.email || 'customer');
+
         // Delete related records in parallel, then delete the order
         await Promise.all([
           db.delete(trackingEvents).where(eq(trackingEvents.shipmentId, input.orderId)),
@@ -5047,12 +5081,23 @@ const trackingRouter = router({
       codPaymentReference: z.string().max(100).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
+      // A Return to Origin handed back to the shipper closes as returned_to_sender
+      let statusCode = input.statusCode;
+      let statusLabel = input.statusLabel;
+      if (statusCode === 'delivered') {
+        const current = await getOrderById(input.shipmentId);
+        if (current && deliveredStatusFor(current) === 'returned_to_sender') {
+          statusCode = 'returned_to_sender';
+          statusLabel = 'Returned to Sender';
+        }
+      }
+
       await createTrackingEvent({
         shipmentId: input.shipmentId,
         eventDatetime: new Date(input.eventDatetime),
         location: input.location,
-        statusCode: input.statusCode,
-        statusLabel: input.statusLabel,
+        statusCode,
+        statusLabel,
         description: input.description,
         podFileUrl: input.podFileUrl,
         podFileUrl2: input.podFileUrl2,
@@ -5060,11 +5105,11 @@ const trackingRouter = router({
       });
 
       // Update order status
-      await updateOrderStatus(input.shipmentId, input.statusCode);
+      await updateOrderStatus(input.shipmentId, statusCode, ctx.portalUser.email || 'admin');
 
       // Closing a COD delivery here means the money was collected at the door:
       // record it as of the event time so it lands in the right weekly cutoff.
-      if (input.statusCode === 'delivered') {
+      if (statusCode === 'delivered') {
         const { markCODCollectedOnDelivery } = await import('./db');
         await markCODCollectedOnDelivery(input.shipmentId, new Date(input.eventDatetime), {
           method: input.codMethod,

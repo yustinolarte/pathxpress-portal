@@ -293,6 +293,17 @@ export function normalizeStoredPhone(stored?: string | null): string {
   return normalizePhone('+971', value) || value;
 }
 
+// Spelling variants of "UAE" seen in real order data. Empty/missing counts as
+// domestic — local orders sometimes omit the country.
+const UAE_COUNTRY_VARIANTS = new Set([
+  'UAE', 'UNITED ARAB EMIRATES', 'U.A.E', 'U.A.E.', 'AE', 'EMIRATES',
+]);
+
+export function isUAEDomestic(country: string | null | undefined): boolean {
+  const normalized = (country ?? '').trim().toUpperCase();
+  return normalized === '' || UAE_COUNTRY_VARIANTS.has(normalized);
+}
+
 /**
  * Split a stored "+971 551234567" back into prefix + national parts so edit
  * forms can round-trip a saved number.

@@ -43,6 +43,16 @@ import {
 } from '@/lib/orderFilters';
 import { getProofPhotoUrls } from '@shared/podPhotos';
 import { normalizeCity } from '@shared/uae';
+import { statusBadgeClass } from '@/lib/statusStyles';
+import RouteActions from '@/components/drivers/RouteActions';
+import RouteHistory from '@/components/drivers/RouteHistory';
+import CorrectStopDialog, { type CorrectableStop } from '@/components/drivers/CorrectStopDialog';
+import CashHandovers from '@/components/drivers/CashHandovers';
+import { AttemptBadge, EtaChip, LegBadge, LocationSourceBadge, PriorityBadge } from '@/components/drivers/dispatchBadges';
+import { dubaiDateKey, dubaiDateTime, dubaiTimeOfDay } from '@shared/dubaiTime';
+import { isStopOpen } from '@shared/stopTransitions';
+import { confirmAttemptedToday } from '@/components/drivers/attemptedToday';
+import { nextLegLocation } from '@/lib/orderFilters';
 
 // Dubai zone presets
 const ZONE_OPTIONS = [
@@ -107,6 +117,11 @@ function toSequencerStops(deliveries: any[] | undefined): SequencerStop[] {
                 codAmount: d.codAmount,
                 pieces: d.pieces,
                 weight: d.weight,
+                preferredDeliveryDate: d.preferredDeliveryDate,
+                preferredDeliveryTime: d.preferredDeliveryTime,
+                createdAt: d.createdAt,
+                priority: d.priority,
+                doneAt: FINISHED_STOP_STATUSES.includes(d.status ?? '') ? (d.deliveredAt ?? d.pickedUpAt ?? d.attemptedAt ?? null) : null,
                 lat: c.lat,
                 lng: c.lng,
                 accuracy: c.accuracy,
@@ -174,7 +189,9 @@ export default function DriversSection() {
     const [routesView, setRoutesView] = useState<'list' | 'map'>('list');
     const [dispatchSelected, setDispatchSelected] = useState<SelectedOrder[]>([]);
     const [preloadedOrdersForWizard, setPreloadedOrdersForWizard] = useState<Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>>([]);
-    const [routeDetailsTab, setRouteDetailsTab] = useState<'list' | 'map'>('list');
+    const [routeDetailsTab, setRouteDetailsTab] = useState<'list' | 'map' | 'history'>('list');
+    // Stop being corrected from the route details ("Correct status").
+    const [correctingStop, setCorrectingStop] = useState<CorrectableStop | null>(null);
 
     // Dialogs
     const [createDriverDialogOpen, setCreateDriverDialogOpen] = useState(false);
@@ -288,8 +305,20 @@ export default function DriversSection() {
 
     const { data: routeDetails, refetch: refetchRouteDetails } = trpc.portal.drivers.getRouteDetails.useQuery(
         { routeId: selectedRouteId || '' },
-        { enabled: !!selectedRouteId }
+        {
+            enabled: !!selectedRouteId,
+            // The driver keeps working while dispatch looks at the route.
+            refetchInterval: (query) => routeDetailsDialogOpen && query.state.data?.status === 'in_progress' ? 30_000 : false,
+        }
     );
+    // A different route is still loading: don't render the previous one's stops under the new title.
+    const routeDetailsReady = !!routeDetails && routeDetails.id === selectedRouteId;
+    const routeClosed = routeDetails?.status === 'completed' || routeDetails?.status === 'cancelled';
+
+    const { data: ignoredUpdates } = trpc.portal.drivers.getIgnoredDriverUpdates.useQuery(undefined, {
+        enabled: view === 'dispatch',
+        refetchInterval: 60_000,
+    });
 
     const { data: availableOrders, refetch: refetchAvailableOrders } = trpc.portal.drivers.getAvailableOrders.useQuery(
         undefined,
@@ -333,6 +362,12 @@ export default function DriversSection() {
     }, [routes]);
 
     // Mutations
+    // Any write in this area can change routes, stops, the order pool, the board
+    // and COD at once — refresh the whole drivers namespace instead of guessing
+    // which refetch() each mutation needs (several used to miss the order pool).
+    const utils = trpc.useUtils();
+    const refreshDrivers = () => { void utils.portal.drivers.invalidate(); };
+
     const createDriverMutation = trpc.portal.drivers.createDriver.useMutation({
         onSuccess: () => {
             toast.success('Driver created successfully');
@@ -354,16 +389,16 @@ export default function DriversSection() {
             toast.success('Driver updated successfully');
             setEditDriverDialogOpen(false);
             setSelectedDriver(null);
-            refetchDrivers();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
 
     const deleteDriverMutation = trpc.portal.drivers.deleteDriver.useMutation({
-        onSuccess: () => {
+        onSuccess: (_data, vars) => {
             toast.success('Driver deleted successfully');
-            refetchDrivers();
-            refetchDispatch();
+            if (profileDriverId === vars.id) setProfileDriverId(null);
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -371,8 +406,7 @@ export default function DriversSection() {
     const updateRouteStatusMutation = trpc.portal.drivers.updateRouteStatus.useMutation({
         onSuccess: () => {
             toast.success('Route status updated');
-            refetchRoutes();
-            refetchDispatch();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -386,18 +420,23 @@ export default function DriversSection() {
     });
 
     const addOrdersToRouteMutation = trpc.portal.drivers.addOrdersToRoute.useMutation({
-        onSuccess: () => {
-            toast.success('Orders added to route');
+        onSuccess: (data) => {
+            // The server skips legs it can't assign; say so instead of a blanket "added".
+            const skipped = data.skipped ?? [];
+            if (data.added === 0) {
+                toast.warning(skipped.length > 0
+                    ? `Nothing added — ${Array.from(new Set(skipped.map(s => s.reason))).join('; ')}`
+                    : 'Nothing added');
+                return;
+            }
+            toast.success(`${data.added} order${data.added !== 1 ? 's' : ''} added to the route${skipped.length ? ` · ${skipped.length} skipped (${Array.from(new Set(skipped.map(s => s.reason))).join('; ')})` : ''}`);
             setAddOrdersDialogOpen(false);
             setAddOrders([]);
             // Shared by the route-details picker and the dispatch board's assign flow.
             setAssignDialogOpen(false);
             setAssignRouteId('');
             setDispatchSelected([]);
-            refetchRouteDetails();
-            refetchRoutes();
-            refetchAvailableOrders();
-            refetchDispatch();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -405,8 +444,7 @@ export default function DriversSection() {
     const deleteRouteMutation = trpc.portal.drivers.deleteRoute.useMutation({
         onSuccess: () => {
             toast.success('Route deleted successfully');
-            refetchRoutes();
-            refetchDispatch();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -422,8 +460,7 @@ export default function DriversSection() {
     const removeOrderFromRouteMutation = trpc.portal.drivers.removeOrderFromRoute.useMutation({
         onSuccess: () => {
             toast.success('Package removed from the route');
-            refetchRouteDetails();
-            refetchRoutes();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -431,7 +468,7 @@ export default function DriversSection() {
     const optimizeRouteMutation = trpc.portal.drivers.optimizeRoute.useMutation({
         onSuccess: (data) => {
             toast.success(`Route optimized — ${data.optimized} stops reordered`);
-            refetchRouteDetails();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -461,11 +498,10 @@ export default function DriversSection() {
         onSuccess: (data) => {
             toast.success(
                 data.routes === 0
-                    ? 'No pending cash on this date'
-                    : `AED ${fmtAed(data.amount)} marked as remitted across ${data.routes} route${data.routes !== 1 ? 's' : ''}`
+                    ? 'No cash pending since the last hand-over'
+                    : `AED ${fmtAed(data.amount)} received across ${data.routes} route${data.routes !== 1 ? 's' : ''}`
             );
-            refetchCod();
-            refetchDispatch();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -491,7 +527,7 @@ export default function DriversSection() {
         onSuccess: () => {
             toast.success('Sequence saved');
             setReorderMode(false);
-            refetchRouteDetails();
+            refreshDrivers();
         },
         onError: (error) => toast.error(error.message),
     });
@@ -591,28 +627,11 @@ export default function DriversSection() {
         setRouteDetailsDialogOpen(true);
     };
 
-    const getStatusBadge = (status: string) => {
-        const statusTones: Record<string, string> = {
-            active: 'b-green',
-            inactive: 'b-gray',
-            suspended: 'b-red',
-            pending: 'b-amber',
-            in_progress: 'b-blue',
-            completed: 'b-green',
-            cancelled: 'b-gray',
-            delivered: 'b-green',
-            attempted: 'b-amber',
-            returned: 'b-red',
-            in_review: 'b-blue',
-            resolved: 'b-green',
-            rejected: 'b-red',
-        };
-        return (
-            <span className={`badge2 ${statusTones[status] || 'b-gray'}`}>
-                {status.replace('_', ' ')}
-            </span>
-        );
-    };
+    // Shared tones (statusStyles.ts) — the local copy had no failed / picked up /
+    // on hold and only replaced the first underscore ("out for_delivery").
+    const getStatusBadge = (status: string) => (
+        <span className={statusBadgeClass(status)}>{(status || 'pending').replace(/_/g, ' ')}</span>
+    );
 
     const formatActiveTime = (seconds: number | null) => {
         if (seconds === null || seconds === undefined) return '—';
@@ -672,6 +691,10 @@ export default function DriversSection() {
                 codRequired: s.codRequired,
                 codAmount: s.codAmount,
                 type: s.type,
+                etaLabel: s.eta
+                    ? `${s.etaActual ? 'Done' : 'ETA'} ${dubaiTimeOfDay(s.eta)} · ${s.driverName}${s.lateRisk ? (s.lateRisk === 'bullet' ? ' · misses the 4h Bullet deadline' : ' · misses the preferred window') : ''}`
+                    : null,
+                etaLate: !!s.lateRisk,
             },
         }));
 
@@ -741,6 +764,8 @@ export default function DriversSection() {
     const orderIdOfPin = (id: number | string) => Number(String(id).split(':')[0]);
 
     const toggleOrderSelection = (id: number) => {
+        const order = ordersById.get(id);
+        if (!dispatchSelected.some(s => s.id === id) && order && !confirmAttemptedToday([order])) return;
         setDispatchSelected(prev => {
             if (prev.some(s => s.id === id)) return prev.filter(s => s.id !== id);
             const o = ordersById.get(id);
@@ -889,8 +914,8 @@ export default function DriversSection() {
 
     // Driver filter narrows the map and the roster together, so the board always
     // reads as one coherent answer to "what is this driver doing right now".
-    const driverLiveStops = selectedDriverName
-        ? liveStops.filter(s => s.driverName === selectedDriverName)
+    const driverLiveStops = dispatchDriver !== 'all'
+        ? liveStops.filter(s => String(s.driverId) === dispatchDriver)
         : liveStops;
     const zoneLiveStops = mapZone === 'all'
         ? driverLiveStops
@@ -1171,6 +1196,20 @@ export default function DriversSection() {
                                             <span className="block text-[11.5px] text-muted-foreground truncate">
                                                  {[leg === 'pickup' ? o.shipperCity : o.city, o.weight ? `${o.weight} kg` : null].filter(Boolean).join(' · ')}
                                             </span>
+                                            {(() => {
+                                                const loc = nextLegLocation(o);
+                                                const showLoc = !missingPin && (loc.source === 'bot' || loc.source === 'geocode'
+                                                    || loc.accuracy === 'approximate' || o.botStatus === 'waiting' || o.botStatus === 'queued' || o.botStatus === 'failed');
+                                                const showPriority = o.priority && o.priority.level !== 'normal';
+                                                if (!showPriority && !o.attempts?.count && !showLoc) return null;
+                                                return (
+                                                    <span className="flex flex-wrap gap-1 mt-1">
+                                                        <PriorityBadge priority={o.priority} />
+                                                        <AttemptBadge attempts={o.attempts} />
+                                                        {showLoc && <LocationSourceBadge source={loc.source} hasPin accuracy={loc.accuracy} botStatus={o.botStatus} compact />}
+                                                    </span>
+                                                );
+                                            })()}
                                         </span>
                                         {o.codRequired === 1 && (
                                             <span className="font-mono text-[11px] font-bold text-[var(--st-amber)] bg-[var(--st-amber-bg)] px-2 py-0.5 rounded-md flex-none">
@@ -1199,6 +1238,11 @@ export default function DriversSection() {
                                     </button>
                                 );
                             })}
+                            {unassignedOrders.length > 60 && (
+                                <p className="text-[11.5px] text-muted-foreground text-center py-2">
+                                    Showing the 60 most urgent of {unassignedOrders.length} — Routes → Map shows them all
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -1314,7 +1358,12 @@ export default function DriversSection() {
                     </div>
                 )}
                 {failedStops.length > 0 && (
-                    <div className="flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[var(--st-amber-bg)] border border-[color-mix(in_srgb,var(--st-amber)_30%,transparent)]">
+                    <div
+                        role="button"
+                        title="Open the route"
+                        onClick={() => openRouteDetails(failedStops[0].routeId)}
+                        className="cursor-pointer flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[var(--st-amber-bg)] border border-[color-mix(in_srgb,var(--st-amber)_30%,transparent)]"
+                    >
                         <AlertTriangle className="w-5 h-5 text-[var(--st-amber)] flex-none" />
                         <div className="text-[13px] min-w-0">
                             <b className="font-display">Failed attempt</b>
@@ -1334,6 +1383,25 @@ export default function DriversSection() {
                             {' · '}
                             <span className="text-muted-foreground">
                                 {cashAlerts.length} driver{cashAlerts.length !== 1 ? 's' : ''} must remit
+                            </span>
+                        </div>
+                    </div>
+                )}
+                {/* Driver updates the server refused (late offline replays, a package moved
+                    to another route). Usually harmless, but each one is worth a look. */}
+                {(ignoredUpdates?.length ?? 0) > 0 && (
+                    <div
+                        role="button"
+                        title="Open the most recent one"
+                        onClick={() => ignoredUpdates![0].routeId && openRouteDetails(ignoredUpdates![0].routeId)}
+                        className="cursor-pointer flex items-center gap-3 px-4 py-3.5 rounded-xl bg-[var(--st-amber-bg)] border border-[color-mix(in_srgb,var(--st-amber)_30%,transparent)]"
+                    >
+                        <AlertCircle className="w-5 h-5 text-[var(--st-amber)] flex-none" />
+                        <div className="text-[13px] min-w-0">
+                            <b className="font-display">Driver updates ignored</b>
+                            {' · '}
+                            <span className="text-muted-foreground">
+                                {ignoredUpdates!.length} in 48h — latest {ignoredUpdates![0].waybillNumber || ignoredUpdates![0].routeId}: {ignoredUpdates![0].reason}
                             </span>
                         </div>
                     </div>
@@ -1746,7 +1814,11 @@ export default function DriversSection() {
                                             <button
                                                 title="Mark Completed"
                                                 className="h-6 w-6 grid place-items-center rounded text-[var(--st-green)] hover:bg-[var(--st-green-bg)]"
-                                                onClick={() => updateRouteStatusMutation.mutate({ routeId: route.id, status: 'completed' })}
+                                                onClick={() => {
+                                                    if (confirm(`Close route ${route.id}? Stops not worked yet go back to the pool, and orders already "Out for Delivery" return to In Transit.`)) {
+                                                        updateRouteStatusMutation.mutate({ routeId: route.id, status: 'completed' });
+                                                    }
+                                                }}
                                             >
                                                 <CheckCircle className="h-3.5 w-3.5" />
                                             </button>
@@ -1782,8 +1854,8 @@ export default function DriversSection() {
     }, [driverList]);
 
     const rosterById = useMemo(
-        () => new Map(roster.map(r => [r.driverId, r])),
-        [roster],
+        () => new Map(rosterAll.map(r => [r.driverId, r])),
+        [rosterAll],
     );
     const activeRouteForProfile = useMemo(() => {
         if (!profileDriverId || !routes) return null;
@@ -2098,16 +2170,19 @@ export default function DriversSection() {
                                 className="h-[34px] px-3.5 font-display font-semibold text-[12.5px] flex-none"
                                 disabled={d.toRemit <= 0 || markCashRemittedMutation.isPending}
                                 onClick={() => {
-                                    if (confirm(`Confirm that ${d.driverName} handed over AED ${fmtAed(d.toRemit)} in cash?`)) {
+                                    if (confirm(`Confirm that ${d.driverName} handed over AED ${fmtAed(d.toRemit)} in cash? (Undo is available below if it was a mistake.)`)) {
                                         markCashRemittedMutation.mutate({ driverId: d.driverId, date: codDate });
                                     }
                                 }}
                             >
-                                Mark remitted
+                                Mark received
                             </Button>
                         )}
                     </div>
                 ))}
+            </div>
+            <div className="mt-4">
+                <CashHandovers date={codDate} onChanged={refreshDrivers} />
             </div>
         </div>
     );
@@ -2395,8 +2470,21 @@ export default function DriversSection() {
                                 <span className="flex items-center gap-1">
                                     {!group.shiftEndTime && (
                                         <button
-                                            title="Close this shift now"
-                                            onClick={() => closeShiftMutation.mutate({ id: group.shiftId! })}
+                                            title="Close this shift"
+                                            onClick={() => {
+                                                const at = prompt('Close this shift at what time? (HH:MM, Dubai time — leave empty for now)', '');
+                                                if (at === null) return;
+                                                if (!at.trim()) { closeShiftMutation.mutate({ id: group.shiftId! }); return; }
+                                                try {
+                                                    const start = new Date(group.shiftStartTime!);
+                                                    let end = dubaiDateTime(dubaiDateKey(start), at.trim());
+                                                    // An end time earlier than the clock-in is the next morning.
+                                                    if (end <= start) end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+                                                    closeShiftMutation.mutate({ id: group.shiftId!, endTime: end.toISOString() });
+                                                } catch {
+                                                    toast.error('Use HH:MM, e.g. 18:30');
+                                                }
+                                            }}
                                             disabled={closeShiftMutation.isPending}
                                             className="p-1.5 rounded hover:bg-muted/50 text-[var(--st-green)]"
                                         >
@@ -3057,7 +3145,7 @@ export default function DriversSection() {
                         </DialogHeader>
 
                         <div className="flex flex-col items-center gap-4">
-                            <div className="p-4 bg-white rounded-2xl shadow-lg">
+                            <div id="route-qr-code" className="p-4 bg-white rounded-2xl shadow-lg">
                                 <QRCode
                                     value={qrRouteId}
                                     size={220}
@@ -3075,8 +3163,10 @@ export default function DriversSection() {
                                     variant="outline"
                                     className="flex-1"
                                     onClick={() => {
-                                        navigator.clipboard.writeText(qrRouteId);
-                                        toast.success('Route ID copied to clipboard');
+                                        navigator.clipboard.writeText(qrRouteId).then(
+                                            () => toast.success('Route ID copied to clipboard'),
+                                            () => toast.error('Could not copy — select the ID and copy it by hand'),
+                                        );
                                     }}
                                 >
                                     Copy ID
@@ -3084,6 +3174,7 @@ export default function DriversSection() {
                                 <Button
                                     className="flex-1"
                                     onClick={() => {
+                                        const svg = document.querySelector('#route-qr-code svg')?.outerHTML || '';
                                         const printWindow = window.open('', '_blank');
                                         if (printWindow) {
                                             printWindow.document.write(`
@@ -3091,12 +3182,13 @@ export default function DriversSection() {
                                                 <style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:monospace;gap:16px}
                                                 h2{font-size:24px;margin:0}p{color:#666;margin:0;font-size:14px}</style></head>
                                                 <body>
-                                                <img src="${(document.querySelector('svg[data-qr]') as SVGElement | null)?.parentElement?.querySelector('img')?.src || ''}" style="width:280px;height:280px" />
+                                                <div style="width:280px;height:280px">${svg.replace('<svg', '<svg width="280" height="280"')}</div>
                                                 <h2>${qrRouteId}</h2>
                                                 <p>Scan to load route in driver app</p>
                                                 <script>window.onload=()=>window.print()</script>
                                                 </body></html>
                                             `);
+                                            printWindow.document.close();
                                         }
                                     }}
                                 >
@@ -3248,12 +3340,23 @@ export default function DriversSection() {
                                 <div className="p-2 rounded-lg bg-primary/10">
                                     <MapPin className="w-6 h-6 text-primary" />
                                 </div>
-                                Route: {routeDetails?.id}
+                                Route: {selectedRouteId}
                             </DialogTitle>
                             <DialogDescription className="mt-1">
-                                {routeDetails?.driver?.fullName || 'Unassigned'} • {zoneLabel(routeDetails?.zone) || 'No zone'} • {routeDetails?.deliveries?.length || 0} stops
+                                {routeDetailsReady
+                                    ? <>{routeDetails?.driver?.fullName || 'Unassigned'} • {zoneLabel(routeDetails?.zone) || 'No zone'} • {routeDetails?.deliveries?.length || 0} stops</>
+                                    : 'Loading…'}
                             </DialogDescription>
                         </DialogHeader>
+
+                        {routeDetailsReady && (
+                            <RouteActions
+                                route={routeDetails as any}
+                                drivers={(drivers as any[]) || []}
+                                openRoutes={((routes as any[]) || []).filter(r => r.status === 'pending' || r.status === 'in_progress')}
+                                onChanged={refreshDrivers}
+                            />
+                        )}
 
                         <div className="flex justify-between items-center mb-4 gap-2 flex-wrap">
                             <div className="flex items-center gap-2">
@@ -3279,6 +3382,12 @@ export default function DriversSection() {
                                             className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'map' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
                                         >
                                             Map
+                                        </button>
+                                        <button
+                                            onClick={() => setRouteDetailsTab('history')}
+                                            className={`px-3 py-1.5 transition-colors ${routeDetailsTab === 'history' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted/50'}`}
+                                        >
+                                            History
                                         </button>
                                     </div>
                                 )}
@@ -3316,7 +3425,7 @@ export default function DriversSection() {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            disabled={!routeDetails?.deliveries?.length}
+                                            disabled={routeClosed || !routeDetails?.deliveries?.length}
                                             onClick={() => {
                                                 setReorderStops(toSequencerStops(routeDetails?.deliveries));
                                                 setReorderMode(true);
@@ -3328,9 +3437,9 @@ export default function DriversSection() {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            disabled={optimizeRouteMutation.isPending || !routeDetails?.deliveries?.length}
+                                            disabled={routeClosed || optimizeRouteMutation.isPending || !routeDetails?.deliveries?.length}
                                             onClick={() => {
-                                                if (selectedRouteId) {
+                                                if (selectedRouteId && confirm('Optimize replaces the current stop order of the unworked stops. Continue?')) {
                                                     optimizeRouteMutation.mutate({ routeId: selectedRouteId });
                                                 }
                                             }}
@@ -3342,7 +3451,7 @@ export default function DriversSection() {
                                                 <><TrendingUp className="h-4 w-4 text-[var(--st-green)]" /> Optimize route</>
                                             )}
                                         </Button>
-                                        <Button onClick={() => setAddOrdersDialogOpen(true)}>
+                                        <Button disabled={routeClosed} onClick={() => setAddOrdersDialogOpen(true)}>
                                             <Plus className="mr-2 h-4 w-4" /> Add Orders
                                         </Button>
                                     </>
@@ -3434,6 +3543,10 @@ export default function DriversSection() {
                             );
                         })()}
 
+                        {!reorderMode && routeDetailsTab === 'history' && selectedRouteId && (
+                            <RouteHistory routeId={selectedRouteId} />
+                        )}
+
                         {/* Reorder mode — map + drag&drop list, the single place stop order is decided */}
                         {reorderMode && (
                             <RouteStopSequencer
@@ -3441,6 +3554,7 @@ export default function DriversSection() {
                                 onChange={setReorderStops}
                                 disabled={reorderStopsMutation.isPending}
                                 mapClassName="h-[380px]"
+                                startAt={routeDetails?.plannedStartAt ?? routeDetails?.startedAt ?? null}
                                 origin={routeDetails?.startLat && routeDetails?.startLng ? {
                                     lat: parseFloat(routeDetails.startLat),
                                     lng: parseFloat(routeDetails.startLng),
@@ -3469,13 +3583,23 @@ export default function DriversSection() {
                             />
                         )}
 
-                        <div className={reorderMode ? 'hidden' : (routeDetailsTab === 'map' ? 'max-h-[250px] overflow-y-auto' : 'max-h-[450px] overflow-y-auto')}>
-                            {routeDetails?.deliveries && routeDetails.deliveries.length > 0 ? (
+                        <div className={reorderMode || routeDetailsTab === 'history' ? 'hidden' : (routeDetailsTab === 'map' ? 'max-h-[250px] overflow-y-auto' : 'max-h-[450px] overflow-y-auto')}>
+                            {!routeDetailsReady ? (
+                                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+                            ) : routeDetails.deliveries.length > 0 ? (
                                 <div className="space-y-2">
                                     {routeDetails.deliveries.map((delivery: any) => {
                                         const isReturn = delivery.isReturn === 1 || delivery.orderType === 'return';
                                         const isExchange = delivery.orderType === 'exchange';
                                         const proofPhotos = getProofPhotoUrls(delivery);
+                                        const isPickupLeg = delivery.type === 'pickup';
+                                        // Worked = the driver recorded something on it. Those stops can only be
+                                        // corrected, never removed (POD and COD would be lost).
+                                        const worked = !isStopOpen(delivery.status) || !!(delivery.deliveredAt || delivery.pickedUpAt
+                                            || delivery.attemptedAt || proofPhotos.length || delivery.collectedAmount);
+                                        const legHasPin = isPickupLeg
+                                            ? !!(delivery.shipperLat && delivery.shipperLng)
+                                            : !!(delivery.latitude && delivery.longitude);
                                         return (
                                             <div
                                                 key={delivery.id}
@@ -3484,6 +3608,7 @@ export default function DriversSection() {
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                            <LegBadge type={delivery.type} sequence={delivery.sequence} />
                                                             <span className="font-mono font-medium text-sm">{delivery.waybillNumber}</span>
                                                             <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
                                                                 <Building2 className="w-3 h-3 mr-1" />{delivery.companyName}
@@ -3498,26 +3623,52 @@ export default function DriversSection() {
                                                                     Exchange
                                                                 </Badge>
                                                             )}
-                                                            {delivery.codRequired ? (
+                                                            {/* COD is collected on the delivery leg only */}
+                                                            {isPickupLeg ? null : delivery.codRequired ? (
                                                                 <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs">
-                                                                    <DollarSign className="w-3 h-3 mr-0.5" />COD {delivery.codAmount} AED
+                                                                    <DollarSign className="w-3 h-3 mr-0.5" />COD {fmtAed(delivery.codAmount)} AED
                                                                 </Badge>
                                                             ) : (
                                                                 <Badge variant="outline" className="!bg-[var(--st-green-bg)] !text-[var(--st-green)] !border-transparent text-xs">Prepaid</Badge>
                                                             )}
+                                                            <PriorityBadge priority={delivery.priority} />
+                                                            <AttemptBadge attempts={delivery.attempts} />
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                            <EtaChip eta={delivery.eta} />
+                                                            <LocationSourceBadge
+                                                                source={delivery.locationSource}
+                                                                hasPin={legHasPin}
+                                                                accuracy={isPickupLeg ? null : delivery.locationAccuracy}
+                                                                compact
+                                                            />
                                                         </div>
 
                                                         <div className="flex items-center gap-2 text-sm mb-1">
                                                             <Users className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                                            <span className="font-medium">{delivery.type === 'pickup' ? delivery.shipperName : delivery.customerName}</span>
+                                                            <span className="font-medium">{isPickupLeg ? delivery.shipperName : delivery.customerName}</span>
                                                             <span className="text-muted-foreground">•</span>
-                                                            <span className="text-muted-foreground truncate">{delivery.type === 'pickup' ? delivery.shipperCity : delivery.city}</span>
+                                                            <span className="text-muted-foreground truncate">{isPickupLeg ? delivery.shipperCity : delivery.city}</span>
+                                                            {(isPickupLeg ? delivery.shipperPhone : delivery.customerPhone) && (
+                                                                <a
+                                                                    href={`tel:${isPickupLeg ? delivery.shipperPhone : delivery.customerPhone}`}
+                                                                    className="text-xs text-primary hover:underline whitespace-nowrap"
+                                                                >
+                                                                    {isPickupLeg ? delivery.shipperPhone : delivery.customerPhone}
+                                                                </a>
+                                                            )}
                                                         </div>
 
                                                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                                                             <span>{delivery.pieces} pc{delivery.pieces > 1 ? 's' : ''} • {delivery.weight} kg</span>
-                                                            {delivery.deliveredAt && (
-                                                                <span>Delivered: {new Date(delivery.deliveredAt).toLocaleString()}</span>
+                                                            {!isPickupLeg && delivery.deliveredAt && (
+                                                                <span>Delivered {new Date(delivery.deliveredAt).toLocaleString()}</span>
+                                                            )}
+                                                            {isPickupLeg && delivery.pickedUpAt && (
+                                                                <span>Picked up {new Date(delivery.pickedUpAt).toLocaleString()}</span>
+                                                            )}
+                                                            {delivery.attemptedAt && ['attempted', 'failed', 'returned'].includes(delivery.status) && (
+                                                                <span>{getStatusBadge(delivery.status)} {new Date(delivery.attemptedAt).toLocaleString()}</span>
                                                             )}
                                                             {proofPhotos.map((photoUrl, photoIndex) => (
                                                                 <a
@@ -3531,6 +3682,9 @@ export default function DriversSection() {
                                                                 </a>
                                                             ))}
                                                         </div>
+                                                        {delivery.notes && (
+                                                            <p className="mt-1.5 text-xs text-muted-foreground italic">Driver: “{delivery.notes}”</p>
+                                                        )}
                                                     </div>
 
                                                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
@@ -3559,21 +3713,40 @@ export default function DriversSection() {
                                                             <MapPin className="w-3 h-3" />
                                                             Locate
                                                         </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                if (confirm(`Remove package ${delivery.waybillNumber} from this route?`)) {
-                                                                    removeOrderFromRouteMutation.mutate({
-                                                                        routeId: routeDetails.id,
-                                                                        orderId: delivery.orderId,
-                                                                    });
-                                                                }
-                                                            }}
-                                                            disabled={removeOrderFromRouteMutation.isPending}
-                                                            className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                            Remove
-                                                        </button>
+                                                        {routeDetails.status !== 'cancelled' && (
+                                                            <button
+                                                                onClick={() => setCorrectingStop({
+                                                                    id: delivery.id,
+                                                                    type: delivery.type,
+                                                                    status: delivery.status,
+                                                                    waybillNumber: delivery.waybillNumber,
+                                                                    codRequired: delivery.codRequired,
+                                                                })}
+                                                                className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors"
+                                                            >
+                                                                <Edit className="w-3 h-3" />
+                                                                Correct status
+                                                            </button>
+                                                        )}
+                                                        {!worked && !routeClosed && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    const extra = isPickupLeg ? ' Its delivery leg is removed too if the package was never collected.' : '';
+                                                                    if (confirm(`Remove the ${isPickupLeg ? 'pickup' : 'delivery'} of ${delivery.waybillNumber} from this route?${extra}`)) {
+                                                                        removeOrderFromRouteMutation.mutate({
+                                                                            routeId: routeDetails.id,
+                                                                            orderId: delivery.orderId,
+                                                                            type: isPickupLeg ? 'pickup' : 'delivery',
+                                                                        });
+                                                                    }
+                                                                }}
+                                                                disabled={removeOrderFromRouteMutation.isPending}
+                                                                className="flex items-center gap-1 text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Trash2 className="w-3 h-3" />
+                                                                Remove
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -3581,12 +3754,19 @@ export default function DriversSection() {
                                     })}
                                 </div>
                             ) : (
-                                <p className="text-center py-8 text-muted-foreground">No deliveries in this route</p>
+                                <p className="text-center py-8 text-muted-foreground">No stops on this route</p>
                             )}
                         </div>
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <CorrectStopDialog
+                stop={correctingStop}
+                open={!!correctingStop}
+                onOpenChange={(open) => { if (!open) setCorrectingStop(null); }}
+                onCorrected={refreshDrivers}
+            />
 
             {/* Add Orders to Route Dialog */}
             <Dialog open={addOrdersDialogOpen} onOpenChange={(open) => {

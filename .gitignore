@@ -93,3 +93,6 @@ test-pdf.html
 
 # Scripts compiled / temp
 scripts/*.mjs
+
+# Local backups (production data: JSON snapshots, code archives) — never commit
+backups/

@@ -7,12 +7,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText, RotateCcw, Mail, Pencil, Trash2 } from 'lucide-react';
+import { Download, MapPin, Phone, User, Package, Calendar, Truck, AlertCircle, CheckCircle2, Clock, Scale, CreditCard, Loader2, FileText, RotateCcw, Mail, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { generateWaybillPDF } from '@/lib/generateWaybillPDF';
 import { trpc } from '@/lib/trpc';
 import { Separator } from '@/components/ui/separator';
 import { getPodPhotoUrls } from '@shared/podPhotos';
 import { abbreviateServiceType } from '@/const';
+import { canUndoRto, isRtoEligible } from '@shared/rto';
 
 interface OrderDetailsDialogProps {
     open: boolean;
@@ -29,6 +30,12 @@ interface OrderDetailsDialogProps {
     onAddTrackingEvent?: (order: any) => void;
     /** Permanently deletes this order. Confirmation is handled inside this dialog. */
     onDeleteOrder?: (order: any) => void;
+    /** Sends this same waybill back to the shipper (RTO). Confirmation is handled inside this dialog. */
+    onReturnToOrigin?: (order: any) => void;
+    /** Undoes a Return to Origin, restoring the original destination. */
+    onUndoReturnToOrigin?: (order: any) => void;
+    /** An RTO / undo request is in flight. */
+    rtoPending?: boolean;
 }
 
 // A return/exchange only makes sense once the delivery cycle is over: the
@@ -37,24 +44,33 @@ interface OrderDetailsDialogProps {
 // describe a return shipment itself, not a candidate for a new one.
 const RETURN_ELIGIBLE_STATUSES = ['delivered', 'failed_delivery'];
 
-export default function OrderDetailsDialog({ open, onOpenChange, order, clients, onCreateReturnExchange, onSendEmail, onEdit, onAddTrackingEvent, onDeleteOrder }: OrderDetailsDialogProps) {
+export default function OrderDetailsDialog({ open, onOpenChange, order, clients, onCreateReturnExchange, onSendEmail, onEdit, onAddTrackingEvent, onDeleteOrder, onReturnToOrigin, onUndoReturnToOrigin, rtoPending }: OrderDetailsDialogProps) {
     // Fetch tracking events just like in ShipmentHistoryDialog
     const { data: events, isLoading: eventsLoading } = trpc.portal.tracking.getEvents.useQuery(
         { shipmentId: order?.id },
         { enabled: !!order?.id && open }
     );
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [rtoConfirmOpen, setRtoConfirmOpen] = useState(false);
 
     if (!order) return null;
 
     const client = clients?.find(c => c.id === order.clientId);
     const clientName = client?.companyName || 'Unknown Client';
     const canCreateReturn = !!onCreateReturnExchange && RETURN_ELIGIBLE_STATUSES.includes(order.status) && !order.isReturn;
+    const isRto = order.isRto === 1;
+    const canReturnToOrigin = !!onReturnToOrigin && isRtoEligible(order);
+    const canUndoReturnToOrigin = !!onUndoReturnToOrigin && canUndoRto(order);
 
     const handleConfirmDelete = () => {
         setDeleteConfirmOpen(false);
         onDeleteOrder!(order);
         onOpenChange(false);
+    };
+
+    const handleConfirmReturnToOrigin = () => {
+        setRtoConfirmOpen(false);
+        onReturnToOrigin!(order);
     };
 
     return (
@@ -77,6 +93,14 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                         </div>
 
                         <div className="flex items-center gap-3 flex-wrap justify-end">
+                            {/* RTO Badge — this waybill is going back to the shipper */}
+                            {isRto && (
+                                <div className="px-4 py-2 rounded-full bg-primary/10 border border-transparent text-primary flex items-center gap-2" title="Return to Origin">
+                                    <Undo2 className="w-4 h-4" />
+                                    <span className="font-display font-bold uppercase tracking-wide text-sm">RTO</span>
+                                </div>
+                            )}
+
                             {/* FOD Badge */}
                             {order.fitOnDelivery === 1 && (
                                 <div className="px-4 py-2 rounded-full bg-[var(--st-blue-bg)] border border-transparent text-[var(--st-blue)] flex items-center gap-2">
@@ -108,6 +132,18 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                             {canCreateReturn && (
                                 <Button onClick={() => onCreateReturnExchange!(order)} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
                                     <RotateCcw className="w-4 h-4" /> Create Return/Exchange
+                                </Button>
+                            )}
+
+                            {canReturnToOrigin && (
+                                <Button onClick={() => setRtoConfirmOpen(true)} disabled={rtoPending} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                    {rtoPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Undo2 className="w-4 h-4" />} Return to Origin
+                                </Button>
+                            )}
+
+                            {canUndoReturnToOrigin && (
+                                <Button onClick={() => onUndoReturnToOrigin!(order)} disabled={rtoPending} variant="outline" className="gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
+                                    {rtoPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />} Undo RTO
                                 </Button>
                             )}
 
@@ -165,7 +201,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                                 {/* Sender */}
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 mb-4">
-                                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Pickup From</span>
+                                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{isRto ? 'Returning From' : 'Pickup From'}</span>
                                     </div>
                                     <div className="pl-10 space-y-3">
                                         <div>
@@ -210,7 +246,7 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                                 <div className="space-y-3 relative">
                                     <div className="absolute left-[-12px] top-10 bottom-10 w-[1px] bg-white/10 hidden md:block" />
                                     <div className="flex items-center gap-2 mb-4">
-                                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Deliver To</span>
+                                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">{isRto ? 'Return To (Shipper)' : 'Deliver To'}</span>
                                     </div>
                                     <div className="pl-10 space-y-1">
                                         <p className="text-lg font-semibold text-foreground">{order.customerName}</p>
@@ -315,6 +351,27 @@ export default function OrderDetailsDialog({ open, onOpenChange, order, clients,
                 </div>
             </DialogContent>
         </Dialog>
+
+        {onReturnToOrigin && (
+            <AlertDialog open={rtoConfirmOpen} onOpenChange={setRtoConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Return {order.waybillNumber} to origin?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            The destination switches to the shipper ({order.shipperName}, {order.shipperCity}).
+                            COD is removed and no extra charge applies. When the driver marks it delivered,
+                            it closes as Returned to Sender.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmReturnToOrigin}>
+                            Return to Origin
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        )}
 
         {onDeleteOrder && (
             <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

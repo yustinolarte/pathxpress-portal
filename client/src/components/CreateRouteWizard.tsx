@@ -13,6 +13,8 @@ import OrderPickList from './OrderPickList';
 import RouteStopSequencer from './RouteStopSequencer';
 import SetLocationDialog, { type SetLocationOrder } from './SetLocationDialog';
 import { buildDraftStops, type SequencerStop } from '@/lib/routeDraft';
+import { LocationPicker } from './LocationPicker';
+import { dubaiDateTime, dubaiTimeOfDay, dubaiToday } from '@shared/dubaiTime';
 
 // Random, non-sequential route IDs (server re-checks uniqueness). Unambiguous alphabet (no I/O/0/1).
 const genRouteSuffix = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -55,9 +57,13 @@ interface CreateRouteWizardProps {
   preloadedOrders?: Array<{ id: number; mode: 'pickup_only' | 'delivery_only' | 'both' }>;
 }
 
-const defaultForm = {
+// Built on every open: a module-level object froze "today" at page load, and
+// toISOString() gave the UTC day — yesterday between 00:00 and 04:00 in Dubai.
+const makeDefaultForm = () => ({
   id: '',
-  date: new Date().toISOString().split('T')[0],
+  date: dubaiToday(),
+  /** Planned departure, Dubai time — feeds the admin-only ETAs. */
+  startTime: '09:00',
   zone: '',
   zoneCustom: '',
   driverId: '',
@@ -65,7 +71,7 @@ const defaultForm = {
   startAddress: '',
   startLat: '',
   startLng: '',
-};
+});
 
 const STEPS = [
   { id: 1, label: 'Route',     icon: MapPin       },
@@ -103,7 +109,8 @@ function Field({
 
 export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drivers, preloadedOrders }: CreateRouteWizardProps) {
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm] = useState(makeDefaultForm);
+  const [startPickerReset, setStartPickerReset] = useState(0);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasReachedStep3, setHasReachedStep3] = useState(false);
@@ -137,7 +144,8 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   useEffect(() => {
     if (!open) {
       setStep(1);
-      setForm(defaultForm);
+      setForm(makeDefaultForm());
+      setStartPickerReset(n => n + 1);
       setTouched({});
       setIsSubmitting(false);
       setHasReachedStep3(false);
@@ -145,8 +153,8 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       setDraftStops([]);
       autoOrderedRef.current = false;
     } else {
-      // Auto-generate a fresh random route ID each time the wizard opens.
-      setForm(f => ({ ...f, id: makeRouteId() }));
+      // Fresh form (today in Dubai) and a fresh random route ID each time the wizard opens.
+      setForm({ ...makeDefaultForm(), id: makeRouteId() });
       if (preloadedOrders && preloadedOrders.length > 0) {
         setSelectedOrders(preloadedOrders);
         setHasReachedStep3(true);
@@ -157,6 +165,16 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   function setField(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }));
   }
+
+  /** Planned departure as an instant, or null while the inputs are incomplete. */
+  const plannedStartAt = useMemo(() => {
+    if (!form.date || !form.startTime) return null;
+    try {
+      return dubaiDateTime(form.date, form.startTime);
+    } catch {
+      return null;
+    }
+  }, [form.date, form.startTime]);
 
   function touch(field: string) {
     setTouched(prev => ({ ...prev, [field]: true }));
@@ -248,6 +266,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
         startAddress: form.startAddress || undefined,
         startLat: form.startLat || undefined,
         startLng: form.startLng || undefined,
+        plannedStartAt: plannedStartAt?.toISOString(),
         stops: draftStops.map(s => ({ orderId: s.orderId, type: s.type })),
       });
 
@@ -311,6 +330,17 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               </div>
             </Field>
           </div>
+          <Field label="Start time (Dubai)">
+            <input
+              type="time"
+              value={form.startTime}
+              onChange={e => setField('startTime', e.target.value)}
+              className={textInputClass('startTime')}
+            />
+            <p className="text-xs text-muted-foreground">
+              When the driver leaves. Used only for the estimated arrival times you see while ordering stops — the driver never sees them.
+            </p>
+          </Field>
           <Field label="Zone (optional)">
             <select
               value={form.zone}
@@ -343,8 +373,21 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 className={`pl-9 ${textInputClass('startAddress')}`}
               />
             </div>
+            <LocationPicker
+              resetSignal={startPickerReset}
+              initialLocation={form.startLat && form.startLng ? { lat: parseFloat(form.startLat), lng: parseFloat(form.startLng) } : undefined}
+              onLocationPicked={(loc) => {
+                setForm(prev => ({
+                  ...prev,
+                  startLat: loc?.latitude ?? '',
+                  startLng: loc?.longitude ?? '',
+                  startAddress: prev.startAddress.trim() || loc?.address || prev.startAddress,
+                }));
+              }}
+              className="h-[220px] mt-2"
+            />
             <p className="text-xs text-muted-foreground">
-              If set, route optimization starts here. Leave empty to let the system pick the best starting point.
+              Drop the pin where the van leaves from: auto-order and the arrival times start there. Leave it empty to start at the first stop.
             </p>
           </Field>
         </div>
@@ -435,6 +478,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 onAutoOrder={() => autoOrderDraft(draftStops)}
                 autoOrdering={previewOrderMutation.isPending}
                 mapClassName="h-[400px]"
+                startAt={plannedStartAt}
                 origin={form.startLat && form.startLng ? {
                   lat: parseFloat(form.startLat),
                   lng: parseFloat(form.startLng),
@@ -508,6 +552,12 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               <span className="text-slate-400">Date</span>
               <span>{form.date}</span>
             </div>
+            {plannedStartAt && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Start time</span>
+                <span>{dubaiTimeOfDay(plannedStartAt)}</span>
+              </div>
+            )}
             {finalZone && (
               <div className="flex justify-between">
                 <span className="text-slate-400">Zone</span>

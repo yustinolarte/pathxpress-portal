@@ -15,6 +15,7 @@ export const STATUS_TONE: Record<string, StatusTone> = {
   out_for_delivery: 'blue',
   processing: 'blue',
   in_progress: 'blue',
+  in_review: 'blue',
   // waiting
   pending_pickup: 'amber',
   on_hold: 'amber',
@@ -32,6 +33,7 @@ export const STATUS_TONE: Record<string, StatusTone> = {
   processed: 'green',
   active: 'green',
   approved: 'green',
+  resolved: 'green',
   // problem
   failed_delivery: 'red',
   failed_pickup: 'red',
@@ -40,6 +42,7 @@ export const STATUS_TONE: Record<string, StatusTone> = {
   overdue: 'red',
   rejected: 'red',
   failed: 'red',
+  suspended: 'red',
   // closed / neutral
   returned: 'gray',
   canceled: 'gray',

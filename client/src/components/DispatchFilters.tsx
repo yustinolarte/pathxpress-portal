@@ -10,6 +10,8 @@ import { Calendar, Search, XCircle } from 'lucide-react';
 import {
     type DispatchFilterState,
     type OrderTypeFilter,
+    type PriorityFilter,
+    type LocationFilter,
     EMPTY_DISPATCH_FILTERS,
     hasActiveFilters,
 } from '@/lib/orderFilters';
@@ -88,6 +90,29 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                         ))}
                     </SelectContent>
                 </Select>
+                <Select value={value.priority || 'all'} onValueChange={(v) => set({ priority: (v === 'all' ? '' : v) as PriorityFilter })}>
+                    <SelectTrigger className="bg-white/5 border-border h-8 w-[140px] text-sm">
+                        <SelectValue placeholder="Priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All priorities</SelectItem>
+                        <SelectItem value="urgent">Urgent</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                    </SelectContent>
+                </Select>
+                <Select value={value.location || 'all'} onValueChange={(v) => set({ location: (v === 'all' ? '' : v) as LocationFilter })}>
+                    <SelectTrigger className="bg-white/5 border-border h-8 w-[170px] text-sm" title="Pin of the next leg (pickup if still to collect)">
+                        <SelectValue placeholder="Location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Any location</SelectItem>
+                        <SelectItem value="verified">Verified by recipient</SelectItem>
+                        <SelectItem value="unverified">Not verified</SelectItem>
+                        <SelectItem value="approximate">Approximate (geocoded)</SelectItem>
+                        <SelectItem value="missing">No location</SelectItem>
+                    </SelectContent>
+                </Select>
                 <Select value={value.emirate || 'all'} onValueChange={(v) => set({ emirate: v === 'all' ? '' : v })}>
                     <SelectTrigger className="bg-white/5 border-border h-8 w-[150px] text-sm">
                         <SelectValue placeholder="Emirate" />
@@ -140,9 +165,10 @@ export default function DispatchFilters({ value, onChange, statuses, emirates, s
                 )}
             </div>
             <p className="text-xs text-muted-foreground">
-                {shown === total
-                    ? `${total} order${total !== 1 ? 's' : ''} available`
-                    : `${shown} of ${total} orders (filters active)`}
+                {/* Failed orders are always held back by default, so shown < total doesn't mean a filter is on. */}
+                {hasActiveFilters(value)
+                    ? `${shown} of ${total} orders (filters active)`
+                    : `${shown} order${shown !== 1 ? 's' : ''} available${total > shown ? ` · ${total - shown} failed hidden (filter by status to see them)` : ''}`}
             </p>
         </div>
     );

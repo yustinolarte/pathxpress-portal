@@ -34,16 +34,8 @@ export function isGeocodingConfigured(): boolean {
     return process.env.NODE_ENV !== 'test' && Boolean(ENV.googleMapsApiKey);
 }
 
-// Spelling variants of "UAE" seen in real order data. Empty/missing counts as
-// domestic — local orders sometimes omit the country.
-const UAE_COUNTRY_VARIANTS = new Set([
-    'UAE', 'UNITED ARAB EMIRATES', 'U.A.E', 'U.A.E.', 'AE', 'EMIRATES',
-]);
-
-export function isUAEDomestic(country: string | null | undefined): boolean {
-    const normalized = (country ?? '').trim().toUpperCase();
-    return normalized === '' || UAE_COUNTRY_VARIANTS.has(normalized);
-}
+// Lives in shared/uae.ts so the portal client applies the same rule.
+export { isUAEDomestic } from '@shared/uae';
 
 /**
  * Geocode a written address within the UAE. Never throws: returns null on
@@ -122,7 +114,7 @@ export function geocodeAndStoreOrderLocation(
         if (!db) return;
 
         await db.update(orders)
-            .set({ latitude: result.lat, longitude: result.lng, locationAccuracy: 'approximate' })
+            .set({ latitude: result.lat, longitude: result.lng, locationAccuracy: 'approximate', locationSource: 'geocode', locationVerifiedAt: null })
             .where(and(
                 eq(orders.id, orderId),
                 sql`(${orders.latitude} IS NULL OR ${orders.latitude} = '')`,
@@ -170,7 +162,7 @@ export async function geocodePendingOrders(limit: number): Promise<{
         const result = await geocodeAddress(order);
         if (result) {
             await db.update(orders)
-                .set({ latitude: result.lat, longitude: result.lng, locationAccuracy: 'approximate' })
+                .set({ latitude: result.lat, longitude: result.lng, locationAccuracy: 'approximate', locationSource: 'geocode', locationVerifiedAt: null })
                 .where(and(
                     eq(orders.id, order.id),
                     sql`(${orders.latitude} IS NULL OR ${orders.latitude} = '')`,

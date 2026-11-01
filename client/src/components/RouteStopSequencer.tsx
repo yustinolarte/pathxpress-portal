@@ -25,6 +25,9 @@ import {
 import { OrdersMap, type MapPoint, type MapPointId, type PinKind } from './OrdersMap';
 import { applyLockedPositions, enforcePrecedence, findPrecedenceViolation } from '@shared/routeSequence';
 import { pathLength } from '@shared/geo';
+import { deliveryDeadline, estimateStopEtas } from '@shared/routeEta';
+import { dubaiTimeOfDay } from '@shared/dubaiTime';
+import { EtaChip, PriorityBadge } from '@/components/drivers/dispatchBadges';
 import type { SequencerStop } from '@/lib/routeDraft';
 
 export type { SequencerStop };
@@ -43,6 +46,8 @@ interface RouteStopSequencerProps {
     disabled?: boolean;
     className?: string;
     mapClassName?: string;
+    /** Planned departure — when set, each row shows its admin-only ETA. */
+    startAt?: string | Date | null;
 }
 
 const fmtKm = (metres: number) =>
@@ -59,6 +64,7 @@ export default function RouteStopSequencer({
     disabled = false,
     className,
     mapClassName = 'h-[440px]',
+    startAt = null,
 }: RouteStopSequencerProps) {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     // One stable ref for the list; rows are found by data attribute. Per-row
@@ -119,6 +125,25 @@ export default function RouteStopSequencer({
         const path = withCoords.map(s => ({ lat: s.lat!, lng: s.lng! }));
         return pathLength(path, origin ? { lat: origin.lat, lng: origin.lng } : null);
     }, [withCoords, origin]);
+
+    // Recomputed on every drag: the whole point is seeing a window slip while reordering.
+    const etaPlan = useMemo(() => {
+        if (!startAt || stops.length === 0) return null;
+        return estimateStopEtas(stops.map(s => ({
+            key: s.key,
+            type: s.type,
+            coords: s.lat !== null && s.lng !== null ? { lat: s.lat, lng: s.lng } : null,
+            doneAt: s.doneAt ? new Date(s.doneAt) : null,
+            ...(s.type === 'delivery' && s.createdAt ? deliveryDeadline({
+                serviceType: s.serviceType,
+                preferredDeliveryDate: s.preferredDeliveryDate,
+                preferredDeliveryTime: s.preferredDeliveryTime,
+                createdAt: s.createdAt,
+            }) : {}),
+        })), { startAt: new Date(startAt), origin: origin ? { lat: origin.lat, lng: origin.lng } : null });
+    }, [stops, startAt, origin?.lat, origin?.lng]);
+    const etaByKey = useMemo(() => new Map((etaPlan?.stops ?? []).map(e => [String(e.key), e])), [etaPlan]);
+    const lateCount = etaPlan?.stops.filter(e => e.lateRisk).length ?? 0;
 
     const pickups = stops.filter(s => s.type === 'pickup').length;
     const deliveries = stops.length - pickups;
@@ -291,6 +316,8 @@ export default function RouteStopSequencer({
                                                 ? <Package className="w-3 h-3 text-[var(--st-green)] flex-shrink-0" />
                                                 : <Truck className="w-3 h-3 text-[var(--st-blue)] flex-shrink-0" />}
                                             <span className="font-mono text-xs font-medium truncate">{stop.waybillNumber}</span>
+                                            <PriorityBadge priority={stop.priority} />
+                                            <EtaChip eta={etaByKey.get(stop.key)} />
                                             {stop.locked && (
                                                 <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase text-muted-foreground">
                                                     <Lock className="w-2.5 h-2.5" /> Done
@@ -388,7 +415,16 @@ export default function RouteStopSequencer({
                         {' · '}{pickups} pickup{pickups !== 1 ? 's' : ''}
                         {' · '}{deliveries} deliver{deliveries !== 1 ? 'ies' : 'y'}
                         {withCoords.length > 1 && <> · ~{fmtKm(totalMetres)}</>}
+                        {etaPlan?.endAt && <> · est. finish <strong className="text-foreground">{dubaiTimeOfDay(etaPlan.endAt)}</strong></>}
                     </p>
+                    {lateCount > 0 && (
+                        <p className="px-2 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary">
+                            {lateCount} stop{lateCount !== 1 ? 's' : ''} would miss {lateCount !== 1 ? 'their' : 'its'} preferred window or Bullet deadline in this order — move {lateCount !== 1 ? 'them' : 'it'} earlier.
+                        </p>
+                    )}
+                    {!startAt && (
+                        <p>Set a start time to see estimated arrival times (admin only).</p>
+                    )}
                     {noCoords.length > 0 && (
                         <div className="px-2 py-1.5 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)] space-y-1">
                             <p>

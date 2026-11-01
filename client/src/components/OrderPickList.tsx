@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { AttemptBadge, LocationSourceBadge, PriorityBadge } from '@/components/drivers/dispatchBadges';
+import { nextLegLocation } from '@/lib/orderFilters';
+import { confirmAttemptedToday } from '@/components/drivers/attemptedToday';
 import {
   Package, Search, Loader2, MapPin, Users, Building2,
   DollarSign, RotateCcw, RefreshCw, CheckCircle2,
@@ -66,6 +69,7 @@ export default function OrderPickList({
       o.customerName?.toLowerCase().includes(q) ||
       o.shipperName?.toLowerCase().includes(q) ||
       o.shipperAddress?.toLowerCase().includes(q) ||
+      o.address?.toLowerCase().includes(q) ||
       o.city?.toLowerCase().includes(q),
     );
   }, [orders, search]);
@@ -76,6 +80,7 @@ export default function OrderPickList({
     if (byId.has(order.id)) {
       onChange(value.filter(v => v.id !== order.id));
     } else {
+      if (!confirmAttemptedToday([order])) return;
       onChange([...value, { id: order.id, mode: defaultModeFor(order) }]);
     }
   }
@@ -161,12 +166,12 @@ export default function OrderPickList({
                             <RefreshCw className="w-3 h-3 mr-1" />Exchange
                           </Badge>
                         )}
-                        {order.serviceType === 'same-day' && (
-                          <Badge variant="outline" className="bg-red-500/10 text-red-400 border-red-500/30 text-xs">⚡ Same Day</Badge>
-                        )}
-                        {order.serviceType === 'express' && (
-                          <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-xs">⚡ Express</Badge>
-                        )}
+                        <PriorityBadge priority={order.priority} />
+                        <AttemptBadge attempts={order.attempts} />
+                        {(() => {
+                          const loc = nextLegLocation(order);
+                          return <LocationSourceBadge source={loc.source} hasPin={loc.hasPin} accuracy={loc.accuracy} botStatus={order.botStatus} compact />;
+                        })()}
                       </div>
                       <div className="space-y-1 text-sm mb-1 min-w-0">
                         {displayMode !== 'delivery_only' && (

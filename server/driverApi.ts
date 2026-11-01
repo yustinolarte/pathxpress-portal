@@ -7,16 +7,18 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { eq, and, or, inArray, isNull, desc, sql } from 'drizzle-orm';
 import { getDb, calculateCODFeeByMethod } from './db';
-import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, driverLocations, trackingEvents, codRecords } from '../drizzle/schema';
+import { drivers, driverRoutes, routeOrders, orders, driverReports, driverShifts, driverLocations, trackingEvents, codRecords, routeAuditLog } from '../drizzle/schema';
 import { uploadImageToCloudinary } from './cloudinary';
 import { extractDeliveryPhotoBase64s, extractDeliveryPhotoUrls, getProofPhotoUrls } from '../shared/podPhotos';
 import { isStaleOpenShift } from './driverShiftRules';
+import {
+    StopStatusError, applyStopStatus, findCurrentStopId, revertOutForDelivery, sendDeliveryOnlyOrdersOut,
+    type StopCodCollection,
+} from './stopStatus';
+import { checkDriverRouteTransition, isStopOpen, isStopSettled, legOf } from '@shared/stopTransitions';
+import { closeSettledRoutesForDriver } from './routeLifecycle';
 
 const router = Router();
-
-// Order statuses that are still BEFORE "out for delivery". Auto-OFD on route start/re-scan
-// only applies to these, so it never reverts a delivered order or duplicates an OFD event.
-const PRE_OUT_FOR_DELIVERY_STATUSES = ['pending_pickup', 'picked_up', 'in_transit'];
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 
@@ -843,6 +845,9 @@ function formatDriverStop(
         orderType: item.order.orderType,
         isReturn: item.order.isReturn,
         originalOrderId: item.order.originalOrderId,
+        // Return to Origin: this same waybill is going back to the shipper —
+        // customerName/address already hold the shipper (swapped in place).
+        isRto: item.order.isRto === 1,
         exchangeOrderId: item.order.exchangeOrderId,
 
         // Status
@@ -939,17 +944,36 @@ router.get('/routes/:routeId', driverAuthMiddleware, async (req: DriverRequest, 
     }
 });
 
+/**
+ * Take an unassigned route / start an assigned one, atomically. The write only
+ * lands while the route is still free or already ours, so two drivers scanning
+ * the same QR at once can't both "win" (the old read-check-write let the last
+ * writer silently take it). Returns false when someone else got it first.
+ */
+async function claimRouteAtomically(db: Db, route: typeof driverRoutes.$inferSelect, driverId: number): Promise<boolean> {
+    const patch = routeClaimPatch(route, driverId);
+    if (Object.keys(patch).length === 0) return true;
+    const updated = await db.update(driverRoutes).set(patch).where(and(
+        eq(driverRoutes.id, route.id),
+        or(isNull(driverRoutes.driverId), eq(driverRoutes.driverId, driverId)),
+        inArray(driverRoutes.status, ['pending', 'in_progress']),
+    ));
+    return ((updated as any)?.[0]?.affectedRows ?? 0) > 0;
+}
+
+/** Fresh route row — after a claim, never reuse the pre-claim read (its shiftId may be stale). */
+async function readRoute(db: Db, routeId: string) {
+    const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
+    return route;
+}
+
 router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { routeId } = req.params;
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const [route] = await db
-            .select()
-            .from(driverRoutes)
-            .where(eq(driverRoutes.id, routeId))
-            .limit(1);
+        const route = await readRoute(db, routeId);
 
         if (!route) {
             return res.status(404).json({ error: 'Route not found' });
@@ -967,14 +991,13 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
             return res.status(403).json({ error: 'This route is already assigned to another driver' });
         }
 
-        const patch = routeClaimPatch(route, req.driverId!);
-        if (Object.keys(patch).length > 0) {
-            await db.update(driverRoutes).set(patch).where(eq(driverRoutes.id, routeId));
+        if (!(await claimRouteAtomically(db, route, req.driverId!))) {
+            return res.status(403).json({ error: 'This route is already assigned to another driver' });
         }
 
         // Scanning the QR is the moment the route goes on the road — record it now
         // and attach it to the driver's open shift, instead of waiting for finish.
-        await markRouteStarted(db, routeId, req.driverId!, route);
+        await markRouteStarted(db, routeId, req.driverId!, (await readRoute(db, routeId))!);
 
         // --- Auto set delivery stops to in_progress ---
         // Only delivery-type stops that are still pending become in_progress.
@@ -991,61 +1014,11 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
                 )
             );
 
-        // --- Feature 1: Auto "Out for Delivery" for delivery-only orders ---
-        // Fetch all stops for this route to identify delivery-only orders (no pickup stop)
-        const allRouteStops = await db
-            .select({ routeOrder: routeOrders, order: orders })
-            .from(routeOrders)
-            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
-            .where(eq(routeOrders.routeId, routeId));
-
-        // Group by orderId; detect which orders have ONLY a delivery stop (no pickup)
-        const orderStopTypeMap = new Map<number, { hasPickup: boolean; hasDelivery: boolean }>();
-        allRouteStops.forEach(item => {
-            const orderId = item.order.id;
-            if (!orderStopTypeMap.has(orderId)) {
-                orderStopTypeMap.set(orderId, { hasPickup: false, hasDelivery: false });
-            }
-            const entry = orderStopTypeMap.get(orderId)!;
-            if (item.routeOrder.type === 'pickup') entry.hasPickup = true;
-            if (item.routeOrder.type === 'delivery') entry.hasDelivery = true;
-        });
-
-        // For delivery-only orders, update order status to out_for_delivery and log tracking event.
-        // Only transition orders that are still BEFORE out-for-delivery. This prevents a re-scan
-        // of the same route from reviving already-delivered orders back to out_for_delivery, and
-        // avoids inserting a duplicate out_for_delivery event when it's already out for delivery.
-        for (const [orderId, stopInfo] of Array.from(orderStopTypeMap.entries())) {
-            if (!stopInfo.hasPickup && stopInfo.hasDelivery) {
-                const updated = await db
-                    .update(orders)
-                    .set({ status: 'out_for_delivery', lastStatusUpdate: new Date() })
-                    .where(and(
-                        eq(orders.id, orderId),
-                        inArray(orders.status, PRE_OUT_FOR_DELIVERY_STATUSES)
-                    ));
-
-                // Only log the tracking event if the status actually changed to out_for_delivery.
-                if ((updated as any)?.[0]?.affectedRows > 0) {
-                    await db.insert(trackingEvents).values({
-                        shipmentId: orderId,
-                        eventDatetime: new Date(),
-                        location: 'Driver Route',
-                        statusCode: 'out_for_delivery',
-                        statusLabel: 'Out for Delivery',
-                        description: 'Package is out for delivery with driver',
-                        createdBy: 'driver',
-                    });
-                }
-            }
-        }
+        // Delivery-only orders (no pickup leg here — already on the van) go out for delivery.
+        await sendDeliveryOnlyOrdersOut(db, routeId);
 
         // Get updated route
-        const [updatedRoute] = await db
-            .select()
-            .from(driverRoutes)
-            .where(eq(driverRoutes.id, routeId))
-            .limit(1);
+        const updatedRoute = await readRoute(db, routeId);
 
         // Get the stops (pickups and deliveries) for this route - same format as GET route
         const routeOrdersList = await db
@@ -1105,19 +1078,27 @@ router.post('/routes/:routeId/claim', driverAuthMiddleware, async (req: DriverRe
     }
 });
 
-
+/**
+ * The app starts a route and finishes it — nothing else. A late replay of
+ * "in_progress" used to resurrect completed routes, and any string (even
+ * "cancelled") was written as-is. Refused changes answer 200 with
+ * `ignored: true` so the offline queue drains.
+ *
+ * Finishing with stops still open is allowed (the driver is back at base):
+ * those stops stay on the closed route as history, its legs go back to the
+ * pool, and orders the customer sees "Out for Delivery" return to in_transit.
+ */
 router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { routeId } = req.params;
-        const { status } = req.body;
+        const { status } = req.body ?? {};
+        if (typeof status !== 'string' || !status.trim()) {
+            return res.status(400).json({ error: 'status is required' });
+        }
         const db = await getDb();
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        const [route] = await db
-            .select()
-            .from(driverRoutes)
-            .where(eq(driverRoutes.id, routeId))
-            .limit(1);
+        const route = await readRoute(db, routeId);
 
         if (!route) {
             return res.status(404).json({ error: 'Route not found' });
@@ -1127,74 +1108,59 @@ router.put('/routes/:routeId/status', driverAuthMiddleware, async (req: DriverRe
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const statusLower = status.toLowerCase();
-        await db
-            .update(driverRoutes)
-            .set({ status: statusLower as typeof route.status })
-            .where(eq(driverRoutes.id, routeId));
-
-        // Same as the claim path: starting the route is what stamps startedAt and
-        // links the shift, so an in-flight route is visible in the admin Shifts view.
-        if (statusLower === 'in_progress') {
-            await markRouteStarted(db, routeId, req.driverId!, route);
-        }
-
-        // When route changes to in_progress, mark delivery-only orders as out_for_delivery
-        if (statusLower === 'in_progress') {
-            // Get all stops for this route
-            const allStops = await db
-                .select()
-                .from(routeOrders)
-                .innerJoin(orders, eq(routeOrders.orderId, orders.id))
-                .where(eq(routeOrders.routeId, routeId));
-
-            // Group by orderId to find which orders only have delivery (no pickup)
-            const orderStops = new Map<number, { hasPickup: boolean; hasDelivery: boolean }>();
-            allStops.forEach(stop => {
-                const orderId = stop.orders.id;
-                if (!orderStops.has(orderId)) {
-                    orderStops.set(orderId, { hasPickup: false, hasDelivery: false });
-                }
-                const entry = orderStops.get(orderId)!;
-                if (stop.routeOrders.type === 'pickup') entry.hasPickup = true;
-                if (stop.routeOrders.type === 'delivery') entry.hasDelivery = true;
+        const statusLower = status.trim().toLowerCase();
+        const verdict = checkDriverRouteTransition(route.status, statusLower);
+        if (verdict.kind === 'invalid') return res.status(400).json({ error: verdict.reason });
+        if (verdict.kind === 'noop') return res.json({ message: 'Route status updated', ignored: true, status: route.status });
+        if (verdict.kind === 'conflict') {
+            await db.insert(routeAuditLog).values({
+                createdAt: new Date(),
+                routeId, action: 'driver_route_update_ignored', fromValue: route.status, toValue: statusLower.slice(0, 50),
+                actor: `driver:${req.driverId}`, reason: verdict.reason,
             });
-
-            // Mark delivery-only orders as out_for_delivery.
-            // Only transition orders that are still BEFORE out-for-delivery, so re-scanning a route
-            // never reverts an already-delivered order and never logs a duplicate out_for_delivery event.
-            const entries = Array.from(orderStops.entries());
-            for (const [orderId, stops] of entries) {
-                if (!stops.hasPickup && stops.hasDelivery) {
-                    // This order only has delivery stop - mark as out_for_delivery
-                    const updated = await db
-                        .update(orders)
-                        .set({
-                            status: 'out_for_delivery',
-                            lastStatusUpdate: new Date()
-                        })
-                        .where(and(
-                            eq(orders.id, orderId),
-                            inArray(orders.status, PRE_OUT_FOR_DELIVERY_STATUSES)
-                        ));
-
-                    // Create tracking event only if the status actually changed
-                    if ((updated as any)?.[0]?.affectedRows > 0) {
-                        await db.insert(trackingEvents).values({
-                            shipmentId: orderId,
-                            eventDatetime: new Date(),
-                            location: 'Driver Route',
-                            statusCode: 'out_for_delivery',
-                            statusLabel: 'Out for Delivery',
-                            description: 'Package is out for delivery',
-                            createdBy: 'driver',
-                        });
-                    }
-                }
-            }
+            return res.json({ message: verdict.reason, ignored: true, reason: verdict.reason, status: route.status });
         }
 
-        res.json({ message: 'Route status updated' });
+        if (statusLower === 'in_progress') {
+            // Starting an unassigned route claims it, exactly like scanning its QR —
+            // leaving driverId NULL hid its COD from every admin view.
+            if (!(await claimRouteAtomically(db, route, req.driverId!))) {
+                return res.status(403).json({ error: 'This route is already assigned to another driver' });
+            }
+            // Same as the claim path: starting the route is what stamps startedAt and
+            // links the shift, so an in-flight route is visible in the admin Shifts view.
+            await markRouteStarted(db, routeId, req.driverId!, (await readRoute(db, routeId))!);
+            await sendDeliveryOnlyOrdersOut(db, routeId);
+            return res.json({ message: 'Route status updated', status: 'in_progress' });
+        }
+
+        // in_progress → completed
+        const now = new Date();
+        await db.transaction(async (txRaw) => {
+            const tx = txRaw as unknown as Db;
+            const [locked] = await tx.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1).for('update');
+            if (!locked || locked.status !== 'in_progress') return;
+            await tx.update(driverRoutes)
+                .set({ status: 'completed', finishedAt: locked.finishedAt ?? now })
+                .where(eq(driverRoutes.id, routeId));
+
+            const stops = await tx.select().from(routeOrders).where(eq(routeOrders.routeId, routeId));
+            const openDeliveries = stops.filter(s => legOf(s.type) === 'delivery' && isStopOpen(s.status));
+            const current: number[] = [];
+            for (const s of openDeliveries) {
+                if (await findCurrentStopId(tx, s.orderId, 'delivery') === s.id) current.push(s.orderId);
+            }
+            await revertOutForDelivery(tx, current, `Route ${routeId} finished by the driver with this stop not worked`, `driver:${req.driverId}`, routeId);
+            const unsettled = stops.filter(s => !isStopSettled(legOf(s.type), s.status)).length;
+            await tx.insert(routeAuditLog).values({
+                createdAt: new Date(),
+                routeId, action: 'route_finished_by_driver', fromValue: 'in_progress', toValue: 'completed',
+                actor: `driver:${req.driverId}`,
+                reason: unsettled > 0 ? `${unsettled} stop(s) left unworked and released back to the pool` : null,
+            });
+        });
+
+        res.json({ message: 'Route status updated', status: 'completed' });
     } catch (error) {
         console.error('Update route status error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1219,34 +1185,35 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
         if (!db) return res.status(500).json({ error: 'Database not available' });
 
         // Look up the order by its waybill number (encoded in the label barcode)
-        let order: typeof orders.$inferSelect | undefined;
-
-        const [byWaybill] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
-        if (byWaybill) {
-            order = byWaybill;
-        }
-
+        const [order] = await db.select().from(orders).where(eq(orders.waybillNumber, barcode)).limit(1);
         if (!order) return res.status(404).json({ error: 'Package not found in system!' });
 
-        // Check if assigned to another driver via a routeOrder stop
-        const [routeOrder] = await db.select().from(routeOrders)
-            .where(eq(routeOrders.orderId, order.id))
-            .limit(1);
+        // The package's live stop: newest one on a route that isn't closed. An
+        // order that went through several routes (retries, RTO) also has stops on
+        // old completed routes — returning one of those sent the app to a dead stop.
+        const liveStops = await db.select({ routeOrder: routeOrders, route: driverRoutes })
+            .from(routeOrders)
+            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+            .where(and(eq(routeOrders.orderId, order.id), inArray(driverRoutes.status, ['pending', 'in_progress'])))
+            .orderBy(desc(routeOrders.id));
+        const live = liveStops.find(s => s.route.driverId === req.driverId)
+            ?? liveStops.find(s => s.route.driverId === null)
+            ?? liveStops[0];
 
-        let routeId = null;
-        if (routeOrder) {
-            routeId = routeOrder.routeId;
-            const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, routeId)).limit(1);
-            if (route && route.driverId !== null && route.driverId !== req.driverId) {
-                return res.status(403).json({ error: 'Assigned to another driver!' });
-            }
+        if (live && live.route.driverId !== null && live.route.driverId !== req.driverId) {
+            return res.status(403).json({ error: 'Assigned to another driver!' });
         }
 
-        // Return formatted package matching the driver app expectations
+        // Return formatted package matching the driver app expectations. `id` is a
+        // STOP id or null — it used to fall back to the order id, which the app then
+        // sent to /stops/:id/status, updating whatever unrelated stop had that id.
         res.json({
-            id: routeOrder ? routeOrder.id : order.id,
+            id: live ? live.routeOrder.id : null,
+            stopId: live ? live.routeOrder.id : null,
+            orderId: order.id,
+            stopType: live ? live.routeOrder.type : null,
             packageRef: order.waybillNumber,
-            status: routeOrder ? routeOrder.status : order.status,
+            status: live ? live.routeOrder.status : order.status,
             customerName: order.customerName,
             customerPhone: order.customerPhone,
             address: order.address,
@@ -1255,7 +1222,7 @@ router.get('/stops/lookup', driverAuthMiddleware, async (req: DriverRequest, res
             fitOnDelivery: order.fitOnDelivery === 1,
             type: order.codRequired === 1 ? 'COD' : 'PREPAID',
             weight: order.weight,
-            routeId: routeId
+            routeId: live ? live.route.id : null,
         });
     } catch (error) {
         console.error('Lookup stop error:', error);
@@ -1281,409 +1248,153 @@ router.post('/pod/upload', driverAuthMiddleware, async (req: DriverRequest, res:
     }
 });
 
-router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
-    try {
-        const { id } = req.params;
-        const { status, notes, collectedAmount, collectedMethod, paymentReference, deliveredLat, deliveredLng } = req.body;
-        const db = await getDb();
-        if (!db) return res.status(500).json({ error: 'Database not available' });
+/**
+ * Shared body of PUT /stops/:id/status and the legacy PUT /deliveries/:id/status.
+ * Validation, POD upload and the COD fee lookup happen here, outside any lock;
+ * the actual change goes through applyStopStatus (server/stopStatus.ts), which
+ * owns the transition rules, idempotency and route auto-completion.
+ *
+ * Replays and stale updates answer 200 with `ignored: true` and the server's
+ * real status — current app builds retry anything else forever from their
+ * offline queue.
+ */
+async function handleStopStatusUpdate(req: DriverRequest, res: Response, legacy: boolean) {
+    const stopId = Number.parseInt(req.params.id, 10);
+    const { status, notes, collectedAmount, collectedMethod, paymentReference, deliveredLat, deliveredLng } = req.body ?? {};
+    if (!Number.isInteger(stopId) || stopId <= 0) return res.status(404).json({ error: 'Stop not found' });
+    if (typeof status !== 'string' || !status.trim()) return res.status(400).json({ error: 'status is required' });
 
-        // Get the route order (stop)
-        const [routeOrder] = await db
-            .select({
-                routeOrder: routeOrders,
-                route: driverRoutes,
-                order: orders,
-            })
-            .from(routeOrders)
-            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
-            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
-            .where(eq(routeOrders.id, parseInt(id)))
-            .limit(1);
+    const db = await getDb();
+    if (!db) return res.status(500).json({ error: 'Database not available' });
 
-        if (!routeOrder) {
-            return res.status(404).json({ error: 'Stop not found' });
-        }
+    const [row] = await db
+        .select({ routeOrder: routeOrders, route: driverRoutes, order: orders })
+        .from(routeOrders)
+        .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+        .innerJoin(orders, eq(routeOrders.orderId, orders.id))
+        .where(eq(routeOrders.id, stopId))
+        .limit(1);
+    if (!row) return res.status(404).json({ error: legacy ? 'Delivery not found' : 'Stop not found' });
 
-        // Check driver access
-        if (routeOrder.route.driverId !== null && routeOrder.route.driverId !== req.driverId) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
+    // Checked again under the lock; here it just avoids uploading someone else's POD.
+    if (row.route.driverId !== null && row.route.driverId !== req.driverId) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
 
-        const stopType = routeOrder.routeOrder.type || 'delivery';
-        const isPickup = stopType === 'pickup';
-        const statusLower = status.toLowerCase();
+    const statusLower = status.trim().toLowerCase();
+    const isPickup = (row.routeOrder.type || 'delivery') === 'pickup';
 
-        // CCOD validation — must pass before any writes so a failed card
-        // collection can never mark the stop delivered
-        const isCodDelivery = !isPickup && statusLower === 'delivered' && !!routeOrder.order.codRequired;
-        const allowedCodMethods = routeOrder.order.codPaymentMethod || 'cash'; // legacy COD rows = cash
-        const codMethod: 'cash' | 'card' = collectedMethod === 'card' ? 'card'
+    if (collectedAmount !== undefined && collectedAmount !== null && collectedAmount !== '') {
+        const n = Number(collectedAmount);
+        if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: 'collectedAmount must be a number ≥ 0' });
+    }
+
+    // CCOD validation — must pass before any writes so a failed card
+    // collection can never mark the stop delivered
+    const isCodDelivery = !isPickup && statusLower === 'delivered' && !!row.order.codRequired;
+    const allowedCodMethods = row.order.codPaymentMethod || 'cash'; // legacy COD rows = cash
+    const codMethod: 'cash' | 'card' = legacy ? 'cash'
+        : collectedMethod === 'card' ? 'card'
             : collectedMethod === 'cash' ? 'cash'
                 : allowedCodMethods === 'card' ? 'card' : 'cash';
-        if (isCodDelivery) {
-            if (codMethod === 'cash' && allowedCodMethods === 'card') {
-                return res.status(400).json({ error: 'This shipment is Card on Delivery only — cash is not accepted' });
-            }
-            if (codMethod === 'card' && allowedCodMethods === 'cash') {
-                return res.status(400).json({ error: 'This shipment accepts cash only — card is not enabled for it' });
-            }
-            if (codMethod === 'card' && !paymentReference) {
-                return res.status(400).json({ error: 'Payment reference is required for card collection' });
-            }
+    if (isCodDelivery) {
+        if (legacy && allowedCodMethods === 'card') {
+            return res.status(400).json({ error: 'This shipment is Card on Delivery — please update the driver app to collect card payments' });
         }
+        if (codMethod === 'cash' && allowedCodMethods === 'card') {
+            return res.status(400).json({ error: 'This shipment is Card on Delivery only — cash is not accepted' });
+        }
+        if (codMethod === 'card' && allowedCodMethods === 'cash') {
+            return res.status(400).json({ error: 'This shipment accepts cash only — card is not enabled for it' });
+        }
+        if (codMethod === 'card' && !paymentReference) {
+            return res.status(400).json({ error: 'Payment reference is required for card collection' });
+        }
+    }
 
-        const [photoUrl, photoUrl2] = await resolveDeliveryPhotoUrls(
-            req.body,
-            routeOrder.routeOrder.proofPhotoUrl,
-            routeOrder.routeOrder.proofPhotoUrl2,
-        );
+    const photoUrls = await resolveDeliveryPhotoUrls(req.body, row.routeOrder.proofPhotoUrl, row.routeOrder.proofPhotoUrl2);
 
-        // Prepare update data based on stop type
-        const updateData: Record<string, unknown> = {
-            status: statusLower,
-            notes: notes || routeOrder.routeOrder.notes,
-            proofPhotoUrl: photoUrl,
-            proofPhotoUrl2: photoUrl2,
+    // Save collected amount only for delivered stops. A COD delivery that
+    // arrives without an amount (older builds, pre-uploaded POD path, the
+    // legacy endpoint) falls back to what was due — leaving it null made the
+    // cash reconciliation read "expected X, collected nothing".
+    let stopCollected: string | null | undefined;
+    if (statusLower === 'delivered') {
+        if (collectedAmount) stopCollected = collectedAmount.toString();
+        else if (!isPickup && row.order.codRequired) stopCollected = row.order.codAmount || '0';
+    }
+
+    let cod: StopCodCollection | null = null;
+    if (isCodDelivery) {
+        const amount = (collectedAmount ? collectedAmount.toString() : null) || row.order.codAmount || '0';
+        // Freeze the fee at collection time, per the method actually used
+        const feeAmount = (await calculateCODFeeByMethod(parseFloat(amount) || 0, row.order.clientId, codMethod)).toFixed(2);
+        cod = {
+            amount,
+            method: codMethod,
+            paymentReference: codMethod === 'card' && paymentReference ? paymentReference.toString().slice(0, 100) : null,
+            feeAmount,
         };
+    }
 
-        // Save collected amount only for delivered stops — a stale/incorrect value
-        // sent by an old app build (or a direct API call) for an attempted/failed/
-        // returned stop must never persist as if it were actually collected.
-        //
-        // When a COD delivery arrives without an amount (older app builds, or the
-        // pre-uploaded POD path) fall back to what was due, exactly as the COD
-        // record below already does. Leaving it null made the driver cash
-        // reconciliation read the stop as "expected X, collected nothing" and
-        // understate the cash that driver owes.
-        if (statusLower === 'delivered') {
-            if (collectedAmount) {
-                updateData.collectedAmount = collectedAmount.toString();
-            } else if (!isPickup && routeOrder.order.codRequired) {
-                updateData.collectedAmount = routeOrder.order.codAmount || '0';
-            }
-        }
+    const [driver] = await db.select({ fullName: drivers.fullName }).from(drivers).where(eq(drivers.id, req.driverId!)).limit(1);
 
-        // GPS position captured by the app at POD time
-        if (typeof deliveredLat === 'number' && typeof deliveredLng === 'number') {
-            updateData.deliveredLat = deliveredLat;
-            updateData.deliveredLng = deliveredLng;
-        }
-
-        // Set timestamp based on status
-        if (statusLower === 'picked_up') {
-            updateData.pickedUpAt = new Date();
-        } else if (statusLower === 'delivered') {
-            updateData.deliveredAt = new Date();
-        } else if (statusLower === 'attempted' || statusLower === 'failed') {
-            updateData.attemptedAt = new Date();
-        }
-
-        await db
-            .update(routeOrders)
-            .set(updateData)
-            .where(eq(routeOrders.id, parseInt(id)));
-
-        // Update the main order status based on stop type
-        let orderStatus = routeOrder.order.status;
-        let statusLabel = 'Updated';
-        const eventsToInsert: any[] = [];
-
-        // Default location
-        const locationCity = isPickup ? routeOrder.order.shipperCity : routeOrder.order.city;
-        const location = locationCity || 'Unknown';
-
-        // Get driver info for tracking event early
-        const [driver] = await db
-            .select()
-            .from(drivers)
-            .where(eq(drivers.id, req.driverId!))
-            .limit(1);
-
-        if (isPickup) {
-            // PICKUP stop
-            if (statusLower === 'picked_up') {
-
-                // Check if there's a delivery stop for this order
-                const [deliveryStop] = await db
-                    .select()
-                    .from(routeOrders)
-                    .where(and(
-                        eq(routeOrders.routeId, routeOrder.routeOrder.routeId),
-                        eq(routeOrders.orderId, routeOrder.order.id),
-                        eq(routeOrders.type, 'delivery')
-                    ))
-                    .limit(1);
-
-                if (deliveryStop) {
-                    // Has delivery stop -> "Picked Up" THEN "Out for Delivery"
-
-                    // 1. Queue "Picked Up" event (2 mins ago)
-                    eventsToInsert.push({
-                        shipmentId: routeOrder.order.id,
-                        eventDatetime: new Date(Date.now() - 120000), // 2 mins ago
-                        location: 'Driver App',
-                        statusCode: 'picked_up',
-                        statusLabel: 'Picked Up',
-                        description: 'Package picked up by driver',
-                        createdBy: 'driver',
-                    });
-
-                    // 2. Set final status to "Out for Delivery"
-                    orderStatus = 'out_for_delivery';
-                    statusLabel = 'Out for Delivery';
-                } else {
-                    // Pickup Only -> Just "Picked Up"
-                    orderStatus = 'picked_up';
-                    statusLabel = 'Picked Up';
-                }
-            } else if (statusLower === 'failed' || statusLower === 'attempted') {
-                // 'failed_pickup' is an existing, admin-recognized order status
-                // (AddTrackingEventDialog, statusStyles, AdminDashboard's known-status
-                // list in the portal client) — the portal has no separate "attempted
-                // but will retry" bucket for pickups the way it does for deliveries
-                // (delivery_attempted vs failed_delivery), so both map here; the
-                // specific outcome is preserved in the tracking event's statusLabel.
-                orderStatus = 'failed_pickup';
-                statusLabel = statusLower === 'failed' ? 'Pickup Failed' : 'Pickup Attempted';
-            }
-        } else {
-            // DELIVERY stop
-            if (statusLower === 'delivered') {
-                orderStatus = 'delivered';
-                statusLabel = 'Delivered';
-            } else if (statusLower === 'attempted') {
-                orderStatus = 'delivery_attempted';
-                statusLabel = 'Delivery Attempted';
-            } else if (statusLower === 'returned') {
-                orderStatus = 'returned';
-                statusLabel = 'Returned';
-            } else if (statusLower === 'failed') {
-                orderStatus = 'failed_delivery';
-                statusLabel = 'Failed Delivery';
-            } else if (statusLower === 'on_hold') {
-                orderStatus = 'on_hold';
-                statusLabel = 'On Hold';
-            }
-        }
-
-        // Add the main event (reflecting the final status determined above)
-        // This covers "Out for Delivery" (in dual case) or "Picked Up" (in single case) or any Delivery status
-        eventsToInsert.push({
-            shipmentId: routeOrder.order.id,
-            eventDatetime: new Date(),
-            location: location,
-            statusCode: orderStatus,
-            statusLabel: statusLabel,
-            description: notes || `${statusLabel} by driver ${driver?.fullName || 'Unknown'}`,
-            podFileUrl: photoUrl || undefined,
-            podFileUrl2: photoUrl2 || undefined,
-            createdBy: 'driver',
+    try {
+        const result = await applyStopStatus(db, {
+            stopId,
+            status: statusLower,
+            actor: { kind: 'driver', driverId: req.driverId!, driverName: driver?.fullName },
+            notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+            photoUrls,
+            collectedAmount: stopCollected,
+            cod,
+            deliveredLat: typeof deliveredLat === 'number' ? deliveredLat : null,
+            deliveredLng: typeof deliveredLng === 'number' ? deliveredLng : null,
         });
 
-        // Update Order
-        const orderUpdate: Record<string, unknown> = {
-            status: orderStatus,
-            lastStatusUpdate: new Date(),
+        if (result.routeStarted) {
+            const [route] = await db.select().from(driverRoutes).where(eq(driverRoutes.id, result.routeId)).limit(1);
+            if (route) await markRouteStarted(db, route.id, req.driverId!, route);
+        }
+
+        const payload = {
+            stopType: result.stopType,
+            status: result.stopStatus,
+            orderStatus: result.orderStatus,
+            routeStatus: result.routeStatus,
+            routeCompleted: result.routeCompleted,
         };
-
-        if (isPickup && statusLower === 'picked_up') {
-            orderUpdate.pickupDate = new Date();
-            orderUpdate.pickupDriverId = req.driverId;
-        } else if (!isPickup && statusLower === 'delivered') {
-            orderUpdate.deliveryDateReal = new Date();
+        if (result.outcome !== 'applied') {
+            return res.json({
+                message: result.reason ?? 'Already up to date',
+                ignored: true,
+                reason: result.reason ?? 'Already up to date',
+                ...payload,
+            });
         }
-
-        await db
-            .update(orders)
-            .set(orderUpdate)
-            .where(eq(orders.id, routeOrder.order.id));
-
-        // Insert all queued events
-        for (const event of eventsToInsert) {
-            await db.insert(trackingEvents).values(event);
-        }
-
-        // Handle COD for delivered deliveries
-        if (!isPickup && statusLower === 'delivered' && routeOrder.order.codRequired) {
-            // Use collectedAmount from request if available, otherwise fallback to expected amount
-            const finalCodAmount = collectedAmount?.toString() || routeOrder.order.codAmount || '0';
-
-            // Freeze the fee at collection time, per the method actually used
-            const feeAmount = (
-                await calculateCODFeeByMethod(parseFloat(finalCodAmount) || 0, routeOrder.order.clientId, codMethod)
-            ).toFixed(2);
-            const collectionData = {
-                status: 'collected' as const,
-                collectedDate: new Date(),
-                codAmount: finalCodAmount,
-                collectedMethod: codMethod,
-                paymentReference: codMethod === 'card' ? paymentReference.toString() : null,
-                feeAmount,
-            };
-
-            const [existingCod] = await db
-                .select()
-                .from(codRecords)
-                .where(eq(codRecords.shipmentId, routeOrder.order.id))
-                .limit(1);
-
-            if (existingCod) {
-                await db
-                    .update(codRecords)
-                    .set(collectionData)
-                    .where(eq(codRecords.id, existingCod.id));
-            } else {
-                await db.insert(codRecords).values({
-                    shipmentId: routeOrder.order.id,
-                    codCurrency: routeOrder.order.codCurrency || 'AED',
-                    allowedMethods: allowedCodMethods,
-                    ...collectionData,
-                });
-            }
-        }
-
-        res.json({
-            message: isPickup ? 'Pickup completed' : 'Delivery updated',
-            stopType,
-            status: statusLower,
+        return res.json({
+            message: legacy ? 'Delivery updated successfully' : isPickup ? 'Pickup completed' : 'Delivery updated',
+            ...payload,
         });
+    } catch (error) {
+        if (error instanceof StopStatusError) return res.status(error.httpStatus).json({ error: error.message });
+        throw error;
+    }
+}
+
+router.put('/stops/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
+    try {
+        await handleStopStatusUpdate(req, res, false);
     } catch (error) {
         console.error('Update stop error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// Keep old endpoint for backward compatibility
+// Old endpoint, kept for app builds that still call it — same rules, cash only.
 router.put('/deliveries/:id/status', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
-    // Forward to new stops endpoint
-    req.params.id = req.params.id;
     try {
-        const { id } = req.params;
-        const { status, notes } = req.body;
-        const db = await getDb();
-        if (!db) return res.status(500).json({ error: 'Database not available' });
-
-        // Get the route order
-        const [routeOrder] = await db
-            .select({
-                routeOrder: routeOrders,
-                route: driverRoutes,
-                order: orders,
-            })
-            .from(routeOrders)
-            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
-            .innerJoin(orders, eq(routeOrders.orderId, orders.id))
-            .where(eq(routeOrders.id, parseInt(id)))
-            .limit(1);
-
-        if (!routeOrder) {
-            return res.status(404).json({ error: 'Delivery not found' });
-        }
-
-        // Check driver access
-        if (routeOrder.route.driverId !== null && routeOrder.route.driverId !== req.driverId) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
-        const statusLower = status.toLowerCase();
-
-        // Legacy endpoint only supports cash — block card-only shipments before any writes
-        if (statusLower === 'delivered' && routeOrder.order.codRequired && routeOrder.order.codPaymentMethod === 'card') {
-            return res.status(400).json({ error: 'This shipment is Card on Delivery — please update the driver app to collect card payments' });
-        }
-
-        const [photoUrl, photoUrl2] = await resolveDeliveryPhotoUrls(
-            req.body,
-            routeOrder.routeOrder.proofPhotoUrl,
-            routeOrder.routeOrder.proofPhotoUrl2,
-        );
-
-        const updateData: Record<string, unknown> = {
-            status: statusLower,
-            notes: notes || routeOrder.routeOrder.notes,
-            proofPhotoUrl: photoUrl,
-            proofPhotoUrl2: photoUrl2,
-        };
-
-        if (statusLower === 'delivered') {
-            updateData.deliveredAt = new Date();
-        } else if (statusLower === 'attempted') {
-            updateData.attemptedAt = new Date();
-        }
-
-        await db
-            .update(routeOrders)
-            .set(updateData)
-            .where(eq(routeOrders.id, parseInt(id)));
-
-        // Update main order status
-        let orderStatus = routeOrder.order.status;
-        if (statusLower === 'delivered') {
-            orderStatus = 'delivered';
-        } else if (statusLower === 'attempted') {
-            orderStatus = 'delivery_attempted';
-        } else if (statusLower === 'returned') {
-            orderStatus = 'returned';
-        }
-
-        await db
-            .update(orders)
-            .set({
-                status: orderStatus,
-                lastStatusUpdate: new Date(),
-                deliveryDateReal: statusLower === 'delivered' ? new Date() : undefined,
-            })
-            .where(eq(orders.id, routeOrder.order.id));
-
-        // Create tracking event
-        await db.insert(trackingEvents).values({
-            shipmentId: routeOrder.order.id,
-            eventDatetime: new Date(),
-            location: routeOrder.order.city || 'Unknown',
-            statusCode: orderStatus,
-            statusLabel: statusLower === 'delivered' ? 'Delivered' :
-                statusLower === 'attempted' ? 'Delivery Attempted' :
-                    statusLower === 'returned' ? 'Returned' : 'Updated',
-            description: notes || `Status updated by driver`,
-            podFileUrl: photoUrl || undefined,
-            podFileUrl2: photoUrl2 || undefined,
-            createdBy: 'driver',
-        });
-
-        // Handle COD — legacy endpoint only supports cash collection
-        if (statusLower === 'delivered' && routeOrder.order.codRequired) {
-            const codAmount = routeOrder.order.codAmount || '0';
-            const feeAmount = (
-                await calculateCODFeeByMethod(parseFloat(codAmount) || 0, routeOrder.order.clientId, 'cash')
-            ).toFixed(2);
-
-            const [existingCod] = await db
-                .select()
-                .from(codRecords)
-                .where(eq(codRecords.shipmentId, routeOrder.order.id))
-                .limit(1);
-
-            if (existingCod) {
-                await db
-                    .update(codRecords)
-                    .set({ status: 'collected', collectedDate: new Date(), collectedMethod: 'cash', feeAmount })
-                    .where(eq(codRecords.id, existingCod.id));
-            } else {
-                await db.insert(codRecords).values({
-                    shipmentId: routeOrder.order.id,
-                    codAmount,
-                    codCurrency: routeOrder.order.codCurrency || 'AED',
-                    allowedMethods: routeOrder.order.codPaymentMethod || 'cash',
-                    status: 'collected',
-                    collectedDate: new Date(),
-                    collectedMethod: 'cash',
-                    feeAmount,
-                });
-            }
-        }
-
-        res.json({ message: 'Delivery updated successfully' });
+        await handleStopStatusUpdate(req, res, true);
     } catch (error) {
         console.error('Update delivery error:', error);
         res.status(500).json({ error: 'Internal server error' });
@@ -1759,6 +1470,15 @@ router.post('/shifts/end', driverAuthMiddleware, async (req: DriverRequest, res:
         const result = await endShiftWithReconciliation(db, req.driverId!, (req.body ?? {}) as EndShiftInput);
         if (!result.ok) {
             return res.status(result.status).json({ error: result.error, code: result.code, reconciliation: result.reconciliation });
+        }
+
+        // Going home with a fully worked route still "in progress" is a forgotten
+        // "Finish route" — close it so dispatch doesn't see a stuck route. Never
+        // let this fail the clock-out itself.
+        try {
+            await closeSettledRoutesForDriver(db, req.driverId!);
+        } catch (error) {
+            console.error('Close settled routes at clock-out failed:', error);
         }
 
         res.json({
@@ -1840,7 +1560,11 @@ router.post('/shifts/route-report', driverAuthMiddleware, async (req: DriverRequ
 
 // ============ PICKUPS ============
 
-// Scan and mark a waybill as picked up (direct flow - no assignment required)
+// Scan and mark a waybill as picked up (direct flow - no assignment required).
+// When the package has a live pickup stop on a route, the scan goes through
+// that stop (applyStopStatus) so the route, its delivery leg and dispatch all
+// see it — it used to change only the order, leaving the stop pending and its
+// delivery greyed out in the app forever.
 router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRequest, res: Response) => {
     try {
         const { waybillNumber } = req.params;
@@ -1858,38 +1582,61 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
             return res.status(404).json({ error: 'Waybill not found' });
         }
 
-        // Idempotent response: if already picked up, return success without duplicating tracking events.
-        if (order.status === 'picked_up') {
-            return res.json({
-                success: true,
-                message: 'Package already marked as picked up',
-                waybillNumber,
-                orderId: order.id,
-                status: 'picked_up',
-                shipperName: order.shipperName,
-                customerName: order.customerName,
-                pieces: order.pieces,
-                weight: order.weight,
-            });
-        }
-
-        // Verify order is in pending_pickup status
-        if (order.status !== 'pending_pickup') {
-            return res.status(400).json({
-                error: `Cannot pickup: order status is "${order.status}"`,
-                currentStatus: order.status
-            });
-        }
+        const pickedUp = (message: string) => res.json({
+            success: true,
+            message,
+            waybillNumber,
+            orderId: order.id,
+            status: 'picked_up',
+            shipperName: order.shipperName,
+            customerName: order.customerName,
+            pieces: order.pieces,
+            weight: order.weight,
+        });
 
         // Get driver info for the tracking event
         const [driver] = await db
-            .select()
+            .select({ fullName: drivers.fullName })
             .from(drivers)
             .where(eq(drivers.id, req.driverId!))
             .limit(1);
 
-        // Update order status to picked_up
-        await db
+        const [liveStop] = await db.select({ id: routeOrders.id, driverId: driverRoutes.driverId })
+            .from(routeOrders)
+            .innerJoin(driverRoutes, eq(routeOrders.routeId, driverRoutes.id))
+            .where(and(
+                eq(routeOrders.orderId, order.id),
+                eq(routeOrders.type, 'pickup'),
+                inArray(driverRoutes.status, ['pending', 'in_progress']),
+            ))
+            .orderBy(desc(routeOrders.id))
+            .limit(1);
+
+        if (liveStop) {
+            if (liveStop.driverId !== null && liveStop.driverId !== req.driverId) {
+                return res.status(403).json({ error: 'Assigned to another driver!' });
+            }
+            try {
+                const result = await applyStopStatus(db, {
+                    stopId: liveStop.id,
+                    status: 'picked_up',
+                    actor: { kind: 'driver', driverId: req.driverId!, driverName: driver?.fullName },
+                });
+                if (result.routeStarted) {
+                    const route = await readRoute(db, result.routeId);
+                    if (route) await markRouteStarted(db, route.id, req.driverId!, route);
+                }
+                if (result.outcome === 'applied') return pickedUp('Package marked as picked up');
+                if (result.stopStatus === 'picked_up') return pickedUp('Package already marked as picked up');
+                return res.status(400).json({ error: `Cannot pickup: ${result.reason ?? `stop is ${result.stopStatus}`}`, currentStatus: result.orderStatus });
+            } catch (error) {
+                if (error instanceof StopStatusError) return res.status(error.httpStatus).json({ error: error.message });
+                throw error;
+            }
+        }
+
+        // No route stop: order-only pickup, atomic so a double scan logs one event.
+        const updated = await db
             .update(orders)
             .set({
                 status: 'picked_up',
@@ -1897,7 +1644,17 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
                 lastStatusUpdate: new Date(),
                 pickupDriverId: req.driverId, // Record which driver picked it up
             })
-            .where(eq(orders.id, order.id));
+            .where(and(eq(orders.id, order.id), inArray(orders.status, ['pending', 'pending_pickup', 'failed_pickup'])));
+
+        if (((updated as any)?.[0]?.affectedRows ?? 0) === 0) {
+            const [current] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, order.id)).limit(1);
+            // Idempotent response: already picked up → success without duplicating tracking events.
+            if (current?.status === 'picked_up') return pickedUp('Package already marked as picked up');
+            return res.status(400).json({
+                error: `Cannot pickup: order status is "${current?.status ?? order.status}"`,
+                currentStatus: current?.status ?? order.status,
+            });
+        }
 
         // Create tracking event with driver info
         await db.insert(trackingEvents).values({
@@ -1910,18 +1667,7 @@ router.put('/pickups/:waybillNumber', driverAuthMiddleware, async (req: DriverRe
             createdBy: 'driver',
         });
 
-        // Return order details for confirmation
-        res.json({
-            success: true,
-            message: 'Package marked as picked up',
-            waybillNumber,
-            orderId: order.id,
-            status: 'picked_up',
-            shipperName: order.shipperName,
-            customerName: order.customerName,
-            pieces: order.pieces,
-            weight: order.weight,
-        });
+        return pickedUp('Package marked as picked up');
     } catch (error) {
         console.error('Pickup error:', error);
         res.status(500).json({ error: 'Internal server error' });

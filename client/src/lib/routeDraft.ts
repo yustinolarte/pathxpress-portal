@@ -33,6 +33,13 @@ export interface SequencerStop {
     /** Finished stop: can't be dragged, keeps its index. */
     locked?: boolean;
     status?: string | null;
+    // ETA inputs (admin-only estimate, shared/routeEta).
+    preferredDeliveryDate?: string | null;
+    preferredDeliveryTime?: string | null;
+    createdAt?: string | Date | null;
+    /** When a worked stop was worked — its ETA is that real time. */
+    doneAt?: string | Date | null;
+    priority?: { level: 'urgent' | 'high' | 'normal'; reasons: string[]; overridden?: boolean } | null;
 }
 
 export type DraftSelection = { id: number; mode: 'pickup_only' | 'delivery_only' | 'both' };
@@ -86,6 +93,10 @@ export function buildDraftStops(
                 lat: coords.lat,
                 lng: coords.lng,
                 accuracy: coords.accuracy,
+                preferredDeliveryDate: order.preferredDeliveryDate,
+                preferredDeliveryTime: order.preferredDeliveryTime,
+                createdAt: order.createdAt,
+                priority: order.priority,
             });
         }
     }

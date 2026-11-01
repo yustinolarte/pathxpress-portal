@@ -65,11 +65,18 @@ export const appRouter = router({
           ? `${order.shipperCity}, ${order.shipperCountry}`
           : `${order.shipperAddress}, ${order.shipperCity}, ${order.shipperCountry}`;
 
+        // Return to Origin swaps the sides in place: the shipper's address is
+        // now the delivery side, so that's the one to hide.
+        const isRto = order.isRto === 1;
+        const deliveryAddress = isRto && hideShipperAddress
+          ? `${order.city}, ${order.destinationCountry}`
+          : `${order.address}, ${order.city}, ${order.destinationCountry}`;
+
         return {
           trackingId: order.waybillNumber,
           status: order.status,
-          pickupAddress,
-          deliveryAddress: `${order.address}, ${order.city}, ${order.destinationCountry}`,
+          pickupAddress: isRto ? `${order.shipperAddress}, ${order.shipperCity}, ${order.shipperCountry}` : pickupAddress,
+          deliveryAddress,
           serviceType: order.serviceType,
           weight: `${order.weight} kg`,
           pieces: order.pieces,

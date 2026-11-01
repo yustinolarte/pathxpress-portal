@@ -14,6 +14,9 @@ export function zoneForOrder(order: { emirate?: string | null; city?: string | n
 }
 
 export type OrderTypeFilter = 'all' | 'pickup' | 'delivery' | 'return' | 'exchange';
+export type PriorityFilter = '' | 'urgent' | 'high' | 'normal';
+/** Pin of the leg dispatch plans next: verified by the recipient on WhatsApp, anything else, geocoded, or none. */
+export type LocationFilter = '' | 'verified' | 'unverified' | 'approximate' | 'missing';
 
 export interface DispatchFilterState {
   status: string;        // '' = all
@@ -23,6 +26,8 @@ export interface DispatchFilterState {
   dateFrom: string;      // yyyy-mm-dd over createdAt, '' = no bound
   dateTo: string;
   search: string;        // waybill / customer / address
+  priority: PriorityFilter;
+  location: LocationFilter;
 }
 
 export const EMPTY_DISPATCH_FILTERS: DispatchFilterState = {
@@ -33,10 +38,36 @@ export const EMPTY_DISPATCH_FILTERS: DispatchFilterState = {
   dateFrom: '',
   dateTo: '',
   search: '',
+  priority: '',
+  location: '',
 };
 
 export function hasActiveFilters(f: DispatchFilterState): boolean {
-  return Boolean(f.status || f.emirate || f.zone || f.type !== 'all' || f.dateFrom || f.dateTo || f.search.trim());
+  return Boolean(f.status || f.emirate || f.zone || f.type !== 'all' || f.dateFrom || f.dateTo || f.search.trim()
+    || f.priority || f.location);
+}
+
+/**
+ * The pin that matters for the next leg of an order in the pool: the shipper's
+ * when it still needs a pickup, the recipient's otherwise.
+ */
+export function nextLegLocation(o: any): { leg: 'pickup' | 'delivery'; hasPin: boolean; source: string | null; accuracy: string | null } {
+  const pickupNext = Boolean(o.canPickup);
+  return pickupNext
+    ? { leg: 'pickup', hasPin: Boolean(o.shipperLat && o.shipperLng), source: o.shipperLocationSource ?? null, accuracy: null }
+    : { leg: 'delivery', hasPin: Boolean(o.latitude && o.longitude), source: o.locationSource ?? null, accuracy: o.locationAccuracy ?? null };
+}
+
+export function matchesLocation(o: any, f: LocationFilter): boolean {
+  if (!f) return true;
+  const loc = nextLegLocation(o);
+  const approximate = loc.hasPin && (loc.source === 'geocode' || loc.accuracy === 'approximate');
+  switch (f) {
+    case 'verified': return loc.hasPin && loc.source === 'bot';
+    case 'unverified': return loc.hasPin && loc.source !== 'bot';
+    case 'approximate': return approximate;
+    case 'missing': return !loc.hasPin;
+  }
 }
 
 function matchesType(order: any, type: OrderTypeFilter): boolean {
@@ -94,6 +125,8 @@ export function filterAvailableOrders(orders: any[], f: DispatchFilterState): an
     if (f.emirate && (o.emirate || '').trim().toLowerCase() !== f.emirate.toLowerCase()) return false;
     if (f.zone && zoneForOrder(o) !== f.zone) return false;
     if (!matchesType(o, f.type)) return false;
+    if (f.priority && o.priority?.level !== f.priority) return false;
+    if (!matchesLocation(o, f.location)) return false;
 
     if (from || to) {
       const created = o.createdAt ? new Date(o.createdAt) : null;

@@ -13,8 +13,8 @@ import { orders, clientAccounts, botOrders, botSessions, botMessages, botRuntime
  * socket (send, pause, re-request) is delegated to the bot's admin API.
  */
 
-const BOT_STATUSES = ['not_tracked', 'queued', 'waiting', 'failed', 'received', 'reused', 'expired', 'paused'] as const;
-export type BotOrderStatusFilter = (typeof BOT_STATUSES)[number];
+import { BOT_STATUSES, botStatusExpr, type BotOrderStatusFilter } from './botStatus';
+export type { BotOrderStatusFilter };
 
 // Statuses the bot itself considers "still open" — mirrors TRIGGERABLE_STATUSES in the bot.
 const OPEN_ORDER_STATUSES = ['pending_pickup', 'picked_up'];
@@ -22,15 +22,6 @@ const OPEN_ORDER_STATUSES = ['pending_pickup', 'picked_up'];
 // A heartbeat older than this means the bot process is down (it writes every ~30s).
 const HEARTBEAT_STALE_MS = 90_000;
 
-const botStatusExpr = sql<string>`CASE
-  WHEN ${botOrders.id} IS NULL THEN 'not_tracked'
-  WHEN ${botOrders.status} = 'awaiting_location' AND ${botOrders.deliveryStatus} = 'failed' THEN 'failed'
-  WHEN ${botOrders.status} = 'awaiting_location' AND ${botOrders.deliveryStatus} = 'queued' THEN 'queued'
-  WHEN ${botOrders.status} = 'awaiting_location' THEN 'waiting'
-  WHEN ${botOrders.status} = 'location_received' THEN 'received'
-  WHEN ${botOrders.status} = 'reused' THEN 'reused'
-  WHEN ${botOrders.status} = 'expired' THEN 'expired'
-  ELSE 'not_tracked' END`;
 
 async function requireDb() {
   const db = await getDb();

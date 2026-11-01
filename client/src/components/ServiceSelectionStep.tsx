@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
+import { parseTimeSlot } from '@shared/routeEta';
 
 // Minimum lead time (in hours) for Same Day Preferred Time deliveries.
 const SAME_DAY_LEAD_HOURS = 4;
@@ -73,9 +74,10 @@ const DEFAULT_PREFERRED_SLOTS: string[] = Array.from({ length: 14 }, (_, i) => {
 });
 
 // A slot may be a window ("06:00 - 07:00") or a single time ("18:00"); the
-// same-day lead-time check compares against the window's start.
+// same-day lead-time check compares against the window's start. Parsed by the
+// same rule dispatch uses for its ETA late-risk check (shared/routeEta).
 function slotStartTime(slot: string): string {
-  return slot.split(/[-–—]/)[0].trim();
+  return parseTimeSlot(slot)?.start ?? slot.split(/[-–—]/)[0].trim();
 }
 
 // True if the given slot respects the same-day lead time when the date is today.

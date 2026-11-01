@@ -14,6 +14,7 @@ import {
   getTrackingEventsByShipmentId,
   updateOrder,
   updateOrderLocation,
+  updateOrderShipperLocation,
   createTrackingEvent,
 } from './db';
 import {
@@ -130,7 +131,8 @@ router.get('/orders/:waybill/attempts', async (req: Request, res: Response) => {
 
     const events = await getTrackingEventsByShipmentId(order.id);
     const attempts = events.filter(e =>
-      ['attempted', 'failed_delivery', 'attempted_delivery'].includes(e.statusCode ?? '')
+      // delivery_attempted is what the driver app and admin actually log.
+      ['attempted', 'delivery_attempted', 'failed_delivery', 'attempted_delivery', 'failed_pickup'].includes(e.statusCode ?? '')
     );
 
     res.json({
@@ -249,12 +251,30 @@ router.put('/orders/:waybill/location', async (req: Request, res: Response) => {
     const order = await getOrderByWaybill(req.params.waybill);
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
-    const updated = await updateOrderLocation(order.id, String(latitude), String(longitude));
+    // Return to Origin: latitude/longitude now hold the shipper's pin — a late
+    // reply from the original consignee must not move the driver there.
+    if (order.isRto === 1) {
+      return res.status(409).json({ error: 'Order is returning to origin — location not updated' });
+    }
+
+    // In a return the bot talks to the return's SHIPPER — the person the
+    // driver collects from — whose pin is the pickup leg (shipperLat/Lng, see
+    // stopCoordinates in shared/geo). Writing it into latitude/longitude moved
+    // the return's DELIVERY pin (the merchant) to the customer's door.
+    if (order.isReturn === 1) {
+      const updated = await updateOrderShipperLocation(order.id, String(latitude), String(longitude), 'bot');
+      if (!updated) {
+        return res.status(500).json({ error: 'Failed to save location' });
+      }
+      return res.json({ success: true, latitude: updated.shipperLat, longitude: updated.shipperLng, leg: 'pickup' });
+    }
+
+    const updated = await updateOrderLocation(order.id, String(latitude), String(longitude), 'exact', undefined, 'bot');
     if (!updated) {
       return res.status(500).json({ error: 'Failed to save location' });
     }
 
-    res.json({ success: true, latitude: updated.latitude, longitude: updated.longitude });
+    res.json({ success: true, latitude: updated.latitude, longitude: updated.longitude, leg: 'delivery' });
   } catch (err) {
     console.error('[BotRouter] PUT /location error:', err);
     res.status(500).json({ error: 'Internal server error' });

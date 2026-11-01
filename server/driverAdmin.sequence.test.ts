@@ -20,7 +20,7 @@ import {
 } from "./driverAdmin";
 import type { AssignmentFlags, GuardableStop, RouteStopSpec } from "./driverAdmin";
 
-const ALL: AssignmentFlags = { canPickup: true, canDeliver: true, canBoth: true };
+const ALL: AssignmentFlags = { canPickup: true, canDeliver: true, canBoth: true, deliveryLegOpen: true };
 const flagsFor = (entries: Record<number, Partial<AssignmentFlags>>) =>
     new Map<number, AssignmentFlags>(
         Object.entries(entries).map(([id, f]) => [Number(id), { ...ALL, ...f }]),
@@ -118,7 +118,7 @@ describe("assertRouteDeletable", () => {
     });
 
     it("refuses a route already marked completed", () => {
-        expect(() => assertRouteDeletable({ status: "completed" }, [])).toThrow(/cancelada/);
+        expect(() => assertRouteDeletable({ status: "completed" }, [])).toThrow(/Cancel the route instead/);
     });
 
     it.each([

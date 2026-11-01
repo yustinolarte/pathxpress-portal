@@ -4,9 +4,11 @@
  */
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { publicProcedure, router } from './_core/trpc';
+import { portalAdminProcedure, publicProcedure, router } from './_core/trpc';
 import * as driverAdmin from './driverAdmin';
 import { RouteGuardError } from './driverAdmin';
+import * as routeLifecycle from './routeLifecycle';
+import { StopStatusError } from './stopStatus';
 import { uploadImageToCloudinary } from './cloudinary';
 
 const driverNameSchema = z.string().trim().min(2).max(100).refine(
@@ -36,6 +38,10 @@ async function guarded<T>(fn: () => Promise<T>): Promise<T> {
     } catch (err) {
         if (err instanceof RouteGuardError) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: err.message });
+        }
+        if (err instanceof StopStatusError) {
+            const code = err.httpStatus === 404 ? 'NOT_FOUND' : err.httpStatus === 403 ? 'FORBIDDEN' : err.httpStatus === 409 ? 'CONFLICT' : 'BAD_REQUEST';
+            throw new TRPCError({ code, message: err.message });
         }
         throw err;
     }
@@ -170,16 +176,19 @@ export const driverRouter = router({
             startAddress: z.string().optional(),
             startLat: z.string().optional(),
             startLng: z.string().optional(),
+            // When the driver is planned to leave (ISO) — feeds the admin-only ETAs.
+            plannedStartAt: z.string().datetime({ offset: true }).optional(),
         }))
         .mutation(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            const { date, stopMode, ...rest } = input;
+            const { date, stopMode, plannedStartAt, ...rest } = input;
             return guarded(() => driverAdmin.createDriverRoute({
                 ...rest,
                 date: new Date(date),
                 stopMode,
+                plannedStartAt: plannedStartAt ? new Date(plannedStartAt) : null,
             }));
         }),
 
@@ -205,12 +214,13 @@ export const driverRouter = router({
         .input(z.object({
             routeId: z.string(),
             status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+            reason: z.string().trim().max(500).optional(),
         }))
         .mutation(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.updateRouteStatus(input.routeId, input.status);
+            return guarded(() => routeLifecycle.setRouteStatus(input.routeId, input.status, ctx.portalUser!.email || 'admin', input.reason));
         }),
 
     assignDriverToRoute: publicProcedure
@@ -222,7 +232,7 @@ export const driverRouter = router({
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.assignDriverToRoute(input.routeId, input.driverId);
+            return guarded(() => routeLifecycle.reassignRoute(input.routeId, input.driverId, ctx.portalUser!.email || 'admin'));
         }),
 
     addOrdersToRoute: publicProcedure
@@ -261,7 +271,7 @@ export const driverRouter = router({
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return guarded(() => driverAdmin.removeOrderFromRoute(input.routeId, input.orderId, input.type));
+            return guarded(() => driverAdmin.removeOrderFromRoute(input.routeId, input.orderId, input.type, ctx.portalUser!.email || 'admin'));
         }),
 
     // ============ DELIVERIES ============
@@ -320,7 +330,7 @@ export const driverRouter = router({
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return guarded(() => driverAdmin.deleteRoute(input.routeId));
+            return guarded(() => driverAdmin.deleteRoute(input.routeId, ctx.portalUser!.email || 'admin'));
         }),
 
     optimizeRoute: publicProcedure
@@ -409,7 +419,7 @@ export const driverRouter = router({
             if (!isGeocodingConfigured()) {
                 throw new TRPCError({
                     code: 'PRECONDITION_FAILED',
-                    message: 'GOOGLE_MAPS_API_KEY no está configurada en el servidor',
+                    message: 'GOOGLE_MAPS_API_KEY is not configured on the server',
                 });
             }
             return geocodePendingOrders(input.limit);
@@ -556,11 +566,91 @@ export const driverRouter = router({
         }),
 
     markCashRemitted: publicProcedure
-        .input(z.object({ driverId: z.number(), date: z.string().optional() }))
+        .input(z.object({ driverId: z.number(), date: z.string().optional(), note: z.string().trim().max(500).optional() }))
         .mutation(async ({ input, ctx }) => {
             if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
                 throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
             }
-            return driverAdmin.markDriverCashRemitted(input.driverId, input.date);
+            return driverAdmin.markDriverCashRemitted(input.driverId, input.date, {
+                actor: ctx.portalUser.email || 'admin',
+                note: input.note,
+            });
         }),
+
+    // ============ DISPATCH TOOLS (admin-only, all go through routeLifecycle) ============
+
+    getCashHandovers: portalAdminProcedure
+        .input(z.object({ date: z.string().optional() }).optional())
+        .query(async ({ input }) => driverAdmin.getCashHandovers(input?.date)),
+
+    voidCashHandover: portalAdminProcedure
+        .input(z.object({ id: z.number().int().positive(), reason: z.string().trim().min(3).max(500) }))
+        .mutation(async ({ input, ctx }) => guarded(() =>
+            driverAdmin.voidCashHandover(input.id, ctx.portalUser.email || 'admin', input.reason))),
+
+    correctStop: portalAdminProcedure
+        .input(z.object({
+            stopId: z.number().int().positive(),
+            status: z.enum(['pending', 'in_progress', 'picked_up', 'delivered', 'attempted', 'returned', 'failed', 'on_hold']),
+            reason: z.string().trim().min(3).max(500),
+            notes: z.string().trim().max(1000).optional(),
+            codMethod: z.enum(['cash', 'card']).optional(),
+        }))
+        .mutation(async ({ input, ctx }) => guarded(() =>
+            routeLifecycle.correctStop(input, ctx.portalUser.email || 'admin'))),
+
+    moveStops: portalAdminProcedure
+        .input(z.object({
+            fromRouteId: z.string().min(1).max(50),
+            toRouteId: z.string().min(1).max(50).optional(),
+            newRoute: z.object({
+                driverId: z.number().int().positive(),
+                date: z.string().datetime({ offset: true }),
+                plannedStartAt: z.string().datetime({ offset: true }).nullable().optional(),
+            }).optional(),
+            stopIds: z.array(z.number().int().positive()).min(1).max(200),
+        }))
+        .mutation(async ({ input, ctx }) => guarded(() => routeLifecycle.moveStops({
+            fromRouteId: input.fromRouteId,
+            toRouteId: input.toRouteId,
+            newRoute: input.newRoute ? {
+                driverId: input.newRoute.driverId,
+                date: new Date(input.newRoute.date),
+                plannedStartAt: input.newRoute.plannedStartAt ? new Date(input.newRoute.plannedStartAt) : null,
+            } : undefined,
+            stopIds: input.stopIds,
+        }, ctx.portalUser.email || 'admin'))),
+
+    updateRouteMeta: portalAdminProcedure
+        .input(z.object({
+            routeId: z.string().min(1).max(50),
+            date: z.string().datetime({ offset: true }).optional(),
+            zone: z.string().trim().max(100).nullable().optional(),
+            vehicleInfo: z.string().trim().max(100).nullable().optional(),
+            startAddress: z.string().trim().max(255).nullable().optional(),
+            startLat: z.string().trim().max(50).nullable().optional(),
+            startLng: z.string().trim().max(50).nullable().optional(),
+            plannedStartAt: z.string().datetime({ offset: true }).nullable().optional(),
+        }))
+        .mutation(async ({ input, ctx }) => {
+            const { routeId, date, plannedStartAt, ...rest } = input;
+            return guarded(() => routeLifecycle.updateRouteMeta(routeId, {
+                ...rest,
+                date: date ? new Date(date) : undefined,
+                plannedStartAt: plannedStartAt === undefined ? undefined : plannedStartAt ? new Date(plannedStartAt) : null,
+            }, ctx.portalUser.email || 'admin'));
+        }),
+
+    getRouteAuditLog: portalAdminProcedure
+        .input(z.object({ routeId: z.string().min(1).max(50) }))
+        .query(async ({ input }) => routeLifecycle.getRouteAuditLog(input.routeId)),
+
+    getIgnoredDriverUpdates: portalAdminProcedure
+        .query(async () => routeLifecycle.getIgnoredDriverUpdates()),
+
+    // Dispatch priority override (null = back to the automatic rule).
+    setOrderPriority: portalAdminProcedure
+        .input(z.object({ orderId: z.number().int().positive(), priority: z.enum(['urgent', 'high', 'normal']).nullable() }))
+        .mutation(async ({ input, ctx }) => guarded(() =>
+            driverAdmin.setOrderPriority(input.orderId, input.priority, ctx.portalUser.email || 'admin'))),
 });

@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar, Ban, CheckCircle2, MapPin } from 'lucide-react';
+import { LogOut, Users, Package, TrendingUp, FileText, Download, DollarSign, Plus, LayoutDashboard, Calculator, Wallet, MessageSquare, Trash2, Mail, BookOpen, BarChart3, StickyNote, Key, RotateCcw, ArrowLeftRight, Truck, Eye, Pencil, Globe, Sparkles, Rocket, Shirt, Coins, ShieldCheck, Zap, Filter, AlertTriangle, ChevronDown, ChevronUp, X, Clock, UserPlus, Building2, Calendar, Ban, CheckCircle2, MapPin, Undo2 } from 'lucide-react';
 import { APP_LOGO, abbreviateServiceType } from '@/const';
 import { statusBadgeClass } from '@/lib/statusStyles';
 import { downloadCsv } from '@/lib/csv';
@@ -610,6 +610,25 @@ export default function AdminDashboard() {
     onError: (error) => {
       toast.error(`Failed to delete order: ${error.message}`);
     },
+  });
+
+  // Return to Origin — the dialog keeps a stored copy of the order, so swap in
+  // the updated row the server returns (addresses flipped / restored).
+  const returnToOriginMutation = trpc.portal.admin.returnToOrigin.useMutation({
+    onSuccess: (order) => {
+      toast.success(`${order.waybillNumber} is returning to the shipper`);
+      setSelectedOrder(order);
+      refetchOrders();
+    },
+    onError: (error) => toast.error(`Return to Origin failed: ${error.message}`),
+  });
+  const undoReturnToOriginMutation = trpc.portal.admin.undoReturnToOrigin.useMutation({
+    onSuccess: (order) => {
+      toast.success(`Return to Origin undone for ${order.waybillNumber}`);
+      setSelectedOrder(order);
+      refetchOrders();
+    },
+    onError: (error) => toast.error(`Undo failed: ${error.message}`),
   });
 
   const handleDeleteOrder = (orderId: number, waybillNumber: string) => {
@@ -1392,6 +1411,11 @@ export default function AdminDashboard() {
                                         <RotateCcw className="h-4 w-4" />
                                       </Badge>
                                     )}
+                                    {order.isRto === 1 && (
+                                      <Badge variant="outline" className="!bg-primary/10 !text-primary !border-transparent text-xs flex items-center gap-1" title="Return to Origin">
+                                        <Undo2 className="h-4 w-4" />
+                                      </Badge>
+                                    )}
                                     {order.orderType === 'exchange' && (
                                       <Badge variant="outline" className="!bg-[var(--st-amber-bg)] !text-[var(--st-amber)] !border-transparent text-xs flex items-center gap-1" title="Exchange">
                                         <ArrowLeftRight className="h-4 w-4" />
@@ -1494,6 +1518,11 @@ export default function AdminDashboard() {
                                 {order.isReturn === 1 && order.orderType !== 'exchange' && (
                                   <Badge variant="outline" className="!bg-[var(--st-blue-bg)] !text-[var(--st-blue)] !border-transparent text-xs">
                                     <RotateCcw className="h-3 w-3 mr-1" />Return
+                                  </Badge>
+                                )}
+                                {order.isRto === 1 && (
+                                  <Badge variant="outline" className="!bg-primary/10 !text-primary !border-transparent text-xs">
+                                    <Undo2 className="h-3 w-3 mr-1" />RTO
                                   </Badge>
                                 )}
                                 {order.orderType === 'exchange' && (
@@ -1944,27 +1973,36 @@ export default function AdminDashboard() {
 
         {/* Edit Client Settings Dialog */}
         <Dialog open={editClientDialogOpen} onOpenChange={setEditClientDialogOpen}>
-          <DialogContent className="bg-card border-border !w-[95vw] !max-w-[1200px] p-0 gap-0">
-            <div className="w-full h-1.5 bg-primary" />
-            <div className="p-8">
-              <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    <Pencil className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <DialogTitle>Client Settings: {editingClient?.companyName}</DialogTitle>
-                    <DialogDescription>
-                      Configure rates, payments, and specialized services.
-                    </DialogDescription>
-                  </div>
+          <DialogContent
+            className="bg-card border-border !w-[95vw] !max-w-[1200px] max-h-[90dvh] flex flex-col overflow-hidden p-0 gap-0"
+            onInteractOutside={(e) => {
+              // El dropdown de Google Places (.pac-container) vive fuera del
+              // diálogo — sin esto, elegir una sugerencia en Locations cierra el diálogo.
+              if ((e.target as HTMLElement)?.closest?.('.pac-container')) {
+                e.preventDefault();
+              }
+            }}
+          >
+            <div className="w-full h-1.5 bg-primary shrink-0" />
+            <DialogHeader className="shrink-0 px-5 sm:px-8 pt-6 sm:pt-8 pb-6 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Pencil className="w-5 h-5" />
                 </div>
-              </DialogHeader>
+                <div>
+                  <DialogTitle>Client Settings: {editingClient?.companyName}</DialogTitle>
+                  <DialogDescription>
+                    Configure rates, payments, and specialized services.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-8 border-y border-border my-6">
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 sm:px-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 py-8">
 
                 {/* Column 1: Pricing & Rates */}
-                <div className="space-y-6 pr-6 md:border-r border-border/30">
+                <div className="space-y-6 md:pr-6 md:border-r border-border/30">
                   <div className="flex items-center gap-2 mb-2">
                     <BarChart3 className="w-4 h-4 text-primary" />
                     <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-normal">Pricing & Rates</h3>
@@ -2228,7 +2266,7 @@ export default function AdminDashboard() {
               </div>
 
               {editingClient?.id && (
-                <div className="space-y-4 pb-8 border-b border-border mb-6">
+                <div className="space-y-4 py-8 border-t border-border">
                   <div className="flex items-center gap-2">
                     <MapPin className="w-4 h-4 text-primary" />
                     <h3 className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-normal">Locations</h3>
@@ -2236,21 +2274,21 @@ export default function AdminDashboard() {
                   <AdminClientLocationsSection clientId={editingClient.id} />
                 </div>
               )}
-
-              <DialogFooter className="gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setEditClientDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSaveClientSettings}
-                  disabled={updateSettingsMutation.isPending || updateTierMutation.isPending}
-                >
-                  <ShieldCheck className="w-4 h-4 mr-2" />
-                  {(updateSettingsMutation.isPending || updateTierMutation.isPending) ? 'Saving...' : 'Save Configuration'}
-                </Button>
-              </DialogFooter>
             </div>
+
+            <DialogFooter className="shrink-0 gap-2 px-5 sm:px-8 py-4 border-t border-border">
+              <Button variant="ghost" size="sm" onClick={() => setEditClientDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveClientSettings}
+                disabled={updateSettingsMutation.isPending || updateTierMutation.isPending}
+              >
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                {(updateSettingsMutation.isPending || updateTierMutation.isPending) ? 'Saving...' : 'Save Configuration'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -2487,6 +2525,9 @@ export default function AdminDashboard() {
               setTrackingDialogOpen(true);
             }}
             onDeleteOrder={(order) => deleteOrderMutation.mutate({ orderId: order.id })}
+            onReturnToOrigin={(order) => returnToOriginMutation.mutate({ orderId: order.id })}
+            onUndoReturnToOrigin={(order) => undoReturnToOriginMutation.mutate({ orderId: order.id })}
+            rtoPending={returnToOriginMutation.isPending || undoReturnToOriginMutation.isPending}
           />
         )}
 

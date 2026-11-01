@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, double, index } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, double, index, uniqueIndex } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -283,12 +283,21 @@ export const orders = mysqlTable("orders", {
   longitude: varchar("longitude", { length: 50 }),
   // 'exact' = pin/bot/import, 'approximate' = server geocode of the written address, 'none' = no coords
   locationAccuracy: varchar("locationAccuracy", { length: 20 }).default("none").notNull(),
+  // Who put the consignee pin there: 'bot' (the recipient shared it on WhatsApp),
+  // 'client' (merchant: portal/Shopify/API), 'admin' (PathXpress staff), 'geocode'
+  // (server geocode of the written address). NULL = no pin, or set before this was tracked.
+  locationSource: varchar("locationSource", { length: 20 }),
+  locationVerifiedAt: timestamp("locationVerifiedAt"),
   // Shipper (pickup) coordinates — pickup stops happen at the shipper, not the consignee
   shipperLat: varchar("shipperLat", { length: 50 }),
   shipperLng: varchar("shipperLng", { length: 50 }),
+  shipperLocationSource: varchar("shipperLocationSource", { length: 20 }), // same vocabulary as locationSource
   timeWindowStart: varchar("timeWindowStart", { length: 20 }),
   timeWindowEnd: varchar("timeWindowEnd", { length: 20 }),
-  priorityLevel: int("priorityLevel").default(1),
+  priorityLevel: int("priorityLevel").default(1), // unused legacy column — see priorityOverride
+  // Dispatch priority set by hand ('urgent' | 'high' | 'normal'); NULL = computed
+  // from service, dates and attempts (shared/dispatchPriority.ts).
+  priorityOverride: varchar("priorityOverride", { length: 10 }),
   routeBatchId: varchar("routeBatchId", { length: 100 }),
 
   // Return shipment fields
@@ -321,6 +330,14 @@ export const orders = mysqlTable("orders", {
   // pending list without falsifying its operational status via 'canceled'
   billingExcluded: int("billingExcluded").default(0).notNull(), // 0 = billable, 1 = never bill
   billingExcludedReason: varchar("billingExcludedReason", { length: 255 }),
+
+  // Return to Origin: the same waybill goes back to the shipper. Shipper and
+  // consignee are swapped in place (driver app + dispatch read the live
+  // consignee side); rtoSnapshot keeps the original values (JSON) so billing
+  // can still price the original destination and the RTO can be undone.
+  isRto: int("isRto").default(0).notNull(), // 0 = normal, 1 = returning to shipper
+  rtoAt: timestamp("rtoAt"),
+  rtoSnapshot: text("rtoSnapshot"),
 
   // Preferred Time Delivery service fields
   preferredDeliveryDate: varchar("preferredDeliveryDate", { length: 10 }),  // 'YYYY-MM-DD'
@@ -500,7 +517,10 @@ export const codRecords = mysqlTable("codRecords", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
-  shipmentIdIdx: index("codRecords_shipmentId_idx").on(table.shipmentId),
+  // One COD record per shipment. It was a plain index, and the driver app's
+  // read-then-insert let a double tap / timeout retry create two 'collected'
+  // records that both got remitted to the client.
+  shipmentIdUnique: uniqueIndex("codRecords_shipmentId_unique").on(table.shipmentId),
   statusIdx: index("codRecords_status_idx").on(table.status),
   collectedDateIdx: index("codRecords_collectedDate_idx").on(table.collectedDate),
   remittedToClientDateIdx: index("codRecords_remittedToClientDate_idx").on(table.remittedToClientDate),
@@ -756,13 +776,20 @@ export const driverRoutes = mysqlTable("driverRoutes", {
   // this route to the office. Card (Tap to Pay) never passes through the driver,
   // so only the cash leg is remittable. The amount is frozen at hand-over time
   // so a later status edit on a stop can't silently rewrite what was received.
+  // cashRemittedAmount is CUMULATIVE: each hand-over adds what was collected
+  // since the previous one (driverCashHandovers keeps the per-hand-over ledger).
   cashRemittedAt: timestamp("cashRemittedAt"),
   cashRemittedAmount: decimal("cashRemittedAmount", { precision: 10, scale: 2 }),
+  // When dispatch plans the driver to leave — feeds the admin-only stop ETAs.
+  plannedStartAt: timestamp("plannedStartAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => ({
   driverIdIdx: index("driverRoutes_driverId_idx").on(table.driverId),
   shiftIdIdx: index("driverRoutes_shiftId_idx").on(table.shiftId),
+  // Dispatch polls by status every 60s and driverRoutesWorkedOn filters on startedAt.
+  statusIdx: index("driverRoutes_status_idx").on(table.status),
+  startedAtIdx: index("driverRoutes_startedAt_idx").on(table.startedAt),
 }));
 
 export type DriverRoute = typeof driverRoutes.$inferSelect;
@@ -885,6 +912,59 @@ export const driverLocations = mysqlTable("driverLocations", {
 
 export type DriverLocation = typeof driverLocations.$inferSelect;
 export type InsertDriverLocation = typeof driverLocations.$inferInsert;
+
+/**
+ * Route audit log — who changed what on a route, a stop or an order's dispatch
+ * settings, and why. Admin corrections, reassignments, moves, cancellations,
+ * cash hand-overs and driver updates the server ignored (late replays) all land
+ * here, replacing the backup JSON files the one-off fix scripts used to write.
+ * `payload` (JSON text) keeps whatever was deleted or overwritten.
+ */
+export const routeAuditLog = mysqlTable("routeAuditLog", {
+  id: int("id").autoincrement().primaryKey(),
+  routeId: varchar("routeId", { length: 50 }),
+  stopId: int("stopId"),
+  orderId: int("orderId"),
+  action: varchar("action", { length: 50 }).notNull(),
+  fromValue: varchar("fromValue", { length: 50 }),
+  toValue: varchar("toValue", { length: 50 }),
+  actor: varchar("actor", { length: 100 }).notNull(), // portal user email, 'driver:<id>' or 'system'
+  reason: text("reason"),
+  payload: text("payload"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  routeIdIdx: index("routeAuditLog_routeId_idx").on(table.routeId),
+  orderIdIdx: index("routeAuditLog_orderId_idx").on(table.orderId),
+  createdAtIdx: index("routeAuditLog_createdAt_idx").on(table.createdAt),
+}));
+
+export type RouteAuditLog = typeof routeAuditLog.$inferSelect;
+export type InsertRouteAuditLog = typeof routeAuditLog.$inferInsert;
+
+/**
+ * Driver cash hand-overs — one row each time the office receives cash from a
+ * driver. A driver can hand cash over several times a day; each row allocates
+ * its amount to routes (`allocations`, JSON [{routeId, amount}]) and adds it to
+ * driverRoutes.cashRemittedAmount. Voiding a row subtracts those allocations.
+ */
+export const driverCashHandovers = mysqlTable("driverCashHandovers", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  allocations: text("allocations").notNull(),
+  receivedAt: timestamp("receivedAt").notNull(),
+  receivedBy: varchar("receivedBy", { length: 100 }).notNull(),
+  note: text("note"),
+  voidedAt: timestamp("voidedAt"),
+  voidedBy: varchar("voidedBy", { length: 100 }),
+  voidReason: text("voidReason"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  driverIdReceivedAtIdx: index("driverCashHandovers_driverId_receivedAt_idx").on(table.driverId, table.receivedAt),
+}));
+
+export type DriverCashHandover = typeof driverCashHandovers.$inferSelect;
+export type InsertDriverCashHandover = typeof driverCashHandovers.$inferInsert;
 
 // ==================== INTERNATIONAL SHIPPING TABLES ====================
 

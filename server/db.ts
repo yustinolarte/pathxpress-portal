@@ -5,6 +5,7 @@ import mysql from "mysql2";
 import { InsertUser, users, invoices, invoiceItems, codRecords, codRemittances, codRemittanceItems, orders, clientAccounts, rateTiers, serviceConfig, RateTier, clientServiceSettings, ClientServiceSetting, quoteRequests } from "../drizzle/schema";
 import { abbreviateServiceType } from '../shared/const';
 import { resolveZoneByEmirateOrCity } from '../shared/deliveryZones';
+import { billingDestination } from '../shared/rto';
 import { lookupZoneByPoint } from './zones/zonePolygons';
 import { ENV } from './_core/env';
 import { notifyBotNewOrder } from './_core/botWebhook';
@@ -659,11 +660,16 @@ export async function createOrder(order: InsertOrder): Promise<Order | null> {
 
   try {
     // Coords supplied at creation (pin/import) are 'exact'; otherwise the
-    // geocode below fills them in as 'approximate'.
+    // geocode below fills them in as 'approximate'. Pins supplied at creation
+    // came from the merchant (portal / Shopify / API) unless the caller says so.
     const values: InsertOrder = {
       ...order,
       locationAccuracy: order.locationAccuracy
         ?? (order.latitude && order.longitude ? 'exact' : 'none'),
+      locationSource: order.locationSource
+        ?? (order.latitude && order.longitude ? 'client' : null),
+      shipperLocationSource: order.shipperLocationSource
+        ?? (order.shipperLat && order.shipperLng ? 'client' : null),
     };
 
     const result = await db.insert(orders).values(values);
@@ -984,6 +990,8 @@ export async function getOrderByWaybill(waybillNumber: string): Promise<Order | 
  * - Handles COD record creation/update/cancellation
  */
 export interface OrderUpdate {
+  /** Who placed a new pin sent in this update (default 'admin'). */
+  locationSource?: LocationSource;
   serviceType?: string;
   weight?: string;
   pieces?: number;
@@ -1154,16 +1162,29 @@ export async function updateOrder(
       (updates.city !== undefined && updates.city !== existingOrder.city);
     let regeocodeAfterUpdate = false;
 
+    const pinMoved = updates.latitude !== undefined && updates.longitude !== undefined
+      && (updates.latitude !== existingOrder.latitude || updates.longitude !== existingOrder.longitude);
     if (updates.latitude !== undefined && updates.longitude !== undefined) {
       orderUpdates.latitude = updates.latitude;
       orderUpdates.longitude = updates.longitude;
       orderUpdates.locationAccuracy = 'exact';
-    } else if (addressChanged) {
+      // Re-sending the same coordinates (the edit form always does) says
+      // nothing about who placed the pin — only a moved pin changes its source.
+      if (pinMoved) {
+        orderUpdates.locationSource = updates.locationSource ?? 'admin';
+        orderUpdates.locationVerifiedAt = new Date();
+      }
+    }
+    if (!pinMoved && addressChanged) {
       if (existingOrder.locationAccuracy === 'approximate') {
         orderUpdates.latitude = null;
         orderUpdates.longitude = null;
         orderUpdates.locationAccuracy = 'none';
       }
+      // The pin stays, but it no longer confirms the address now written on
+      // the order — a recipient-verified pin is not verified for this text.
+      orderUpdates.locationSource = null;
+      orderUpdates.locationVerifiedAt = null;
       regeocodeAfterUpdate = existingOrder.locationAccuracy !== 'exact';
     }
 
@@ -1192,18 +1213,28 @@ export async function updateOrder(
   }
 }
 
+/**
+ * Who placed a pin: 'bot' (the recipient shared it on WhatsApp), 'client'
+ * (merchant: portal / Shopify / API), 'admin' (PathXpress staff), 'geocode'
+ * (server geocode of the written address). Dispatch shows it per leg.
+ */
+export type LocationSource = 'bot' | 'client' | 'admin' | 'geocode';
+
 export async function updateOrderLocation(
   id: number,
   latitude: string,
   longitude: string,
   accuracy: 'exact' | 'approximate' = 'exact',
-  address?: string
+  address?: string,
+  source: LocationSource = 'admin',
 ): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
 
   try {
-    const values: Partial<InsertOrder> = { latitude, longitude, locationAccuracy: accuracy };
+    const values: Partial<InsertOrder> = {
+      latitude, longitude, locationAccuracy: accuracy, locationSource: source, locationVerifiedAt: new Date(),
+    };
     if (address && address.trim()) values.address = address.trim();
     await db.update(orders).set(values).where(eq(orders.id, id));
     return await getOrderById(id);
@@ -1218,12 +1249,15 @@ export async function updateOrderShipperLocation(
   id: number,
   latitude: string,
   longitude: string,
+  source: LocationSource = 'admin',
 ): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
 
   try {
-    await db.update(orders).set({ shipperLat: latitude, shipperLng: longitude }).where(eq(orders.id, id));
+    await db.update(orders)
+      .set({ shipperLat: latitude, shipperLng: longitude, shipperLocationSource: source })
+      .where(eq(orders.id, id));
     return await getOrderById(id);
   } catch (error) {
     console.error("[Database] Failed to update order shipper location:", error);
@@ -1231,7 +1265,7 @@ export async function updateOrderShipperLocation(
   }
 }
 
-export async function updateOrderStatus(id: number, status: string): Promise<Order | null> {
+export async function updateOrderStatus(id: number, status: string, actor = 'admin'): Promise<Order | null> {
   const db = await getDb();
   if (!db) return null;
 
@@ -1242,29 +1276,12 @@ export async function updateOrderStatus(id: number, status: string): Promise<Ord
     // Update order status
     await db.update(orders).set({ status, lastStatusUpdate: new Date() }).where(eq(orders.id, id));
 
-    // Sync routeOrders.status so the driver app reflects the change.
-    // Only update stops that are still in a non-terminal state (in_progress / pending).
-    const { routeOrders } = await import("../drizzle/schema");
-    const nonTerminalStatuses = ['pending', 'in_progress'] as const;
-    // Map order status → routeOrder status
-    const routeOrderStatus =
-      status === 'delivered' ? 'delivered' :
-      status === 'picked_up' ? 'picked_up' :
-      status === 'attempted' ? 'attempted' :
-      status === 'returned' || status === 'returned_to_sender' ? 'returned' :
-      status === 'failed' || status === 'failed_delivery' ? 'failed' :
-      status === 'on_hold' ? 'on_hold' :
-      null; // don't sync for pending/in_progress/out_for_delivery — driver app manages those
-    if (routeOrderStatus) {
-      await db.update(routeOrders)
-        .set({ status: routeOrderStatus })
-        .where(
-          and(
-            eq(routeOrders.orderId, id),
-            inArray(routeOrders.status, nonTerminalStatuses)
-          )
-        );
-    }
+    // Keep the route stops truthful, per leg and only on the order's current
+    // route. The old sync stamped the order status onto EVERY open stop of the
+    // order — 'delivered' onto its pickup leg, 'picked_up' onto its delivery
+    // leg, stops on old routes — and never undid a mistake.
+    const { syncStopsToOrderStatus } = await import("./stopStatus");
+    await syncStopsToOrderStatus(db, id, status, actor);
 
     // If status is a "failure" status, cancel pending COD
     const failureStatuses = ['returned', 'returned_to_sender', 'failed_delivery', 'cancelled'];
@@ -1636,7 +1653,9 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
       // administrative label) but city="Al Ain" — preferring emirate here would
       // silently zone it as Abu Dhabi. Every other city matches its emirate 1:1,
       // so this is a no-op for them; falls back to emirate only if city is empty.
-      const emirateForZone = order.city || order.emirate || undefined;
+      // A Return to Origin is priced at its ORIGINAL destination (the trip back is free).
+      const destination = billingDestination(order);
+      const emirateForZone = destination.city || destination.emirate || undefined;
 
       // Standard return — use zone-based rate (charge the more expensive zone); fall back to returnFee if no zone rate
       if (order.isReturn === 1 && order.orderType !== 'exchange') {
@@ -1661,8 +1680,8 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
 
       // For exchange delivery leg, charge the most expensive zone between pickup and delivery
       let billingEmirate = emirateForZone;
-      let billingLat: string | null | undefined = order.latitude;
-      let billingLng: string | null | undefined = order.longitude;
+      let billingLat: string | null | undefined = destination.latitude;
+      let billingLng: string | null | undefined = destination.longitude;
       if (order.orderType === 'exchange' && order.isReturn === 0 && order.originalOrderId) {
         const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city, latitude: orders.latitude, longitude: orders.longitude })
           .from(orders).where(eq(orders.id, order.originalOrderId)).limit(1);
@@ -1708,7 +1727,7 @@ export async function getBillableShipments(clientId: number, periodStart: Date, 
         calculatedRate: Math.round(total * 100) / 100,
         rateSource,
         rateTierLabel: rateResult.appliedTier ? `${rateResult.appliedTier.minVolume}+/mo` : null,
-        emirateMissing: !order.emirate,
+        emirateMissing: !destination.emirate,
       };
     })
   );
@@ -1791,7 +1810,9 @@ export async function generateInvoiceForClient(
     let totalRate = 0;
 
     // City first, not emirate — see the matching comment in getBillableShipments above.
-    const emirateForZone = shipment.city || shipment.emirate || undefined;
+    // Return to Origin → original destination, same as getBillableShipments.
+    const destination = billingDestination(shipment);
+    const emirateForZone = destination.city || destination.emirate || undefined;
     const serviceType = (shipment.serviceType?.toUpperCase() || 'DOM') as 'DOM' | 'SDD' | 'BULLET';
 
     // Exchange free return
@@ -1814,8 +1835,8 @@ export async function generateInvoiceForClient(
     } else {
       // For exchange delivery leg, charge the most expensive zone between pickup and delivery
       let billingEmirate = emirateForZone;
-      let billingLat: string | null | undefined = shipment.latitude;
-      let billingLng: string | null | undefined = shipment.longitude;
+      let billingLat: string | null | undefined = destination.latitude;
+      let billingLng: string | null | undefined = destination.longitude;
       if (shipment.orderType === 'exchange' && shipment.isReturn === 0 && shipment.originalOrderId) {
         const [origOrder] = await db.select({ emirate: orders.emirate, city: orders.city, latitude: orders.latitude, longitude: orders.longitude })
           .from(orders).where(eq(orders.id, shipment.originalOrderId)).limit(1);
