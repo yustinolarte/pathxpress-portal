@@ -96,3 +96,9 @@ scripts/*.mjs
 
 # Local backups (production data: JSON snapshots, code archives) — never commit
 backups/
+
+# Internal audits / screenshots and one-off production data fixes: they name
+# clients, waybills and COD amounts — keep them local (this repo is public)
+AUDITORIA_*.md
+AUDIT_*.png
+scripts/fix-*.ts
