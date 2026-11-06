@@ -132,7 +132,7 @@ export function EtaChip({ eta }: { eta?: EtaLike | null }) {
         );
     }
     return (
-        <span className={`badge2 ${eta.early ? 'b-amber' : 'b-blue'} !inline-flex items-center gap-1`} title={eta.early ? 'Arrives before the preferred window opens — the driver will wait' : eta.approx ? 'Approximate: a stop before this one has no pin' : 'Estimated arrival (Dubai time)'}>
+        <span className={`badge2 ${eta.early ? 'b-amber' : 'b-blue'} !inline-flex items-center gap-1`} title={eta.early ? 'Arrives before the preferred window opens — the driver will wait' : eta.approx ? 'Approximate: the route has no start point, or a stop before this one has no pin' : 'Estimated arrival (Dubai time)'}>
             <Clock className="w-3 h-3" />ETA {eta.approx ? '~' : ''}{time}{eta.early ? ' · early' : ''}
         </span>
     );

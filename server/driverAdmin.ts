@@ -4,7 +4,7 @@
  */
 import bcrypt from 'bcryptjs';
 import { customAlphabet } from 'nanoid';
-import { eq, and, or, desc, sql, gte, lt, notInArray, inArray, isNull, isNotNull } from 'drizzle-orm';
+import { eq, and, or, desc, sql, gte, lt, ne, notInArray, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { getDb } from './db';
 import { drivers, driverRoutes, driverShifts, driverLocations, routeOrders, orders, driverReports, clientAccounts, codRecords, driverCashHandovers, trackingEvents, botOrders } from '../drizzle/schema';
 import { optimizeStops } from './routeOptimizer';
@@ -12,9 +12,9 @@ import type { OptimizableStop, LatLng } from './routeOptimizer';
 import { findPrecedenceViolation } from '@shared/routeSequence';
 import { CLOSED_ORDER_STATUSES, orderStatusGroup } from '@shared/orderStatus';
 import { comparePriority, computeDispatchPriority, type DispatchPriority } from '@shared/dispatchPriority';
-import { isSameDubaiDay } from '@shared/dubaiTime';
+import { dubaiTimeOfDay, isSameDubaiDay } from '@shared/dubaiTime';
 import { botStatusExpr } from './botStatus';
-import { estimateStopEtas, etaInputFor, type EtaOrderFields } from '@shared/routeEta';
+import { estimateStopEtas, etaClock, etaInputFor, type EtaOrderFields } from '@shared/routeEta';
 import { audit, findCurrentStopId, revertOutForDelivery } from './stopStatus';
 import { stopCoordinates } from '@shared/geo';
 import { cachedQuery } from './_core/queryCache';
@@ -341,18 +341,18 @@ function stopDoneAt(stop: { status: string | null; deliveredAt: Date | null; pic
 /**
  * Admin-only stop ETAs for a route, or null when the route has no start time
  * yet (plannedStartAt, else the real startedAt). A route on the road is
- * projected live from now and the driver's last fresh GPS fix.
+ * projected live from now and the driver's last fresh GPS fix; one that should
+ * have left but hasn't is projected from now (etaClock).
  */
 export async function planRouteEtas(
     db: DbHandle,
     route: typeof driverRoutes.$inferSelect,
     stops: { stopId: number; type: string; status: string | null; deliveredAt: Date | null; pickedUpAt: Date | null; attemptedAt: Date | null; order: EtaOrderFields }[],
 ) {
-    const startAt = route.plannedStartAt ?? route.startedAt;
-    if (!startAt || stops.length === 0) return null;
-    const live = route.status === 'in_progress';
+    const clock = etaClock(route, new Date());
+    if (!clock || stops.length === 0) return null;
     let livePosition: LatLng | null = null;
-    if (live && route.driverId) {
+    if (clock.mode === 'live' && route.driverId) {
         const [fix] = await db.select().from(driverLocations).where(eq(driverLocations.driverId, route.driverId)).limit(1);
         if (fix && Date.now() - fix.recordedAt.getTime() <= LIVE_POSITION_MAX_AGE_MS) livePosition = { lat: fix.lat, lng: fix.lng };
     }
@@ -361,13 +361,83 @@ export async function planRouteEtas(
     const origin = Number.isFinite(originLat) && Number.isFinite(originLng) ? { lat: originLat, lng: originLng } : null;
     const plan = estimateStopEtas(
         stops.map(s => etaInputFor(s.stopId, s.type === 'pickup' ? 'pickup' : 'delivery', s.order, stopDoneAt(s))),
-        { startAt, origin, now: live ? new Date() : null, livePosition },
+        { startAt: clock.startAt, origin, now: clock.now, livePosition },
     );
     return {
-        startAt: startAt.toISOString(),
+        startAt: clock.startAt.toISOString(),
         endAt: plan.endAt,
-        live,
+        live: clock.mode === 'live',
+        mode: clock.mode,
+        hasOrigin: !!origin,
+        // The stop sequencer re-projects in the browser while dispatch drags —
+        // it needs the same fix to land on the same times as this list.
+        livePosition,
         byStop: new Map(plan.stops.map(e => [e.key as number, e])),
+    };
+}
+
+/** Recent routes a default is learned from. */
+const PLANNING_HISTORY = 30;
+
+/**
+ * What a new route form opens with, learned from recent routes rather than
+ * hardcoded: the start point dispatch keeps using (used at least twice, so a
+ * one-off pin doesn't stick), and the time drivers actually leave. Routes used
+ * to open at 09:00 while drivers really left around 14:00 — every ETA was hours
+ * early.
+ */
+export async function getRoutePlanningDefaults(): Promise<{
+    startPoint: { address: string | null; lat: string; lng: string } | null;
+    typicalStartTime: string | null;
+}> {
+    const db = await getDb();
+    if (!db) throw new Error('Database not available');
+
+    const withStart = await db
+        .select({ startAddress: driverRoutes.startAddress, startLat: driverRoutes.startLat, startLng: driverRoutes.startLng })
+        .from(driverRoutes)
+        .where(and(isNotNull(driverRoutes.startLat), isNotNull(driverRoutes.startLng), ne(driverRoutes.status, 'cancelled')))
+        .orderBy(desc(driverRoutes.createdAt))
+        .limit(PLANNING_HISTORY);
+    // ~110 m cells: two pins dropped on the same depot rarely match to the metre.
+    const cells = new Map<string, { n: number; lat: string; lng: string; address: string | null }>();
+    for (const r of withStart) {
+        const lat = Number(r.startLat), lng = Number(r.startLng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+        const cell = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+        const seen = cells.get(cell);
+        // Newest first: the first row of a cell is its most recent pin and label.
+        if (seen) {
+            seen.n++;
+            if (!seen.address && r.startAddress?.trim()) seen.address = r.startAddress.trim();
+        } else {
+            cells.set(cell, { n: 1, lat: r.startLat!, lng: r.startLng!, address: r.startAddress?.trim() || null });
+        }
+    }
+    let usual: { n: number; lat: string; lng: string; address: string | null } | null = null;
+    for (const c of Array.from(cells.values())) if (c.n >= 2 && (!usual || c.n > usual.n)) usual = c;
+
+    const started = await db
+        .select({ startedAt: driverRoutes.startedAt })
+        .from(driverRoutes)
+        .where(isNotNull(driverRoutes.startedAt))
+        .orderBy(desc(driverRoutes.startedAt))
+        .limit(PLANNING_HISTORY);
+    const minutes = started
+        .map(r => dubaiTimeOfDay(r.startedAt!).split(':').map(Number))
+        .map(([h, m]) => h * 60 + m)
+        .sort((a, b) => a - b);
+    let typicalStartTime: string | null = null;
+    if (minutes.length >= 5) {
+        const mid = minutes.length >> 1;
+        const median = minutes.length % 2 ? minutes[mid] : (minutes[mid - 1] + minutes[mid]) / 2;
+        const rounded = Math.min(23 * 60 + 45, Math.round(median / 15) * 15);
+        typicalStartTime = `${String(Math.floor(rounded / 60)).padStart(2, '0')}:${String(rounded % 60).padStart(2, '0')}`;
+    }
+
+    return {
+        startPoint: usual ? { address: usual.address, lat: usual.lat, lng: usual.lng } : null,
+        typicalStartTime,
     };
 }
 
@@ -475,7 +545,7 @@ export async function getRouteDetails(routeId: string) {
         ...route,
         driver,
         deliveries,
-        eta: etaPlan ? { startAt: etaPlan.startAt, endAt: etaPlan.endAt, live: etaPlan.live } : null,
+        eta: etaPlan ? { startAt: etaPlan.startAt, endAt: etaPlan.endAt, live: etaPlan.live, mode: etaPlan.mode, hasOrigin: etaPlan.hasOrigin, livePosition: etaPlan.livePosition } : null,
     };
 }
 

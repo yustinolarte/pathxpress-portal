@@ -15,6 +15,7 @@ import SetLocationDialog, { type SetLocationOrder } from './SetLocationDialog';
 import { buildDraftStops, type SequencerStop } from '@/lib/routeDraft';
 import { LocationPicker } from './LocationPicker';
 import { dubaiDateTime, dubaiTimeOfDay, dubaiToday } from '@shared/dubaiTime';
+import { ETA_MODEL, defaultRouteStartTime } from '@shared/routeEta';
 
 // Random, non-sequential route IDs (server re-checks uniqueness). Unambiguous alphabet (no I/O/0/1).
 const genRouteSuffix = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
@@ -62,8 +63,12 @@ interface CreateRouteWizardProps {
 const makeDefaultForm = () => ({
   id: '',
   date: dubaiToday(),
-  /** Planned departure, Dubai time — feeds the admin-only ETAs. */
-  startTime: '09:00',
+  /**
+   * Planned departure, Dubai time — feeds the admin-only ETAs. Filled once the
+   * usual departure loads (defaultRouteStartTime): a fixed 09:00 left routes
+   * that really left at ~14:00 with every ETA hours early.
+   */
+  startTime: '',
   zone: '',
   zoneCustom: '',
   driverId: '',
@@ -124,6 +129,19 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   const autoOrderedRef = useRef(false);
 
   const createRouteMutation = trpc.portal.drivers.createRoute.useMutation();
+  const planningDefaults = trpc.portal.drivers.routePlanningDefaults.useQuery(undefined, {
+    enabled: open,
+    staleTime: 10 * 60_000,
+  });
+  const typicalStartTime = planningDefaults.data?.typicalStartTime ?? null;
+  const usualStartPoint = planningDefaults.data?.startPoint ?? null;
+  // Defaults fill the form only until the admin makes the field their own.
+  const startTimeEdited = useRef(false);
+  const startPointPrefilled = useRef(false);
+  const prefilledStartLabel = useRef<string | null>(null);
+  const [startPrefilledFromHistory, setStartPrefilledFromHistory] = useState(false);
+  // LocationPicker only reads initialLocation on mount: remount it to show a prefilled pin.
+  const [startPickerKey, setStartPickerKey] = useState(0);
   const previewOrderMutation = trpc.portal.drivers.previewOptimizedOrder.useMutation();
 
   const { data: availableOrders, isLoading: ordersLoading, refetch: refetchOrders } =
@@ -152,6 +170,10 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
       setSelectedOrders([]);
       setDraftStops([]);
       autoOrderedRef.current = false;
+      startTimeEdited.current = false;
+      startPointPrefilled.current = false;
+      prefilledStartLabel.current = null;
+      setStartPrefilledFromHistory(false);
     } else {
       // Fresh form (today in Dubai) and a fresh random route ID each time the wizard opens.
       setForm({ ...makeDefaultForm(), id: makeRouteId() });
@@ -165,6 +187,29 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
   function setField(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }));
   }
+
+  // Start time: the usual departure, or the next quarter hour if that's already
+  // gone today. Follows the date until the admin types a time.
+  useEffect(() => {
+    if (!open || startTimeEdited.current || !form.date) return;
+    const next = defaultRouteStartTime(form.date, typicalStartTime);
+    setForm(prev => (prev.startTime === next ? prev : { ...prev, startTime: next }));
+  }, [open, form.date, typicalStartTime]);
+
+  // Start point: the one dispatch keeps using. Without any, the first drive is a guess.
+  useEffect(() => {
+    if (!open || !usualStartPoint || startPointPrefilled.current || form.startLat) return;
+    startPointPrefilled.current = true;
+    const label = usualStartPoint.address || 'Usual start point';
+    setForm(prev => {
+      if (prev.startAddress.trim()) return { ...prev, startLat: usualStartPoint.lat, startLng: usualStartPoint.lng };
+      prefilledStartLabel.current = label;
+      return { ...prev, startLat: usualStartPoint.lat, startLng: usualStartPoint.lng, startAddress: label };
+    });
+    setStartPrefilledFromHistory(true);
+    setStartPickerKey(k => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, usualStartPoint]);
 
   /** Planned departure as an instant, or null while the inputs are incomplete. */
   const plannedStartAt = useMemo(() => {
@@ -334,11 +379,12 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
             <input
               type="time"
               value={form.startTime}
-              onChange={e => setField('startTime', e.target.value)}
+              onChange={e => { startTimeEdited.current = true; setField('startTime', e.target.value); }}
               className={textInputClass('startTime')}
             />
             <p className="text-xs text-muted-foreground">
               When the driver leaves. Used only for the estimated arrival times you see while ordering stops — the driver never sees them.
+              {typicalStartTime && <> Drivers usually leave around {typicalStartTime}.</>}
             </p>
           </Field>
           <Field label="Zone (optional)">
@@ -374,20 +420,31 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
               />
             </div>
             <LocationPicker
+              key={startPickerKey}
               resetSignal={startPickerReset}
               initialLocation={form.startLat && form.startLng ? { lat: parseFloat(form.startLat), lng: parseFloat(form.startLng) } : undefined}
               onLocationPicked={(loc) => {
-                setForm(prev => ({
-                  ...prev,
-                  startLat: loc?.latitude ?? '',
-                  startLng: loc?.longitude ?? '',
-                  startAddress: prev.startAddress.trim() || loc?.address || prev.startAddress,
-                }));
+                // On mount the picker re-emits the pin it was opened with (no address):
+                // that's not a choice, and must not wipe the prefilled label.
+                if (loc && Number(loc.latitude) === Number(form.startLat) && Number(loc.longitude) === Number(form.startLng)) return;
+                setStartPrefilledFromHistory(false);
+                setForm(prev => {
+                  // The prefilled label names the usual pin, not wherever it was moved to.
+                  const own = prev.startAddress.trim() && prev.startAddress !== prefilledStartLabel.current ? prev.startAddress : '';
+                  return {
+                    ...prev,
+                    startLat: loc?.latitude ?? '',
+                    startLng: loc?.longitude ?? '',
+                    startAddress: own || loc?.address || own,
+                  };
+                });
               }}
               className="h-[220px] mt-2"
             />
             <p className="text-xs text-muted-foreground">
-              Drop the pin where the van leaves from: auto-order and the arrival times start there. Leave it empty to start at the first stop.
+              {startPrefilledFromHistory && <>Pre-filled with the usual start point. </>}
+              Drop the pin where the van leaves from: auto-order and the arrival times start there.
+              Without one, the drive to the first stop is a ~{ETA_MODEL.unknownLegMinutes} min guess.
             </p>
           </Field>
         </div>
@@ -479,6 +536,7 @@ export default function CreateRouteWizard({ open, onOpenChange, onSuccess, drive
                 autoOrdering={previewOrderMutation.isPending}
                 mapClassName="h-[400px]"
                 startAt={plannedStartAt}
+                startPointHint="in the Route step"
                 origin={form.startLat && form.startLng ? {
                   lat: parseFloat(form.startLat),
                   lng: parseFloat(form.startLng),

@@ -4,7 +4,7 @@
  * cancel, reopen, reassign, edit, hand over stops. Every action goes through
  * the server's route lifecycle rules (server/routeLifecycle.ts).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Ban, CheckCircle2, Clock, Edit, Loader2, RotateCcw, Shuffle, UserCog } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { LocationPicker } from '@/components/LocationPicker';
 import { dubaiDateKey, dubaiDateTime, dubaiTimeOfDay } from '@shared/dubaiTime';
 import { isStopOpen } from '@shared/stopTransitions';
+import { defaultRouteStartTime } from '@shared/routeEta';
 import { StopStatusBadge } from './dispatchBadges';
 import HandOverDialog from './HandOverDialog';
 
@@ -39,7 +40,7 @@ export interface RouteForActions {
         proofPhotoUrl?: string | null; proofPhotoUrl2?: string | null; collectedAmount?: string | null;
         customerName?: string | null; shipperName?: string | null;
     }>;
-    eta?: { startAt: string; endAt: string | null; live: boolean } | null;
+    eta?: { startAt: string; endAt: string | null; live: boolean; mode?: 'planned' | 'late_start' | 'live'; hasOrigin?: boolean } | null;
 }
 
 const fmtDubai = (d: string | Date | null | undefined) =>
@@ -100,9 +101,14 @@ export default function RouteActions({ route, drivers, openRoutes, onChanged }: 
                 {route.startedAt && <span><span className="text-muted-foreground">Started</span> {fmtDubai(route.startedAt)}</span>}
                 {route.finishedAt && <span><span className="text-muted-foreground">Finished</span> {fmtDubai(route.finishedAt)}</span>}
                 {route.eta?.endAt && (
-                    <span className="flex items-center gap-1" title="Admin-only estimate, Dubai time">
+                    <span
+                        className="flex items-center gap-1"
+                        title={`Admin-only estimate, Dubai time${route.eta.mode === 'late_start' ? ' — the planned start has passed, so it assumes the route leaves now' : ''}${route.eta.hasOrigin === false ? ' — no start point, so the first drive is a guess' : ''}`}
+                    >
                         <Clock className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-muted-foreground">{route.eta.live ? 'Est. finish (live)' : 'Est. finish'}</span> {dubaiTimeOfDay(route.eta.endAt)}
+                        <span className="text-muted-foreground">
+                            {route.eta.live ? 'Est. finish (live)' : route.eta.mode === 'late_start' ? 'Est. finish (if it leaves now)' : 'Est. finish'}
+                        </span> {route.eta.hasOrigin === false && !route.eta.live ? '~' : ''}{dubaiTimeOfDay(route.eta.endAt)}
                     </span>
                 )}
                 {!route.eta && isOpenRoute && (
@@ -224,15 +230,26 @@ function EditRouteDialog({ route, open, onOpenChange, onSaved }: {
     const [startAddress, setStartAddress] = useState('');
     const [start, setStart] = useState<{ lat: string; lng: string } | null>(null);
     const [pickerReset, setPickerReset] = useState(0);
+    const defaults = trpc.portal.drivers.routePlanningDefaults.useQuery(undefined, { enabled: open, staleTime: 10 * 60_000 });
+    const typicalStart = defaults.data?.typicalStartTime ?? null;
+    const timeEdited = useRef(false);
 
     useEffect(() => {
         if (!open) return;
+        timeEdited.current = false;
         setDate(dubaiDateKey(route.date));
-        setTime(route.plannedStartAt ? dubaiTimeOfDay(route.plannedStartAt) : '09:00');
+        setTime(route.plannedStartAt ? dubaiTimeOfDay(route.plannedStartAt) : '');
         setStartAddress(route.startAddress || '');
         setStart(route.startLat && route.startLng ? { lat: route.startLat, lng: route.startLng } : null);
         setPickerReset(n => n + 1);
     }, [open, route]);
+
+    // A route with no start time yet gets the usual departure (which loads after
+    // the dialog opens), never one in the past — until the admin types their own.
+    useEffect(() => {
+        if (!open || route.plannedStartAt || timeEdited.current || !date) return;
+        setTime(defaultRouteStartTime(date, typicalStart));
+    }, [open, typicalStart, date, route.plannedStartAt]);
 
     const initial = useMemo(() => start ? { lat: Number(start.lat), lng: Number(start.lng) } : undefined,
         // only the opening value seeds the picker
@@ -276,7 +293,7 @@ function EditRouteDialog({ route, open, onOpenChange, onSaved }: {
                     </div>
                     <div className="space-y-1.5">
                         <Label>Start time</Label>
-                        <Input type="time" value={time} onChange={e => setTime(e.target.value)} />
+                        <Input type="time" value={time} onChange={e => { timeEdited.current = true; setTime(e.target.value); }} />
                     </div>
                     <div className="col-span-2 space-y-1.5">
                         <Label>Start point</Label>

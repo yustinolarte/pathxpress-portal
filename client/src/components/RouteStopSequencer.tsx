@@ -15,7 +15,7 @@
  * half of the same rule, shared via @shared/routeSequence.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Reorder } from 'framer-motion';
 import { toast } from 'sonner';
 import {
@@ -25,7 +25,7 @@ import {
 import { OrdersMap, type MapPoint, type MapPointId, type PinKind } from './OrdersMap';
 import { applyLockedPositions, enforcePrecedence, findPrecedenceViolation } from '@shared/routeSequence';
 import { pathLength } from '@shared/geo';
-import { deliveryDeadline, estimateStopEtas } from '@shared/routeEta';
+import { ETA_MODEL, deliveryDeadline, estimateStopEtas, etaClock } from '@shared/routeEta';
 import { dubaiTimeOfDay } from '@shared/dubaiTime';
 import { EtaChip, PriorityBadge } from '@/components/drivers/dispatchBadges';
 import type { SequencerStop } from '@/lib/routeDraft';
@@ -48,6 +48,12 @@ interface RouteStopSequencerProps {
     mapClassName?: string;
     /** Planned departure — when set, each row shows its admin-only ETA. */
     startAt?: string | Date | null;
+    /** The route's status; omitted in the wizard (a draft hasn't left either). Picks the ETA anchor, as on the server. */
+    routeStatus?: string | null;
+    /** Driver's last fresh GPS fix on a live route — the same one the server projected the list from. */
+    livePosition?: { lat: number; lng: number } | null;
+    /** Where the admin sets the start point, for the "no start point" hint. */
+    startPointHint?: string;
 }
 
 const fmtKm = (metres: number) =>
@@ -65,8 +71,17 @@ export default function RouteStopSequencer({
     className,
     mapClassName = 'h-[440px]',
     startAt = null,
+    routeStatus = null,
+    livePosition = null,
+    startPointHint = "in the route's details",
 }: RouteStopSequencerProps) {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    // Live and late-start ETAs count from "now", so they have to move with it.
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        const t = setInterval(() => setNowMs(Date.now()), 60_000);
+        return () => clearInterval(t);
+    }, []);
     // One stable ref for the list; rows are found by data attribute. Per-row
     // callback refs were being torn down and recreated on every render, which
     // pulled the node out from under framer's drag gesture.
@@ -126,9 +141,16 @@ export default function RouteStopSequencer({
         return pathLength(path, origin ? { lat: origin.lat, lng: origin.lng } : null);
     }, [withCoords, origin]);
 
+    // Same anchor as the server (shared etaClock), so entering reorder mode on a
+    // live route doesn't jump back to the morning plan.
+    const clock = useMemo(
+        () => etaClock({ status: routeStatus, plannedStartAt: startAt }, new Date(nowMs)),
+        [routeStatus, startAt, nowMs],
+    );
+
     // Recomputed on every drag: the whole point is seeing a window slip while reordering.
     const etaPlan = useMemo(() => {
-        if (!startAt || stops.length === 0) return null;
+        if (!clock || stops.length === 0) return null;
         return estimateStopEtas(stops.map(s => ({
             key: s.key,
             type: s.type,
@@ -140,8 +162,13 @@ export default function RouteStopSequencer({
                 preferredDeliveryTime: s.preferredDeliveryTime,
                 createdAt: s.createdAt,
             }) : {}),
-        })), { startAt: new Date(startAt), origin: origin ? { lat: origin.lat, lng: origin.lng } : null });
-    }, [stops, startAt, origin?.lat, origin?.lng]);
+        })), {
+            startAt: clock.startAt,
+            origin: origin ? { lat: origin.lat, lng: origin.lng } : null,
+            now: clock.now,
+            livePosition: clock.mode === 'live' ? livePosition : null,
+        });
+    }, [stops, clock, origin?.lat, origin?.lng, livePosition?.lat, livePosition?.lng]);
     const etaByKey = useMemo(() => new Map((etaPlan?.stops ?? []).map(e => [String(e.key), e])), [etaPlan]);
     const lateCount = etaPlan?.stops.filter(e => e.lateRisk).length ?? 0;
 
@@ -424,6 +451,21 @@ export default function RouteStopSequencer({
                     )}
                     {!startAt && (
                         <p>Set a start time to see estimated arrival times (admin only).</p>
+                    )}
+                    {etaPlan && clock?.mode === 'late_start' && (
+                        <p>
+                            Planned start {dubaiTimeOfDay(clock.startAt)} has passed and the route hasn't left — times assume it leaves now ({dubaiTimeOfDay(clock.now!)}).
+                        </p>
+                    )}
+                    {etaPlan && clock?.mode === 'live' && (
+                        <p>
+                            On the road — open stops are projected from now and {livePosition ? "the driver's last GPS position" : 'the last stop worked'}.
+                        </p>
+                    )}
+                    {etaPlan && !origin && clock?.mode !== 'live' && (
+                        <p>
+                            No start point — the drive to the first stop is assumed to take ~{ETA_MODEL.unknownLegMinutes} min, so times are approximate (~). Set one {startPointHint}.
+                        </p>
                     )}
                     {noCoords.length > 0 && (
                         <div className="px-2 py-1.5 rounded-lg border border-[var(--st-amber)]/40 bg-[var(--st-amber-bg)] text-[var(--st-amber)] space-y-1">

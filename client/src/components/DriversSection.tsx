@@ -3555,6 +3555,9 @@ export default function DriversSection() {
                                 disabled={reorderStopsMutation.isPending}
                                 mapClassName="h-[380px]"
                                 startAt={routeDetails?.plannedStartAt ?? routeDetails?.startedAt ?? null}
+                                routeStatus={routeDetails?.status ?? null}
+                                livePosition={routeDetails?.eta?.livePosition ?? null}
+                                startPointHint={`with the route's "Edit" button`}
                                 origin={routeDetails?.startLat && routeDetails?.startLng ? {
                                     lat: parseFloat(routeDetails.startLat),
                                     lng: parseFloat(routeDetails.startLng),

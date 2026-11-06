@@ -161,6 +161,15 @@ export const driverRouter = router({
             return driverAdmin.getRouteDetails(input.routeId);
         }),
 
+    /** Usual start point and departure time, for a new route form to open with. */
+    routePlanningDefaults: publicProcedure
+        .query(async ({ ctx }) => {
+            if (!ctx.portalUser || ctx.portalUser.role !== 'admin') {
+                throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+            }
+            return driverAdmin.getRoutePlanningDefaults();
+        }),
+
     createRoute: publicProcedure
         .input(z.object({
             id: z.string().optional(), // optional — server generates a random unique ID when omitted
